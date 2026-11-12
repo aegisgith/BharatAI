@@ -116,9 +116,37 @@ const LAPTOP = { viewport: { width: 1306, height: 760 } };
       check(name + ': the Expo Hall tab shows each talk with its speaker and company', tabs.expoShown && tabs.expoPeople >= 15 && /Innovation Talk:/.test(tabs.expoText), JSON.stringify(tabs));
       check(name + ': the Full Schedule shows people on both days, each row with its hall', tabs.fullPeople >= 40 && tabs.fullHallTags >= 20 && tabs.day2People >= 15, JSON.stringify(tabs));
 
+      // Tracks: press a session, and the schedule opens on its hall and day with it in view.
+      await p.evaluate(() => document.querySelector('#tracks').scrollIntoView({ block: 'start' }));
+      await p.waitForTimeout(400);
+      const trackRows = await p.locator('#tracks .conf-track-row.trk').count();
+      const wideTracks = await p.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      check(name + ': Tracks shows the keynotes and every track, without widening the page', trackRows >= 12 && wideTracks <= 0, JSON.stringify([trackRows, wideTracks]));
+      await p.locator('#tracks a.trk-title', { hasText: 'Transforming Indian Agriculture' }).click();
+      await p.waitForTimeout(1500);
+      const opened = await p.evaluate(() => {
+        const el = document.querySelector('.schedule-item.sch-flash');
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { id: el.id, hall: document.querySelector('.hall-tab.active').textContent.trim(), day: el.closest('.hall-panel').querySelector('.schedule-tab.active').textContent.trim(), inView: r.top >= 0 && r.bottom <= innerHeight, hash: location.hash };
+      });
+      check(name + ': a session pressed in Tracks opens on its hall and day, in view, and the address names it', opened && opened.id === 'sch-aryabhata-2-1100' && opened.hall === 'Kalam Theatre' && /Day 2/.test(opened.day) && opened.inView && opened.hash === '#sch-aryabhata-2-1100', JSON.stringify(opened));
+      await p.locator('#tracks .trk-all summary').click();
+      await p.waitForTimeout(300);
+      const talks = await p.locator('#tracks .trk-all[open] .trk-s').count();
+      check(name + ': "All talks and their topics" opens the full list of Innovation Talks', talks >= 20, String(talks));
+
       check(name + ': no script error and no missing file', errors.length === 0 && missing.length === 0, errors.concat(missing).slice(0, 4).join(' | '));
       await ctx.close();
     }
+    // A link from anywhere straight to a session: /conference#sch-...
+    const ctx = await browser.newContext({ ...PHONE, serviceWorkers: 'block' });
+    const p = await ctx.newPage();
+    await p.goto(BASE + '/conference#sch-raman-2-1400', { waitUntil: 'load' });
+    await p.waitForTimeout(1800);
+    const deep = await p.evaluate(() => { const el = document.getElementById('sch-raman-2-1400'); const r = el.getBoundingClientRect(); return { shown: r.height > 0, inView: r.top >= 0 && r.bottom <= innerHeight, title: el.querySelector('h4').textContent }; });
+    check('phone: a link to /conference#sch-... opens that session in the schedule', deep.shown && deep.inView && /Speech Recognition/.test(deep.title), JSON.stringify(deep));
+    await ctx.close();
   } finally {
     await browser.close();
   }

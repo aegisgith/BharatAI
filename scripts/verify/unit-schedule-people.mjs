@@ -54,7 +54,7 @@ check('each small picture is small (under 12 KB), so a phone can open a panel of
 
 // One panel, read closely: the first hall's Governance panel.
 const hall0 = block.slice(block.indexOf('id="hall-0"'), block.indexOf('id="hall-1"'));
-const item = (src, title) => { const i = src.indexOf(title); return i < 0 ? '' : src.slice(src.lastIndexOf('<div class="schedule-item', i), src.indexOf('<span class="schedule-badge', i)); };
+const item = (src, title) => { const i = src.indexOf(title); return i < 0 ? '' : src.slice(src.lastIndexOf('<div', src.lastIndexOf('class="schedule-item', i)), src.indexOf('<span class="schedule-badge', i)); };
 const gov = item(hall0, 'AI for Viksit Bharat');
 const govCards = gov.split('<li class="sch-person">').slice(1);
 check('the Governance panel lists its ten panellists and the moderator', govCards.length === 11, String(govCards.length));
@@ -77,6 +77,31 @@ check('a break has no people and keeps its plain line', /<h4>Networking Lunch<\/
 const full = block.slice(block.indexOf('id="hall-4"'));
 check('the Full Schedule shows the same people, each row with its hall', /hall-label hl-bhabha">Homi J\. Bhabha Hall<\/span>Panel: Governance\./.test(full) && item(full, 'AI for Viksit Bharat').split('<li class="sch-person">').length === 12);
 check('the page carries the styles for people, and the phone rules', ['.sch-people {', '.sch-photo {', '.sch-logo {', '.sch-lead {', '--sch-logo: 0.85'].every((s) => page.includes(s)));
+
+// ---- Tracks: every real session by track (12 Nov 2026) ----
+const S = JSON.parse(read('scripts/data/schedule.json'));
+const T = JSON.parse(read('scripts/data/tracks.json')).tracks;
+const ta = page.indexOf('<!-- tracks:start'), tb = page.indexOf('<!-- tracks:end -->');
+const tracks = page.slice(ta, tb);
+check('the Tracks section sits between its two markers, above the schedule', ta > 0 && tb > ta && tb < a);
+const used = new Set(S.sessions.map((s) => s.track).filter(Boolean));
+check('every track in the agenda has its words in tracks.json', [...used].every((k) => T.some((t) => t.key === k)), [...used].filter((k) => !T.some((t) => t.key === k)).join(', '));
+const rows = tracks.split('<div class="conf-track-row trk">').slice(1);
+const subject = T.filter((t) => t.key !== '@keynotes' && (used.has(t.key) || (t.key === 'Innovation Talks')));
+check('one row per track plus the keynotes, in the order of tracks.json', rows.length === subject.length + 1 && rows.every((r, i) => r.includes(`<h3 class="ctr-name">${[T[0], ...subject][i].name.replace(/&/g, '&amp;')}</h3>`)), String(rows.length));
+check('the heading counts the real tracks', tracks.includes(`<span class="accent">${subject.length}</span> Specialised Tracks`) && !tracks.includes('10+'));
+const ids = new Set([...page.matchAll(/<div id="(sch-[^"]+)" class="schedule-item/g)].map((m) => m[1]));
+const hrefs = [...tracks.matchAll(/href="#(sch-[^"]+)"/g)].map((m) => m[1]);
+check('every session in Tracks opens a session that is in the schedule', hrefs.length >= 40 && hrefs.every((h) => ids.has(h)), hrefs.filter((h) => !ids.has(h)).join(', '));
+check('every session of the agenda has its own place in the schedule (ids unique)', ids.size === S.sessions.length, `${ids.size} of ${S.sessions.length}`);
+const listed = new Set(hrefs);
+const missed = S.sessions.filter((s) => s.track && !listed.has(`sch-${s.hall}-${s.day}-${s.start ? s.start.replace(':', '') : 'tba'}`) && !s.company);
+check('every session with a track is listed under it', missed.length === 0, missed.map((s) => s.title).join(', '));
+check('the made-up tracks are gone (Manufacturing, Mobility, Ethics, Retail, five halls)', !/Manufacturing &amp; Industry 4\.0|Mobility &amp; Smart Transport|AI Ethics &amp; Responsible AI|parallel halls|AI for Retail|5 parallel/i.test(page));
+const faqText = (page.match(/"How many conference tracks[^"]*",\s*"acceptedAnswer": \{ "@type": "Answer", "text": "([^"]*)"/) || [])[1] || '';
+check('what search engines are told matches: the count, four halls and every track by name', faqText.startsWith(`There are ${subject.length} tracks across four halls`) && subject.every((t) => faqText.includes(t.name)), faqText);
+check('the words about tracks use no dashes as punctuation', !/ [–—-] |—/.test(JSON.stringify(T.map((t) => [t.about, t.for]))));
+check('the page has the script that opens a session from Tracks', /function showSession\(id\)/.test(page) && /a\[href\^="#sch-"\]/.test(page) && /location\.hash\.indexOf\('#sch-'\)/.test(page));
 
 // ---- the app is untouched: its SQL still has the names in the form the app reads ----
 const sql = read('scripts/sql/schedule.sql');

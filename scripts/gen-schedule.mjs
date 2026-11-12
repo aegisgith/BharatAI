@@ -38,6 +38,11 @@
 //    "crop" in schedule-people.json (left, top, size as fractions, as the talks do).
 //    This folder is this script's alone: never put a hand-made file in it.
 // The app's SQL is untouched by any of this.
+// 4. The Tracks section of public/conference.html, between <!-- tracks:start --> and
+//    <!-- tracks:end -->, and the page's FAQ answer on how many tracks there are: every
+//    real session grouped by track, with the words about each track from
+//    scripts/data/tracks.json. Every schedule item in a hall's tab carries an id
+//    (#sch-<hall key>-<day>-<hhmm>) so a track's session can open it.
 //
 //   node scripts/gen-schedule.mjs --check
 //
@@ -230,7 +235,7 @@ function words(s) {
 }
 const sentence = (tag, ls, cls = '') => (ls.length || tag ? `<p${cls ? ` class="${cls}"` : ''}>${tag}${ls.join('. ')}${ls.length ? '.' : ''}</p>` : '')
 
-const item = (s, tag = '') => {
+const item = (s, tag = '', id = '') => {
   const ppl = s.people || []
   const note = s.note ? [esc(s.note.replace(/\.$/, ''))] : []
   const info = []
@@ -245,7 +250,7 @@ const item = (s, tag = '') => {
     info.push(sentence('', note, 'sch-note'))
   }
   return [
-    `<div class="schedule-item${!ppl.length ? '' : !s.title && ppl.length === 1 ? ' has-lead' : ' has-people'}">`,
+    `<div${id ? ` id="${id}"` : ''} class="schedule-item${!ppl.length ? '' : !s.title && ppl.length === 1 ? ' has-lead' : ' has-people'}">`,
     `    <div class="schedule-time">${time(s)}</div>`,
     `    <div class="schedule-info">${info.filter(Boolean).join('')}</div>`,
     `    <span class="schedule-badge ${BADGE[s.type]}">${esc(badgeText(s))}</span>`,
@@ -269,6 +274,16 @@ const dayPanel = (day, items, empty) => [
 ].join('\n')
 const indent = (s, n) => s.replace(/^(?=.)/gm, ' '.repeat(n))
 
+// Each session's place in its hall's tab: #sch-<hall key>-<day>-<hhmm>, unique.
+const anchors = new Set()
+for (const s of S.sessions) {
+  const base = `sch-${s.hall}-${s.day}-${s.start ? s.start.replace(':', '') : 'tba'}`
+  let a = base
+  for (let n = 2; anchors.has(a); n++) a = `${base}-${n}`
+  anchors.add(a)
+  s.anchor = a
+}
+
 const html = []
 html.push('<!-- Hall Selector -->', '<div class="hall-tabs">')
 S.halls.forEach((h, i) => html.push(`    <button class="hall-tab${i === 0 ? ' active' : ''}" onclick="switchHall(${i})">${esc(h.name)}</button>`))
@@ -280,7 +295,7 @@ S.halls.forEach((h, i) => {
   html.push(indent(`<p class="hall-venue" style="font-size:0.86rem;color:var(--dark-grey);margin:0 0 1rem;">At the venue: <strong>${esc(h.venue)}</strong>${h.about ? ` &middot; ${esc(h.about)}` : ''}</p>`, 4))
   html.push(indent(dayTabs(id), 4))
   for (const day of [1, 2]) {
-    const items = S.sessions.filter((s) => s.hall === h.key && s.day === day).sort(byTime).map((s) => item(s))
+    const items = S.sessions.filter((s) => s.hall === h.key && s.day === day).sort(byTime).map((s) => item(s, '', s.anchor))
     html.push(indent(dayPanel(day, items, 'Sessions to be announced.'), 4))
   }
   html.push('</div>', '')
@@ -317,17 +332,146 @@ for (const day of [1, 2]) {
 }
 html.push('</div>')
 
-// Replace the text between the markers, keeping the file's line endings.
+// ---- Tracks: every real session, grouped by track (organiser, 12 Nov 2026) ----
+// The Tracks section above the schedule, between <!-- tracks:start --> and
+// <!-- tracks:end -->. The words about each track are scripts/data/tracks.json; the
+// sessions, times, halls and faces come from the agenda, so a session that moves
+// moves here too. Each session links to itself in the schedule (#sch-...), which the
+// page's own script opens on the right hall and day.
+const TRACKS = JSON.parse(readFileSync('scripts/data/tracks.json', 'utf8')).tracks
+const DAY_SHORT = { 1: 'Fri 20 Nov', 2: 'Sat 21 Nov' }
+const KIND = { keynote: ['Keynote', 'Keynotes'], panel: ['Panel', 'Panels'], talk: ['Talk', 'Talks'], workshop: ['Workshop', 'Workshops'] }
+const mins = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
+const groupOf = (s) => {
+  if (['break', 'elsewhere', 'networking'].includes(s.type)) return null
+  if (s.track) return s.track
+  return s.type === 'keynote' ? '@keynotes' : null
+}
+// The hall as a sentence says it: "Aryabhata Theatre (Expo Hall)".
+const hallWords = (h) => `${esc(h.name)} (${esc(h.venue.split(',')[0])})`
+const whenWhere = (day, start, end, h) => `${DAY_SHORT[day]} · ${start ? `${start} – ${end}` : 'time to be announced'} · ${hallWords(h)}`
+const listWords = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
+
+// A run of back-to-back keynotes, or of short Expo Hall talks, reads as one line.
+const mergeable = (s) => (s.company && s.start) || (!s.track && s.type === 'keynote' && s.start)
+function linesOf(list) {
+  const out = []
+  // A session in another hall in between does not break a run: the run is the hall's.
+  const tail = (l) => l.sessions[l.sessions.length - 1]
+  for (const s of list) {
+    if (mergeable(s)) {
+      const run = [...out].reverse().find((l) => mergeable(tail(l)) && !!tail(l).company === !!s.company && tail(l).day === s.day && tail(l).hall === s.hall)
+      if (run && mins(s.start) - mins(tail(run).end) <= (s.company ? 30 : 5)) { run.sessions.push(s); continue }
+    }
+    out.push({ sessions: [s] })
+  }
+  return out.map(({ sessions }) => {
+    const s = sessions[0], z = sessions[sessions.length - 1], h = hall(s.hall)
+    const line = { anchor: s.anchor, type: s.type, when: whenWhere(s.day, s.start, z.end, h) }
+    if (sessions.length > 1) {
+      line.kind = KIND[s.type][1]
+      if (s.company) {
+        line.title = `${sessions.length} Innovation Talks`
+        line.sub = esc(listWords(sessions.map((x) => x.company)))
+      } else {
+        const has = (l) => sessions.some((x) => x.label === l)
+        line.title = has('Inauguration') ? 'Welcome, inauguration and keynotes' : has('Welcome') ? 'Welcome and keynotes' : 'Keynotes'
+        const names = sessions.flatMap((x) => x.people.map((p) => p.name))
+        const open = sessions.some((x) => !x.people.length)
+        line.sub = esc(names.join(', ') + (open ? (names.length ? ', and more to be announced' : 'Speakers to be announced') : ''))
+      }
+      return line
+    }
+    line.kind = KIND[s.type][0]
+    line.title = heading(s)
+    const note = s.note ? esc(s.note.replace(/\.$/, '')) : ''
+    if (s.panel) {
+      const orgs = [...new Set(s.panel.map((p) => p.org))]
+      line.sub = `Panellists from ${esc(listWords(orgs))}${note ? `. ${note}` : ''}`
+    } else if (s.people.length) {
+      const p = s.people[0]
+      line.sub = [esc(`${p.name}, ${p.org || p.role}`), s.topic ? `&ldquo;${esc(s.topic.replace(/[.]$/, ''))}&rdquo;` : '', note].filter(Boolean).join('. ')
+    } else line.sub = note
+    return line
+  })
+}
+const trkLine = (l) => `<li class="trk-s"><span class="trk-kind k-${l.type}">${l.kind}</span><a class="trk-title" href="#${l.anchor}">${esc(l.title)}</a>${l.sub ? `<span class="trk-sub">${l.sub}</span>` : ''}<span class="trk-when">${l.when}</span></li>`
+
+const groups = new Map()
+for (const s of S.sessions) {
+  const g = groupOf(s)
+  if (g) (groups.get(g) || groups.set(g, []).get(g)).push(s)
+}
+const unknownTracks = [...groups.keys()].filter((k) => !TRACKS.some((t) => t.key === k))
+const trackList = [...TRACKS, ...unknownTracks.map((key) => ({ key, name: key }))].filter((t) => groups.has(t.key))
+const byDayTime = (a, b) => a.day - b.day || byTime(a, b)
+
+function trackRow(t) {
+  const list = groups.get(t.key).sort(byDayTime)
+  const timed = list.filter((s) => s.start)
+  const types = [...new Set(timed.map((s) => s.type))]
+  const noun = types.length === 1 && types[0] !== 'keynote' ? KIND[types[0]] : ['session', 'sessions']
+  const count = `${timed.length} ${(timed.length === 1 ? noun[0] : noun[1]).toLowerCase()}`
+  const days = new Set(list.map((s) => s.day))
+  const when = days.size > 1 ? 'Both days' : DAY_SHORT[[...days][0]]
+  const seen = new Map()
+  for (const s of list) for (const p of s.people) if (!seen.has(p.slug)) seen.set(p.slug, p)
+  const everyone = [...seen.values()]
+  const shown = everyone.filter((p) => p.thumb).slice(0, 6)
+  const more = everyone.length - shown.length
+  const faces = shown.map((p) => `<img src="${p.thumb.src}" width="34" height="34" loading="lazy" decoding="async" alt="" title="${esc(p.name)}">`).join('') + (more > 0 ? `<span class="trk-more">+${more}</span>` : '')
+  const label = `Speakers include ${listWords([...shown.map((p) => p.name), ...(more > 0 ? [`${more} more`] : [])])}`
+  const lines = linesOf(list)
+  const each = t.list ? timed.map((s) => trkLine(linesOf([s])[0])) : []
+  return [
+    '<div class="conf-track-row trk">',
+    '    <div class="trk-head">',
+    `        <h3 class="ctr-name">${esc(t.name)}</h3>`,
+    `        <p class="trk-count">${count} · ${when}</p>`,
+    everyone.length ? `        <div class="trk-faces" role="img" aria-label="${esc(label)}">${faces}</div>` : '',
+    '    </div>',
+    '    <div class="trk-body">',
+    t.about ? `        <p class="ctr-desc">${esc(t.about)}${t.for ? ` <em>For: ${esc(t.for)}</em>` : ''}</p>` : '',
+    `        <ul class="trk-sessions">${lines.map(trkLine).join('')}</ul>`,
+    each.length > lines.length ? `        <details class="trk-all"><summary>All ${each.length} talks and their topics</summary><ul class="trk-sessions">${each.join('')}</ul></details>` : '',
+    t.link ? `        <a class="trk-link" href="${esc(t.link.href)}">${esc(t.link.text)} <span aria-hidden="true">&rarr;</span></a>` : '',
+    '    </div>',
+    '</div>',
+  ].filter(Boolean).join('\n')
+}
+
+const subjectTracks = trackList.filter((t) => t.key !== '@keynotes')
+const HALLS_IN_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six'][S.halls.length] || String(S.halls.length)
+const tracksHtml = [
+  '<div class="section-header reveal">',
+  `    <h2 class="section-title"><span class="accent">${subjectTracks.length}</span> Specialised Tracks</h2>`,
+  `    <p class="section-subtitle">${HALLS_IN_WORDS} halls over two days, straight from the agenda. Choose a session to see it in the schedule.</p>`,
+  '</div>',
+  '<div class="conf-tracks-list trk-list reveal-stagger">',
+  ...trackList.map((t) => indent(trackRow(t), 4)),
+  '</div>',
+].join('\n')
+// What search engines are told (the page's FAQ, "How many conference tracks...").
+const tracksFaq = `There are ${subjectTracks.length} tracks across ${HALLS_IN_WORDS.toLowerCase()} halls over two days: ${listWords(subjectTracks.map((t) => t.name))}. The conference opens with keynotes in ${S.halls[0].name}.`
+
+// Replace the text between each pair of markers, keeping the file's line endings.
 const src = readFileSync(PAGE, 'utf8')
 const eol = src.includes('\r\n') ? '\r\n' : '\n'
-const s = src.replace(/\r\n/g, '\n')
-const a = s.indexOf('<!-- schedule:start'), b = s.indexOf('<!-- schedule:end -->')
-if (a < 0 || b < 0) throw new Error(`${PAGE}: schedule markers missing`)
-const lineStart = s.lastIndexOf('\n', a) + 1
-const ind = s.slice(lineStart, a)
-const startLine = s.slice(a, s.indexOf('\n', a) + 1)
-const body = html.join('\n') + '\n'
-const out = s.slice(0, lineStart) + ind + startLine + body.split('\n').map((l) => (l ? ind + l : l)).join('\n') + ind + s.slice(b)
+function fill(s, name, lines) {
+  const a = s.indexOf(`<!-- ${name}:start`), b = s.indexOf(`<!-- ${name}:end -->`)
+  if (a < 0 || b < 0) throw new Error(`${PAGE}: ${name} markers missing`)
+  const lineStart = s.lastIndexOf('\n', a) + 1
+  const ind = s.slice(lineStart, a)
+  const startLine = s.slice(a, s.indexOf('\n', a) + 1)
+  const body = lines + '\n'
+  return s.slice(0, lineStart) + ind + startLine + body.split('\n').map((l) => (l ? ind + l : l)).join('\n') + ind + s.slice(b)
+}
+let out = src.replace(/\r\n/g, '\n')
+out = fill(out, 'schedule', html.join('\n'))
+out = fill(out, 'tracks', tracksHtml)
+const faq = /("name": "How many conference tracks[^"]*",\s*"acceptedAnswer": \{ "@type": "Answer", "text": ")[^"]*(")/
+if (!faq.test(out)) throw new Error(`${PAGE}: the FAQ answer on tracks is missing`)
+out = out.replace(faq, (m, a, b) => a + tracksFaq.replace(/"/g, "'") + b)
 put(PAGE, out.replace(/\n/g, eol))
 
 // ---- the app: sessions + workshop times ----
@@ -382,6 +526,7 @@ console.log(`${shown.size} people on the schedule; ${kept.size} files in public/
 if (unknown.size) console.log(`Not in schedule-people.json (shown with initials and schedule.json's words): ${[...unknown].join('; ')}`)
 if (noPhoto.length) console.log(`No photo (initials shown): ${noPhoto.join('; ')}`)
 if (noLogo.length) console.log(`No logo (organisation named in words): ${noLogo.join('; ')}`)
+if (unknownTracks.length) console.log(`Tracks with no words in scripts/data/tracks.json (shown by name only): ${unknownTracks.join('; ')}`)
 const stale = PEOPLE.filter((p) => !used.has(norm(p.name))).map((p) => p.name)
 if (stale.length) console.log(`In schedule-people.json but in no session: ${stale.join('; ')}`)
 if (CHECK) {
