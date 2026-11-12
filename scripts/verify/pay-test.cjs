@@ -677,7 +677,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await page.evaluate(() => switchSection('payments'));
     await page.waitForFunction(() => /Upgrade campaign/.test((document.getElementById('upgrade-campaign-block') || {}).textContent || ''), null, { timeout: 20000 }).catch(() => {});
     const text = await page.textContent('#upgrade-campaign-block');
-    check('Admin, Payments shows the upgrade campaign with who each offer reaches', /Upgrade campaign/.test(text) && /Senior Visitors/.test(text) && /Delegate Pass/.test(text) && /Students, interns and scholars/.test(text) && /Academic Pass/.test(text), text.slice(0, 200));
+    check('Admin, Payments shows the upgrade campaign with who each offer reaches', /Upgrade campaign/.test(text) && /Senior Visitors/.test(text) && /Delegate Pass/.test(text) && /Students, interns and scholars/.test(text) && /Student Pass/.test(text), text.slice(0, 200));
     check('with the counts and how long a run takes', /Send to [1-9]/.test(await page.textContent('#upgrade-send-senior')) && /Send to 1\b/.test(await page.textContent('#upgrade-send-students')) && /of sending/.test(text), (await page.textContent('#upgrade-send-senior')) + ' / ' + (await page.textContent('#upgrade-send-students')));
     const before = (await getState()).mail.length;
     const [pv] = await Promise.all([ctx.waitForEvent('page', { timeout: 10000 }).catch(() => null), page.click('#upgrade-campaign-block button:has-text("Preview")')]);
@@ -689,7 +689,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     await page.waitForFunction(() => /Upgrade offer: Academic Pass to students/.test(document.body.textContent || ''), null, { timeout: 10000 }).catch(() => {});
     const st = await getState();
     const k = st.campaigns.find(x => x.kind === 'upgrade' && x.audience === 'students');
-    check('Send starts a durable campaign of exactly the students, and opens its progress', !!k && k.total === 1 && st.recipients.filter(x => x.campaign_id === k.id).map(x => x.attendee_id).join() === '82' && /Upgrade offer: Academic Pass to students/.test(await page.textContent('body')), JSON.stringify(k));
+    check('Send starts a durable campaign of exactly the students, and opens its progress', !!k && k.total === 1 && st.recipients.filter(x => x.campaign_id === k.id).map(x => x.attendee_id).join() === '82' && /Upgrade offer: Student Pass to students/.test(await page.textContent('body')), JSON.stringify(k));
     await page.evaluate(() => { try { stopCampaignPump(); } catch (e) {} });
     await page.screenshot({ path: path.join(OUT, 'pay-admin-upgrade.png') });
     await ctx.close();

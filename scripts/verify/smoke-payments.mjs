@@ -601,7 +601,8 @@ mark = mail.length;
 r = await hit('/api/cron/tick', { method: 'POST', headers: { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' }, body: '{"max_seconds":0}' }, MAIL);
 const u2 = mail.slice(mark);
 check('the minute clock moves a running campaign on by itself', r.status === 200 && Array.isArray(r.json?.campaigns) && r.json.campaigns.some(k => k.id === SC.id), r.status + ' ' + r.text.slice(0, 200));
-check('the student is offered the Academic Pass, at the student rate, and told to bring an ID', r.status === 200 && u2.length === 1 && u2[0].to === 'sana@college.example' && /action=pay&(amp;)?pass=academic/.test(u2[0].html) && /1,178\.82/.test(u2[0].html) && /student or faculty ID/.test(u2[0].html) && /student rate/.test(u2[0].subject), r.status + ' ' + JSON.stringify(u2.map(m => m.subject)));
+// Since 12 Nov 2026 students are offered the Student Pass (999, one workshop), not the Academic Pass.
+check('the student is offered the Student Pass, at the student rate, with a workshop, and told to bring an ID', r.status === 200 && u2.length === 1 && u2[0].to === 'sana@college.example' && /action=pay&(amp;)?pass=student/.test(u2[0].html) && /1,178\.82/.test(u2[0].html) && /student ID/.test(u2[0].html) && /workshop/.test(u2[0].html) && /student rate/.test(u2[0].subject), r.status + ' ' + JSON.stringify(u2.map(m => m.subject)));
 mark = mail.length;
 for (const [id, why] of [[2, /Holds a Delegate Pass/], [64, /Unsubscribed/], [65, /Campus panel only/]]) {
   r = await upgradeTo(id, 'delegate', true);
@@ -787,7 +788,7 @@ const GONE = ['municampus.com', 'muniPayUrl', 'mUni Campus', 'PAY_GATEWAY', 'win
 for (const m of GONE) check('/register has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/app');
 r.text += (await hit('/app.js')).text;   // the app's code is its own file
-for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function ppSaveLead', 'function resumePayment', "act === 'pay'", 'We keep what you type here', 'id="pp-total"', 'value="Premium Delegate Pass"', "premium: 'Premium Delegate Pass'", 'class="pcmp"', "['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(user.badge_type || ''))", 'function ppShowTotal', 'function ppBilling', 'id="pp-gstin"', 'startOnlinePayment(passType, bill.billing)', '[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/']) check('/app carries ' + m, r.text.includes(m), 'missing');
+for (const m of ['function startOnlinePayment', 'function payPendingPass', 'id="pcc-pay-btn"', 'id="pp-next-copy"', 'Checkout opens on <strong>CCAvenue</strong>', 'function ppSaveLead', 'function resumePayment', "act === 'pay'", 'We keep what you type here', 'id="pp-total"', 'value="Premium Delegate Pass"', "premium: 'Premium Delegate Pass'", 'class="pcmp"', "['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass'].indexOf(String(user.badge_type || ''))", 'function ppShowTotal', 'function ppBilling', 'id="pp-gstin"', 'startOnlinePayment(passType, bill.billing)', '[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/']) check('/app carries ' + m, r.text.includes(m), 'missing');
 for (const m of GONE.concat(['pass_upgrade'])) check('/app has no trace of ' + m, !r.text.includes(m), 'still there');
 r = await hit('/admin');
 r.text += (await hit('/admin.js')).text;   // the admin page's code is its own file

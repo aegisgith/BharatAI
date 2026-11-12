@@ -95,7 +95,9 @@ const fillFree = async (p, email, mobile) => {
     // On a pass card, the price and "+ GST" are now two parts.
     '+ GST',
   ]);
-  const lostReg = [...new Set(chunks(oldReg))].filter((c) => !flat(nowReg).includes(c) && !meantReg.has(c));
+  // 12 Nov 2026: workshops come with the Student Pass too, so these two sentences name it.
+  const meantRegRe = [/Included in the Premium Delegate and VIP passes\./, /A workshop comes only with Premium Delegate and VIP/, /Conference \+ student zone, with a student or faculty ID/, /^Exhibition floor and product demos$/, /five passes for the price of four/i, /^Ask for a group rate$/, /Delegation discounts/, /The Academic Pass needs a valid student or faculty ID/];
+  const lostReg = [...new Set(chunks(oldReg))].filter((c) => !flat(nowReg).includes(c) && !meantReg.has(c) && !meantRegRe.some((re) => re.test(c)));
   check('/register: every sentence of the older page is still on the page, or was meant to go', lostReg.length === 0, lostReg.join(' || '));
   const meantInq = new Set([
     ...APP_BAR, 'Full Name',
@@ -151,7 +153,7 @@ const fillFree = async (p, email, mobile) => {
   await p.tap('.rg-switch label[for="rg-view-paid"]');
   await p.waitForTimeout(900);
   check('phone: tapping Paid slides the glider across', (await glider()) > 0.5, await glider());
-  check('phone: and swaps the form for the paid passes', !(await shown(p, '#rf-name')) && await shown(p, '.rg-tier') && (await p.locator('.rg-tier').count()) === 4);
+  check('phone: and swaps the form for the paid passes', !(await shown(p, '#rf-name')) && await shown(p, '.rg-tier') && (await p.locator('.rg-tier').count()) === 5);
   check('phone: every row has settled, nothing left half faded', await p.evaluate(() => [...document.querySelectorAll('.rg-tiers li')].every((l) => getComputedStyle(l).opacity === '1')));
   for (const [hash, pass, was, is] of [['delegate', 'Delegate Pass', '₹4,999', '₹8,999'], ['premium', 'Premium Delegate Pass', '₹9,999', '₹14,999'], ['vip', 'VIP Pass', '₹19,999', '₹24,999'], ['academic', 'Academic Pass', '₹999', '₹3,999']]) {
     const row = p.locator(`.rg-tier[href="#${hash}"]`);

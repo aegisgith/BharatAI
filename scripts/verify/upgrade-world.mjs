@@ -103,8 +103,11 @@ export async function makeUpgradeWorld() {
     };
     const ladder = js.match(/var UPGRADE_LADDER = \[[^\]]*\];/);
     if (!ladder) throw new Error('/app.js has no UPGRADE_LADDER');
+    const team = js.match(/var TEAM_PASSES_APP = \[[^\]]*\];/);
+    if (!team) throw new Error('/app.js has no TEAM_PASSES_APP');
     const box = vm.createContext({ Number, Math, String, Array, Object, JSON });
-    vm.runInContext('var _ppPrices = null, _ppGst = 18;\n' + ladder[0] + '\n' + names.map(src).join('\n'), box);
+    const helpers = ['offerSteps', 'offersEnd'].filter(n => !names.includes(n));
+    vm.runInContext('var _ppPrices = null, _ppGst = 18, _ppOffers = null;\n' + ladder[0] + '\n' + team[0] + '\n' + [...helpers, ...names].map(src).join('\n'), box);
     return box;
   };
 

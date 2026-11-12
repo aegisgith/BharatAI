@@ -161,7 +161,8 @@ check('an unknown # is ignored', openPage({ hash: '#nonsense"]' }).passNow() ===
 
 // ---- the figures agree ----
 const table = Object.fromEntries([...src.match(/const DELHI_PASS_PRICES_INR[^{]*\{([^}]*)\}/)[1].matchAll(/'([^']+)':\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]));
-check('the earlier Mumbai prices are the ones charged', JSON.stringify(table) === JSON.stringify(Object.fromEntries([...src.match(/const PASS_PRICES_INR[^{]*\{([^}]*)\}/)[1].matchAll(/'([^']+)':\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]))), JSON.stringify(table));
+// Only the four passes Delhi sells: Mumbai's Student Pass (12 Nov 2026) is not one of them.
+check('the earlier Mumbai prices are the ones charged', JSON.stringify(table) === JSON.stringify(Object.fromEntries([...src.match(/const PASS_PRICES_INR[^{]*\{([^}]*)\}/)[1].matchAll(/'([^']+)':\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]).filter(([k]) => k in table))), JSON.stringify(table));
 const inr = (n) => n.toLocaleString('en-IN');
 const money = (n) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const delhi = read('public/delhi.html');

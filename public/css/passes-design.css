@@ -143,7 +143,8 @@
 .ps-page .pcmp thead th span { font-family: 'Manrope', sans-serif; font-size: 12px; font-weight: 800; }
 /* The old price on its own line: five columns on a phone have no room for two figures side by side. */
 .ps-page .pcmp thead th s { display: block; font-weight: 500 !important; color: var(--ps-muted); }
-.ps-page .pcmp thead th:nth-child(4), .ps-page .pcmp-row td:nth-of-type(3) { background: #FFF4EA; }
+/* The Delegate column: fifth header, fourth mark since the Student Pass (12 Nov 2026). */
+.ps-page .pcmp thead th:nth-child(5), .ps-page .pcmp-row td:nth-of-type(4) { background: #FFF4EA; }
 .ps-page .pcmp-label th, .ps-page .pcmp-row th { font-size: 15px; line-height: 1.35; }
 .ps-page .pcmp small { font-size: 13px; line-height: 1.4; color: var(--ps-muted); }
 .ps-page .pcmp-label small { display: block; margin: 2px 0 0; }

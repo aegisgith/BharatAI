@@ -68,7 +68,10 @@ const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y
     'Get a Delegate Pass —',
     // The bare Free Visitor Pass link text is now also the row's heading: covered below.
   ]);
-  const lost = [...new Set(chunks(old))].filter((c) => !nowText.includes(c) && !meant.has(c));
+  // 12 Nov 2026: the Academic Pass is for faculty now, students have the Student Pass, and the
+  // chart's floor row is two rows (the floor; the Innovation Talk and Showcase).
+  const meantRe = [/^Students and faculty$/, /^Bring your student or faculty ID$/, /^Exhibition floor and product demos$/, /The Academic Pass needs a valid student or faculty ID/, /^Student or faculty$/, /A student or faculty member with ID/, /One hands-on workshop comes with the Premium Delegate and VIP passes/, /five passes for the price of four/i, /A confirmed Delegate, Premium Delegate or Academic pass moves up/, /^We are a team of five or more$/, /^Ask for a group rate$/];
+  const lost = [...new Set(chunks(old))].filter((c) => !nowText.includes(c) && !meant.has(c) && !meantRe.some((re) => re.test(c)));
   check('every sentence of the older page is still on the page, or was meant to go', lost.length === 0, lost.join(' || '));
   check('the copy of the older page is kept', old.includes('PRICES WENT UP ON 6 NOV') && !old.includes('passes-motion'));
   for (const s of ['48 exhibitors', '12 tracks', '23 Innovation Talks', 'two hands-on workshops']) check('the stale count has gone: ' + s, !nowText.includes(s));
@@ -103,7 +106,7 @@ const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y
     check('phone: ' + id + ' shows ' + was + ' struck through and ' + is + ' + GST', r.was === was && r.line.includes('line-through') && r.next.startsWith(is) && r.gst === '+ GST' && r.w > 0, JSON.stringify(r));
   }
   const chartPrices = await p.locator('.pcmp thead th').allInnerTexts();
-  check('phone: the chart has the five passes and today\'s prices', /Visitor\s*Free/.test(chartPrices[1]) && /₹3,999/.test(chartPrices[2]) && /₹8,999/.test(chartPrices[3]) && /₹14,999/.test(chartPrices[4]) && /₹24,999/.test(chartPrices[5]), chartPrices.join(' | '));
+  check('phone: the chart has the six passes and today\'s prices', /Visitor\s*Free/.test(chartPrices[1]) && /Student[\s\S]*₹999/.test(chartPrices[2]) && /₹3,999/.test(chartPrices[3]) && /₹8,999/.test(chartPrices[4]) && /₹14,999/.test(chartPrices[5]) && /₹24,999/.test(chartPrices[6]), chartPrices.join(' | '));
   check('phone: today\'s prices are the ones that charge', cfg.passes['Delegate Pass'].base === 8999 && cfg.passes['Premium Delegate Pass'].base === 14999 && cfg.passes['VIP Pass'].base === 24999 && cfg.passes['Academic Pass'].base === 3999, JSON.stringify(cfg.passes));
 
   // What each pass says
@@ -111,8 +114,9 @@ const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y
   check('phone: only Premium and VIP say workshop', /hands-on workshop/.test(await list('premium')) && /Everything in Premium/.test(await list('vip')) && !/workshop/i.test((await list('delegate'))) && /No lunch, no workshop/.test(await list('academic')));
   check('phone: VIP has the Leaders\' Evening, Day 1', /Bharat AI Leaders’ Evening, Day 1/.test(await list('vip')));
   check('phone: the free pass says entry is not guaranteed', /Entry is not guaranteed/.test(await p.locator('#visitor').innerText()));
-  check('phone: teams are five for the price of four, on request', /five passes for the price of four \(Delegate or Premium Delegate\), on request/.test(await p.locator('.ps-team').innerText()));
-  check('phone: the team button goes to the group form', (await p.locator('.ps-team .ps-buy').getAttribute('href')) === '/contact#group_registration');
+  // 13 Nov 2026: groups book online, 3 or 4 passes 15% off, 5 or more 30% off.
+  check('phone: groups book online, 15% off for 3 or 4, 30% off for 5 or more', /3 or 4 passes, 15% off each; 5 or more, 30% off each/.test(await p.locator('.ps-team').innerText()));
+  check('phone: the team button goes to the online group booking (13 Nov 2026)', (await p.locator('.ps-team .ps-buy').getAttribute('href')) === '/group');
   check('phone: move-up link goes into the app', (await p.locator('#passes-move-up a').getAttribute('href')) === '/app?action=pay&pass=premium');
 
   // Colours that have to read

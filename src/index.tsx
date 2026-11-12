@@ -199,6 +199,13 @@ app.use('*', async (c, next) => {
   await next()
 })
 
+// The last-week offers switch (LAST-WEEK OFFERS), read at most once a minute, so
+// every price on every page and in every email agrees with what is charged.
+app.use('*', async (c, next) => {
+  try { await readOffersSwitch(c) } catch { /* off, as if unset */ }
+  await next()
+})
+
 app.use('/api/admin/*', async (c, next) => {
   // A named admin account is enough on its own, so the panel still works if
   // ADMIN_SECRET is ever unset. Otherwise the shared secret must match.
@@ -577,7 +584,7 @@ const ONLINE_WINDOW_MINUTES = 15
 // PAID_TIERS, spelled out because that const is declared further down. t is a
 // table alias with its dot ('a1.'), or empty.
 const unpaidTierSql = (t: string = ''): string =>
-  `(COALESCE(${t}badge_type, '') IN ('Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass') AND LOWER(TRIM(COALESCE(${t}payment_status, ''))) IN ('pending', 'refunded'))`
+  `(COALESCE(${t}badge_type, '') IN ('Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass') AND LOWER(TRIM(COALESCE(${t}payment_status, ''))) IN ('pending', 'refunded'))`
 const publicBadgeSql = (t: string = ''): string => `(CASE WHEN ${unpaidTierSql(t)} THEN 'Visitor Pass' ELSE ${t}badge_type END)`
 const PUBLIC_BADGE_COL = `${publicBadgeSql()} AS badge_type`
 const ATTENDEE_PUBLIC_COLS = `id, event_id, name, company, job_title, bio, avatar_url, company_logo_url, networking_goals, interests, linkedin_url, twitter_url, website_url, role, ${PUBLIC_BADGE_COL}, CASE WHEN last_login_at > datetime('now', '-${ONLINE_WINDOW_MINUTES} minutes') THEN 1 ELSE 0 END AS is_online, last_seen, industry, city, country`
@@ -947,7 +954,9 @@ function senderEmailOrDefault(v?: string | null): string {
 // before sending the buyer to checkout.
 // Activates only once migration 0015 has added the column, so this deploy is safe
 // on its own.
-const PAID_TIERS = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass']
+// Student Pass (12 Nov 2026, organiser: "split it into two passes"): students pay Rs 999
+// and get one workshop; the Academic Pass, Rs 3,999, is for faculty and researchers.
+const PAID_TIERS = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass']
 
 // One list of pass names for every admin picker: the inline grid cell, Set pass on a
 // selection, Add Attendee and Edit Attendee. Four hand-typed copies had drifted -
@@ -958,7 +967,7 @@ const PAID_TIERS = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Acade
 // was a full pass with no money, no question and no upgrade, and Add Attendee opened
 // on it. Anyone still holding it keeps it until changed (badgeOptions).
 const BADGE_TYPES = [
-  'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Visitor Pass', 'Media Pass',
+  'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass', 'Visitor Pass', 'Media Pass', 'Influencer Pass',
   'Organiser', 'VIP Guest', 'Exhibitor', 'Exhibition Speaker', 'Jury',
   'Media', 'Support Staff', 'Investor', 'Felicitation Delegate', 'Speaker', 'Startup Pitcher',
 ]
@@ -996,7 +1005,7 @@ async function passLabelSql(c: any): Promise<string> {
 // were on it (walk-ins, Add Attendee and Bulk Upload defaulted to Yes). Every
 // other pass (Speaker, Exhibitor, Organiser ...) keeps what was set by hand.
 // A Speaker pass includes lunch (organiser, 12 Nov 2026).
-const LUNCH_BY_PASS: Record<string, 'Yes' | 'No'> = { 'Delegate Pass': 'Yes', 'Premium Delegate Pass': 'Yes', 'VIP Pass': 'Yes', 'Academic Pass': 'No', 'Visitor Pass': 'No', 'Speaker': 'Yes' }
+const LUNCH_BY_PASS: Record<string, 'Yes' | 'No'> = { 'Delegate Pass': 'Yes', 'Premium Delegate Pass': 'Yes', 'VIP Pass': 'Yes', 'Academic Pass': 'No', 'Student Pass': 'No', 'Visitor Pass': 'No', 'Speaker': 'Yes' }
 const LUNCH_FROM_PASS_SQL = `CASE badge_type ${Object.entries(LUNCH_BY_PASS).map(([k, v]) => `WHEN '${k}' THEN '${v}'`).join(' ')} ELSE lunch_inclusion END`
 
 // An admin setting a pass by hand. No money paid means no paid pass (the organiser,
@@ -1311,7 +1320,7 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
           <a href="${appUrl}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Open the app</a>
         </div>
         <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">Sign in with this email address &mdash; we will send you a one-time code, no password needed.</p>`}
-        ${opts.receipt && WORKSHOP_TIERS.includes(String(attendee.badge_type || '')) ? `
+        ${opts.receipt && workshopTiers().includes(String(attendee.badge_type || '')) ? `
         <div style="margin-top:22px;padding:16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;">
           <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#0B7A75;">Choose your workshop</p>
           <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">Your pass includes one hands-on workshop. Seats are limited and go first come, first served, so take yours now: it takes a few seconds in the app.</p>
@@ -2655,11 +2664,23 @@ async function autoReceiptForOrder(c: any, order: any, a: any, trackingId: strin
 const PRICE_DEADLINE_IST = '2026-11-05'          // the last day of the standard price, IST
 const PRICE_DEADLINE_TEXT = '5 Nov 2026'
 const PRICE_LATE_FROM_TEXT = '6 Nov'
-const PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 4999, 'Premium Delegate Pass': 9999, 'VIP Pass': 19999, 'Academic Pass': 999 }
+const PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 4999, 'Premium Delegate Pass': 9999, 'VIP Pass': 19999, 'Academic Pass': 999, 'Student Pass': 999 }
 // Late prices set by the organiser, 28 Oct 2026, the Academic Pass included.
-const LATE_PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 8999, 'Premium Delegate Pass': 14999, 'VIP Pass': 24999, 'Academic Pass': 3999 }
+const LATE_PASS_PRICES_INR: Record<string, number> = { 'Delegate Pass': 8999, 'Premium Delegate Pass': 14999, 'VIP Pass': 24999, 'Academic Pass': 3999, 'Student Pass': 999 }
 const PASS_GST_RATE = 18
-const GROUP_RATE_TEXT = 'Teams of five or more: five passes for the price of four (Delegate or Premium Delegate), on request.'
+// Group booking (organiser, 12 Nov 2026: 30% off for more than 5 passes, paid online, no
+// enquiry; 13 Nov: "30% off for 5+ passes", then 15% for 3 or 4 passes, a pair does not
+// qualify): defined here because GROUP_RATE_TEXT prints them. The rest is the GROUP
+// BOOKING block (/group, /api/group/start, settleGroupOrder). Highest tier first.
+const GROUP_TIERS: { min: number; pct: number }[] = [{ min: 5, pct: 30 }, { min: 3, pct: 15 }]
+const groupPctFor = (n: number): number => (GROUP_TIERS.find(t => n >= t.min) || { pct: 0 }).pct
+const GROUP_MIN = GROUP_TIERS[GROUP_TIERS.length - 1].min
+const GROUP_MIN_WORD = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][GROUP_MIN] || String(GROUP_MIN)
+// The top tier, for headlines ("up to 30% off").
+const GROUP_DISCOUNT_PCT = GROUP_TIERS[0].pct
+const GROUP_RULE_TEXT = `Passes of one kind in one booking, paid online: ${GROUP_MIN} or ${GROUP_TIERS[0].min - 1} passes, ${groupPctFor(GROUP_MIN)}% off each; ${GROUP_TIERS[0].min} or more, ${GROUP_TIERS[0].pct}% off each.`
+// Plain text (emails, the comparison table): where to book is said in words, no link.
+const GROUP_RATE_TEXT = GROUP_RULE_TEXT.replace(/\.$/, ' at bharataiinnovation.com/group.')
 // Organiser, 28 Oct 2026: a free pass is not a promise of entry. Said in these words
 // wherever the free pass is described (register page, app, emails, the comparison
 // chart), and on the website and terms by hand.
@@ -2869,7 +2890,11 @@ function upgradeStep(fromBadge: string, toPass: string): number {
   // Both at today's list price: someone who bought early and moves up late pays
   // the late difference, and still less in all than a late buyer of the new pass.
   const from = passPriceInr(fromBadge), to = passPriceInr(toPass)
-  return from && to > from ? to - from : 0
+  const diff = from && to > from ? to - from : 0
+  // Last-week offers: a paid Delegate or Premium Delegate moves up to VIP for a
+  // fixed sum, never more than the difference.
+  const offer = diff && toPass === 'VIP Pass' && offersActive() ? OFFER_VIP_STEP_INR[fromBadge] || 0 : 0
+  return offer ? Math.min(diff, offer) : diff
 }
 // The paid tier this person holds and has paid for, else ''. A pending or refunded
 // one is not settled, and a Visitor Pass is 'paid' by column default (0015).
@@ -2906,7 +2931,803 @@ function payRefusal(a: any, passType = ''): string | null {
       ? '. You can move up to ' + up.join(' or ') + ' for the difference from your pass card in the app.'
       : '. To change it, write to info@bharataiinnovation.com.')
   }
+  // Last-week offers: an Exhibitor or Exhibition Speaker pass may buy the VIP Pass
+  // at the offer price (exhibitorVipOfferInr), and nothing else.
+  if (TEAM_PASS_BADGES.includes(badge) && offersActive()) {
+    return passType === 'VIP Pass' ? null
+      : 'Your ' + badge + ' pass can move up to a VIP Pass at this week’s offer price, from your pass card in the app.'
+  }
   return 'Your pass (' + badge + ') is arranged by the organisers and cannot be changed here. Write to info@bharataiinnovation.com and we will sort it out.'
+}
+
+// ==================== LAST-WEEK OFFERS (12 Nov 2026) ====================
+//
+// The organiser, eight days before the event: "lets use last min opportunity to
+// monetise". Three offers on one switch, app_settings.last_week_offers = 'on'
+// (Admin, Payments, Last-week offers), until the last day of the event:
+//  1. An Exhibitor or Exhibition Speaker pass moves up to VIP: Rs 4,999 when the
+//     company's booth is a Startup Pod or an Explorer Booth, Rs 9,999 for any
+//     other booth (or none on record).
+//  2. A paid Delegate or Premium Delegate Pass moves up to VIP for Rs 9,999.
+//  3. A 10-minute Innovation Showcase slot on the Innovation Stage, sold to the
+//     people who asked to speak: Rs 10,000 with an Exhibition Speaker pass, or
+//     Rs 15,000 with a VIP Pass. Capped (showcase_slots_cap, default 12): the
+//     stage has room for about 12-15 more once the booth talks are placed (the
+//     Hall session, 12 Nov). Needs 0058.
+// The Student Pass (Rs 999, one workshop) came the same day as a pass of its own, not
+// an offer: PAID_TIERS, WORKSHOP_TIERS, STUDENT_WORKSHOP_SHARE.
+// All + 18% GST. Off, every price and rule is exactly as before, which is what the
+// older suites test. Settled orders keep what they were made at either way.
+const OFFERS_KEY = 'last_week_offers'
+const OFFERS_LAST_DAY_IST = '2026-11-21'
+const OFFERS_LAST_DAY_TEXT = '21 Nov'
+const OFFER_VIP_STEP_INR: Record<string, number> = { 'Delegate Pass': 9999, 'Premium Delegate Pass': 9999 }
+const OFFER_EXHIBITOR_VIP_INR = { startup: 4999, other: 9999 }
+// The floor plan's type_key for the two startup booths (routes/marketplace.ts BOOTH_NAMES).
+const OFFER_STARTUP_BOOTHS = ['pod', 'explorer']
+// Student Passes may fill up to this share of each workshop's seats; the rest stay for
+// Premium Delegate and VIP.
+const STUDENT_WORKSHOP_SHARE = 0.5
+const SHOWCASE_SLOT = 'Innovation Showcase Slot'
+const SHOWCASE_SLOT_VIP = 'Innovation Showcase Slot + VIP Pass'
+const SHOWCASE_PRICES_INR: Record<string, number> = { [SHOWCASE_SLOT]: 10000, [SHOWCASE_SLOT_VIP]: 15000 }
+const SHOWCASE_CAP_KEY = 'showcase_slots_cap'
+const SHOWCASE_CAP_DEFAULT = 12
+const SHOWCASE_MINUTES = 10
+const SHOWCASE_HALL = 'Aryabhata Theatre'
+const SHOWCASE_PLACE = 'the Innovation Stage: Aryabhata Theatre, in the Expo Hall'
+// The pass a slot gives someone who holds none worth more: the organisers' pass for
+// the Innovation Talk and Showcase stage (11 Nov 2026).
+const SHOWCASE_PASS = 'Exhibition Speaker'
+const SHOWCASE_LINK_DAYS = 14
+const isShowcaseOrder = (o: any): boolean => [SHOWCASE_SLOT, SHOWCASE_SLOT_VIP].includes(String(o?.pass_type || ''))
+
+let _offersSwitch = false
+let _offersSwitchAt = 0
+async function readOffersSwitch(c: any, fresh = false): Promise<boolean> {
+  const now = Date.now()
+  if (!fresh && _offersSwitchAt && now >= _offersSwitchAt && now - _offersSwitchAt < 60000) return _offersSwitch
+  _offersSwitch = (await settingValue(c, OFFERS_KEY)).trim().toLowerCase() === 'on'
+  _offersSwitchAt = now
+  return _offersSwitch
+}
+function offersActive(): boolean { return _offersSwitch && priceIstDay() <= OFFERS_LAST_DAY_IST }
+const workshopTiers = (): string[] => WORKSHOP_TIERS
+const exhibitorOfferHolder = (a: any): boolean => offersActive() && TEAM_PASS_BADGES.includes(String(a?.badge_type || '').trim())
+// Paise, with GST, for a sum in whole rupees.
+function stepAmounts(inr: number): { base: number; gst: number; total: number } {
+  const base = Math.round(inr) * 100
+  const gst = Math.round(base * PASS_GST_RATE / 100)
+  return { base, gst, total: base + gst }
+}
+
+// What an Exhibitor pass pays to move up to VIP: the startup price only when every
+// booth behind this person (their team's, or the company they are the contact for)
+// is a startup booth. Confirmed stands first, the sheet's booth type when none.
+async function exhibitorVipOfferInr(c: any, attendeeId: number): Promise<number> {
+  // Each source on its own, so a table that is missing cannot hide the others.
+  const ids = new Set<number>()
+  for (const sql of ['SELECT exhibitor_id AS id FROM exhibitor_team WHERE attendee_id = ?', 'SELECT id FROM exhibitors WHERE attendee_id = ?']) {
+    try {
+      for (const r of (((await c.env.DB.prepare(sql).bind(attendeeId).all()) as any).results || []) as any[]) if (Number(r.id) > 0) ids.add(Number(r.id))
+    } catch { /* that table is not there yet */ }
+  }
+  if (!ids.size) return OFFER_EXHIBITOR_VIP_INR.other
+  const list = [...ids], marks = list.map(() => '?').join(', ')
+  const read = async (sql: string): Promise<string[]> => {
+    try {
+      return ((((await c.env.DB.prepare(sql).bind(...list).all()) as any).results || []) as any[]).map(r => String(r.t || '').trim()).filter(Boolean)
+    } catch { return [] }
+  }
+  let types = await read(`SELECT DISTINCT b.type_key AS t FROM booth_allocations ba JOIN booths b ON b.id = ba.booth_id
+    WHERE ba.status = 'confirmed' AND ba.released_at IS NULL AND ba.exhibitor_id IN (${marks})`)
+  if (!types.length) types = await read(`SELECT DISTINCT booth_type AS t FROM exhibitor_team_settings WHERE exhibitor_id IN (${marks})`)
+  return types.length && types.every(t => OFFER_STARTUP_BOOTHS.includes(t)) ? OFFER_EXHIBITOR_VIP_INR.startup : OFFER_EXHIBITOR_VIP_INR.other
+}
+
+// For /api/payments/config: what this person's step costs this week, so the app's
+// sheet and the charge cannot disagree. The VIP move-up prices are never public
+// (organiser, 13 Nov 2026: "this can't be shown in public, this should be conveyed
+// on email"): the config carries a step only for the signed-in holder it is for, a
+// paid Delegate or Premium Delegate, or an Exhibitor pass. Anyone else, signed in or
+// not, sees no step at all. The showcase slot is public.
+async function offersJson(c: any): Promise<any> {
+  if (!offersActive()) return null
+  const steps: Record<string, Record<string, number>> = {}
+  try {
+    const me = await verifyAttendeeSession(c)
+    if (me !== null) {
+      const a = await c.env.DB.prepare('SELECT id, badge_type, payment_status FROM attendees WHERE id = ?').bind(me).first() as any
+      const paid = a ? settledPaidTier(a) : ''
+      if (paid && OFFER_VIP_STEP_INR[paid]) {
+        const s = upgradeStep(paid, 'VIP Pass')
+        if (s) steps[paid] = { 'VIP Pass': s }
+      } else if (a && exhibitorOfferHolder(a)) {
+        steps[String(a.badge_type).trim()] = { 'VIP Pass': await exhibitorVipOfferInr(c, Number(a.id)) }
+      }
+    }
+  } catch { /* no step: the sheet shows the list difference, and the server still charges the offer */ }
+  const show = await showcaseState(c)
+  return {
+    last_day: OFFERS_LAST_DAY_IST, last_day_text: OFFERS_LAST_DAY_TEXT, steps,
+    showcase: show.ready && show.left > 0 ? { prices: SHOWCASE_PRICES_INR, minutes: SHOWCASE_MINUTES, few_left: show.left <= 5 ? show.left : null } : null,
+  }
+}
+
+// ---- Innovation Showcase slots (0058) ----
+let _showcaseTable = false
+async function showcaseReady(c: any): Promise<boolean> {
+  if (_showcaseTable) return true
+  try { await c.env.DB.prepare('SELECT id FROM showcase_slots LIMIT 1').first(); _showcaseTable = true } catch { /* 0058 has not run */ }
+  return _showcaseTable
+}
+async function showcaseCap(c: any): Promise<number> {
+  const v = parseInt(await settingValue(c, SHOWCASE_CAP_KEY), 10)
+  return Number.isFinite(v) && v >= 0 ? v : SHOWCASE_CAP_DEFAULT
+}
+// A slot counts once paid, and while its checkout is open (a pay link lives
+// PAY_LINK_MINUTES), so the last one is not sold to two people.
+const SHOWCASE_COUNTED_SQL = `(status = 'paid' OR (status = 'held' AND created_at > datetime('now', ?)))`
+const showcaseHoldWindow = () => `-${PAY_LINK_MINUTES} minutes`
+async function showcaseState(c: any): Promise<{ ready: boolean; cap: number; paid: number; held: number; left: number }> {
+  if (!(await showcaseReady(c))) return { ready: false, cap: 0, paid: 0, held: 0, left: 0 }
+  const cap = await showcaseCap(c)
+  const r = await c.env.DB.prepare(
+    `SELECT SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) AS paid,
+            SUM(CASE WHEN status = 'held' AND created_at > datetime('now', ?) THEN 1 ELSE 0 END) AS held
+       FROM showcase_slots WHERE event_id = 1`).bind(showcaseHoldWindow()).first() as any
+  const paid = Number(r?.paid || 0), held = Number(r?.held || 0)
+  return { ready: true, cap, paid, held, left: Math.max(0, cap - paid - held) }
+}
+
+// The emailed booking link: the address it was sent to, signed, for SHOWCASE_LINK_DAYS.
+// Opening it is as good as a sign-in link for that address.
+const hexOfText = (s: string) => Array.from(new TextEncoder().encode(s)).map(b => b.toString(16).padStart(2, '0')).join('')
+function textOfHex(h: string): string {
+  if (!/^(?:[0-9a-f]{2}){3,200}$/.test(h)) return ''
+  try { return new TextDecoder().decode(new Uint8Array((h.match(/../g) || []).map(x => parseInt(x, 16)))) } catch { return '' }
+}
+async function showcaseLinkToken(c: any, email: string): Promise<string> {
+  const e = String(email || '').trim().toLowerCase()
+  const exp = Math.floor(Date.now() / 1000) + SHOWCASE_LINK_DAYS * 86400
+  return hexOfText(e) + '.' + exp + '.' + (await hmacHexA(passTokenSecret(c), 'showcase:' + e + ':' + exp)).slice(0, 32)
+}
+async function showcaseTokenEmail(c: any, token: string): Promise<string> {
+  const [h, exp, sig] = String(token || '').split('.')
+  if (!h || !/^\d{9,11}$/.test(exp || '') || !sig || !passTokenSecret(c) || Number(exp) * 1000 < Date.now()) return ''
+  const e = textOfHex(h)
+  if (!e || !validEmailSyntax(e)) return ''
+  return safeEqualA(sig, (await hmacHexA(passTokenSecret(c), 'showcase:' + e + ':' + exp)).slice(0, 32)) ? e : ''
+}
+async function showcaseLinkUrl(c: any, email: string): Promise<string> {
+  const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+  return base + '/showcase-slot?t=' + encodeURIComponent(await showcaseLinkToken(c, email))
+}
+
+// Who is booking: the emailed link's address, else the signed-in attendee.
+async function showcaseWho(c: any, token: string): Promise<{ email: string; attendee: any | null; via: 'link' | 'session' } | null> {
+  const fromLink = await showcaseTokenEmail(c, token)
+  if (fromLink) {
+    const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = 1 AND lower(email) = ? ORDER BY id LIMIT 1').bind(fromLink).first().catch(() => null) as any
+    return { email: fromLink, attendee: a || null, via: 'link' }
+  }
+  const me = await verifyAttendeeSession(c)
+  if (me === null) return null
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(me).first().catch(() => null) as any
+  return a && a.email ? { email: String(a.email).trim().toLowerCase(), attendee: a, via: 'session' } : null
+}
+// What the form starts with: the registration, else their latest request to speak.
+async function showcasePrefill(c: any, who: { email: string; attendee: any | null }) {
+  const a = who.attendee || {}
+  const q = await c.env.DB.prepare(
+    "SELECT name, organization, phone, subject, metadata FROM inquiries WHERE inquiry_type = 'speaking' AND lower(email) = ? ORDER BY id DESC LIMIT 1"
+  ).bind(who.email).first().catch(() => null) as any
+  let meta: any = {}
+  try { meta = JSON.parse(String(q?.metadata || '{}')) || {} } catch { meta = {} }
+  const topic = String(meta.topic || meta.talk_title || meta.title || '').trim()
+  const subject = String(q?.subject || '').trim()
+  return {
+    name: String(a.name || q?.name || '').trim(), company: String(a.company || q?.organization || '').trim(),
+    designation: String(a.job_title || meta.designation || '').trim(), mobile: String(a.mobile || q?.phone || '').trim(),
+    title: topic || (subject && !/speak|speaker|request|enquiry|inquiry/i.test(subject) ? subject : ''),
+  }
+}
+async function showcaseBooked(c: any, attendeeId: any): Promise<any | null> {
+  return await c.env.DB.prepare("SELECT * FROM showcase_slots WHERE attendee_id = ? AND status = 'paid' ORDER BY id DESC LIMIT 1").bind(attendeeId).first().catch(() => null)
+}
+// The slot plus VIP is offered to anyone not holding a paid VIP Pass already.
+const holdsVip = (a: any) => String(a?.badge_type || '').trim() === 'VIP Pass' && ['paid', 'waived'].includes(String(a?.payment_status || '').trim().toLowerCase())
+
+// A new registration for someone booking a slot who has none: a Visitor Pass until
+// the money lands (no money, no paid pass), in the shape Add Attendee writes.
+async function showcaseRegister(c: any, x: { email: string; name: string; company: string; designation: string; mobile: string }): Promise<number | { error: string }> {
+  const cols = await attendeeColumns(c)
+  if (x.mobile) {
+    const holder = await mobileHolder(c, 1, x.mobile)
+    if (holder) return { error: 'That mobile number is already on another registration. Use the email address of that registration, or leave the mobile empty.' }
+  }
+  const set: Record<string, any> = {
+    company: x.company, job_title: x.designation, mobile: x.mobile, badge_type: 'Visitor Pass', role: 'attendee',
+    lunch_inclusion: 'No', country: 'India', payment_status: '', registration_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+  }
+  const names: string[] = ['event_id', 'name', 'email'], vals: any[] = [1, x.name, x.email]
+  for (const f of ADMIN_ATTENDEE_FIELDS) {
+    if (f === 'name' || f === 'email' || !cols.has(f)) continue
+    names.push(f); vals.push(set[f] ?? '')
+  }
+  if (cols.has('main_event')) { names.push('main_event'); vals.push(1) }
+  if (cols.has('registration_source')) { names.push('registration_source'); vals.push('showcase') }
+  names.push('is_online'); vals.push(0)
+  const r = await c.env.DB.prepare(`INSERT INTO attendees (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`).bind(...vals).run()
+  const id = Number(r.meta.last_row_id)
+  await audit(c, 'attendee.create', 'attendee', id, { name: x.name, email: x.email, badge_type: 'Visitor Pass', source: 'showcase' }, { actor: 'attendee', kind: 'attendee' })
+  return id
+}
+
+const SHOWCASE_LINKS_PER_HOUR = 6
+const _showcaseLinkAsks = new Map<string, number[]>()
+
+// Anyone may ask for the booking link; it goes only to the address typed, and the
+// answer is the same whoever they are.
+app.post('/api/showcase/link', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const body = await c.req.json().catch(() => ({})) as any
+  const email = String(body.email || '').trim().toLowerCase()
+  if (!validEmailSyntax(email)) return c.json({ error: 'Please type a full email address.' }, 400)
+  const ok = { ok: true, message: 'If slots are open, the booking link is on its way to ' + email + '. It works for ' + SHOWCASE_LINK_DAYS + ' days.' }
+  if (!offersActive() || !(await showcaseReady(c))) return c.json(ok)
+  const ip = String(c.req.header('CF-Connecting-IP') || 'local'), now = Date.now()
+  const asks = (_showcaseLinkAsks.get(ip) || []).filter(t => now - t < 3600000)
+  if (asks.length >= SHOWCASE_LINKS_PER_HOUR) return c.json(ok)
+  asks.push(now); _showcaseLinkAsks.set(ip, asks)
+  if (_showcaseLinkAsks.size > 5000) _showcaseLinkAsks.clear()
+  const url = await showcaseLinkUrl(c, email)
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('Your booking link', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:28px;">
+        ${payP('Here is the link to book a ' + SHOWCASE_MINUTES + '-minute Innovation Showcase slot on ' + SHOWCASE_PLACE + '.')}
+        <div style="text-align:center;margin:18px 0;">${payButton(url, 'Book my slot')}</div>
+        ${payP('The link works for ' + SHOWCASE_LINK_DAYS + ' days. If you did not ask for it, you can ignore this email.')}
+      </div></div></body></html>`
+  const sent = sendAdminEmail(c, email, 'Your Innovation Showcase booking link', html, { unsubscribe: false }).catch(() => null)
+  try { c.executionCtx.waitUntil(sent) } catch { await sent }
+  return c.json(ok)
+})
+
+// Book: the details, then the CCAvenue order at our price, for the slot alone
+// (Rs 10,000) or with a VIP Pass (Rs 15,000), + GST.
+app.post('/api/showcase/start', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (!offersActive() || !(await showcaseReady(c))) return c.json({ error: 'Showcase slots are not open just now.' }, 503)
+  if (!(await onlinePaymentsOn(c))) return c.json({ error: 'Online payment is not available just now. Please try again in a little while, or write to info@bharataiinnovation.com.' }, 503)
+  const body = await c.req.json().catch(() => ({})) as any
+  const who = await showcaseWho(c, String(body.t || ''))
+  if (!who) return c.json({ error: 'Please open the booking link from your email, or sign in to the event app first.' }, 401)
+  const clip = (v: any, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
+  const x = {
+    name: clip(body.name, 80), company: clip(body.company, 150), designation: clip(body.designation, 120),
+    mobile: clip(body.mobile, 20).replace(/[^\d+]/g, ''), title: clip(body.title, 140), summary: String(body.summary ?? '').trim().slice(0, 600),
+  }
+  if (x.name.length < 2) return c.json({ error: 'Please add your name as it should appear on the programme.', field: 'name' }, 400)
+  if (!x.company) return c.json({ error: 'Please add your company or organisation.', field: 'company' }, 400)
+  if (x.title.length < 4) return c.json({ error: 'Please give your talk a title.', field: 'title' }, 400)
+  if (x.mobile && x.mobile.replace(/\D/g, '').length < 10) return c.json({ error: 'Please check the mobile number, or leave it empty.', field: 'mobile' }, 400)
+  const withVip = body.option === 'vip'
+  let a = who.attendee
+  if (withVip && holdsVip(a)) return c.json({ error: 'You hold a VIP Pass already, so choose the slot on its own.' }, 409)
+  if (a && await showcaseBooked(c, a.id)) return c.json({ error: 'You have a slot booked already. The team will email you its time.' }, 409)
+  if (!a) {
+    const made = await showcaseRegister(c, { email: who.email, ...x })
+    if (typeof made !== 'number') return c.json({ error: made.error, field: 'mobile' }, 409)
+    a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(made).first() as any
+  }
+  const recent = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM payment_orders WHERE attendee_id = ? AND created_at > datetime('now', '-1 hour')").bind(a.id).first() as any
+  if (Number(recent?.n || 0) >= PAY_ORDERS_PER_HOUR) return c.json({ error: 'That is a lot of payment attempts in one hour. Please wait a little, or write to info@bharataiinnovation.com.' }, 429)
+
+  const passType = withVip ? SHOWCASE_SLOT_VIP : SHOWCASE_SLOT
+  const amounts = stepAmounts(SHOWCASE_PRICES_INR[passType])
+  // Starting again gives back this person's open hold, so it never counts twice.
+  await c.env.DB.prepare("UPDATE showcase_slots SET status = 'cancelled' WHERE attendee_id = ? AND status = 'held'").bind(a.id).run()
+  const rand = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => (b % 36).toString(36)).join('')
+  const orderId = ('BAI' + a.id + '-' + Date.now().toString(36) + rand).toUpperCase()
+  // One statement: the slot is held only while the cap has room.
+  const held = await c.env.DB.prepare(
+    `INSERT INTO showcase_slots (event_id, order_id, attendee_id, with_vip, name, company, designation, email, mobile, title, summary)
+     SELECT 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE (SELECT COUNT(*) FROM showcase_slots WHERE event_id = 1 AND ${SHOWCASE_COUNTED_SQL}) < ?`
+  ).bind(orderId, a.id, withVip ? 1 : 0, x.name, x.company, x.designation, who.email, x.mobile, x.title, x.summary, showcaseHoldWindow(), await showcaseCap(c)).run() as any
+  if (!Number(held?.meta?.changes || 0)) return c.json({ error: 'All the showcase slots are taken. Write to info@bharataiinnovation.com to be told if one comes free.', sold_out: true }, 409)
+  await c.env.DB.prepare(
+    'INSERT INTO payment_orders (order_id, attendee_id, event_id, pass_type, previous_badge, base_paise, gst_paise, amount_paise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(orderId, a.id, 1, passType, a.badge_type || '', amounts.base, amounts.gst, amounts.total).run()
+  await audit(c, 'showcase.order', 'attendee', a.id, { order_id: orderId, pass_type: passType, title: x.title }, { actor: 'attendee ' + a.id, kind: 'attendee' })
+  // The link proved the address, as a sign-in link does: the result page and the
+  // app then know them.
+  if (who.via === 'link') await issueAttendeeSession(c, a.id)
+  return c.json({ order_id: orderId, amount: amounts.total / 100, pay_url: '/pay/ccavenue/' + await payLinkToken(c, orderId) }, 201)
+})
+
+// The money has arrived for a slot: the pass it includes, the talk on the list the
+// team schedules from (no time yet), the receipt, and both emails.
+async function settleShowcaseOrder(c: any, order: any, trackingId: string, paymentMode: string) {
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any
+  if (!a) throw new Error('attendee ' + order.attendee_id + ' no longer exists')
+  const slot = await c.env.DB.prepare('SELECT * FROM showcase_slots WHERE order_id = ?').bind(order.order_id).first().catch(() => null) as any
+  const badge = String(a.badge_type || '').trim()
+  const status = String(a.payment_status || '').trim().toLowerCase()
+  const withVip = String(order.pass_type) === SHOWCASE_SLOT_VIP
+  // Free or not paid for: the slot's pass replaces it. A pass worth more stays.
+  const freeLike = !badge || FREE_BADGE_RE.test(badge) || (PAID_TIERS.includes(badge) && ['pending', 'refunded'].includes(status))
+  const next = withVip ? (holdsVip(a) ? '' : 'VIP Pass') : (freeLike ? SHOWCASE_PASS : '')
+  const cols = await attendeeColumns(c)
+  if (next) {
+    const sets = ['badge_type = ?'], vals: any[] = [next]
+    if (cols.has('payment_status')) sets.push("payment_status = 'paid'")
+    if (cols.has('payment_amount')) { sets.push('payment_amount = ?'); vals.push(((freeLike ? 0 : Number(a.payment_amount) || 0) + Number(order.amount_paise) / 100).toFixed(2)) }
+    if (cols.has('main_event')) sets.push('main_event = 1')
+    if (cols.has('main_event_answered_at')) sets.push("main_event_answered_at = COALESCE(main_event_answered_at, datetime('now'))")
+    if (cols.has('lunch_inclusion')) sets.push("lunch_inclusion = 'Yes'")
+    await c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, a.id).run()
+  }
+  // The talk: on the Innovation Talks list with no time, for the team to place. An
+  // organisers' talk for the same person and company already there is used (a second
+  // one would be taken out as a duplicate).
+  let talkId: number | null = null
+  try {
+    const name = String(slot?.name || a.name || '').trim(), company = String(slot?.company || a.company || '').trim()
+    const have = await c.env.DB.prepare('SELECT id, topic FROM innovation_talks WHERE event_id = 1 AND lower(trim(speaker_name)) = lower(?) AND lower(trim(company)) = lower(?) ORDER BY id LIMIT 1')
+      .bind(name, company).first() as any
+    const tcols = new Set(((((await c.env.DB.prepare('PRAGMA table_info(innovation_talks)').all()) as any).results || []) as any[]).map(r => String(r.name)))
+    if (have) {
+      talkId = Number(have.id)
+      if (!String(have.topic || '').trim()) await c.env.DB.prepare('UPDATE innovation_talks SET topic = ? WHERE id = ?').bind(String(slot?.title || ''), talkId).run()
+    } else {
+      const v: Record<string, any> = {
+        event_id: 1, session_type: 'Morning', time_slot: 'To be announced', speaker_name: name, company, topic: String(slot?.title || ''),
+        status: 'confirmed', notes: 'Paid Innovation Showcase slot (' + SHOWCASE_MINUTES + ' min), order ' + order.order_id + (slot?.summary ? '. ' + String(slot.summary).slice(0, 400) : ''),
+        speaker_title: String(slot?.designation || a.job_title || ''), duration_min: SHOWCASE_MINUTES, hall: SHOWCASE_HALL,
+        speaker_email: String(a.email || ''), speaker_phone: String(slot?.mobile || a.mobile || ''), speaker_photo_url: /^\/(api\/uploads|images)\//.test(String(a.avatar_url || '')) ? String(a.avatar_url) : '',
+      }
+      const keys = Object.keys(v).filter(k => tcols.has(k))
+      const r = await c.env.DB.prepare(`INSERT INTO innovation_talks (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`).bind(...keys.map(k => v[k])).run()
+      talkId = Number(r.meta.last_row_id)
+    }
+  } catch (e: any) { console.error('showcase talk row failed', order.order_id, e?.message) }
+  await c.env.DB.prepare("UPDATE showcase_slots SET status = 'paid', paid_at = datetime('now'), talk_id = ? WHERE order_id = ?").bind(talkId, order.order_id).run().catch(() => {})
+  await audit(c, 'payment.received', 'attendee', a.id, {
+    order_id: order.order_id, tracking_id: trackingId, pass_type: order.pass_type, amount_paise: order.amount_paise,
+    payment_mode: paymentMode, badge: next ? [badge || null, next] : 'left as ' + badge, showcase_talk: talkId,
+  }, { actor: 'CCAvenue', kind: 'gateway' })
+
+  const mails = (async () => {
+    const receipt = await autoReceiptForOrder(c, order, a, trackingId, '')
+    try {
+      const amount = rupees(Number(order.amount_paise))
+      const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+      let href = appUrl
+      try {
+        if (await verifiedLoginEnabled(c)) {
+          const issued = await createLoginToken(c, a.event_id || 1, String(a.email).toLowerCase(), PROFILE_LINK_TTL_MINUTES, 2)
+          href = `${appUrl}?email=${encodeURIComponent(a.email)}&token=${issued.token}`
+        }
+      } catch { /* the plain link still opens the app */ }
+      const pass = next || badge || 'pass'
+      const rows = payRows([
+        ['Booked', `${SHOWCASE_MINUTES}-minute Innovation Showcase slot${withVip ? ' with a VIP Pass' : ''}`],
+        ['Your talk', payEsc(slot?.title || '')],
+        ['Where', payEsc(SHOWCASE_PLACE) + ', WTC Mumbai'],
+        ['When', 'On 20 or 21 Nov 2026. The team emails you the exact time.'],
+        ['Your pass', payEsc(pass)],
+        ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${PASS_GST_RATE}% GST)</span>`],
+        ['Order number', payEsc(order.order_id)],
+        ['CCAvenue reference', payEsc(trackingId)],
+      ])
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+        <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+          ${emailBrandHeader('Your showcase slot is booked', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+          <div style="padding:28px;">
+            <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${payEsc(String(a.name || '').split(' ')[0] || 'there')}</strong>,</p>
+            ${payP('Thank you. Your payment has arrived and your Innovation Showcase slot is booked.')}
+            ${rows}
+            <ul style="margin:0 0 16px 18px;padding:0;font-size:14px;line-height:1.7;color:#555;">
+              <li>You have ${SHOWCASE_MINUTES} minutes on stage: a short talk and a live demo work best.</li>
+              <li>The team writes to you with your time and the stage details before the event.</li>
+              <li>In the app, add your photo and download your pass: the badge desk scans it.</li>
+            </ul>
+            <div style="text-align:center;margin:20px 0 6px;">${payButton(href, 'Open the app')}</div>
+            ${receipt ? payP(`Receipt <strong>${payEsc(receipt.invoice_no)}</strong> is in a separate email, and here: <a href="${payEsc(receipt.url)}" style="color:#FF6B00;font-weight:bold;">view the receipt</a>. Your GST invoice follows from our accounts team.`) : payP('Your receipt and GST invoice follow separately.')}
+          </div></div></body></html>`
+      await sendAdminEmail(c, a.email, 'Booked: your Innovation Showcase slot at Bharat AI Innovation', html, { unsubscribe: false })
+      const team = (await settingValue(c, 'inquiry_notify_email')) || 'info@bharataiinnovation.com'
+      await sendAdminEmail(c, team, `Showcase slot sold: ${a.name}${slot?.company ? ', ' + slot.company : ''}, Rs ${amount}`,
+        `<div style="font-family:Arial,sans-serif;max-width:560px;"><p style="font-size:14px;line-height:1.6;color:#333;margin:0 0 14px;"><strong>${payEsc(a.name)}</strong> (${payEsc(a.email)}) has booked a paid Innovation Showcase slot.</p>${rows}
+        <p style="font-size:13px;line-height:1.6;color:#555;margin:0;">${slot?.summary ? 'Summary: ' + payEsc(slot.summary) + '<br><br>' : ''}The talk is on Admin, Innovation Talks with no time yet${talkId ? ' (#' + talkId + ')' : ''}: give it a time in Admin, Conference. ${receipt ? 'Receipt ' + payEsc(receipt.invoice_no) + ' went to the buyer.' : 'The receipt could not be sent automatically: raise it from Admin, Payments.'}</p></div>`,
+        { unsubscribe: false })
+    } catch (e: any) { console.error('showcase emails failed', order?.order_id, e?.message) }
+  })()
+  let scheduled = false
+  try { c.executionCtx.waitUntil(mails); scheduled = true } catch { /* no ctx */ }
+  if (!scheduled) await mails
+}
+
+// The page, after CCAvenue: booked, or try again from the booking page.
+function showcasePayResult(c: any, order: any) {
+  const no = payEsc(order.order_id)
+  if (order.status === 'paid') {
+    return c.html(payPage('Slot booked', payH1('Payment received. Your slot is booked.') +
+      payP(`Your ${SHOWCASE_MINUTES}-minute Innovation Showcase slot${String(order.pass_type) === SHOWCASE_SLOT_VIP ? ', with a VIP Pass,' : ''} at Bharat AI Innovation 2026 is confirmed. The team emails you the time before the event.`) +
+      payRows([['Amount paid', `&#8377;${rupees(Number(order.amount_paise))} <span style="font-weight:normal;color:#666;">(includes GST)</span>`], ['Order number', no], ['CCAvenue reference', payEsc(order.tracking_id)]]) +
+      payP('Next, add your photo in the app and download your pass.') + payButton('/app', 'Open the app')))
+  }
+  if (order.status === 'awaited') {
+    return c.html(payPage('Waiting for your bank', payH1('Your bank has not confirmed yet.') +
+      payP('Please do not pay a second time. If the money has left your account, your slot is confirmed as soon as the bank reports it.') +
+      payP(`If nothing has changed in a day, write to info@bharataiinnovation.com quoting order <strong>${no}</strong>.`)))
+  }
+  if (order.status === 'mismatch') {
+    return c.html(payPage('We are checking this payment', payH1('We need to check this payment.') +
+      payP(`The amount the payment gateway reported is not the price of the slot. Our team has been told and will write to you. Your order number is <strong>${no}</strong>.`)))
+  }
+  return c.html(payPage('Not booked yet', payH1(order.status === 'aborted' ? 'You cancelled the payment.' : order.status === 'created' ? 'We have not heard back about this payment.' : 'The payment did not go through.') +
+    payP(order.status === 'created' ? 'If you completed it, give it a minute and refresh this page. If you did not, nothing was charged.' : 'Nothing was charged for this order, and the slot was not booked.') +
+    payButton('/showcase-slot', 'Try again')))
+}
+
+// ---- The offer emails: one campaign kind, 'offer', on the bulk email pump ----
+// Each audience is written to once (a second run leaves out anyone already on one).
+const OFFER_AUDIENCES: Record<string, { refId: number; title: string }> = {
+  vip_delegates: { refId: 1, title: 'Last-week offer: paid Delegates to VIP' },
+  exhibitors: { refId: 2, title: 'Last-week offer: Exhibitor passes to VIP' },
+  speakers: { refId: 3, title: 'Last-week offer: showcase slots to speaking requests' },
+}
+const offerAudienceOf = (refId: any) => Object.keys(OFFER_AUDIENCES).find(k => OFFER_AUDIENCES[k].refId === Number(refId)) || ''
+// The audience key is one of OFFER_AUDIENCES', never typed text.
+const offerNotSentSql = (aud: string, emailExpr: string) =>
+  ` AND NOT EXISTS (SELECT 1 FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id WHERE cp.kind = 'offer' AND cp.audience = '${aud}' AND lower(cr.email) = lower(${emailExpr}) AND cr.status IN ('pending', 'sending', 'sent'))`
+const nameKey = (v: any) => String(v || '').toLowerCase().replace(/\b(dr|mr|mrs|ms|shri|smt|prof)\.?\s+/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+
+// Everyone who asked to speak (inquiries, type 'speaking'), one row per address,
+// with the reasons not to write: already on a stage, has a booth, has bought, was
+// answered already, unsubscribed, already sent. Ticked only when there is none.
+async function speakerOfferList(c: any): Promise<any[]> {
+  const rows = (((await c.env.DB.prepare(
+    "SELECT id, name, email, organization, subject, status, created_at FROM inquiries WHERE inquiry_type = 'speaking' AND event_id = 1 ORDER BY id DESC"
+  ).all()) as any).results || []) as any[]
+  const set = async (sql: string): Promise<Set<string>> => {
+    try { return new Set(((((await c.env.DB.prepare(sql).all()) as any).results || []) as any[]).map(r => String(r.k || '').trim().toLowerCase()).filter(Boolean)) } catch { return new Set() }
+  }
+  const stageEmails = new Set([...(await set("SELECT speaker_email AS k FROM innovation_talks WHERE event_id = 1")), ...(await set('SELECT email AS k FROM speakers'))])
+  const stageNames = new Set([...(await set('SELECT speaker_name AS k FROM innovation_talks WHERE event_id = 1')), ...(await set('SELECT name AS k FROM speakers'))].map(nameKey))
+  const booth = new Set([...(await set('SELECT contact_email AS k FROM exhibitors')), ...(await set('SELECT email AS k FROM exhibitor_team'))])
+  const bought = await set("SELECT email AS k FROM showcase_slots WHERE status = 'paid'")
+  const unsub = await set("SELECT email AS k FROM attendees WHERE unsubscribed_at IS NOT NULL OR marketing_consent = '0'")
+  const sent = await set("SELECT cr.email AS k FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id WHERE cp.kind = 'offer' AND cp.audience = 'speakers' AND cr.status IN ('pending', 'sending', 'sent')")
+  const byEmail = new Map<string, any>()
+  for (const q of rows) {
+    const e = String(q.email || '').trim().toLowerCase()
+    if (!validEmailSyntax(e)) continue
+    const have = byEmail.get(e)
+    if (have) { have.requests++; if (String(q.status || 'new') !== 'new') have.answered = true; continue }
+    byEmail.set(e, { id: Number(q.id), name: String(q.name || '').trim(), email: e, organization: String(q.organization || '').trim(),
+      subject: String(q.subject || '').trim(), asked_on: q.created_at, requests: 1, answered: String(q.status || 'new') !== 'new' })
+  }
+  return [...byEmail.values()].map(p => {
+    const flags: string[] = []
+    if (stageEmails.has(p.email) || stageNames.has(nameKey(p.name))) flags.push('already on a stage')
+    if (booth.has(p.email)) flags.push('has a booth')
+    if (bought.has(p.email)) flags.push('has bought a slot')
+    if (p.answered) flags.push('answered already')
+    if (unsub.has(p.email)) flags.push('unsubscribed')
+    if (sent.has(p.email)) flags.push('sent already')
+    return { ...p, flags, ticked: !flags.length }
+  })
+}
+
+async function offerAudienceRows(c: any, audience: string, ids?: any[]): Promise<any[]> {
+  const sc = await suppressionClause(c)
+  if (audience === 'vip_delegates') {
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE event_id = 1 AND email IS NOT NULL AND TRIM(email) != ''
+          AND badge_type IN ('Delegate Pass', 'Premium Delegate Pass') AND LOWER(COALESCE(payment_status, '')) = 'paid'${sc}${offerNotSentSql('vip_delegates', 'attendees.email')} ORDER BY id`).all()
+    return (results as any[]) || []
+  }
+  if (audience === 'exhibitors') {
+    const notSlot = (await showcaseReady(c)) ? " AND NOT EXISTS (SELECT 1 FROM showcase_slots s WHERE s.attendee_id = attendees.id AND s.status = 'paid')" : ''
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE event_id = 1 AND email IS NOT NULL AND TRIM(email) != ''
+          AND badge_type IN ('Exhibitor', 'Exhibition Speaker')${sc}${notSlot}${offerNotSentSql('exhibitors', 'attendees.email')} ORDER BY id`).all()
+    return (results as any[]) || []
+  }
+  if (audience === 'speakers') {
+    const want = Array.isArray(ids) && ids.length ? new Set(ids.map((v: any) => Number(v))) : null
+    const list = (await speakerOfferList(c)).filter(p => !p.flags.includes('sent already') && !p.flags.includes('unsubscribed') && !p.flags.includes('has bought a slot') && (want ? want.has(p.id) : p.ticked))
+    // A recipient row names the attendee only when the address is registered.
+    const out: any[] = []
+    for (const p of list) {
+      const a = await c.env.DB.prepare('SELECT id FROM attendees WHERE event_id = 1 AND lower(email) = ? ORDER BY id LIMIT 1').bind(p.email).first().catch(() => null) as any
+      out.push({ id: a ? Number(a.id) : null, name: p.name, email: p.email })
+    }
+    return out
+  }
+  return []
+}
+
+// One offer email, as the campaign pump sends it. Preview builds it with no link minted.
+async function offerMail(c: any, audience: string, a: any, to: string, preview: boolean): Promise<{ subject: string; html: string }> {
+  const name = String(a?.name || '').trim()
+  const first = payEsc(name.split(/\s+/)[0] || 'there')
+  const firstPlain = (name.split(/\s+/)[0] || '').replace(/[^\p{L}\p{N} .'-]/gu, '').slice(0, 30)
+  const hello = firstPlain ? firstPlain + ', ' : ''
+  const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+  const signedIn = async (q: string) => {
+    if (preview) return '#preview'
+    try {
+      if (await verifiedLoginEnabled(c)) {
+        const issued = await createLoginToken(c, a?.event_id || 1, String(to).toLowerCase(), PROFILE_LINK_TTL_MINUTES, 2)
+        return `${appUrl}?email=${encodeURIComponent(to)}&token=${issued.token}&${q}`
+      }
+    } catch { /* the plain link still opens the app */ }
+    return `${appUrl}?${q}`
+  }
+  const li = (items: string[]) => `<ul style="margin:0 0 16px 18px;padding:0;font-size:14px;line-height:1.7;color:#444;">${items.map(t => `<li>${t}</li>`).join('')}</ul>`
+  const vipAdds = ['The Bharat AI Leaders’ Evening on Day 1, for CXOs and senior leaders', 'The VIP lounge and priority seating', 'The speaker meet &amp; greet']
+  const shell = (title: string, body: string) => `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader(title, '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:28px;"><p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${first}</strong>,</p>${body}</div></div></body></html>`
+  if (audience === 'vip_delegates') {
+    const badge = String(a?.badge_type || 'Delegate Pass')
+    const step = upgradeStep(badge, 'VIP Pass') || OFFER_VIP_STEP_INR[badge] || 9999
+    const usual = passPriceInr('VIP Pass') - passPriceInr(badge)
+    const html = shell('Move up to VIP', payP(`Your <strong>${payEsc(badge)}</strong> for Bharat AI Innovation 2026 is confirmed. Thank you.`) +
+      payP(`Until ${OFFERS_LAST_DAY_TEXT}, you can move up to the <strong>VIP Pass</strong> for <strong>&#8377;${step.toLocaleString('en-IN')} + GST</strong>${usual > step ? ` (the usual difference is &#8377;${usual.toLocaleString('en-IN')})` : ''}. The VIP Pass adds:`) +
+      li([...vipAdds, ...(badge === 'Delegate Pass' ? ['One hands-on workshop, seat chosen in the app'] : [])]) +
+      `<div style="text-align:center;margin:18px 0 8px;">${payButton(await signedIn('action=pay&pass=vip'), 'Move up to VIP')}</div>` +
+      `<p style="margin:0;font-size:12px;line-height:1.6;color:#888;text-align:center;">The button signs you in and shows the sum before you pay, on CCAvenue’s secure page.</p>`)
+    return { subject: hello + 'move up to VIP before Bharat AI Innovation', html }
+  }
+  if (audience === 'exhibitors') {
+    const badge = String(a?.badge_type || 'Exhibitor')
+    const price = a?.id ? await exhibitorVipOfferInr(c, Number(a.id)) : OFFER_EXHIBITOR_VIP_INR.other
+    const html = shell('Move up to VIP', payP(`Your <strong>${payEsc(badge)}</strong> pass gets you to your booth at Bharat AI Innovation 2026.`) +
+      payP(`Until ${OFFERS_LAST_DAY_TEXT}, you can move it up to a <strong>VIP Pass</strong> for <strong>&#8377;${price.toLocaleString('en-IN')} + GST</strong>. The VIP Pass adds:`) +
+      li(['Every conference session on both days', ...vipAdds, 'One hands-on workshop, seat chosen in the app']) +
+      payP('You stay on your company’s team, and your booth and lead scanning carry on as before.') +
+      `<div style="text-align:center;margin:18px 0 8px;">${payButton(await signedIn('action=pay&pass=vip'), 'Move up to VIP')}</div>` +
+      `<p style="margin:0;font-size:12px;line-height:1.6;color:#888;text-align:center;">The button signs you in and shows the sum before you pay, on CCAvenue’s secure page.</p>`)
+    return { subject: hello + 'move your Exhibitor pass up to VIP', html }
+  }
+  const url = preview ? '#preview' : await showcaseLinkUrl(c, to)
+  const slot = SHOWCASE_PRICES_INR[SHOWCASE_SLOT].toLocaleString('en-IN'), vip = SHOWCASE_PRICES_INR[SHOWCASE_SLOT_VIP].toLocaleString('en-IN')
+  const html = shell('A slot on the Innovation Stage',
+    payP('Thank you for asking to speak at Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.') +
+    payP(`We have opened a small number of <strong>${SHOWCASE_MINUTES}-minute Innovation Showcase slots</strong> on ${SHOWCASE_PLACE}, where companies present their work and show it live to the people on the exhibition floor. A slot includes:`) +
+    li([`${SHOWCASE_MINUTES} minutes on stage, for a short talk and a live demo`, 'Your name, company and talk in the event app’s programme', 'An Exhibition Speaker pass for both days, with lunch']) +
+    payP(`<strong>&#8377;${slot} + GST</strong> for the slot, or <strong>&#8377;${vip} + GST</strong> for the slot with a VIP Pass instead (every conference session, the Leaders’ Evening on Day 1, the VIP lounge, priority seating, the speaker meet &amp; greet and one workshop).`) +
+    payP('Slots are limited and go first come, first served. Once you have booked, the team gives you your time.') +
+    `<div style="text-align:center;margin:18px 0 8px;">${payButton(url, 'Book my slot')}</div>` +
+    `<p style="margin:0;font-size:12px;line-height:1.6;color:#888;text-align:center;">The link is yours for ${SHOWCASE_LINK_DAYS} days. You pay on CCAvenue’s secure page.</p>`)
+  return { subject: hello + `a ${SHOWCASE_MINUTES}-minute slot on the Innovation Stage at Bharat AI Innovation`, html }
+}
+
+// The pump's target: one offer email to one person, paced like every bulk send.
+app.post('/api/admin/offers/send', async (c) => {
+  const audience = String(c.req.query('audience') || '')
+  if (!OFFER_AUDIENCES[audience]) return c.json({ error: 'Unknown offer audience.' }, 400)
+  if (!offersActive()) return c.json({ skipped: true, reason: 'The last-week offers are off or over.' })
+  let a: any = null, to = ''
+  if (audience === 'speakers') {
+    to = String(c.req.query('email') || '').trim().toLowerCase()
+    a = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = 1 AND lower(email) = ? ORDER BY id LIMIT 1').bind(to).first().catch(() => null)
+    if (!a) {
+      const q = await c.env.DB.prepare("SELECT name FROM inquiries WHERE inquiry_type = 'speaking' AND lower(email) = ? ORDER BY id DESC LIMIT 1").bind(to).first().catch(() => null) as any
+      a = { name: q?.name || '', event_id: 1 }
+    }
+    const show = await showcaseState(c)
+    if (!show.ready || show.left <= 0) return c.json({ skipped: true, reason: 'Every showcase slot is taken' })
+    if (await c.env.DB.prepare("SELECT 1 FROM showcase_slots WHERE lower(email) = ? AND status = 'paid'").bind(to).first().catch(() => null)) return c.json({ skipped: true, reason: 'Has bought a slot' })
+  } else {
+    a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(c.req.query('attendee') || 0).first()
+    if (!a) return c.json({ skipped: true, reason: 'Attendee not found' })
+    to = String(a.email || '').trim()
+    const badge = String(a.badge_type || '').trim()
+    if (audience === 'vip_delegates' && !(['Delegate Pass', 'Premium Delegate Pass'].includes(badge) && String(a.payment_status || '').toLowerCase() === 'paid')) return c.json({ skipped: true, reason: 'Holds ' + (badge || 'no pass') + ' now' })
+    if (audience === 'exhibitors' && !exhibitorOfferHolder(a)) return c.json({ skipped: true, reason: 'Holds ' + (badge || 'no pass') + ' now' })
+  }
+  if (!validEmailSyntax(to)) return c.json({ skipped: true, reason: 'No usable email address' })
+  if (a?.unsubscribed_at || String(a?.marketing_consent ?? '') === '0') return c.json({ skipped: true, reason: 'Unsubscribed, or said no to email' })
+  const win = sendWindowState()
+  if (!win.open && c.req.query('force') !== '1') return c.json({ paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win }, 409)
+  const slot = await claimSendSlot(c, await sendGapSeconds(c))
+  if (!slot.ok) return c.json({ throttled: true, wait_seconds: slot.wait }, 429)
+  const mail = await offerMail(c, audience, a, to, false)
+  const res = await sendAdminEmail(c, to, mail.subject, mail.html)
+  if (!res.ok) return c.json({ error: (res as any).error || 'Not sent' }, 502)
+  return c.json({ success: true, sent_to: to, audience })
+})
+
+// Admin, Payments, Last-week offers: the switch, the cap, what has sold, and the three audiences.
+app.get('/api/admin/offers', async (c) => {
+  const on = await readOffersSwitch(c, true)
+  const show = await showcaseState(c)
+  let slots: any[] = []
+  if (show.ready) {
+    slots = ((((await c.env.DB.prepare(
+      `SELECT s.id, s.order_id, s.attendee_id, s.with_vip, s.name, s.company, s.designation, s.email, s.mobile, s.title, s.summary, s.status, s.talk_id, s.created_at, s.paid_at, o.amount_paise
+         FROM showcase_slots s LEFT JOIN payment_orders o ON o.order_id = s.order_id
+        WHERE s.event_id = 1 AND (s.status = 'paid' OR (s.status = 'held' AND s.created_at > datetime('now', ?))) ORDER BY s.id DESC`
+    ).bind(showcaseHoldWindow()).all()) as any).results || []) as any[])
+  }
+  const audiences: Record<string, number> = {}
+  for (const k of Object.keys(OFFER_AUDIENCES)) audiences[k] = (await offerAudienceRows(c, k).catch(() => [])).length
+  const sold = (((await c.env.DB.prepare(
+    `SELECT pass_type, previous_badge, COUNT(*) AS n, COALESCE(SUM(amount_paise), 0) AS paise FROM payment_orders
+      WHERE event_id = 1 AND status = 'paid' AND paid_at >= '2026-11-12' AND (pass_type IN (?, ?) OR (pass_type = 'VIP Pass' AND previous_badge IN ('Delegate Pass', 'Premium Delegate Pass', 'Exhibitor', 'Exhibition Speaker')) OR pass_type = 'Student Pass')
+      GROUP BY pass_type, previous_badge`).bind(SHOWCASE_SLOT, SHOWCASE_SLOT_VIP).all().catch(() => ({ results: [] }))) as any).results || []) as any[]
+  return c.json({
+    on, active: offersActive(), last_day: OFFERS_LAST_DAY_IST, last_day_text: OFFERS_LAST_DAY_TEXT,
+    prices: { vip_step: OFFER_VIP_STEP_INR, exhibitor_vip: OFFER_EXHIBITOR_VIP_INR, student: passPriceInr('Student Pass'), showcase: SHOWCASE_PRICES_INR, startup_booths: OFFER_STARTUP_BOOTHS, student_share: STUDENT_WORKSHOP_SHARE },
+    showcase: show, slots, audiences, sold, gap_seconds: await sendGapSeconds(c), window: sendWindowState().window,
+  })
+})
+
+app.put('/api/admin/offers', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const put = (k: string, v: string) => c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(k, v).run()
+  const changed: Record<string, any> = {}
+  if (typeof body.on === 'boolean') { await put(OFFERS_KEY, body.on ? 'on' : 'off'); changed.on = body.on }
+  if (body.cap !== undefined) {
+    const n = parseInt(String(body.cap), 10)
+    if (!Number.isFinite(n) || n < 0 || n > 100) return c.json({ error: 'The number of slots is a whole number from 0 to 100.' }, 400)
+    await put(SHOWCASE_CAP_KEY, String(n)); changed.cap = n
+  }
+  await readOffersSwitch(c, true)
+  await audit(c, 'offers.settings', 'setting', OFFERS_KEY, changed)
+  return c.json({ ok: true, on: _offersSwitch, active: offersActive(), cap: await showcaseCap(c) })
+})
+
+app.get('/api/admin/offers/speakers', async (c) => {
+  try { return c.json({ people: await speakerOfferList(c) }) } catch (e: any) { return c.json({ people: [], error: String(e?.message || e) }) }
+})
+
+app.get('/api/admin/offers/preview', async (c) => {
+  const audience = String(c.req.query('audience') || '')
+  if (!OFFER_AUDIENCES[audience]) return c.json({ error: 'Unknown offer audience.' }, 400)
+  const rows = await offerAudienceRows(c, audience).catch(() => [] as any[])
+  const first = rows[0]
+  const a = first?.id ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(first.id).first() as any
+    : { name: first?.name || 'Sample Person', event_id: 1, badge_type: audience === 'exhibitors' ? 'Exhibitor' : 'Delegate Pass' }
+  const mail = await offerMail(c, audience, a, String(first?.email || 'sample@example.com'), true)
+  return c.json({ to: first?.email || '', count: rows.length, subject: mail.subject, html: mail.html })
+})
+
+// /showcase-slot: the offer, then the form for someone the link or a session names,
+// else "send me the booking link". The page's script is /js/showcase-slot.js.
+app.get('/showcase-slot', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const token = String(c.req.query('t') || '')
+  const open = offersActive() && (await showcaseReady(c))
+  const show = open ? await showcaseState(c) : null
+  const who = open ? await showcaseWho(c, token).catch(() => null) : null
+  const booked = who?.attendee ? await showcaseBooked(c, who.attendee.id) : null
+  const fill = who ? await showcasePrefill(c, who).catch(() => null) : null
+  return c.html(showcasePageHTML({
+    open, left: show?.left ?? 0, email: who?.email || '', booked, fill, token: who?.via === 'link' ? token : '',
+    vipHeld: holdsVip(who?.attendee), payOn: await onlinePaymentsOn(c),
+  }))
+})
+
+function showcasePageHTML(o: { open: boolean; left: number; email: string; booked: any; fill: any; token: string; vipHeld: boolean; payOn: boolean }): string {
+  const e = payEsc
+  const inr = (n: number) => n.toLocaleString('en-IN')
+  const withGst = (n: number) => (Math.round(n * (100 + PASS_GST_RATE)) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })
+  const slot = SHOWCASE_PRICES_INR[SHOWCASE_SLOT], vip = SHOWCASE_PRICES_INR[SHOWCASE_SLOT_VIP]
+  const f = o.fill || {}
+  const option = (value: string, name: string, price: number, lines: string[], checked: boolean, disabled = false) => `
+      <label class="sc-opt${disabled ? ' sc-opt--off' : ''}">
+        <input type="radio" name="option" value="${value}" data-price="${price}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
+        <span class="sc-opt-in">
+          <span class="sc-opt-head"><b>${name}</b><span>&#8377;${inr(price)} <small>+ GST</small></span></span>
+          <ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul>
+          ${disabled ? '<span class="sc-note">You hold a VIP Pass already.</span>' : ''}
+        </span>
+      </label>`
+  const options = option('slot', 'The slot', slot, [`${SHOWCASE_MINUTES} minutes on stage for a talk and a live demo`, 'Your name, company and talk in the app’s programme', 'An Exhibition Speaker pass for both days, with lunch'], true) +
+    option('vip', 'The slot with a VIP Pass', vip, ['Everything in the slot, with a VIP Pass instead', 'Every conference session on both days', 'The Leaders’ Evening on Day 1, the VIP lounge and priority seating', 'The speaker meet &amp; greet and one hands-on workshop'], false, o.vipHeld)
+  const field = (id: string, label: string, value: string, extra = '') =>
+    `<label class="sc-field" for="sc-${id}"><span>${label}</span><input id="sc-${id}" name="${id}" value="${e(value)}" ${extra}></label>`
+  let body: string
+  if (!o.open) {
+    body = `<div class="sc-card"><h2>Showcase slots are not open just now</h2><p>Write to <a href="mailto:info@bharataiinnovation.com">info@bharataiinnovation.com</a> and we will tell you if a slot comes free.</p></div>`
+  } else if (o.booked) {
+    body = `<div class="sc-card sc-card--ok"><h2>Your slot is booked</h2><p><strong>${e(o.booked.title)}</strong>. The team emails you your time on the Innovation Stage before the event.</p><p><a class="sc-btn" href="/app">Open the app</a></p></div>`
+  } else if (o.left <= 0) {
+    body = `<div class="sc-card"><h2>Every slot is taken</h2><p>Write to <a href="mailto:info@bharataiinnovation.com">info@bharataiinnovation.com</a> and we will tell you if one comes free.</p></div>`
+  } else if (!o.email) {
+    body = `<form class="sc-card" id="sc-link" novalidate>
+        <h2>Book your slot</h2>
+        <p>Type your email address and we send you the booking link. It works for ${SHOWCASE_LINK_DAYS} days. Already registered? <a href="/app#login">Sign in to the app</a>, then come back here.</p>
+        ${field('email', 'Email address', '', 'type="email" autocomplete="email" inputmode="email" required')}
+        <button class="sc-btn" type="submit">Send me the booking link</button>
+        <p class="sc-msg" id="sc-msg" role="status" aria-live="polite"></p>
+      </form>`
+  } else {
+    body = `<form class="sc-card" id="sc-form" novalidate data-token="${e(o.token)}" data-gst="${PASS_GST_RATE}">
+        <h2>Book your slot</h2>
+        <p class="sc-who">Booking as <strong>${e(o.email)}</strong></p>
+        <fieldset class="sc-opts"><legend>Choose</legend>${options}</fieldset>
+        ${field('name', 'Your name, as on the programme', f.name || '', 'autocomplete="name" required maxlength="80"')}
+        ${field('company', 'Company or organisation', f.company || '', 'autocomplete="organization" required maxlength="150"')}
+        ${field('designation', 'Your designation', f.designation || '', 'autocomplete="organization-title" maxlength="120"')}
+        ${field('mobile', 'Mobile (optional)', f.mobile || '', 'type="tel" autocomplete="tel" inputmode="tel" maxlength="20"')}
+        ${field('title', 'Title of your talk', f.title || '', 'required maxlength="140"')}
+        <label class="sc-field" for="sc-summary"><span>In two lines, what you will show (optional)</span><textarea id="sc-summary" name="summary" rows="3" maxlength="600"></textarea></label>
+        <p class="sc-total" id="sc-total">You pay &#8377;${withGst(slot)} in total (&#8377;${inr(slot)} + ${PASS_GST_RATE}% GST)</p>
+        <button class="sc-btn" type="submit" id="sc-go"${o.payOn ? '' : ' disabled'}>Pay and book my slot</button>
+        <p class="sc-msg" id="sc-msg" role="status" aria-live="polite">${o.payOn ? '' : 'Online payment is not available just now. Please try again in a little while.'}</p>
+        <p class="sc-small">You pay on CCAvenue’s secure page. The slot is yours the moment the payment goes through, and the receipt is emailed to you.</p>
+      </form>`
+  }
+  const desc = `${SHOWCASE_MINUTES}-minute Innovation Showcase slots on the Innovation Stage at Bharat AI Innovation 2026, 20–21 Nov, WTC Mumbai: ₹${inr(slot)} + GST, or ₹${inr(vip)} + GST with a VIP Pass.`
+  return `${sharedHeadHTML('Innovation Showcase slots', '/showcase-slot', desc).replace('</head>', `<link rel="stylesheet" href="/css/passes-design.css?v=20261112m">
+<meta name="robots" content="noindex, follow">
+<style>
+  .sc-page{background:#F7F8FC;color:#1E2140;font-family:Manrope,Arial,sans-serif}
+  .sc-wrap{max-width:640px;margin:0 auto;padding:24px 16px 56px}
+  .sc-hero h1{font-size:28px;line-height:1.2;margin:8px 0 10px;font-weight:800}
+  .sc-hero p{font-size:15px;line-height:1.65;color:#4B5270;margin:0 0 6px}
+  .sc-tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#C84F00;background:#FFF1E6;border-radius:999px;padding:5px 10px}
+  .sc-card{background:#fff;border:1px solid #E4E7F4;border-radius:16px;padding:20px 18px;margin-top:20px}
+  .sc-card h2{font-size:19px;margin:0 0 10px}
+  .sc-card p{font-size:14px;line-height:1.6;color:#4B5270;margin:0 0 12px}
+  .sc-card a{color:#C84F00;font-weight:700}
+  .sc-card--ok{border-color:#9AD8B4;background:#F1FBF5}
+  .sc-opts{border:0;padding:0;margin:0 0 6px}
+  .sc-opts legend{font-size:13px;font-weight:700;margin-bottom:8px}
+  .sc-opt{display:block;margin:0 0 10px;cursor:pointer}
+  .sc-opt input{position:absolute;opacity:0;pointer-events:none}
+  .sc-opt-in{display:block;border:2px solid #E4E7F4;border-radius:14px;padding:12px 14px}
+  .sc-opt input:checked + .sc-opt-in{border-color:#C84F00;background:#FFF7F0}
+  .sc-opt input:focus-visible + .sc-opt-in{outline:3px solid #1E2140;outline-offset:2px}
+  .sc-opt--off{opacity:.55;cursor:not-allowed}
+  .sc-opt-head{display:flex;justify-content:space-between;gap:12px;font-size:15px}
+  .sc-opt-head span{white-space:nowrap;font-weight:800}
+  .sc-opt-head small{font-weight:500;color:#5E6585}
+  .sc-opt ul{margin:8px 0 0 18px;padding:0;font-size:13px;line-height:1.6;color:#4B5270}
+  .sc-note{display:block;font-size:12px;color:#5E6585;margin-top:6px}
+  .sc-field{display:block;margin:12px 0 0}
+  .sc-field span{display:block;font-size:13px;font-weight:700;margin-bottom:5px}
+  .sc-field input,.sc-field textarea{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:12px;border:1.5px solid #CDD2E6;border-radius:10px;background:#fff;color:#1E2140}
+  .sc-field input:focus,.sc-field textarea:focus{outline:none;border-color:#C84F00;box-shadow:0 0 0 3px rgba(200,79,0,.18)}
+  .sc-field input[aria-invalid="true"]{border-color:#B3261E}
+  .sc-total{font-weight:700;color:#1E2140!important;margin:16px 0 10px!important}
+  .sc-btn{display:inline-flex;align-items:center;justify-content:center;width:100%;min-height:50px;border:0;border-radius:12px;background:#C84F00;color:#fff!important;font:inherit;font-size:16px;font-weight:800;cursor:pointer;text-decoration:none;margin-top:14px}
+  .sc-btn[disabled]{opacity:.6;cursor:wait}
+  .sc-msg{min-height:18px;font-size:13px!important;color:#B3261E!important;margin:10px 0 0!important}
+  .sc-msg.sc-ok{color:#0F7B47!important}
+  .sc-small{font-size:12px!important;color:#5E6585!important;margin:10px 0 0!important}
+  .sc-who{font-size:13px!important}
+  .sc-points{margin:14px 0 0 18px;padding:0;font-size:14px;line-height:1.7;color:#4B5270}
+</style>
+</head>`)}
+<body class="sc-page">
+${siteHeaderHTML('/passes')}
+<main class="sc-wrap">
+  <section class="sc-hero">
+    <span class="sc-tag">Last-week offer${o.open && o.left > 0 && o.left <= 5 ? ` &middot; ${o.left} left` : ''}</span>
+    <h1>Speak on the Innovation Stage</h1>
+    <p>${SHOWCASE_MINUTES} minutes on ${SHOWCASE_PLACE}, at Bharat AI Innovation 2026, 20&ndash;21 Nov, World Trade Center Mumbai. Show your product live to the people on the exhibition floor.</p>
+    <ul class="sc-points">
+      <li>&#8377;${inr(slot)} + GST: the slot, with an Exhibition Speaker pass for both days</li>
+      <li>&#8377;${inr(vip)} + GST: the slot, with a VIP Pass</li>
+      <li>Slots are limited and go first come, first served. The team gives you your time once you have booked.</li>
+    </ul>
+  </section>
+  ${body}
+</main>
+<script src="/js/showcase-slot.js?v=20261112" defer></script>
+</body></html>`
 }
 
 // Whether checkout is on, and what each paid pass costs including GST, so the
@@ -2931,8 +3752,10 @@ app.get('/api/payments/config', async (c) => {
   // what the price becomes, until the day it does.
   // free_pass_waitlist: the organiser's switch (0056), so the static pages and the
   // app can say "full for now" without a deploy.
+  // offers: the last-week offers while they run (null otherwise), LAST-WEEK OFFERS.
   return c.json({ gateway: (await onlinePaymentsOn(c)) ? 'ccavenue' : 'off', free_pass_waitlist: await freePassWaitlistOn(c), gst_rate: PASS_GST_RATE, passes,
-    late: latePricing(), deadline: PRICE_DEADLINE_IST, deadline_text: PRICE_DEADLINE_TEXT, late_from_text: PRICE_LATE_FROM_TEXT, late_passes, standard_passes })
+    late: latePricing(), deadline: PRICE_DEADLINE_IST, deadline_text: PRICE_DEADLINE_TEXT, late_from_text: PRICE_LATE_FROM_TEXT, late_passes, standard_passes,
+    offers: await offersJson(c).catch(() => null) })
 })
 
 // Step one: record the order, at our price, for whoever is signed in. 503 means
@@ -2955,8 +3778,11 @@ app.post('/api/payments/ccavenue/start', async (c) => {
   if (!a) return c.json({ error: 'Please sign in again to continue.' }, 401)
   const refused = payRefusal(a, passType)
   if (refused) return c.json({ error: refused }, 409)
-  // The list price, or the difference for a confirmed pass moving up.
-  const amounts = orderAmountsFor(a, passType) as { base: number; gst: number; total: number }
+  // The list price, or the difference for a confirmed pass moving up; an Exhibitor
+  // pass moving up to VIP this week pays the offer price for its booth.
+  const amounts = exhibitorOfferHolder(a) && passType === 'VIP Pass'
+    ? stepAmounts(await exhibitorVipOfferInr(c, Number(a.id)))
+    : orderAmountsFor(a, passType) as { base: number; gst: number; total: number }
 
   const recent = await c.env.DB.prepare(
     "SELECT COUNT(*) AS n FROM payment_orders WHERE attendee_id = ? AND created_at > datetime('now', '-1 hour')"
@@ -3179,15 +4005,20 @@ app.post('/pay/ccavenue/notify', ccavenueNotify)
 
 // The money has arrived: unlock the pass, write it down, tell the buyer and the team.
 async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMode: string) {
+  if (isShowcaseOrder(order)) return settleShowcaseOrder(c, order, trackingId, paymentMode)
+  if (isGroupOrder(order)) return settleGroupOrder(c, order, trackingId, paymentMode)
   const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any
   if (!a) throw new Error('attendee ' + order.attendee_id + ' no longer exists')
   const badge = String(a.badge_type || '').trim()
+  // An Exhibitor pass that bought the VIP Pass at the last-week price, still holding
+  // the pass it started from.
+  const exhibitorUp = TEAM_PASS_BADGES.includes(badge) && String(order.pass_type) === 'VIP Pass' && String(order.previous_badge || '').trim() === badge
   // A pass the organisers set by hand since the order was started (Speaker,
   // Exhibitor ...) is left alone: the payment is recorded and a person decides.
-  const changeable = !badge || FREE_BADGE_RE.test(badge) || PAID_TIERS.includes(badge)
+  const changeable = !badge || FREE_BADGE_RE.test(badge) || PAID_TIERS.includes(badge) || exhibitorUp
   // A confirmed pass moving up: the order carried the difference, so what they
   // have paid in all is what they had paid plus this.
-  const upgradeFrom = changeable && settledPaidTier(a) && badge !== String(order.pass_type) ? badge : ''
+  const upgradeFrom = changeable && (settledPaidTier(a) || exhibitorUp) && badge !== String(order.pass_type) ? badge : ''
   if (changeable) {
     const cols = await attendeeColumns(c)
     const sets = ['badge_type = ?'], vals: any[] = [order.pass_type]
@@ -3255,7 +4086,7 @@ async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string,
           <a href="${href}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Open the app</a>
         </div>
         <p style="margin:16px 0 0;font-size:13px;line-height:1.65;color:#555;">In the app, add your photo and download your pass: the badge desk scans it to check you in.</p>
-        ${unlocked && /premium|vip/i.test(String(order.pass_type)) ? `<p style="margin:12px 0 0;font-size:13px;line-height:1.65;color:#555;">Your pass includes one hands-on workshop. Seats go first come, first served: <a href="${payEsc(href + (href.includes('?') ? '&' : '?') + 'action=workshop')}" style="color:#FF6B00;font-weight:bold;">choose your seat in the app</a>.</p>` : ''}
+        ${unlocked && workshopTiers().includes(String(order.pass_type)) ? `<p style="margin:12px 0 0;font-size:13px;line-height:1.65;color:#555;">Your pass includes one hands-on workshop. Seats go first come, first served: <a href="${payEsc(href + (href.includes('?') ? '&' : '?') + 'action=workshop')}" style="color:#FF6B00;font-weight:bold;">choose your seat in the app</a>.</p>` : ''}
         <div style="margin-top:20px;padding:14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">
           <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;">${gstText}</p>
         </div>
@@ -3299,6 +4130,8 @@ app.get('/pay/result', async (c) => {
       payButton('/app', 'Open the app')))
   }
   if (isDelhiOrder(order)) return delhiPayResult(c, order)
+  if (isShowcaseOrder(order)) return showcasePayResult(c, order)
+  if (isGroupOrder(order)) return groupPayResult(c, order)
   const no = payEsc(order.order_id)
   const retry = `<button id="again" type="button" style="padding:13px 24px;background:#FF6B00;color:#fff;border:0;border-radius:9px;font-size:15px;font-weight:bold;cursor:pointer;">Try again</button>` +
     `<a href="/app" style="margin-left:14px;font-size:13px;color:#555;">Back to the app</a>` +
@@ -3331,7 +4164,7 @@ app.get('/pay/result', async (c) => {
         ['Order number', no],
         ['CCAvenue reference', payEsc(order.tracking_id)],
       ]) +
-      (WORKSHOP_TIERS.includes(String(order.pass_type))
+      (workshopTiers().includes(String(order.pass_type))
         ? payP('A confirmation is on its way to your email, and your GST invoice follows separately. Your pass includes one workshop, and seats go first come, first served: choose yours now, then add your photo and download your pass.') +
           payButton('/app?action=workshop', 'Choose my workshop')
         : payP('A confirmation is on its way to your email, and your GST invoice follows separately. Next, add your photo in the app and download your pass.') +
@@ -5539,7 +6372,7 @@ function staffScanHTML(me: any): string {
        var esc=function(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
        var sub=[a.job_title,a.company].filter(Boolean).map(esc).join(', ');
        // A paid tier not paid for is not that pass; the verify screen says PAYMENT PENDING.
-       var unpaid=['Delegate Pass','Premium Delegate Pass','VIP Pass','Academic Pass'].indexOf(String(a.badge_type||''))>=0 && ['pending','refunded'].indexOf(String(a.payment_status||'').toLowerCase())>=0;
+       var unpaid=['Delegate Pass','Premium Delegate Pass','VIP Pass','Academic Pass','Student Pass'].indexOf(String(a.badge_type||''))>=0 && ['pending','refunded'].indexOf(String(a.payment_status||'').toLowerCase())>=0;
        var state=a.checked_in_at? '<em>Already in &middot; '+esc(a.checked_in_ist)+'</em>' : esc(a.badge_type||'')+(unpaid?' &middot; <b style="color:#b3261e">not paid</b>':'');
        return '<a class="hit" href="/verify/'+encodeURIComponent(a.token)+'"><b>'+esc(a.name)+'</b>'+
               '<span>'+(sub?sub+' &middot; ':'')+esc(a.ref)+'</span><span>'+state+'</span></a>';
@@ -6136,7 +6969,8 @@ function verifyPageHTML(o: any): string {
     'VIP Pass': ['#E9C356', '#5a3f08'], 'Delegate Pass': ['#00996C', '#ffffff'],
     'Premium Delegate Pass': ['#0B7A75', '#ffffff'],
     'Organiser': ['#111114', '#FFB066'],
-    'Academic Pass': ['#7C5CFF', '#ffffff'], 'Visitor Pass': ['#2B8CFF', '#ffffff']
+    'Academic Pass': ['#7C5CFF', '#ffffff'], 'Student Pass': ['#AD1457', '#ffffff'], 'Visitor Pass': ['#2B8CFF', '#ffffff'],
+    'Media Pass': ['#00A3C4', '#ffffff'], 'Influencer Pass': ['#9C27B0', '#ffffff']
   }
   const tier = TIER[a.badge_type] || ['#2B8CFF', '#ffffff']
   // TRIM, not truthiness: a whitespace-only avatar_url rendered an <img> with no
@@ -7859,7 +8693,7 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   // No Media Pass: it is "By Invite" on every page and costs nothing, so a form
   // anyone can post must not mint one (it opened the full directory and
   // networking for free). The organisers issue it from the admin panel.
-  const ALLOWED_PASSES = ['Visitor Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass']
+  const ALLOWED_PASSES = ['Visitor Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass']
   const passType = ALLOWED_PASSES.includes(badge_type) ? badge_type : 'Visitor Pass'
 
   const sourceValue = sanitizeRegistrationSource(registration_source)
@@ -8013,7 +8847,7 @@ const INDUSTRIES = [
 
 function missingRegistrationFields(b: any): string[] {
   const has = (v: any) => String(v ?? '').trim().length > 0
-  const academic = String(b.badge_type || '') === 'Academic Pass'
+  const academic = ['Academic Pass', 'Student Pass'].includes(String(b.badge_type || ''))
   const missing: string[] = []
   if (!has(b.mobile)) missing.push('mobile number')
   if (!has(b.company)) missing.push(academic ? 'college name' : 'organisation')
@@ -8046,7 +8880,8 @@ const humanList = (xs: string[]): string =>
 //    many premium passes have sold): only "full", or the count once 20 or fewer
 //    are left. Admin sees the numbers.
 // Until 0049 runs every answer says ready: false and the app shows nothing.
-const WORKSHOP_TIERS = ['Premium Delegate Pass', 'VIP Pass']
+// The Student Pass includes one too (12 Nov 2026), up to STUDENT_WORKSHOP_SHARE of a workshop.
+const WORKSHOP_TIERS = ['Premium Delegate Pass', 'VIP Pass', 'Student Pass']
 const WORKSHOP_SWITCH_CLOSES_DEFAULT = '2026-11-18 23:59'
 const WORKSHOP_FEW_LEFT = 20
 
@@ -8075,7 +8910,7 @@ async function workshopSwitchCloses(c: any): Promise<string> {
 // Who may hold a seat, and why not when they may not.
 function workshopEntitlement(a: any): { ok: boolean; why: string } {
   if (!a) return { ok: false, why: 'signin' }
-  if (!WORKSHOP_TIERS.includes(String(a.badge_type || ''))) return { ok: false, why: 'tier' }
+  if (!workshopTiers().includes(String(a.badge_type || ''))) return { ok: false, why: 'tier' }
   if (['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())) return { ok: false, why: 'unpaid' }
   return { ok: true, why: '' }
 }
@@ -8083,7 +8918,8 @@ function workshopEntitlement(a: any): { ok: boolean; why: string } {
 async function workshopList(c: any) {
   const { results } = await c.env.DB.prepare(
     `SELECT w.id, w.slug, w.title, w.speaker, w.summary, w.starts_at, w.ends_at, w.room, w.capacity, w.is_open,
-            (SELECT COUNT(*) FROM workshop_seats s WHERE s.workshop_id = w.id) AS taken
+            (SELECT COUNT(*) FROM workshop_seats s WHERE s.workshop_id = w.id) AS taken,
+            (SELECT COUNT(*) FROM workshop_seats s JOIN attendees a ON a.id = s.attendee_id WHERE s.workshop_id = w.id AND a.badge_type = 'Student Pass') AS student_taken
        FROM workshops w WHERE w.event_id = 1 ORDER BY w.sort_order, w.id`
   ).all() as any
   const now = Date.now()
@@ -8091,10 +8927,13 @@ async function workshopList(c: any) {
     const capacity = Number(w.capacity) || 0
     const taken = Number(w.taken) || 0
     const start = istWallClock(w.starts_at)
+    // Student Passes may fill up to this share of the seats (STUDENT_WORKSHOP_SHARE).
+    const studentCap = Math.floor(capacity * STUDENT_WORKSHOP_SHARE)
     return {
       id: Number(w.id), slug: String(w.slug || ''), title: String(w.title || ''), speaker: String(w.speaker || ''),
       summary: String(w.summary || ''), starts_at: w.starts_at || null, ends_at: w.ends_at || null, room: String(w.room || ''),
       capacity, taken, left: Math.max(0, capacity - taken), is_open: Number(w.is_open) === 1,
+      student_left: Math.max(0, Math.min(capacity - taken, studentCap - (Number(w.student_taken) || 0))),
       open: Number(w.is_open) === 1 && !(Number.isFinite(start) && now >= start),
     }
   })
@@ -8123,13 +8962,19 @@ async function takeWorkshopSeat(c: any, attendeeId: number, workshopId: number, 
 async function workshopState(c: any, me: any) {
   const ent = workshopEntitlement(me)
   const closes = await workshopSwitchCloses(c)
-  const workshops = (await workshopList(c)).map(w => ({
-    id: w.id, slug: w.slug, title: w.title, speaker: w.speaker, summary: w.summary,
-    starts_at: w.starts_at, ends_at: w.ends_at, room: w.room, open: w.open,
-    full: w.left <= 0, few_left: w.left > 0 && w.left <= WORKSHOP_FEW_LEFT ? w.left : null,
-  }))
+  const mineNow = me ? await workshopSeatOf(c, Number(me.id)) : null
+  // A Student Pass sees the seats its share has left (the seat they hold counts as theirs).
+  const student = String(me?.badge_type || '') === 'Student Pass'
+  const workshops = (await workshopList(c)).map(w => {
+    const left = student && mineNow !== w.id ? w.student_left : w.left
+    return {
+      id: w.id, slug: w.slug, title: w.title, speaker: w.speaker, summary: w.summary,
+      starts_at: w.starts_at, ends_at: w.ends_at, room: w.room, open: w.open,
+      full: left <= 0, few_left: left > 0 && left <= WORKSHOP_FEW_LEFT ? left : null,
+    }
+  })
   return {
-    ready: true, entitled: ent.ok, why: ent.why, mine: me ? await workshopSeatOf(c, Number(me.id)) : null,
+    ready: true, entitled: ent.ok, why: ent.why, mine: mineNow,
     can_switch: Date.now() < istWallClock(closes), switch_closes: closes, workshops,
   }
 }
@@ -8152,7 +8997,7 @@ app.post('/api/workshops/choose', async (c) => {
   if (!ent.ok) {
     return c.json({ error: ent.why === 'unpaid'
       ? 'Your ' + me.badge_type + ' is not paid yet. You can choose your workshop the moment the payment goes through.'
-      : 'A workshop seat comes with the Premium Delegate and VIP passes.' }, 403)
+      : 'A workshop seat comes with the Student, Premium Delegate and VIP passes.' }, 403)
   }
   const body = await c.req.json().catch(() => ({})) as any
   const wid = Number(body.workshop_id)
@@ -8161,6 +9006,10 @@ app.post('/api/workshops/choose', async (c) => {
   const mine = await workshopSeatOf(c, id)
   if (mine === wid) return c.json(await workshopState(c, me))
   if (!w.open) return c.json({ error: 'Seats for this workshop are closed.', ...(await workshopState(c, me)) }, 409)
+  // Half of each workshop stays for Premium Delegate and VIP (STUDENT_WORKSHOP_SHARE).
+  if (String(me.badge_type || '') === 'Student Pass' && w.student_left <= 0) {
+    return c.json({ error: 'The student seats in this workshop are taken. Another workshop may still have room.', ...(await workshopState(c, me)) }, 409)
+  }
   if (mine !== null && Date.now() >= istWallClock(await workshopSwitchCloses(c))) {
     return c.json({ error: 'Workshop choices are fixed now. Write to info@bharataiinnovation.com if you need to change yours.', ...(await workshopState(c, me)) }, 409)
   }
@@ -8183,14 +9032,15 @@ app.get('/api/admin/workshops', async (c) => {
        FROM workshop_seats s JOIN attendees a ON a.id = s.attendee_id
       WHERE s.event_id = 1 ORDER BY s.workshop_id, s.updated_at`
   ).all()).results || [])
-  const marks = WORKSHOP_TIERS.map(() => '?').join(', ')
+  const tiers = workshopTiers()
+  const marks = tiers.map(() => '?').join(', ')
   const unchosen = ((await c.env.DB.prepare(
     `SELECT a.id, a.name, a.email, a.mobile, a.company, a.badge_type FROM attendees a
       WHERE a.event_id = 1 AND a.badge_type IN (${marks})
         AND LOWER(COALESCE(a.payment_status, '')) NOT IN ('pending', 'refunded')
         AND a.id NOT IN (SELECT attendee_id FROM workshop_seats WHERE event_id = 1)
       ORDER BY a.name`
-  ).bind(...WORKSHOP_TIERS).all()).results || [])
+  ).bind(...tiers).all()).results || [])
   return c.json({ ready: true, switch_closes: await workshopSwitchCloses(c), workshops: await workshopList(c), seats, unchosen })
 })
 
@@ -8259,6 +9109,7 @@ const PASS_TYPE_MAP: Record<string, string> = {
   'vip': 'VIP Pass',
   'startup': 'Visitor Pass',
   'academic': 'Academic Pass',
+  'student': 'Student Pass',
   'visitor': 'Visitor Pass',
   'media': 'Media Pass',
 }
@@ -12792,7 +13643,7 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
   let row: any = null
   try {
     row = await c.env.DB.prepare(
-      `SELECT a.checked_in_at, e.start_date, e.end_date
+      `SELECT a.checked_in_at, a.badge_type, a.payment_status, e.start_date, e.end_date
          FROM attendees a JOIN events e ON e.id = a.event_id
         WHERE a.id = ?`
     ).bind(id).first()
@@ -12853,6 +13704,13 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
     ends: row.end_date || null,
     reason,
     workshop,
+    // The pass the certificate names (organiser, 12 Nov 2026): a paid tier not paid for
+    // reads as the Visitor Pass, as at the desk.
+    pass: (() => {
+      const b = String(row.badge_type || '').trim()
+      if (!b || FREE_BADGE_RE.test(b)) return 'Visitor Pass'
+      return PAID_TIERS.includes(b) && ['pending', 'refunded'].includes(String(row.payment_status || '').trim().toLowerCase()) ? 'Visitor Pass' : b
+    })(),
   })
 })
 
@@ -13946,10 +14804,10 @@ app.put('/api/attendees/:id/exhibitor', async (c) => {
 
   const exhibitorBadges = ['Exhibitor', 'Exhibitor Booth', 'Exhibition Speaker']
   const hasExhibitorBadge = exhibitorBadges.some(b => (attendee.badge_type || '').toLowerCase().includes(b.toLowerCase()))
-  if (!hasExhibitorBadge) return c.json({ error: 'Only exhibitor badge holders can manage booths' }, 403)
-
   // Check if exhibitor already exists for this attendee
   const existing = await c.env.DB.prepare('SELECT id FROM exhibitors WHERE attendee_id = ?').bind(attendeeId).first()
+  // A booth contact who moved up to a VIP Pass (last-week offers) still runs their booth.
+  if (!hasExhibitorBadge && !existing) return c.json({ error: 'Only exhibitor badge holders can manage booths' }, 403)
 
   if (existing) {
     await c.env.DB.prepare(
@@ -15646,14 +16504,17 @@ app.delete('/api/admin/exhibitors/:id', async (c) => {
 // Admin: Sync exhibitors from attendees with exhibitor badge types
 app.post('/api/admin/exhibitors/sync', async (c) => {
   const { event_id } = await c.req.json()
-  // Find attendees with exhibitor-related badges who don't have an exhibitor entry yet
+  // Find attendees with exhibitor-related badges who don't have an exhibitor entry yet.
+  // Someone whose Exhibition Speaker pass came with a paid showcase slot is a speaker,
+  // not a company with a booth.
+  const notShowcase = (await showcaseReady(c)) ? " AND NOT EXISTS (SELECT 1 FROM showcase_slots s WHERE s.attendee_id = a.id AND s.status = 'paid')" : ''
   const { results: attendees } = await c.env.DB.prepare(
     `SELECT a.id, a.name, a.email, a.company, a.event_id FROM attendees a
      WHERE a.event_id = ? AND (
        LOWER(a.badge_type) LIKE '%exhibitor%' OR LOWER(a.badge_type) LIKE '%exhibition%'
      ) AND NOT EXISTS (
        SELECT 1 FROM exhibitors e WHERE e.attendee_id = a.id
-     )`
+     )${notShowcase}`
   ).bind(event_id).all()
 
   let created = 0
@@ -15686,7 +16547,7 @@ function notifyKind(a: any): NotifyKind {
   if (PAID_TIERS.includes(badge) && ['pending', 'refunded'].includes(String(a?.payment_status ?? '').trim().toLowerCase())) return 'unpaid'
   return 'paid'
 }
-const PASS_KEY: Record<string, string> = { 'Delegate Pass': 'delegate', 'Premium Delegate Pass': 'premium', 'VIP Pass': 'vip', 'Academic Pass': 'academic' }
+const PASS_KEY: Record<string, string> = { 'Delegate Pass': 'delegate', 'Premium Delegate Pass': 'premium', 'VIP Pass': 'vip', 'Academic Pass': 'academic', 'Student Pass': 'student' }
 
 // "riddhi" and "DR. RAJESH KUMAR" both arrive from imports; the subject and the
 // greeting want "Riddhi" and "Rajesh". '' when there is no usable word.
@@ -15818,7 +16679,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
         <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your ${esc(passName)}</p>
         <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">Keep it on your phone for the badge desk. ${idNote}</p>
         ${btn(go('download-pass'), 'Download my pass', '#1E2140')}
-        ${WORKSHOP_TIERS.includes(badge) ? `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;">Your pass includes one hands-on workshop. Seats go first come, first served: <a href="${go('workshop')}" style="color:#0B7A75;font-weight:bold;">choose my workshop</a>.</p>` : ''}
+        ${workshopTiers().includes(badge) ? `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;">Your pass includes one hands-on workshop. Seats go first come, first served: <a href="${go('workshop')}" style="color:#0B7A75;font-weight:bold;">choose my workshop</a>.</p>` : ''}
         ${diff ? `<p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:#777;">Want ${next!.adds}? Move up to ${next!.pass.replace(/ Pass$/, '')} for the difference, &#8377;${diff.toLocaleString('en-IN')} + GST. <a href="${go('pay', '&pass=' + PASS_KEY[next!.pass])}" style="color:#A67C00;font-weight:bold;">Move up</a></p>` : ''}
       </div>`
   }
@@ -16897,7 +17758,7 @@ const NEEDS_REMINDER_SQL = `
      OR COALESCE(TRIM(industry),'') = ''
      OR COALESCE(TRIM(mobile),'') = ''
      OR COALESCE(TRIM(company),'') = ''
-     OR (badge_type <> 'Academic Pass' AND COALESCE(TRIM(job_title),'') = '') )`
+     OR (badge_type NOT IN ('Academic Pass', 'Student Pass') AND COALESCE(TRIM(job_title),'') = '') )`
 
 const settingGet = async (c: any, k: string) =>
   ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
@@ -17036,7 +17897,7 @@ async function sendProfileReminder(c: any, attendee: any): Promise<SendOutcome> 
 // the mail, the card and the form never disagree about what is outstanding.
 function attendeeProfileGaps(a: any): string[] {
   const has = (v: any) => String(v ?? '').trim().length > 0
-  const academic = String(a?.badge_type || '') === 'Academic Pass'
+  const academic = ['Academic Pass', 'Student Pass'].includes(String(a?.badge_type || ''))
   const gaps: string[] = []
   if (!has(a?.avatar_url)) gaps.push('photo')
   if (!has(a?.company)) gaps.push(academic ? 'college name' : 'organisation')
@@ -17993,7 +18854,7 @@ app.post('/api/admin/innovation-talks/auto', async (c) => {
 // members and colleagues sharing one number (husband and wife, two people on an
 // office line) and the organiser's own team: those wait for a person to look.
 // Similar names on different numbers are listed as a hint only.
-const DUP_MERGEABLE_PASSES = ['Visitor Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass']
+const DUP_MERGEABLE_PASSES = ['Visitor Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass']
 
 const personTokens = (name: unknown): string[] =>
   String(name || '').toLowerCase()
@@ -18642,10 +19503,10 @@ app.get('/api/admin/events/:id/session-conflicts', async (c) => {
 // Campaign mail: the unsubscribe footer, and suppressionClause() applies.
 //
 // No discount: the price is the one passAmounts() charges. The offer rides in
-// campaigns.ref_id (1 Delegate, 2 Academic), so "Retry those" keeps it.
+// campaigns.ref_id (1 Delegate, 2 Student; Academic before 12 Nov 2026), so "Retry those" keeps it.
 const UPGRADE_OFFERS: Record<string, { pass: string; refId: number; key: string }> = {
   senior: { pass: 'Delegate Pass', refId: 1, key: 'delegate' },
-  students: { pass: 'Academic Pass', refId: 2, key: 'academic' },
+  students: { pass: 'Student Pass', refId: 2, key: 'student' },
 }
 const UPGRADE_AUDIENCE_SQL: Record<string, string> = {
   senior: `${SENIOR_RANK_SQL} = 1 AND ${STUDENT_RANK_SQL} = 0`,
@@ -18789,11 +19650,11 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
   const base = amounts ? (amounts.base / 100).toLocaleString('en-IN') : ''
   const firstPlain = String(a.name || '').replace(/[<>\r\n]/g, ' ').trim().split(/\s+/)[0].slice(0, 40) || 'there'
   const first = payEsc(firstPlain)
-  const academic = offer.key === 'academic'
+  const academic = offer.key === 'student'
   // What the site itself promises for each pass, and nothing more (conference
-  // and terms pages): the Academic Pass is the concessionary rate, with networking
-  // and the student zone, and needs a student or faculty ID at the badge desk.
-  // Workshops come only with Premium Delegate and VIP (organiser, 26 Oct 2026).
+  // and terms pages): since 12 Nov 2026 students are offered the Student Pass, the
+  // student rate with networking, the student zone and one workshop, and a student ID
+  // at the badge desk. For everyone else workshops come with Premium Delegate and VIP.
   // Organiser, 28 Oct 2026: name every feature. The workshop is NOT in the
   // Delegate Pass (Premium Delegate and VIP only), so it is offered below the list
   // as the step up, never inside it.
@@ -18801,6 +19662,7 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
     'Guaranteed entry on both days, 20&ndash;21 November 2026, World Trade Center, Mumbai, at the student rate',
     'Access to the entire conference: every keynote, panel discussion and Innovation Talk',
     'The Bharat AI Connect networking app: the full attendee directory, connection requests, and meetings you book before you arrive',
+    'One hands-on workshop with an industry expert, your seat chosen in the app (student seats are limited)',
     'The student networking zone, on top of the exhibition floor',
   ] : [
     'Guaranteed entry on both days, 20&ndash;21 November 2026, World Trade Center, Mumbai',
@@ -18810,7 +19672,9 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
     'The exhibition floor and product demos',
   ]
   const premiumHref = preview ? '#preview' : href.replace('pass=delegate', 'pass=premium')
-  const workshopBox = academic ? '' :
+  const workshopBox = academic ? (offersActive()
+    ? `<div style="margin:14px 0 4px;padding:14px 16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;"><p style="margin:0;font-size:14px;line-height:1.6;color:#1E2140;"><strong>A hands-on workshop is included this week.</strong> Book your Academic Pass and choose your workshop seat in the app. Student seats are limited and go first come, first served.</p></div>`
+    : '') :
     `<div style="margin:14px 0 4px;padding:14px 16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;">` +
     `<p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#1E2140;"><strong>Want a hands-on workshop too?</strong> The <strong>Premium Delegate Pass</strong> (${priceNow('Premium Delegate Pass')} + GST) is everything above plus one workshop. Seats are limited and go first come, first served.</p>` +
     `<a href="${premiumHref}" style="font-size:13.5px;font-weight:bold;color:#0B7A75;">Get Premium Delegate &rarr;</a></div>`
@@ -18833,7 +19697,7 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
     (!late && saveText ? `<p style="margin:0 0 4px;font-size:13.5px;line-height:1.6;color:#B45309;text-align:center;">This is the standard price, until <strong>${PRICE_DEADLINE_TEXT}</strong>. From ${PRICE_LATE_FROM_TEXT} it is ${rsPrice(offer.pass, true)} + GST: book now and save ${saveText}.</p>`
       : late && saveText ? `<p style="margin:0 0 4px;font-size:13.5px;line-height:1.6;color:#B45309;text-align:center;">${PRICE_ROSE_TEXT}</p>` : '')
   const ps = academic
-    ? `P.S. Free-pass entry slots are confirmed by email closer to the event, and some people will get a half-day slot or none. The Academic Pass takes that uncertainty away for &#8377;${base} + GST${!late && saveText ? `, ${saveText} less than from ${PRICE_LATE_FROM_TEXT}` : ''}.`
+    ? `P.S. Free-pass entry slots are confirmed by email closer to the event, and some people will get a half-day slot or none. The Student Pass takes that uncertainty away, with a workshop seat, for &#8377;${base} + GST${!late && saveText ? `, ${saveText} less than from ${PRICE_LATE_FROM_TEXT}` : ''}.`
     : `P.S. Free-pass entry slots are confirmed by email closer to the event, and some people will get a half-day slot or none. A Delegate Pass takes that uncertainty away${!late && saveText ? `, and costs ${saveText} less if you book by ${PRICE_DEADLINE_TEXT}` : ''}.`
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f5f5f5;">${preheader}</div>
@@ -18843,18 +19707,18 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${first}</strong>,</p>
         <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#555;">Your free Visitor Pass gets you onto the exhibition floor <strong>only if a slot is free</strong>. Entry on a free pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, and you may be offered a half-day slot, or none.</p>
         <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#555;">${academic
-          ? 'The <strong>Academic Pass</strong> gives you guaranteed entry on both days at the student rate, and the whole conference with it:'
+          ? 'The <strong>Student Pass</strong> gives you guaranteed entry on both days at the student rate, the whole conference and one hands-on workshop:'
           : 'A <strong>Delegate Pass</strong> gives you guaranteed entry on both days, and the part of the event where the business gets done: the conference, and the people in it. It includes:'}</p>
         <table style="width:100%;border-collapse:collapse;margin:0 0 8px;">${lines.map(item).join('')}</table>
         <p style="margin:6px 0 20px;font-size:13.5px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><strong>On stage:</strong> leaders from Google, PwC, Capgemini and the Government of Maharashtra, with Innovation Talks from the companies building AI for India.</p>
         ${priceBox}
         <div style="text-align:center;margin:16px 0 8px;">
-          <a href="${href}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${academic ? 'Secure my Academic Pass' : 'Secure my Delegate Pass'}</a>
+          <a href="${href}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${academic ? 'Secure my Student Pass' : 'Secure my Delegate Pass'}</a>
         </div>
         <p style="margin:0 0 18px;font-size:12px;line-height:1.6;color:#888;text-align:center;">The button signs you in and opens a secure CCAvenue payment. Your registration and reference number stay the same, and your pass is confirmed the moment the payment goes through.</p>
         ${workshopBox}
         ${academic
-          ? `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;"><strong>Bring your student or faculty ID.</strong> The badge desk checks it for the Academic Pass.</p>`
+          ? `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;"><strong>Bring your student ID.</strong> The badge desk checks it for the Student Pass.</p>`
           : `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;">Need a GST invoice in your company's name? The form asks for it. Coming with colleagues? ${GROUP_RATE_TEXT.replace(', on request.', ': write to info@bharataiinnovation.com.')}</p>`}
         <p style="margin:18px 0 0;font-size:13px;line-height:1.6;color:#555;font-style:italic;">${ps}</p>
       </div>
@@ -18969,11 +19833,14 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'networking' ? `/api/admin/attendees/${r.attendee_id}/send-networking`
     : kind === 'waitlist_confirm' ? `/api/admin/attendees/${r.attendee_id}/send-waitlist-confirm`
     : kind === 'feedback' ? `/api/admin/attendees/${r.attendee_id}/send-feedback`
+    : kind === 'offer' ? '/api/admin/offers/send'
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
     const url = new URL(c.req.url)
     url.pathname = path
-    url.search = kind === 'upgrade' ? '?offer=' + (Number(refId) === 2 ? 'academic' : 'delegate') : ''
+    url.search = kind === 'upgrade' ? '?offer=' + (Number(refId) === 2 ? 'academic' : 'delegate')
+      : kind === 'offer' ? '?audience=' + offerAudienceOf(refId) + '&email=' + encodeURIComponent(String(r.email || '')) + '&attendee=' + encodeURIComponent(String(r.attendee_id || ''))
+      : ''
     const res = await app.fetch(new Request(url.toString(), {
       method: 'POST',
       headers: {
@@ -19068,13 +19935,19 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
   if (kind === 'upgrade') {
     if (!UPGRADE_OFFERS[audience]) return c.json({ error: 'An upgrade campaign is for "senior" or "students".' }, 400)
     refId = UPGRADE_OFFERS[audience].refId
+  }
+  // Last-week offers (LAST-WEEK OFFERS): one of three audiences, each written to once.
+  if (kind === 'offer') {
+    if (!OFFER_AUDIENCES[audience]) return c.json({ error: 'An offer campaign is for vip_delegates, exhibitors or speakers.' }, 400)
+    if (!offersActive()) return c.json({ error: 'Switch the last-week offers on first.' }, 409)
+    refId = OFFER_AUDIENCES[audience].refId
   }
   if (kind === 'announcement' && !refId) return c.json({ error: 'An announcement campaign needs the announcement id.' }, 400)
   // Two account-ready runs open at once would mail the same people twice: a new
@@ -19097,6 +19970,8 @@ app.post('/api/admin/campaigns', async (c) => {
       `SELECT id, name, email FROM attendees WHERE id IN (${placeholders}) AND email IS NOT NULL AND TRIM(email) != '' ORDER BY id`
     ).bind(...ids).all()
     rows = (results as any[]) || []
+  } else if (kind === 'offer') {
+    rows = await offerAudienceRows(c, audience, body.inquiry_ids)
   } else {
     rows = await campaignAudienceRows(c, kind, audience, body.include_panel_only === true)
   }
@@ -19108,7 +19983,7 @@ app.post('/api/admin/campaigns', async (c) => {
   if (!rows.length) return c.json({ error: 'Nobody matches that audience.', malformed }, 400)
 
   const who = adminActor(c)
-  const title = String(body.title || (kind === 'upgrade' ? (audience === 'students' ? 'Upgrade offer: Academic Pass to students' : 'Upgrade offer: Delegate Pass to senior Visitors')
+  const title = String(body.title || (kind === 'offer' ? OFFER_AUDIENCES[audience].title : kind === 'upgrade' ? (audience === 'students' ? 'Upgrade offer: Student Pass to students' : 'Upgrade offer: Delegate Pass to senior Visitors')
     : kind === 'notify' ? 'Account-ready email'
     : kind === 'networking' ? 'Networking app email'
     : kind === 'thankyou' ? 'Post-event thank you'
@@ -22978,6 +23853,1379 @@ app.get('/passes', async (c) => {
   return c.html(passesPageHTML({ waitlist: await freePassWaitlistOn(c) }))
 })
 
+// ==================== GROUP BOOKING, 30% OFF (12 Nov 2026) ====================
+//
+// The organiser, eight days before the event: give 30% off on more than 5 passes,
+// "and let them pay money, we dont have time to respond back and talk to them". A
+// group used to be an enquiry (/contact#group_registration) that nobody had time to
+// answer. Now the rule, said the same way everywhere (GROUP_RULE_TEXT):
+//
+//   6 or more passes of one kind in one booking: 30% off each pass, paid online.
+//
+// 13 Nov: two tiers, GROUP_TIERS (3-4 passes 15%, 5+ 30%); 6+ above is the first rule.
+// GROUP_TIERS and GROUP_MIN sit beside GROUP_RATE_TEXT (ONLINE PAYMENTS), which
+// prints them. Delegate, Premium Delegate or VIP: Student and Academic are already
+// concessions. One pass costs today's list price (passPriceInr, so the dated prices
+// hold) less 30%, to the rupee, + 18% GST.
+//
+// /group is the form (its script is /js/group-booking.js). POST /api/group/start
+// makes ONE CCAvenue order for the whole group, under the buyer (who may or may not
+// be coming): payment_orders.pass_type is 'Group: <n> x <pass>', and the people are
+// kept in group_orders (0059). The hand-off page and ccavenueAnswer read the order
+// generically; settlePaidOrder and /pay/result send a group order here.
+//
+// Nobody on the list is registered before the money lands, so a checkout left
+// half-way leaves no registrations behind (and no free pass past the waiting list).
+// When it lands, settleGroupOrder gives each person the pass, paid, with their share
+// of the amount and the lunch it includes, and emails each a link to the app; the
+// buyer gets the receipt and a summary; the team is told. Someone who already holds
+// a pass (a confirmed paid pass, a complimentary one, an organisers' pass) is refused
+// at the start with their person number, and passed over at payment if they got one
+// meanwhile: the buyer and the team are told, so the team can refund or swap it.
+// Until 0059 runs, /group says group booking opens shortly and nothing is sold.
+const GROUP_PASSES = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass']
+const GROUP_MAX = 50
+const GROUP_STARTS_PER_HOUR = 20
+const GROUP_LINES: Record<string, string> = {
+  'Delegate Pass': 'Both days: every conference session, lunch and the networking app',
+  'Premium Delegate Pass': 'Everything in Delegate, and one hands-on workshop each',
+  'VIP Pass': 'Everything in Premium Delegate, the Bharat AI Leaders’ Evening on Day 1, the VIP lounge and priority seating',
+}
+const GROUP_ORDER_RE = new RegExp('^Group: (\\d{1,3}) x (' + GROUP_PASSES.join('|') + ')$')
+function groupOrderOf(o: any): { qty: number; pass: string } | null {
+  const m = GROUP_ORDER_RE.exec(String(o?.pass_type || ''))
+  return m && Number(m[1]) > 0 ? { qty: Number(m[1]), pass: m[2] } : null
+}
+function isGroupOrder(o: any): boolean { return !!groupOrderOf(o) }
+const groupPassType = (n: number, pass: string) => 'Group: ' + n + ' x ' + pass
+// "8 Delegate Passes"
+const groupPlural = (n: number, pass: string) => n + ' ' + pass + (n === 1 ? '' : 'es')
+const groupPassName = (badge: string) => /pass$/i.test(badge) ? badge : badge + ' pass'
+
+// One pass in a group of n, whole rupees before GST: today's list price less the tier for
+// n (groupPctFor), to the rupee. /js/group-booking.js rounds the same way.
+function groupUnitInr(pass: string, n: number): number {
+  const list = GROUP_PASSES.includes(pass) ? passPriceInr(pass) : 0
+  const pct = groupPctFor(n)
+  return list && pct ? Math.round(list * (100 - pct) / 100) : 0
+}
+// The whole group in paise: n x the pass, + GST. A pass in whole rupees has GST in
+// whole paise, so the total is exactly n x one pass with its GST.
+function groupAmounts(pass: string, n: number): { unit: number; unitBase: number; unitTotal: number; base: number; gst: number; total: number } | null {
+  const unit = groupUnitInr(pass, n)
+  if (!unit || !(n > 0)) return null
+  const unitBase = unit * 100
+  const base = unitBase * n
+  const gst = Math.round(base * PASS_GST_RATE / 100)
+  return { unit, unitBase, unitTotal: unitBase + Math.round(unitBase * PASS_GST_RATE / 100), base, gst, total: base + gst }
+}
+// "&#8377;6,299", or "&#8377;7,432.82" when there are paise.
+const groupInr = (paise: number) => '&#8377;' + (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: paise % 100 ? 2 : 0, maximumFractionDigits: 2 })
+
+let _groupTable = false
+async function groupReady(c: any): Promise<boolean> {
+  if (_groupTable) return true
+  try { await c.env.DB.prepare('SELECT id FROM group_orders LIMIT 1').first(); _groupTable = true } catch { /* 0059 has not run */ }
+  return _groupTable
+}
+
+// The pass someone holds that a group pass must not replace, else ''. A free Visitor
+// Pass, or a paid tier nobody paid for, is fine: the group pass replaces it.
+function groupHeldPass(a: any): string {
+  if (!a) return ''
+  const badge = String(a.badge_type || '').trim()
+  if (!badge || FREE_BADGE_RE.test(badge)) return ''
+  if (PAID_TIERS.includes(badge) && ['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())) return ''
+  return badge
+}
+
+const groupText = (v: any, n: number) => String(v ?? '').replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n)
+const groupMobile = (v: any) => groupText(v, 20).replace(/[^\d+]/g, '')
+const groupMobileOk = (m: string) => { const d = m.replace(/\D/g, '').length; return d >= 10 && d <= 15 }
+
+type GroupPerson = { row: number; name: string; email: string; mobile: string; designation: string }
+type GroupAsk = { pass: string; buyer: { name: string; email: string; mobile: string; company: string }; people: GroupPerson[] }
+// The form, checked the way /js/group-booking.js checks it, so a refusal here is one
+// the page already explains. People are numbered as the page numbers them (Person 1
+// is the first row); an empty row is passed over.
+function groupCheck(body: any): GroupAsk | { error: string; field: string; row?: number } {
+  const pass = String(body?.pass_type || '')
+  if (!GROUP_PASSES.includes(pass) || !groupUnitInr(pass, GROUP_MIN)) return { error: 'Choose the pass for your group: Delegate, Premium Delegate or VIP.', field: 'pass' }
+  const b = body?.buyer || {}
+  const buyer = { name: groupText(b.name, 80), email: groupText(b.email, 254).toLowerCase(), mobile: groupMobile(b.mobile), company: groupText(b.company, 150) }
+  if (buyer.name.length < 2) return { error: 'Please add your name.', field: 'buyer-name' }
+  if (!validEmailSyntax(buyer.email)) return { error: 'Please type your full email address. The receipt goes there.', field: 'buyer-email' }
+  if (!groupMobileOk(buyer.mobile)) return { error: 'Please add your mobile number, so the team can reach you about the booking.', field: 'buyer-mobile' }
+  const raw: any[] = Array.isArray(body?.members) ? body.members : []
+  if (raw.length > GROUP_MAX * 3) return { error: 'One booking takes up to ' + GROUP_MAX + ' people. For more, make a second booking, or write to info@bharataiinnovation.com.', field: 'members' }
+  const people: GroupPerson[] = []
+  const seen = new Map<string, number>()
+  for (let i = 0; i < raw.length; i++) {
+    const r = raw[i] || {}, row = i + 1
+    const p = { row, name: groupText(r.name, 80), email: groupText(r.email, 254).toLowerCase(), mobile: groupMobile(r.mobile), designation: groupText(r.designation, 120) }
+    if (!p.name && !p.email && !p.mobile && !p.designation) continue
+    if (p.name.length < 2) return { error: 'Person ' + row + ': please add their name.', field: 'name', row }
+    if (!validEmailSyntax(p.email)) return { error: 'Person ' + row + ': please type their full email address. Their pass goes there.', field: 'email', row }
+    if (p.mobile && !groupMobileOk(p.mobile)) return { error: 'Person ' + row + ': please check the mobile number, or leave it empty.', field: 'mobile', row }
+    const first = seen.get(p.email)
+    if (first) return { error: 'Person ' + row + ' has the same email as person ' + first + '. Each person needs their own email address.', field: 'email', row }
+    seen.set(p.email, row)
+    people.push(p)
+  }
+  if (people.length < GROUP_MIN) {
+    return { error: 'A group booking is ' + GROUP_MIN + ' passes or more. ' + (people.length ? 'You have ' + people.length + ' on the list: add ' + (GROUP_MIN - people.length) + ' more.' : 'Add the people who are coming.'), field: 'members' }
+  }
+  if (people.length > GROUP_MAX) return { error: 'One booking takes up to ' + GROUP_MAX + ' people. For more, make a second booking, or write to info@bharataiinnovation.com.', field: 'members' }
+  return { pass, buyer, people }
+}
+
+// The registrations behind these addresses (event 1), first row per address.
+async function groupByEmail(c: any, emails: string[]): Promise<Map<string, any>> {
+  const out = new Map<string, any>()
+  for (let i = 0; i < emails.length; i += 80) {
+    const part = emails.slice(i, i + 80)
+    if (!part.length) continue
+    const { results } = await c.env.DB.prepare(`SELECT * FROM attendees WHERE event_id = 1 AND lower(email) IN (${part.map(() => '?').join(', ')}) ORDER BY id`).bind(...part).all() as any
+    for (const r of (results || [])) {
+      const k = String(r.email || '').trim().toLowerCase()
+      if (!out.has(k)) out.set(k, r)
+    }
+  }
+  return out
+}
+
+// A new registration, in the shape Add Attendee writes (as issueTeamPass and
+// showcaseRegister do). registration_source 'group'.
+async function groupNewAttendee(c: any, p: { name: string; email: string; company: string; designation: string; mobile: string },
+    v: { badge: string; status: string; amount: string; lunch: string; mainEvent: number; answered: boolean; waitlist: boolean },
+    who: { actor: string; kind: string }): Promise<number> {
+  const cols = await attendeeColumns(c)
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  const set: Record<string, any> = {
+    company: p.company, job_title: p.designation, mobile: p.mobile, badge_type: v.badge, role: 'attendee',
+    lunch_inclusion: v.lunch, country: 'India', payment_status: v.status, payment_amount: v.amount, registration_date: now,
+    entry_status: v.waitlist ? 'waitlisted' : null, entry_slot: null,
+  }
+  const names: string[] = ['event_id', 'name', 'email'], vals: any[] = [1, p.name, p.email]
+  for (const f of ADMIN_ATTENDEE_FIELDS) {
+    if (f === 'name' || f === 'email' || !cols.has(f)) continue
+    names.push(f); vals.push(f in set ? set[f] : '')
+  }
+  if (cols.has('main_event')) { names.push('main_event'); vals.push(v.mainEvent) }
+  if (v.answered && cols.has('main_event_answered_at')) { names.push('main_event_answered_at'); vals.push(now) }
+  if (cols.has('registration_source')) { names.push('registration_source'); vals.push('group') }
+  names.push('is_online'); vals.push(0)
+  const r = await c.env.DB.prepare(`INSERT INTO attendees (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`).bind(...vals).run()
+  const id = Number(r.meta.last_row_id)
+  await audit(c, 'attendee.create', 'attendee', id, { name: p.name, email: p.email, badge_type: v.badge, source: 'group' }, who)
+  return id
+}
+
+const _groupStarts = new Map<string, number[]>()
+
+// Step one: the list checked, the buyer found (or registered), one order at our price.
+app.post('/api/group/start', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (!(await groupReady(c))) return c.json({ error: 'Group booking opens shortly. Please try again in a little while, or write to info@bharataiinnovation.com.' }, 503)
+  if (!(await onlinePaymentsOn(c))) return c.json({ error: 'Online payment is not available just now. Please try again in a little while, or write to info@bharataiinnovation.com.' }, 503)
+  // Every try counts, refusals too: the answer says whether an address holds a pass.
+  const ip = String(c.req.header('CF-Connecting-IP') || 'local'), now = Date.now()
+  const starts = (_groupStarts.get(ip) || []).filter(t => now - t < 3600000)
+  if (starts.length >= GROUP_STARTS_PER_HOUR) return c.json({ error: 'That is a lot of bookings started in one hour. Please wait a little, or write to info@bharataiinnovation.com.' }, 429)
+  starts.push(now); _groupStarts.set(ip, starts)
+  if (_groupStarts.size > 5000) _groupStarts.clear()
+
+  const body = await c.req.json().catch(() => ({})) as any
+  const ask = groupCheck(body)
+  if ('error' in ask) return c.json(ask, 400)
+  // The GST invoice section, as the paid form sends it (empty: an invoice in the
+  // buyer's own name). Kept with the order and saved for the buyer when the money
+  // lands, so a stranger typing someone's address cannot change their details.
+  const billing: any = body.billing === undefined ? undefined : cleanBilling(body.billing)
+  if (billing && 'error' in billing) return c.json({ error: billing.error, field: 'billing' }, 400)
+  const amounts = groupAmounts(ask.pass, ask.people.length)
+  if (!amounts) return c.json({ error: 'Choose the pass for your group: Delegate, Premium Delegate or VIP.', field: 'pass' }, 400)
+
+  const known = await groupByEmail(c, ask.people.map(p => p.email))
+  for (const p of ask.people) {
+    if (groupHeldPass(known.get(p.email))) {
+      return c.json({ error: 'Person ' + p.row + ' (' + p.email + ') already has a pass for the event, so they need no new one. Take them off the list.', field: 'email', row: p.row }, 409)
+    }
+  }
+
+  // The buyer: the signed-in person when the address is theirs, else whoever holds
+  // the address, else a new registration on a Visitor Pass (coming only if they are
+  // on the list). Only a registration made here gets a session: typing an address
+  // proves nothing about owning it.
+  let buyer: any = null, made = false
+  const me = await verifyAttendeeSession(c)
+  if (me !== null) {
+    const s = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(me).first() as any
+    if (s && String(s.email || '').trim().toLowerCase() === ask.buyer.email) buyer = s
+  }
+  if (!buyer) buyer = known.get(ask.buyer.email) || await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = 1 AND lower(email) = ? ORDER BY id LIMIT 1').bind(ask.buyer.email).first()
+  const self = ask.people.find(p => p.email === ask.buyer.email)
+  if (!buyer) {
+    const mobile = ask.buyer.mobile && !(await mobileHolder(c, 1, ask.buyer.mobile)) ? ask.buyer.mobile : ''
+    const id = await groupNewAttendee(c, { name: ask.buyer.name, email: ask.buyer.email, company: ask.buyer.company, designation: self?.designation || '', mobile },
+      { badge: 'Visitor Pass', status: '', amount: '', lunch: 'No', mainEvent: self ? 1 : 0, answered: false, waitlist: await freePassWaitlistOn(c) },
+      { actor: 'attendee', kind: 'attendee' })
+    buyer = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first()
+    made = true
+  }
+  const recent = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM payment_orders WHERE attendee_id = ? AND created_at > datetime('now', '-1 hour')").bind(buyer.id).first() as any
+  if (Number(recent?.n || 0) >= PAY_ORDERS_PER_HOUR) return c.json({ error: 'That is a lot of payment attempts in one hour. Please wait a little, or write to info@bharataiinnovation.com.' }, 429)
+
+  const members = ask.people.map(p => ({
+    attendee_id: known.get(p.email) ? Number(known.get(p.email).id) : p.email === ask.buyer.email ? Number(buyer.id) : null,
+    name: p.name, email: p.email, mobile: p.mobile, designation: p.designation,
+  }))
+  // Starting again replaces this buyer's open booking.
+  await c.env.DB.prepare("UPDATE group_orders SET status = 'cancelled' WHERE buyer_attendee_id = ? AND status = 'held'").bind(buyer.id).run()
+  const rand = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => (b % 36).toString(36)).join('')
+  const orderId = ('BAI' + buyer.id + '-' + Date.now().toString(36) + rand).toUpperCase()
+  const passType = groupPassType(ask.people.length, ask.pass)
+  await c.env.DB.prepare(
+    'INSERT INTO group_orders (event_id, order_id, buyer_attendee_id, pass_type, qty, unit_base_paise, members, buyer, billing) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(orderId, buyer.id, ask.pass, ask.people.length, amounts.unitBase, JSON.stringify(members), JSON.stringify(ask.buyer), billing === undefined ? '' : JSON.stringify(billing.billing)).run()
+  await c.env.DB.prepare(
+    'INSERT INTO payment_orders (order_id, attendee_id, event_id, pass_type, previous_badge, base_paise, gst_paise, amount_paise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(orderId, buyer.id, 1, passType, buyer.badge_type || '', amounts.base, amounts.gst, amounts.total).run()
+  await audit(c, 'group.order', 'attendee', buyer.id, { order_id: orderId, pass_type: passType, amount_paise: amounts.total, people: ask.people.length }, { actor: 'attendee ' + buyer.id, kind: 'attendee' })
+  if (made) await issueAttendeeSession(c, buyer.id)
+  return c.json({ order_id: orderId, amount: amounts.total / 100, qty: ask.people.length, pay_url: '/pay/ccavenue/' + await payLinkToken(c, orderId) }, 201)
+})
+
+// The money has arrived for a group: each person on the list holds the pass, paid,
+// with their share and the lunch it includes; the list is written back with who got
+// one; then (in waitUntil) the receipt, each person's email, the buyer's summary and
+// the team's note. A failed email never undoes the payment.
+async function settleGroupOrder(c: any, order: any, trackingId: string, paymentMode: string) {
+  const kind = groupOrderOf(order)
+  const g = kind ? await c.env.DB.prepare('SELECT * FROM group_orders WHERE order_id = ?').bind(order.order_id).first().catch(() => null) as any : null
+  if (!kind || !g) throw new Error('group order ' + order.order_id + ' has no list of people (group_orders)')
+  const buyer = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any
+  if (!buyer) throw new Error('attendee ' + order.attendee_id + ' no longer exists')
+  const json = (s: any, d: any) => { try { const v = JSON.parse(String(s ?? '')); return v ?? d } catch { return d } }
+  const list: any[] = Array.isArray(json(g.members, [])) ? json(g.members, []) : []
+  const typed = json(g.buyer, {}) || {}
+  const pass = kind.pass
+  const unitBase = Number(g.unit_base_paise) || 0
+  const share = ((unitBase + Math.round(unitBase * PASS_GST_RATE / 100)) / 100).toFixed(2)
+  const lunch = LUNCH_BY_PASS[pass] || 'Yes'
+  const company = String(typed.company || buyer.company || '').trim()
+  const cols = await attendeeColumns(c)
+  const gateway = { actor: 'CCAvenue', kind: 'gateway' }
+  // Every mobile in the event, read once: a number someone else holds is left off
+  // (one mobile, one attendee), never written to a second registration.
+  const mobiles = new Map<string, number>()
+  let mobilesRead = false
+  try {
+    const { results } = await c.env.DB.prepare("SELECT id, mobile FROM attendees WHERE event_id = 1 AND mobile IS NOT NULL AND mobile != ''").all() as any
+    for (const r of (results || [])) { const k = mobileKey(r.mobile); if (k && !mobiles.has(k)) mobiles.set(k, Number(r.id)) }
+    mobilesRead = true
+  } catch { /* then no mobile is written */ }
+  const known = await groupByEmail(c, list.map(m => String(m?.email || '').trim().toLowerCase()).filter(e => validEmailSyntax(e)))
+
+  const out: any[] = [], given: any[] = [], skipped: any[] = [], failed: any[] = []
+  for (const m of list) {
+    const email = String(m?.email || '').trim().toLowerCase()
+    // status first, then attendee_id: groupMemberNotSql finds a given pass by that text.
+    const e: any = { status: 'failed', attendee_id: m?.attendee_id ?? null, name: String(m?.name || '').trim(), email, mobile: String(m?.mobile || ''), designation: String(m?.designation || '') }
+    try {
+      if (!validEmailSyntax(email)) throw new Error('no usable email')
+      const a = known.get(email)
+      const held = groupHeldPass(a)
+      if (a && held) {
+        // A pass of their own arrived after the booking began: not a second one.
+        e.attendee_id = Number(a.id); e.status = 'skipped'; e.held = held
+        skipped.push(e); out.push(e); continue
+      }
+      const key = mobileKey(e.mobile)
+      const freeMobile = (id: number | null) => mobilesRead && key && (!mobiles.has(key) || mobiles.get(key) === id) ? e.mobile : ''
+      if (a) {
+        const sets = ['badge_type = ?'], vals: any[] = [pass]
+        if (cols.has('payment_status')) sets.push("payment_status = 'paid'")
+        if (cols.has('payment_amount')) { sets.push('payment_amount = ?'); vals.push(share) }
+        if (cols.has('main_event')) sets.push('main_event = 1')
+        if (cols.has('main_event_answered_at')) sets.push("main_event_answered_at = COALESCE(main_event_answered_at, datetime('now'))")
+        if (cols.has('lunch_inclusion')) { sets.push('lunch_inclusion = ?'); vals.push(lunch) }
+        const blank = (k: string) => !String(a[k] ?? '').trim()
+        if (e.designation && cols.has('job_title') && blank('job_title')) { sets.push('job_title = ?'); vals.push(e.designation) }
+        if (company && cols.has('company') && blank('company')) { sets.push('company = ?'); vals.push(company) }
+        const mob = cols.has('mobile') && blank('mobile') ? freeMobile(Number(a.id)) : ''
+        if (mob) { sets.push('mobile = ?'); vals.push(mob) }
+        await c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, a.id).run()
+        await audit(c, 'attendee.group-pass', 'attendee', a.id, { badge_type: [a.badge_type || null, pass], order_id: order.order_id }, gateway)
+        e.attendee_id = Number(a.id)
+        if (mob) mobiles.set(key, e.attendee_id)
+      } else {
+        const mob = freeMobile(null)
+        e.attendee_id = await groupNewAttendee(c, { name: e.name || email, email, company, designation: e.designation, mobile: mob },
+          { badge: pass, status: 'paid', amount: share, lunch, mainEvent: 1, answered: true, waitlist: false }, gateway)
+        e.created = true
+        if (mob) mobiles.set(key, e.attendee_id)
+      }
+      e.status = 'given'
+      given.push(e)
+    } catch (err: any) {
+      e.status = 'failed'; e.error = String(err?.message || err).slice(0, 120)
+      failed.push(e)
+      console.error('group pass not given', order.order_id, email, err?.message)
+    }
+    out.push(e)
+  }
+  await c.env.DB.prepare("UPDATE group_orders SET status = 'paid', paid_at = datetime('now'), members = ? WHERE order_id = ?").bind(JSON.stringify(out), order.order_id).run().catch(() => {})
+  // The GST invoice details from the form, kept for the receipt as the paid form keeps them.
+  if (String(g.billing ?? '') !== '') {
+    const b = json(g.billing, null)
+    try {
+      await saveBilling(c, buyer.id, b && b.legal_name ? { legal_name: String(b.legal_name), gstin: String(b.gstin || ''), address: String(b.address || '') } : null)
+    } catch { /* the receipt is then in their own name */ }
+  }
+  await audit(c, 'payment.received', 'attendee', buyer.id, {
+    order_id: order.order_id, tracking_id: trackingId, pass_type: order.pass_type, amount_paise: order.amount_paise, payment_mode: paymentMode,
+    group: { pass, qty: kind.qty, unit_base_paise: unitBase, given: given.map(e => e.attendee_id), skipped: skipped.map(e => e.email), failed: failed.map(e => e.email) },
+  }, gateway)
+
+  const buyerGiven = given.some(e => Number(e.attendee_id) === Number(buyer.id))
+  const before = { status: buyer.payment_status, lunch: buyer.lunch_inclusion }
+  const mails = (async () => {
+    const receipt = await autoReceiptForOrder(c, order, buyer, trackingId, '')
+    // Raising a receipt marks its buyer's registration paid (issueInvoice). A buyer
+    // not on the list paid for the others: their own pass stays as it was.
+    if (receipt && !buyerGiven && cols.has('payment_status')) {
+      const lunchToo = cols.has('lunch_inclusion')
+      await c.env.DB.prepare('UPDATE attendees SET payment_status = ?' + (lunchToo ? ', lunch_inclusion = ?' : '') + ' WHERE id = ?')
+        .bind(...(lunchToo ? [String(before.status ?? ''), before.lunch ?? null] : [String(before.status ?? '')]), buyer.id).run().catch(() => {})
+    }
+    await groupEmails(c, { order, kind, buyer, typed, company, given, skipped, failed, receipt, trackingId, share })
+  })()
+  let scheduled = false
+  try { c.executionCtx.waitUntil(mails); scheduled = true } catch { /* no ctx */ }
+  if (!scheduled) await mails
+}
+
+// Never throws: every pass is given by the time this runs.
+async function groupEmails(c: any, x: { order: any; kind: { qty: number; pass: string }; buyer: any; typed: any; company: string; given: any[]; skipped: any[]; failed: any[]; receipt: { invoice_no: string; url: string } | null; trackingId: string; share: string }) {
+  const { order, kind, buyer, typed, company, given, skipped, failed, receipt, trackingId, share } = x
+  const pass = kind.pass
+  try {
+    const buyerName = String(typed.name || buyer.name || '').trim()
+    const by = payEsc(buyerName) + (company ? ', ' + payEsc(company) : '')
+    const amount = rupees(Number(order.amount_paise))
+    const shareText = '&#8377;' + Number(share).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const appUrl = (await settingValue(c, 'app_url').catch(() => '')) || 'https://bharataiinnovation.com/app'
+    let verified = false
+    try { verified = await verifiedLoginEnabled(c) } catch { verified = false }
+    const workshop = workshopTiers().includes(pass)
+    const page = (title: string, inner: string) => `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+      <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+        ${emailBrandHeader(title, '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+        <div style="padding:28px;">${inner}</div></div></body></html>`
+    const hi = (name: any) => `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${payEsc(String(name || '').split(' ')[0] || 'there')}</strong>,</p>`
+
+    // Each person: their pass, who booked it, and their own link into the app. Few,
+    // so one after another with a short pause.
+    for (const e of given) {
+      try {
+        let href = appUrl
+        if (verified) {
+          try {
+            const issued = await createLoginToken(c, 1, e.email, PROFILE_LINK_TTL_MINUTES, 2)
+            href = `${appUrl}?email=${encodeURIComponent(e.email)}&token=${issued.token}`
+          } catch { /* the plain link still opens the app */ }
+        }
+        const html = page('Your pass is confirmed', hi(e.name) +
+          payP(`Your <strong>${payEsc(pass)}</strong> for Bharat AI Innovation 2026 is confirmed, booked by ${by}.`) +
+          payRows([['Your pass', payEsc(pass)], ['Booked by', by], ['When', '20 and 21 Nov 2026'], ['Where', 'World Trade Center Mumbai, Cuffe Parade']]) +
+          `<ul style="margin:0 0 16px 18px;padding:0;font-size:14px;line-height:1.7;color:#555;">
+            <li>Open the app with the button below.</li>
+            <li>Add your photo and download your pass: the badge desk scans it to check you in.</li>
+            ${LUNCH_BY_PASS[pass] === 'Yes' ? '<li>Your pass includes lunch on both days.</li>' : ''}
+          </ul>` +
+          `<div style="text-align:center;margin:20px 0 6px;">${payButton(href, 'Open the app')}</div>` +
+          (workshop ? payP(`Your pass includes one hands-on workshop. Seats go first come, first served: <a href="${payEsc(href + (href.includes('?') ? '&' : '?') + 'action=workshop')}" style="color:#FF6B00;font-weight:bold;">choose your seat in the app</a>.`) : '') +
+          payP('Questions? Write to info@bharataiinnovation.com.'))
+        await sendAdminEmail(c, e.email, `Your ${pass} for Bharat AI Innovation 2026 is confirmed`, html, { unsubscribe: false })
+      } catch (err: any) { console.error('group pass email failed', order.order_id, e.email, err?.message) }
+      await new Promise(r => setTimeout(r, 120))
+    }
+
+    const li = (e: any, note: string) => `<li style="margin:0 0 4px;">${payEsc(e.name || e.email)} <span style="color:#666;">(${payEsc(e.email)})</span>: ${note}</li>`
+    const people = `<ol style="margin:0 0 16px 18px;padding:0;font-size:14px;line-height:1.6;color:#333;">` +
+      given.map(e => li(e, 'confirmed')).join('') +
+      skipped.map(e => li(e, '<span style="color:#B3261E;">not given, already had a pass</span>')).join('') +
+      failed.map(e => li(e, '<span style="color:#B3261E;">our team is finishing this one</span>')).join('') + `</ol>`
+    const rows = payRows([
+      ['Booked', `${kind.qty} x ${payEsc(pass)}, ${groupPctFor(kind.qty)}% off`],
+      ['Each pass', `${shareText} <span style="font-weight:normal;color:#666;">(includes ${PASS_GST_RATE}% GST)</span>`],
+      ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${PASS_GST_RATE}% GST)</span>`],
+      ['Order number', payEsc(order.order_id)],
+      ['CCAvenue reference', payEsc(trackingId)],
+    ])
+    const n = (k: number) => k + ' ' + (k === 1 ? 'person' : 'people')
+    const buyerHtml = page('Your group is booked', hi(buyerName) +
+      payP(`Thank you. Your payment has arrived and ${groupPlural(given.length, pass)} for Bharat AI Innovation 2026 ${given.length === 1 ? 'is' : 'are'} confirmed.`) +
+      rows +
+      `<p style="margin:0 0 8px;font-size:14px;font-weight:bold;color:#1E2140;">Who is coming</p>` + people +
+      payP('Each person has an email from us with their own link to the app, to add their photo and download their pass. The badge desk scans it.') +
+      (skipped.length ? payP(`<strong>${n(skipped.length)} on your list already had a pass</strong> by the time your payment arrived, so we did not give them a second one. Our team will write to you within a working day to refund ${skipped.length === 1 ? 'that pass' : 'those passes'}, or to give ${skipped.length === 1 ? 'it' : 'them'} to someone else on your team.`) : '') +
+      (failed.length ? payP(`Our team is finishing the pass for ${n(failed.length)}, marked above, and will write to you.`) : '') +
+      (receipt
+        ? payP(`Receipt <strong>${payEsc(receipt.invoice_no)}</strong> is in a separate email, and here: <a href="${payEsc(receipt.url)}" style="color:#FF6B00;font-weight:bold;">view the receipt</a>. Your GST invoice follows from our accounts team.`)
+        : payP('Your receipt and GST invoice follow separately.')))
+    await sendAdminEmail(c, String(buyer.email), `Booked: ${groupPlural(given.length, pass)} for your group at Bharat AI Innovation 2026`, buyerHtml, { unsubscribe: false })
+
+    const team = (await settingValue(c, 'inquiry_notify_email').catch(() => '')) || 'info@bharataiinnovation.com'
+    const act = skipped.length || failed.length
+    await sendAdminEmail(c, team, `Group booking paid: ${buyerName}${company ? ', ' + company : ''}, ${kind.qty} x ${pass}, Rs ${amount}${act ? ' (ACTION NEEDED)' : ''}`,
+      `<div style="font-family:Arial,sans-serif;max-width:600px;">
+        <p style="font-size:14px;line-height:1.6;color:#333;margin:0 0 14px;"><strong>${payEsc(buyerName)}</strong> (${payEsc(buyer.email)}${typed.mobile ? ', ' + payEsc(typed.mobile) : ''}${company ? ', ' + payEsc(company) : ''}) has paid online for a group booking at ${GROUP_DISCOUNT_PCT}% off.</p>
+        ${rows}${people}
+        ${skipped.length ? `<p style="font-size:14px;line-height:1.6;color:#B3261E;margin:0 0 12px;"><strong>Refund or swap:</strong> ${n(skipped.length)} paid for and not given, because they already held a pass (${skipped.map(e => payEsc(e.email) + ': ' + payEsc(groupPassName(e.held || ''))).join('; ')}). Write to the buyer.</p>` : ''}
+        ${failed.length ? `<p style="font-size:14px;line-height:1.6;color:#B3261E;margin:0 0 12px;"><strong>Not finished:</strong> give ${n(failed.length)} the ${payEsc(pass)} by hand in Admin, Attendees (${failed.map(e => payEsc(e.email)).join('; ')}).</p>` : ''}
+        <p style="font-size:13px;line-height:1.6;color:#555;margin:0;">${receipt ? 'Receipt ' + payEsc(receipt.invoice_no) + ' went to the buyer.' : 'The receipt could not be sent automatically: raise it from Admin, Payments.'} The GST tax invoice is still to raise: Admin, Payments, &ldquo;Paid online&rdquo;.</p></div>`,
+      { unsubscribe: false })
+  } catch (e: any) { console.error('group emails failed', order?.order_id, e?.message) }
+}
+
+// The page after CCAvenue. Paid: the group is booked (and the form's saved list is
+// cleared). Otherwise: what happened, and Try again on the form, which keeps the list.
+async function groupPayResult(c: any, order: any) {
+  const no = payEsc(order.order_id)
+  const kind = groupOrderOf(order)
+  const pass = kind ? kind.pass : 'pass'
+  const g = await c.env.DB.prepare('SELECT * FROM group_orders WHERE order_id = ?').bind(order.order_id).first().catch(() => null) as any
+  let list: any[] = []
+  try { list = JSON.parse(String(g?.members || '[]')) || [] } catch { list = [] }
+  if (order.status === 'paid') {
+    const settled = String(g?.status || '') === 'paid'
+    const given = settled ? list.filter(e => e?.status === 'given').length : (kind?.qty || 0)
+    const skipped = settled ? list.filter(e => e?.status === 'skipped').length : 0
+    const buyerIn = settled && list.some(e => e?.status === 'given' && Number(e.attendee_id) === Number(order.attendee_id))
+    return c.html(payPage('Group booked', payH1('Payment received. Your group is booked.') +
+      payP(`${groupPlural(given, pass)} for Bharat AI Innovation 2026 ${given === 1 ? 'is' : 'are'} confirmed. Each person on your list gets an email from us with their own link to the app, to add their photo and download their pass.`) +
+      (skipped ? payP(`${skipped} ${skipped === 1 ? 'person' : 'people'} on your list already had a pass, so we did not give them a second one. Our team will write to you about ${skipped === 1 ? 'it' : 'them'}.`) : '') +
+      payRows([['Amount paid', `&#8377;${rupees(Number(order.amount_paise))} <span style="font-weight:normal;color:#666;">(includes GST)</span>`], ['Order number', no], ['CCAvenue reference', payEsc(order.tracking_id)]]) +
+      payP('The receipt is on its way to your email, and the GST invoice follows from our accounts team.') +
+      (buyerIn ? payButton('/app', 'Open the app') : payButton('/passes', 'Back to the passes')) +
+      '<script>try{sessionStorage.removeItem("bai_group_draft")}catch(e){}</script>'))
+  }
+  if (order.status === 'awaited') {
+    return c.html(payPage('Waiting for your bank', payH1('Your bank has not confirmed yet.') +
+      payP('Please do not pay a second time. If the money has left your account, your group is booked as soon as the bank reports it.') +
+      payP(`If nothing has changed in a day, write to info@bharataiinnovation.com quoting order <strong>${no}</strong>.`)))
+  }
+  if (order.status === 'mismatch') {
+    return c.html(payPage('We are checking this payment', payH1('We need to check this payment.') +
+      payP(`The amount the payment gateway reported is not the price of the booking, so the passes have not been issued yet. Our team has been told and will write to you. Your order number is <strong>${no}</strong>.`)))
+  }
+  return c.html(payPage('Not booked yet', payH1(order.status === 'aborted' ? 'You cancelled the payment.' : order.status === 'created' ? 'We have not heard back about this payment.' : 'The payment did not go through.') +
+    payP(order.status === 'created' ? 'If you completed it, give it a minute and refresh this page. If you did not, nothing was charged.' : 'Nothing was charged for this order, and no passes were issued.') +
+    payButton('/group', 'Try again')))
+}
+
+// Admin's Overview board counts "by hand" a paid tier with no paid order of its own.
+// A group member's pass is paid through the buyer's order: this clause, added to the
+// board's noOrder, keeps their share from being counted twice. '' until 0059 runs.
+async function groupMemberNotSql(c: any, alias = 'a'): Promise<string> {
+  if (!(await groupReady(c))) return ''
+  return ` AND NOT EXISTS (SELECT 1 FROM group_orders g WHERE g.status = 'paid' AND instr(g.members, '"status":"given","attendee_id":' || ${alias}.id || ',') > 0)`
+}
+
+// /group: the form. Server-rendered (the prices come from passPriceInr, as the charge
+// does); /js/group-booking.js adds people, keeps the total and checks the fields.
+app.get('/group', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const open = await groupReady(c)
+  const payOn = open && !!(await onlinePaymentsOn(c))
+  let fill: any = null
+  try {
+    const me = await verifyAttendeeSession(c)
+    if (me !== null) fill = await c.env.DB.prepare('SELECT name, email, mobile, company FROM attendees WHERE id = ?').bind(me).first()
+  } catch { /* an empty form */ }
+  const want = String(c.req.query('pass') || '').toLowerCase()
+  const pick = want === 'vip' ? 'VIP Pass' : want === 'premium' ? 'Premium Delegate Pass' : 'Delegate Pass'
+  return c.html(groupPageHTML({ open, payOn, fill, pick }))
+})
+
+function groupPageHTML(o: { open: boolean; payOn: boolean; fill: any; pick: string }): string {
+  const e = payEsc
+  const f = o.fill || {}
+  const option = (p: string) => {
+    const list = passPriceInr(p), unit = groupUnitInr(p, GROUP_TIERS[0].min), small = groupUnitInr(p, GROUP_MIN)
+    return `
+        <label class="gb-opt">
+          <input type="radio" name="pass" value="${e(p)}" data-list="${list}"${p === o.pick ? ' checked' : ''}>
+          <span class="gb-opt-in">
+            <span class="gb-opt-head"><b>${e(p)}</b><span class="gb-price"><span class="gb-sr">List price </span><s>${groupInr(list * 100)}</s> <span class="gb-sr">, group price </span>${groupInr(unit * 100)} <small>+ GST each, ${GROUP_TIERS[0].min} or more</small></span></span>
+            <span class="gb-opt-line">${groupInr(small * 100)} + GST each for ${GROUP_MIN} or ${GROUP_TIERS[0].min - 1}</span>
+            <span class="gb-opt-line">${GROUP_LINES[p]}</span>
+          </span>
+        </label>`
+  }
+  const field = (id: string, label: string, value: string, extra = '') =>
+    `<label class="gb-field" for="gb-${id}"><span>${label}</span><input id="gb-${id}" value="${e(value)}" ${extra}><em class="gb-err" id="gb-err-${id}" role="alert"></em></label>`
+  const person = (n: number) => `
+          <li class="gb-person">
+            <div class="gb-person-head"><b class="gb-person-no">Person ${n}</b><button type="button" class="gb-remove" aria-label="Remove person ${n}">Remove</button></div>
+            <div class="gb-grid">
+              <label class="gb-field"><span>Full name</span><input name="name" autocomplete="off" autocapitalize="words" maxlength="80"></label>
+              <label class="gb-field"><span>Email</span><input name="email" type="email" inputmode="email" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="254"></label>
+              <label class="gb-field"><span>Mobile <small>(optional)</small></span><input name="mobile" type="tel" inputmode="tel" autocomplete="off" maxlength="20"></label>
+              <label class="gb-field"><span>Designation <small>(optional)</small></span><input name="designation" autocomplete="off" maxlength="120"></label>
+            </div>
+            <p class="gb-err gb-row-err" role="alert"></p>
+          </li>`
+  // What the page shows before the script runs: the price for GROUP_MIN people.
+  const a = groupAmounts(o.pick, GROUP_MIN)!
+  const off = GROUP_MIN * (passPriceInr(o.pick) - a.unit) * 100
+  const saved = off + Math.round(off * PASS_GST_RATE / 100)
+  let body: string
+  if (!o.open) {
+    body = `<div class="gb-card"><h2>Group booking opens shortly</h2><p>Please come back in a little while. Until then, single passes are on <a href="/register">the registration page</a>, or write to <a href="mailto:info@bharataiinnovation.com">info@bharataiinnovation.com</a>.</p></div>`
+  } else {
+    body = `<form class="gb-card" id="gb-form" novalidate data-gst="${PASS_GST_RATE}" data-min="${GROUP_MIN}" data-max="${GROUP_MAX}" data-tiers="${e(JSON.stringify(GROUP_TIERS))}" data-pay="${o.payOn ? '1' : '0'}">
+      <h2>1. Choose the pass</h2>
+      <p class="gb-help">Everyone in one booking gets the same pass. Prices are per person.</p>
+      <fieldset class="gb-opts"><legend class="gb-sr">The pass for everyone in the group</legend>${GROUP_PASSES.map(option).join('')}
+      </fieldset>
+      <em class="gb-err" id="gb-err-pass" role="alert"></em>
+
+      <h2>2. Your details</h2>
+      <p class="gb-help">You pay, and the receipt comes to you. You need not be coming yourself.</p>
+      ${field('buyer-name', 'Your name', f.name || '', 'autocomplete="name" autocapitalize="words" maxlength="80"')}
+      ${field('buyer-email', 'Your email', f.email || '', 'type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254"')}
+      ${field('buyer-mobile', 'Your mobile', f.mobile || '', 'type="tel" inputmode="tel" autocomplete="tel" maxlength="20"')}
+      ${field('buyer-company', 'Company or organisation <small>(optional)</small>', f.company || '', 'autocomplete="organization" maxlength="150"')}
+      <details class="gb-more" id="gb-gst">
+        <summary>Need the GST invoice in your company&rsquo;s name? <small>(optional)</small></summary>
+        ${field('gst-name', 'Registered company name', '', 'autocomplete="organization" maxlength="160"')}
+        ${field('gstin', 'GSTIN', '', 'maxlength="15" autocapitalize="characters" spellcheck="false" placeholder="15 characters, empty if not registered" style="text-transform:uppercase"')}
+        <label class="gb-field" for="gb-gst-address"><span>Billing address</span><textarea id="gb-gst-address" rows="2" autocomplete="street-address" maxlength="400" placeholder="Registered with the GSTIN"></textarea><em class="gb-err" id="gb-err-gst-address" role="alert"></em></label>
+        <p class="gb-help">A receipt is emailed the moment the payment goes through; the GST invoice follows from the accounts team. Leave this empty for an invoice in your own name.</p>
+      </details>
+
+      <h2>3. Who is coming</h2>
+      <p class="gb-help">Each person gets their own pass by email, with a link to the app. Their mobile and designation can wait: they can add them in the app.</p>
+      <label class="gb-check"><input type="checkbox" id="gb-me"> <span>I am attending too</span></label>
+      <ol class="gb-people" id="gb-people">${Array.from({ length: GROUP_MIN }, (_, i) => person(i + 1)).join('')}
+      </ol>
+      <em class="gb-err" id="gb-err-people" role="alert"></em>
+      <button type="button" class="gb-add" id="gb-add">Add a person</button>
+      <p class="gb-help" id="gb-max" hidden>That is ${GROUP_MAX}, the most one booking takes. For more, make a second booking.</p>
+
+      <div class="gb-sum" aria-live="polite">
+        <p class="gb-count" id="gb-count">0 of at least ${GROUP_MIN} people added.</p>
+        <p class="gb-total" id="gb-total">For ${GROUP_MIN} people: ${GROUP_MIN} &times; ${groupInr(a.unitBase)} + ${PASS_GST_RATE}% GST = ${groupInr(a.total)}</p>
+        <p class="gb-save" id="gb-save">You save ${groupInr(saved)} on the list price.</p>
+      </div>
+      <button class="gb-btn" type="submit" id="gb-go"${o.payOn ? '' : ' disabled'}>Pay ${groupInr(a.total)} and book ${GROUP_MIN} passes</button>
+      <p class="gb-msg" id="gb-msg" role="status" aria-live="polite">${o.payOn ? '' : 'Online payment is not available just now. Please try again in a little while.'}</p>
+      <p class="gb-small">You pay once, on CCAvenue&rsquo;s secure page: UPI, cards, net banking or wallets. The passes are confirmed the moment the payment goes through.</p>
+    </form>
+    <template id="gb-row">${person(0)}</template>`
+  }
+  const desc = `${GROUP_RULE_TEXT} Delegate, Premium Delegate or VIP passes for your team at Bharat AI Innovation 2026, 20–21 Nov, WTC Mumbai.`
+  return `${sharedHeadHTML('Group booking', '/group', desc).replace('</head>', `<link rel="stylesheet" href="/css/passes-design.css?v=20261106">
+<style>
+  .gb-page{margin:0;background:#F7F8FC;color:#1E2140;font-family:Manrope,Arial,sans-serif}
+  .gb-wrap{max-width:720px;margin:0 auto;padding:24px 16px 64px}
+  .gb-hero h1{font-size:28px;line-height:1.2;margin:10px 0 10px;font-weight:800}
+  .gb-hero p{font-size:15px;line-height:1.65;color:#4B5270;margin:0 0 8px}
+  .gb-hero .gb-rule{font-size:17px;font-weight:800;color:#1E2140}
+  .gb-tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#C84F00;background:#FFF1E6;border-radius:999px;padding:5px 10px}
+  .gb-card{background:#fff;border:1px solid #E4E7F4;border-radius:16px;padding:20px 16px;margin-top:20px}
+  .gb-card h2{font-size:19px;margin:28px 0 6px}
+  .gb-card h2:first-child{margin-top:0}
+  .gb-card p{font-size:14px;line-height:1.6;color:#4B5270;margin:0 0 10px}
+  .gb-card a{color:#C84F00;font-weight:700}
+  .gb-help{font-size:13px!important;color:#5E6585!important}
+  .gb-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .gb-opts{border:0;padding:0;margin:0}
+  .gb-opt{display:block;position:relative;margin:0 0 10px;cursor:pointer}
+  .gb-opt input{position:absolute;opacity:0;pointer-events:none}
+  .gb-opt-in{display:block;min-height:44px;box-sizing:border-box;border:2px solid #E4E7F4;border-radius:14px;padding:12px 14px}
+  .gb-opt input:checked + .gb-opt-in{border-color:#C84F00;background:#FFF7F0}
+  .gb-opt input:focus-visible + .gb-opt-in{outline:3px solid #1E2140;outline-offset:2px}
+  .gb-opt input[aria-invalid="true"] + .gb-opt-in{border-color:#B3261E}
+  .gb-opt-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 12px;font-size:15px}
+  .gb-price{font-weight:800;white-space:nowrap}
+  .gb-price s{font-weight:500;color:#6B7280;margin-right:2px}
+  .gb-price small{font-weight:500;color:#5E6585}
+  .gb-opt-line{display:block;margin-top:6px;font-size:13px;line-height:1.5;color:#4B5270}
+  .gb-field{display:block;margin:12px 0 0;min-width:0}
+  .gb-field > span{display:block;font-size:13px;font-weight:700;margin-bottom:5px}
+  .gb-field small{font-weight:500;color:#5E6585}
+  .gb-field input,.gb-field textarea{display:block;width:100%;box-sizing:border-box;min-height:48px;font:inherit;font-size:16px;padding:11px 12px;border:1.5px solid #CDD2E6;border-radius:10px;background:#fff;color:#1E2140}
+  .gb-field input:focus,.gb-field textarea:focus{outline:none;border-color:#C84F00;box-shadow:0 0 0 3px rgba(200,79,0,.18)}
+  .gb-field [aria-invalid="true"]{border-color:#B3261E;box-shadow:0 0 0 3px rgba(179,38,30,.14)}
+  .gb-err{display:block;font-style:normal;font-size:13px;line-height:1.5;color:#B3261E;margin:6px 0 0}
+  .gb-err:empty{display:none}
+  .gb-more{margin:16px 0 0;border:1px solid #E4E7F4;border-radius:12px;padding:0 14px}
+  .gb-more summary{display:flex;align-items:center;min-height:48px;font-size:14px;font-weight:700;cursor:pointer}
+  .gb-more summary small{font-weight:500;color:#5E6585;margin-left:4px}
+  .gb-more[open]{padding-bottom:12px}
+  .gb-check{display:flex;align-items:center;gap:10px;min-height:48px;margin:6px 0 0;font-size:16px;font-weight:700;cursor:pointer}
+  .gb-check input{width:22px;height:22px;margin:0;accent-color:#C84F00}
+  .gb-people{list-style:none;margin:0;padding:0}
+  .gb-person{border:1px solid #E4E7F4;border-radius:14px;padding:8px 12px 14px;margin:12px 0 0;background:#FBFBFE}
+  .gb-person-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .gb-person-no{font-size:15px}
+  .gb-remove{min-height:44px;min-width:44px;padding:0 10px;border:0;border-radius:10px;background:none;color:#B3261E;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+  .gb-remove[hidden]{display:none}
+  .gb-add{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;margin-top:14px;border:2px dashed #C84F00;border-radius:12px;background:#fff;color:#C84F00;font:inherit;font-size:16px;font-weight:800;cursor:pointer}
+  .gb-add[disabled]{opacity:.5;cursor:not-allowed}
+  .gb-sum{margin:22px 0 0;padding:14px;border-radius:12px;background:#F1F3FA}
+  .gb-sum p{margin:0 0 4px}
+  .gb-total{font-size:16px!important;font-weight:800;color:#1E2140!important}
+  .gb-save{font-weight:700;color:#0F7B47!important;margin:0!important}
+  .gb-btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;margin-top:16px;padding:10px 14px;box-sizing:border-box;border:0;border-radius:12px;background:#C84F00;color:#fff;font:inherit;font-size:16px;font-weight:800;line-height:1.3;text-align:center;cursor:pointer}
+  .gb-btn[disabled]{opacity:.6;cursor:not-allowed}
+  .gb-msg{min-height:18px;font-size:14px!important;font-weight:700;color:#B3261E!important;margin:10px 0 0!important}
+  .gb-small{font-size:12px!important;color:#5E6585!important;margin:8px 0 0!important}
+  .gb-points{margin:12px 0 0 18px;padding:0;font-size:14px;line-height:1.7;color:#4B5270}
+  @media (min-width:640px){
+    .gb-wrap{padding-top:36px}
+    .gb-hero h1{font-size:34px}
+    .gb-card{padding:26px 24px}
+    .gb-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+  }
+</style>
+</head>`)}
+<body class="gb-page">
+${siteHeaderHTML('/passes')}
+<main class="gb-wrap">
+  <section class="gb-hero">
+    <span class="gb-tag">Group booking &middot; up to ${GROUP_DISCOUNT_PCT}% off</span>
+    <h1>Book passes for your group</h1>
+    <p class="gb-rule">${GROUP_RULE_TEXT}</p>
+    <p>Bharat AI Innovation 2026, 20&ndash;21 Nov, World Trade Center Mumbai.</p>
+    <ul class="gb-points">
+      <li>Delegate, Premium Delegate or VIP: one kind of pass for the whole group.</li>
+      <li>You pay once. Each person gets their own pass by email.</li>
+      <li>Every paid pass has guaranteed entry on both days.</li>
+    </ul>
+  </section>
+  ${body}
+</main>
+<script src="/js/group-booking.js?v=20261112" defer></script>
+</body></html>`
+}
+
+// ==================== MEDIA & INFLUENCER PASS (12 Nov 2026) ====================
+// The organiser, 12 Nov 2026: a Media & Influencer Pass category. Influencers answer a
+// few qualifying questions (their channels, how they will promote the event, samples of
+// their content), the team approves or declines, and an approved request gets a pass.
+//
+// /media-pass is the form, phone first; its script is /js/media-pass.js, which asks
+// every question the way checkMediaPass() below does, in the same order and the same
+// words, so a box is named the same way whichever side finds it. The server's answer is
+// the one that counts. An application is an enquiry of type 'media' with every answer in
+// its metadata ({ source: 'media_pass_form', kind: 'media' | 'influencer', platforms,
+// ... }), so it is on the Inquiries desk too and needs no migration. A media enquiry from
+// the contact page (no metadata) is listed beside them.
+//
+// Admin -> Media & Influencer (/js/admin-media.js, one global, MediaDesk) lays out the
+// answers. Approve and issue pass gives a Media Pass or an Influencer Pass (role Media or
+// Influencer, lunch included) on the attendee row for that email, made in the shape Add
+// Attendee writes when there is none, leaving off a mobile someone else holds. A pass of
+// their own (a paid Delegate, Premium, VIP, Academic or Student Pass, a Speaker, an
+// Exhibitor, a complimentary pass) is kept: the request is marked approved and the email
+// says they keep it. Approved = enquiry status Won, declined = Closed; the note joins the
+// others in admin_notes and admin_audit has media-pass.approved / media-pass.declined.
+const MEDIA_PASS_KINDS = ['media', 'influencer']
+const MEDIA_PASS_BADGE: Record<string, string> = { media: 'Media Pass', influencer: 'Influencer Pass' }
+const MEDIA_PASS_BADGES = ['Media Pass', 'Influencer Pass']
+const MEDIA_PASS_ROLE: Record<string, string> = { media: 'Media', influencer: 'Influencer' }
+const MEDIA_PASS_WORD: Record<string, string> = { media: 'Media', influencer: 'Influencer / creator' }
+const MEDIA_PLATFORMS: [string, string][] = [['instagram', 'Instagram'], ['youtube', 'YouTube'], ['linkedin', 'LinkedIn'], ['x', 'X (Twitter)'], ['other', 'Other']]
+const MEDIA_FORMATS: [string, string][] = [
+  ['posts', 'Posts'], ['reels', 'Reels or Shorts'], ['stories', 'Stories'], ['live', 'Live coverage from the venue'],
+  ['video', 'A full video'], ['article', 'An article, blog or thread'], ['podcast', 'A podcast episode'],
+]
+const MEDIA_PASS_PER_HOUR = 5
+const _mediaPassAsks = new Map<string, number[]>()
+const MEDIA_PASS_REPLY = 'We review every request and reply by email within 2 working days.'
+const MEDIA_PASS_INSTAGRAM = '@bharataiinnovation.ai'
+
+type MediaPassAnswers = {
+  kind: string; name: string; email: string; mobile: string; organisation: string; designation: string; city: string
+  outlet: string; beat: string; work_links: string[]; coverage: string
+  platforms: { platform: string; name: string; handle: string; followers: number }[]
+  niche: string; audience: string; formats: string[]; before: string; during: string; after: string; samples: string[]; collabs: string
+}
+
+// A web address as typed: '' when empty, null when it is not one. "www.x.com/a" gains https://.
+function mediaPassUrl(v: any): string | null {
+  let s = String(v ?? '').trim()
+  if (!s) return ''
+  if (s.length > 400 || /\s/.test(s)) return null
+  if (!/^https?:\/\//i.test(s)) {
+    if (!/^[a-z0-9][a-z0-9-]*(\.[a-z0-9-]+)+([/?#]|$)/i.test(s)) return null
+    s = 'https://' + s
+  }
+  try {
+    const u = new URL(s)
+    if (!/^https?:$/.test(u.protocol) || !/\.[a-z]{2,}$/i.test(u.hostname)) return null
+  } catch { return null }
+  return s
+}
+
+// "12000", "12,000", "12k", "1.2M", "1.5 lakh", "2 crore": the number. null when empty, -1 when not a number.
+function mediaFollowers(v: any): number | null {
+  const s = String(v ?? '').trim().toLowerCase().replace(/[,\s]/g, '').replace(/\+$/, '')
+  if (!s) return null
+  const m = /^(\d+(?:\.\d+)?)(k|thousand|m|mn|million|l|lac|lakh|lakhs|cr|crore|crores)?$/.exec(s)
+  if (!m) return -1
+  const mult: Record<string, number> = { k: 1e3, thousand: 1e3, m: 1e6, mn: 1e6, million: 1e6, l: 1e5, lac: 1e5, lakh: 1e5, lakhs: 1e5, cr: 1e7, crore: 1e7, crores: 1e7 }
+  const n = Math.round(parseFloat(m[1]) * (m[2] ? mult[m[2]] : 1))
+  return n > 2e9 ? -1 : n
+}
+
+// Every answer checked and tidied, or the first one that is not right, with the key of
+// its box on the page (field) and the sentence to show under it.
+function checkMediaPass(b: any): { ok: MediaPassAnswers } | { error: string; field: string } {
+  const t = (v: any, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n)
+  const para = (v: any, n: number) => String(v ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, n)
+  const bad = (field: string, error: string) => ({ error, field })
+  const kind = String(b?.kind || '')
+  if (!MEDIA_PASS_KINDS.includes(kind)) return bad('kind', 'Please choose Media or Influencer / creator.')
+  const name = t(b.name, 80)
+  if (name.length < 2) return bad('name', 'Please add your full name.')
+  const email = t(b.email, 120).toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return bad('email', 'Please type a full email address.')
+  const typo = emailTypo(email)
+  if (typo) return bad('email', typo.reason)
+  const mobile = t(b.mobile, 20)
+  const digits = mobile.replace(/\D/g, '')
+  if (digits.length < 10 || digits.length > 15) return bad('mobile', 'Please type your mobile number, with at least 10 digits.')
+  const organisation = t(b.organisation, 150)
+  if (organisation.length < 2) return bad('organisation', 'Please add your organisation or channel name.')
+  const designation = t(b.designation, 120)
+  if (designation.length < 2) return bad('designation', 'Please add your designation or role.')
+  const city = t(b.city, 80)
+  if (city.length < 2) return bad('city', 'Please add your city.')
+  const links = (list: any, key: string, none: string): any => {
+    const raw = Array.isArray(list) ? list.slice(0, 3) : []
+    const out: string[] = []
+    for (let i = 0; i < raw.length; i++) {
+      const u = mediaPassUrl(raw[i])
+      if (u === null) return bad(key + '_' + (i + 1), 'Link ' + (i + 1) + ' does not look like a web address. Please check it.')
+      if (u) out.push(u)
+    }
+    if (!out.length) return bad(key + '_1', none)
+    return { list: out }
+  }
+  const a: MediaPassAnswers = {
+    kind, name, email, mobile, organisation, designation, city, outlet: '', beat: '', work_links: [], coverage: '',
+    platforms: [], niche: '', audience: '', formats: [], before: '', during: '', after: '', samples: [], collabs: '',
+  }
+  if (kind === 'media') {
+    a.outlet = t(b.outlet, 150)
+    if (a.outlet.length < 2) return bad('outlet', 'Please add the publication, channel or website you work for.')
+    a.beat = t(b.beat, 120)
+    if (a.beat.length < 2) return bad('beat', 'Please say what you cover, for example technology or business.')
+    const w = links(b.work_links, 'work', 'Please add at least one link to your recent published work.')
+    if (w.error) return w
+    a.work_links = w.list
+    a.coverage = para(b.coverage, 1500)
+    if (a.coverage.length < 15) return bad('coverage', 'Please tell us in a line or two what you plan to cover.')
+  } else {
+    const rows = Array.isArray(b.platforms) ? b.platforms : []
+    for (const [key, label] of MEDIA_PLATFORMS) {
+      const r = rows.find((x: any) => x && x.platform === key) || {}
+      const other = key === 'other' ? t(r.name, 40) : ''
+      let handle = t(r.handle, 200)
+      const f = mediaFollowers(r.followers)
+      if (!handle && f === null && !other) continue
+      const what = key === 'other' ? (other || 'the other platform') : label
+      if (key === 'other' && !other) return bad('pf-other-name', 'Please name the other platform.')
+      if (!handle) return bad('pf-' + key + '-handle', 'Please add your ' + what + ' handle or link.')
+      if (/^(https?:\/\/|www\.)/i.test(handle)) {
+        const u = mediaPassUrl(handle)
+        if (!u) return bad('pf-' + key + '-handle', 'Please check the ' + what + ' link.')
+        handle = u
+      }
+      if (f === null) return bad('pf-' + key + '-followers', 'Please add how many followers you have on ' + what + '.')
+      if (f < 0) return bad('pf-' + key + '-followers', 'Please type the ' + what + ' followers as a number, for example 12000 or 12k.')
+      a.platforms.push({ platform: key, name: other, handle, followers: f })
+    }
+    if (!a.platforms.length) return bad('platforms', 'Please add at least one platform, with your handle or link and your followers.')
+    a.niche = t(b.niche, 150)
+    if (a.niche.length < 2) return bad('niche', 'Please add your main topic, for example AI, tech or startups.')
+    a.audience = t(b.audience, 150)
+    if (a.audience.length < 2) return bad('audience', 'Please say where most of your audience lives, for example Mumbai or all India.')
+    const fm = Array.isArray(b.formats) ? b.formats.map(String) : []
+    a.formats = MEDIA_FORMATS.map(([k]) => k).filter(k => fm.includes(k))
+    if (!a.formats.length) return bad('formats', 'Please tick at least one thing you will make.')
+    a.before = para(b.before, 600); a.during = para(b.during, 600); a.after = para(b.after, 600)
+    if ((a.before + a.during + a.after).length < 15) return bad('before', 'Please tell us what you will post before, during or after the event.')
+    const s = links(b.samples, 'sample', 'Please add at least one link to a sample of your content.')
+    if (s.error) return s
+    a.samples = s.list
+    a.collabs = para(b.collabs, 800)
+  }
+  if (b.agree !== true) return bad('agree', 'Please tick the box to agree.')
+  return { ok: a }
+}
+
+const mediaNum = (n: any) => Number(n || 0).toLocaleString('en-IN')
+const mediaPlatformWord = (p: any) => p?.platform === 'other' ? (String(p?.name || '').trim() || 'Other') : ((MEDIA_PLATFORMS.find(([k]) => k === p?.platform) || [])[1] || String(p?.platform || ''))
+const mediaFollowersTotal = (a: any) => (Array.isArray(a?.platforms) ? a.platforms : []).reduce((s: number, p: any) => s + (Number(p?.followers) || 0), 0)
+const mediaPassRef = (id: any) => 'BHAI-INQ-' + String(id ?? '').padStart(5, '0')
+
+// The enquiry's words, for the Inquiries desk and its exports, which read message.
+function mediaPassMessage(a: MediaPassAnswers): string {
+  const L: string[] = ['Applying as: ' + MEDIA_PASS_WORD[a.kind], 'Designation: ' + a.designation, 'City: ' + a.city]
+  if (a.kind === 'media') {
+    L.push('Publication: ' + a.outlet, 'Covers: ' + a.beat, 'Recent work: ' + a.work_links.join(' , '), 'Plans to cover: ' + a.coverage)
+  } else {
+    L.push('Platforms: ' + a.platforms.map(p => mediaPlatformWord(p) + ' ' + p.handle + ' (' + mediaNum(p.followers) + ' followers)').join('; '))
+    L.push('Followers in all: ' + mediaNum(mediaFollowersTotal(a)), 'Topic: ' + a.niche, 'Audience: ' + a.audience)
+    L.push('Will make: ' + a.formats.map(k => (MEDIA_FORMATS.find(([f]) => f === k) || [])[1] || k).join(', '))
+    if (a.before) L.push('Before: ' + a.before)
+    if (a.during) L.push('During: ' + a.during)
+    if (a.after) L.push('After: ' + a.after)
+    L.push('Samples: ' + a.samples.join(' , '))
+    if (a.collabs) L.push('Brand work: ' + a.collabs)
+  }
+  return L.join('\n')
+}
+
+// The answers as rows for the two emails that carry them (the team's, and the copy).
+function mediaPassAnswerRows(a: any, links: boolean): [string, string][] {
+  const e = payEsc
+  const link = (u: string) => links && /^https?:\/\//i.test(u) ? `<a href="${e(u)}" style="color:#C84F00;">${e(u)}</a>` : e(u)
+  const rows: [string, string][] = [['Applying as', e(MEDIA_PASS_WORD[a.kind] || a.kind)]]
+  if (a.kind === 'media') {
+    rows.push(['Publication', e(a.outlet)], ['Covers', e(a.beat)], ['Recent work', (a.work_links || []).map(link).join('<br>')], ['Plans to cover', e(a.coverage).replace(/\n/g, '<br>')])
+  } else {
+    rows.push(['Platforms', (a.platforms || []).map((p: any) => e(mediaPlatformWord(p)) + ': ' + link(String(p.handle || '')) + ' &middot; ' + mediaNum(p.followers) + ' followers').join('<br>')])
+    rows.push(['Followers in all', mediaNum(mediaFollowersTotal(a))], ['Topic', e(a.niche)], ['Audience', e(a.audience)])
+    rows.push(['Will make', e((a.formats || []).map((k: string) => (MEDIA_FORMATS.find(([f]) => f === k) || [])[1] || k).join(', '))])
+    if (a.before) rows.push(['Before the event', e(a.before).replace(/\n/g, '<br>')])
+    if (a.during) rows.push(['During the event', e(a.during).replace(/\n/g, '<br>')])
+    if (a.after) rows.push(['After the event', e(a.after).replace(/\n/g, '<br>')])
+    rows.push(['Samples', (a.samples || []).map(link).join('<br>')])
+    if (a.collabs) rows.push(['Brand work', e(a.collabs).replace(/\n/g, '<br>')])
+  }
+  return rows
+}
+
+const mediaMailShell = (title: string, inner: string) => `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader(title, '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai')}
+      <div style="padding:26px 24px;">${inner}</div></div></body></html>`
+
+function mediaPassAckMail(a: MediaPassAnswers, id: number, updated: boolean): { subject: string; html: string } {
+  const e = payEsc, pass = MEDIA_PASS_BADGE[a.kind]
+  const first = a.name.split(' ')[0] || a.name
+  const an = pass === 'Influencer Pass' ? 'an' : 'a'
+  const html = mediaMailShell('We have your request', `
+        ${payP('Hi <strong>' + e(first) + '</strong>,')}
+        ${payP((updated ? 'Thank you. We have your updated request for ' : 'Thank you for applying for ') + an + ' <strong>' + e(pass) + '</strong> to Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.')}
+        ${payP('<strong>' + MEDIA_PASS_REPLY + '</strong> If we approve it, that email has the link to your pass.')}
+        ${payRows([['Your reference', e(mediaPassRef(id))], ['Name', e(a.name)], ['Organisation or channel', e(a.organisation)]])}
+        ${payRows(mediaPassAnswerRows(a, false))}
+        ${payP('To change anything, fill in the form again with the same email address: we keep your newest answers.')}
+        ${payP('When you post about the event, please tag Bharat AI Innovation (' + MEDIA_PASS_INSTAGRAM + ' on Instagram).')}`)
+  return { subject: (updated ? 'We have your updated ' : 'We have your ') + pass + ' request - Bharat AI Innovation 2026', html }
+}
+
+function mediaPassTeamMail(a: MediaPassAnswers, id: number, updated: boolean): { subject: string; html: string } {
+  const e = payEsc, pass = MEDIA_PASS_BADGE[a.kind]
+  const total = mediaFollowersTotal(a)
+  const what = a.kind === 'influencer' ? a.organisation + ', ' + mediaNum(total) + ' followers' : (a.outlet || a.organisation)
+  const html = mediaMailShell((updated ? 'Updated ' : 'New ') + pass + ' request', `
+        ${payRows([['Reference', e(mediaPassRef(id))], ['Name', e(a.name)], ['Email', e(a.email)], ['Mobile', e(a.mobile)], ['Organisation or channel', e(a.organisation)], ['Designation', e(a.designation)], ['City', e(a.city)]])}
+        ${payRows(mediaPassAnswerRows(a, true))}
+        <div style="text-align:center;margin:18px 0;">${payButton('https://bharataiinnovation.com/admin#media', 'Review it in Admin')}</div>
+        ${payP('Approve and issue the pass, or decline, in Admin, Media &amp; Influencer. ' + (updated ? 'They sent the form again, so the answers above replace the earlier ones.' : 'They have been told: ' + MEDIA_PASS_REPLY))}`)
+  return { subject: (updated ? 'Updated ' : 'New ') + pass + ' request: ' + a.name + ' (' + what + ')', html }
+}
+
+// The page.
+function mediaPassPageHTML(pre: string): string {
+  const field = (id: string, label: string, extra = '', help = '') =>
+    `<div class="mp-field"><label for="mp-${id}">${label}</label>${help ? `<p class="mp-help" id="mp-${id}-help">${help}</p>` : ''}<input id="mp-${id}" name="${id}" ${extra}${help ? ` aria-describedby="mp-${id}-help"` : ''}><p class="mp-err" aria-live="polite"></p></div>`
+  const area = (id: string, label: string, extra = '', help = '') =>
+    `<div class="mp-field"><label for="mp-${id}">${label}</label>${help ? `<p class="mp-help" id="mp-${id}-help">${help}</p>` : ''}<textarea id="mp-${id}" name="${id}" rows="3" ${extra}${help ? ` aria-describedby="mp-${id}-help"` : ''}></textarea><p class="mp-err" aria-live="polite"></p></div>`
+  const linkBoxes = (key: string, label: string) => [1, 2, 3].map(i =>
+    field(`${key}-${i}`, i === 1 ? label : `Link ${i} <span class="mp-opt">(optional)</span>`, 'type="url" inputmode="url" autocomplete="url" maxlength="400" placeholder="https://"')).join('')
+  const platform = ([key, label]: [string, string]) => `
+        <div class="mp-field mp-plat" data-platform="${key}">
+          <p class="mp-plat-name">${label}</p>
+          ${key === 'other' ? `<label for="pf-other-name">Which platform</label><input id="pf-other-name" maxlength="40" placeholder="For example a blog, Threads or a podcast">` : ''}
+          <div class="mp-plat-row">
+            <div><label for="pf-${key}-handle">Handle or link</label><input id="pf-${key}-handle" maxlength="200" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${key === 'youtube' ? '@yourchannel' : key === 'linkedin' ? 'https://www.linkedin.com/in/...' : key === 'other' ? 'https://' : '@yourhandle'}"></div>
+            <div><label for="pf-${key}-followers">Followers</label><input id="pf-${key}-followers" inputmode="numeric" maxlength="14" placeholder="12000 or 12k"></div>
+          </div>
+          <p class="mp-err" aria-live="polite"></p>
+        </div>`
+  const formats = MEDIA_FORMATS.map(([k, label]) => `<label class="mp-check"><input type="checkbox" name="formats" value="${k}" id="mp-format-${k}"><span>${label}</span></label>`).join('')
+  const desc = 'Apply for a Media Pass or an Influencer Pass to Bharat AI Innovation 2026, 20–21 Nov, World Trade Center Mumbai. ' + MEDIA_PASS_REPLY
+  return `${sharedHeadHTML('Media & Influencer Pass', '/media-pass', desc).replace('</head>', `<link rel="stylesheet" href="/css/passes-design.css?v=20261106">
+<style>
+  .mp-page{background:#F7F8FC;color:#1E2140;font-family:Manrope,Arial,sans-serif;margin:0}
+  .mp-wrap{max-width:680px;margin:0 auto;padding:22px 16px 64px;box-sizing:border-box}
+  .mp-wrap *,.mp-wrap *::before,.mp-wrap *::after{box-sizing:border-box}
+  .mp-tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#C84F00;background:#FFF1E6;border-radius:999px;padding:5px 10px}
+  .mp-hero h1{font-size:30px;line-height:1.15;margin:10px 0 10px;font-weight:800}
+  .mp-hero p{font-size:16px;line-height:1.6;color:#4B5270;margin:0 0 8px}
+  .mp-steps{list-style:decimal;margin:12px 0 0;padding:0 0 0 22px;font-size:15px;line-height:1.7;color:#1E2140}
+  .mp-card{background:#fff;border:1px solid #E4E7F4;border-radius:16px;padding:20px 16px;margin-top:20px}
+  .mp-card h2{font-size:19px;margin:22px 0 4px;font-weight:800}
+  .mp-card h2:first-of-type{margin-top:6px}
+  .mp-part h2{margin-top:26px}
+  .mp-lead{font-size:14px;line-height:1.55;color:#4B5270;margin:0 0 6px}
+  .mp-kinds{border:0;padding:0;margin:0}
+  .mp-kinds legend{font-size:19px;font-weight:800;margin:0 0 10px;padding:0}
+  .mp-kind{display:block;margin:0 0 10px;cursor:pointer}
+  .mp-kind input{position:absolute;opacity:0;width:1px;height:1px}
+  .mp-kind span{display:block;border:2px solid #CDD2E6;border-radius:14px;padding:14px 16px;min-height:56px}
+  .mp-kind b{display:block;font-size:17px}
+  .mp-kind small{display:block;font-size:14px;line-height:1.5;color:#4B5270;margin-top:2px}
+  .mp-kind input:checked + span{border-color:#C84F00;background:#FFF7F0}
+  .mp-kind input:focus-visible + span{outline:3px solid #1E2140;outline-offset:2px}
+  .mp-field{margin:16px 0 0}
+  .mp-field > label,.mp-plat label{display:block;font-size:14px;font-weight:700;margin:0 0 6px}
+  .mp-opt{font-weight:500;color:#5E6585}
+  .mp-help{font-size:13px;line-height:1.5;color:#5E6585;margin:-2px 0 6px}
+  .mp-field input:not([type=checkbox]):not([type=radio]),.mp-field textarea{display:block;width:100%;font:inherit;font-size:16px;line-height:1.4;min-height:50px;padding:12px;border:1.5px solid #CDD2E6;border-radius:10px;background:#fff;color:#1E2140}
+  .mp-field textarea{min-height:96px;resize:vertical}
+  .mp-field input:focus,.mp-field textarea:focus{outline:none;border-color:#C84F00;box-shadow:0 0 0 3px rgba(200,79,0,.18)}
+  .mp-field [aria-invalid="true"]{border-color:#B3261E!important;background:#FFF8F7!important}
+  .mp-err{font-size:14px;line-height:1.45;color:#B3261E;margin:6px 0 0;font-weight:600}
+  .mp-err:empty{display:none}
+  .mp-plat{border:1px solid #E4E7F4;border-radius:12px;padding:12px;background:#FBFBFE}
+  .mp-plat-name{font-size:16px;font-weight:800;margin:0 0 8px}
+  .mp-plat-row{display:grid;grid-template-columns:1fr;gap:10px}
+  .mp-plat #pf-other-name{margin-bottom:10px}
+  @media (min-width:520px){.mp-plat-row{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}}
+  .mp-checks{border:0;padding:0;margin:16px 0 0}
+  .mp-checks legend{font-size:14px;font-weight:700;margin:0 0 6px;padding:0}
+  .mp-check{display:flex;align-items:flex-start;gap:12px;min-height:48px;padding:10px 12px;border:1.5px solid #E4E7F4;border-radius:10px;margin:0 0 8px;cursor:pointer;font-size:15px;line-height:1.45;background:#fff}
+  .mp-check input{width:22px;height:22px;margin:1px 0 0;flex:none;accent-color:#C84F00}
+  .mp-check:has(input:checked){border-color:#C84F00;background:#FFF7F0}
+  .mp-agree .mp-check{border-color:#CDD2E6}
+  .mp-hp{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
+  .mp-btn{display:flex;align-items:center;justify-content:center;width:100%;min-height:54px;border:0;border-radius:12px;background:#C84F00;color:#fff;font:inherit;font-size:17px;font-weight:800;cursor:pointer;margin-top:20px}
+  .mp-btn[disabled]{opacity:.65;cursor:wait}
+  .mp-btn:focus-visible{outline:3px solid #1E2140;outline-offset:2px}
+  .mp-msg{min-height:20px;font-size:15px;line-height:1.5;color:#B3261E;margin:12px 0 0;font-weight:600}
+  .mp-msg:empty{display:none}
+  .mp-small{font-size:13px;color:#5E6585;margin:14px 0 0;line-height:1.5}
+  .mp-small a,.mp-done a{color:#C84F00;font-weight:700}
+  .mp-done{border-color:#9AD8B4;background:#F1FBF5}
+  .mp-done h2{margin-top:0!important}
+  .mp-done p{font-size:16px;line-height:1.6;color:#1E2140;margin:0 0 10px}
+  .mp-part[hidden],.mp-done[hidden]{display:none}
+</style>
+</head>`)}
+<body class="mp-page">
+${siteHeaderHTML('/passes')}
+<main class="mp-wrap">
+  <section class="mp-hero">
+    <span class="mp-tag">Apply &middot; by approval</span>
+    <h1>Media &amp; Influencer Pass</h1>
+    <p>For journalists, editors and broadcasters, and for creators who post about AI, technology and business. Bharat AI Innovation 2026 is on 20 and 21 November at the World Trade Center, Mumbai.</p>
+    <ol class="mp-steps">
+      <li>Tell us about you and your work.</li>
+      <li>${MEDIA_PASS_REPLY}</li>
+      <li>If we approve your request, the email has the link to your pass.</li>
+    </ol>
+  </section>
+  <form class="mp-card" id="mp-form" novalidate>
+    <fieldset class="mp-field mp-kinds" id="mp-kind-box">
+      <legend>Which describes you?</legend>
+      <label class="mp-kind"><input type="radio" name="kind" value="media" id="mp-kind-media"${pre === 'media' ? ' checked' : ''}><span><b>Media</b><small>Journalist, editor, reporter, publication or broadcaster</small></span></label>
+      <label class="mp-kind"><input type="radio" name="kind" value="influencer" id="mp-kind-influencer"${pre === 'influencer' ? ' checked' : ''}><span><b>Influencer / creator</b><small>You post on Instagram, YouTube, LinkedIn, X, a blog or a podcast</small></span></label>
+      <p class="mp-err" aria-live="polite"></p>
+    </fieldset>
+    <h2>About you</h2>
+    ${field('name', 'Full name', 'autocomplete="name" maxlength="80"')}
+    ${field('email', 'Email address', 'type="email" autocomplete="email" inputmode="email" maxlength="120" autocapitalize="off" spellcheck="false"', 'We send our answer here.')}
+    ${field('mobile', 'Mobile number', 'type="tel" autocomplete="tel" inputmode="tel" maxlength="20"')}
+    ${field('organisation', 'Organisation or channel name', 'autocomplete="organization" maxlength="150"')}
+    ${field('designation', 'Designation or role', 'autocomplete="organization-title" maxlength="120"', 'For example Senior Reporter, Editor, Creator or Host.')}
+    ${field('city', 'City', 'autocomplete="address-level2" maxlength="80"')}
+
+    <section class="mp-part" id="mp-media"${pre === 'media' ? '' : ' hidden'}>
+      <h2>Your work</h2>
+      ${field('outlet', 'Publication, channel or website you work for', 'maxlength="150"')}
+      ${field('beat', 'What you cover', 'maxlength="120"', 'Your beat. For example technology, startups, business or policy.')}
+      ${linkBoxes('work', 'Link to your recent published work')}
+      ${area('coverage', 'What you plan to cover at the event', 'maxlength="1500"', 'For example a story on AI in manufacturing, interviews with speakers, or a TV segment.')}
+    </section>
+
+    <section class="mp-part" id="mp-influencer"${pre === 'influencer' ? '' : ' hidden'}>
+      <h2>Your channels</h2>
+      <p class="mp-lead">Fill in the ones you use: your handle or a link, and how many followers you have.</p>
+      <div id="mp-platforms">${MEDIA_PLATFORMS.map(platform).join('')}</div>
+      <p class="mp-err" id="mp-platforms-err" aria-live="polite"></p>
+      ${field('niche', 'Your main topic', 'maxlength="150"', 'For example AI, tech, startups, careers or business.')}
+      ${field('audience', 'Where most of your audience lives', 'maxlength="150"', 'For example Mumbai, Maharashtra or all India.')}
+      <h2>How you will promote the event</h2>
+      <fieldset class="mp-checks mp-field" id="mp-formats-box">
+        <legend>What will you make? Tick all that apply.</legend>
+        ${formats}
+        <p class="mp-err" aria-live="polite"></p>
+      </fieldset>
+      <p class="mp-lead" style="margin-top:14px">Your plan. Fill in at least one of these three.</p>
+      ${area('before', 'Before the event', 'maxlength="600"', 'For example a post and a story saying you will be there.')}
+      ${area('during', 'During the event', 'maxlength="600"', 'For example live stories and two reels from the exhibition floor.')}
+      ${area('after', 'After the event', 'maxlength="600"', 'For example a recap video within a week.')}
+      <h2>Samples of your content</h2>
+      ${linkBoxes('sample', 'Link to a post, reel or video you made')}
+      ${area('collabs', 'Brands you have worked with <span class="mp-opt">(optional)</span>', 'maxlength="800"')}
+    </section>
+
+    <div class="mp-field mp-agree">
+      <label class="mp-check" for="mp-agree"><input type="checkbox" id="mp-agree" name="agree"><span>I understand the pass is issued only if my request is approved. When I post about the event, I will tag Bharat AI Innovation (${MEDIA_PASS_INSTAGRAM} on Instagram).</span></label>
+      <p class="mp-err" aria-live="polite"></p>
+    </div>
+    <div class="mp-hp" aria-hidden="true"><label for="mp-website">Leave this empty</label><input id="mp-website" name="website" tabindex="-1" autocomplete="off"></div>
+    <button class="mp-btn" type="submit" id="mp-go">Send my request</button>
+    <p class="mp-msg" id="mp-msg" role="status" aria-live="polite"></p>
+    <p class="mp-small">Questions? Write to <a href="mailto:info@bharataiinnovation.com">info@bharataiinnovation.com</a>. Looking for a regular pass? <a href="/passes">See the passes</a>.</p>
+    <noscript><p class="mp-msg">This form needs JavaScript. Please turn it on, or write to info@bharataiinnovation.com.</p></noscript>
+  </form>
+  <div class="mp-card mp-done" id="mp-done" tabindex="-1" hidden>
+    <h2>Thank you. We have your request.</h2>
+    <p id="mp-done-text">${MEDIA_PASS_REPLY}</p>
+    <p>A copy of your answers is on its way to your email.</p>
+    <p><a href="/">Back to the home page</a></p>
+  </div>
+</main>
+<script src="/js/media-pass.js?v=20261112" defer></script>
+</body></html>`
+}
+
+app.get('/media-pass', (c) => {
+  const as = String(c.req.query('as') || '')
+  return c.html(mediaPassPageHTML(MEDIA_PASS_KINDS.includes(as) ? as : ''))
+})
+
+// Anyone may apply; the answers are checked here whatever the page let through.
+app.post('/api/media-pass-application', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const body = await c.req.json().catch(() => null) as any
+  if (!body || typeof body !== 'object') return c.json({ error: 'Please fill in the form and try again.' }, 400)
+  const thanks = { ok: true, message: 'Thank you. We have your request. ' + MEDIA_PASS_REPLY }
+  // A box people cannot see (mp-hp): anything typed in it was typed by a robot.
+  if (String(body.website || '').trim()) return c.json(thanks)
+  const v = checkMediaPass(body)
+  if ('error' in v) return c.json({ error: v.error, field: v.field }, 400)
+  const a = v.ok
+  const ip = String(c.req.header('CF-Connecting-IP') || 'local'), now = Date.now()
+  const asks = (_mediaPassAsks.get(ip) || []).filter(t => now - t < 3600000)
+  if (asks.length >= MEDIA_PASS_PER_HOUR) return c.json({ error: 'We have had several requests from this connection in the last hour. Please try again in an hour, or write to info@bharataiinnovation.com.' }, 429)
+
+  // The same address again: an open request from this form in the last week takes the
+  // newest answers; an approved one is not asked twice.
+  const earlier = ((await c.env.DB.prepare(
+    "SELECT id, status, metadata, created_at FROM inquiries WHERE event_id = 1 AND inquiry_type = 'media' AND lower(email) = ? AND created_at > datetime('now', '-7 days') ORDER BY id DESC LIMIT 10"
+  ).bind(a.email).all()).results || []) as any[]
+  const fromForm = (r: any) => { try { return JSON.parse(r.metadata || '{}').source === 'media_pass_form' } catch { return false } }
+  const approved = earlier.find(r => r.status === 'won' && fromForm(r))
+  if (approved) return c.json({ ok: true, already: 'approved', message: 'Your request is already approved. The email with the link to your pass went to ' + a.email + '. If you cannot find it, write to info@bharataiinnovation.com.' })
+  const open = earlier.find(r => INQUIRY_OPEN.includes(String(r.status)) && fromForm(r))
+
+  const meta = {
+    source: 'media_pass_form', kind: a.kind, designation: a.designation, city: a.city,
+    outlet: a.outlet, beat: a.beat, work_links: a.work_links, coverage: a.coverage,
+    platforms: a.platforms, followers_total: mediaFollowersTotal(a), niche: a.niche, audience: a.audience, formats: a.formats,
+    before: a.before, during: a.during, after: a.after, samples: a.samples, collabs: a.collabs, agreed_at: new Date().toISOString(),
+  }
+  const subject = 'Media & Influencer Pass: ' + (a.kind === 'influencer' ? 'Influencer - ' + a.organisation : 'Media - ' + (a.outlet || a.organisation))
+  let id: number
+  if (open) {
+    id = Number(open.id)
+    await c.env.DB.prepare("UPDATE inquiries SET name = ?, phone = ?, organization = ?, subject = ?, message = ?, metadata = ?, updated_at = datetime('now') WHERE id = ?")
+      .bind(a.name, a.mobile, a.organisation, subject, mediaPassMessage(a), JSON.stringify(meta), id).run()
+  } else {
+    const r = await c.env.DB.prepare(
+      'INSERT INTO inquiries (event_id, inquiry_type, name, email, phone, organization, subject, message, metadata) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind('media', a.name, a.email, a.mobile, a.organisation, subject, mediaPassMessage(a), JSON.stringify(meta)).run()
+    id = Number(r.meta.last_row_id)
+    // The owner for media enquiries, when the organisers set one (Inquiries, Automation).
+    try {
+      const owner = inqCleanRouting(JSON.parse((await settingValue(c, 'inquiry_routing')) || '{}')).media || ''
+      if (owner) await c.env.DB.prepare('UPDATE inquiries SET assigned_to = ? WHERE id = ?').bind(owner, id).run()
+    } catch { /* a routing rule must never fail the request */ }
+  }
+  asks.push(now); _mediaPassAsks.set(ip, asks)
+  if (_mediaPassAsks.size > 5000) _mediaPassAsks.clear()
+  await audit(c, open ? 'media-pass.updated' : 'media-pass.applied', 'inquiry', id, { kind: a.kind, email: a.email, followers: mediaFollowersTotal(a) }, { actor: 'public form', kind: 'public' })
+
+  const team = (await settingValue(c, 'inquiry_notify_email')) || 'info@bharataiinnovation.com'
+  const ack = mediaPassAckMail(a, id, !!open), note = mediaPassTeamMail(a, id, !!open)
+  const mails = Promise.all([
+    sendAdminEmail(c, a.email, ack.subject, ack.html, { unsubscribe: false }),
+    sendAdminEmail(c, team, note.subject, note.html, { unsubscribe: false }),
+  ]).then(async ([one, two]) => {
+    if (!one.ok) await audit(c, 'media-pass.ack-failed', 'inquiry', id, { to: a.email, error: one.error }, { actor: 'automatic', kind: 'system' })
+    if (!two.ok) await audit(c, 'media-pass.notify-failed', 'inquiry', id, { to: team, error: two.error }, { actor: 'automatic', kind: 'system' })
+  }).catch(() => null)
+  try { c.executionCtx.waitUntil(mails) } catch { await mails }
+  return c.json({ ...thanks, id, ref: mediaPassRef(id), updated: !!open })
+})
+
+// Approved = Won, declined = Closed or Lost; anything else is waiting for a decision.
+const mediaPassState = (status: any) => {
+  const s = String(status || '')
+  return s === 'won' ? 'approved' : (s === 'closed' || s === 'lost') ? 'declined' : 'new'
+}
+
+// The requests as the screen draws them, newest first, each with the pass the person
+// holds now (by email, event 1), so a paid pass is plain before anyone approves.
+async function mediaPassRows(c: any, onlyId = 0): Promise<any[]> {
+  const st = c.env.DB.prepare(
+    "SELECT * FROM inquiries WHERE event_id = 1 AND inquiry_type = 'media'" + (onlyId ? ' AND id = ?' : '') + ' ORDER BY created_at DESC, id DESC LIMIT 500')
+  const rows = (((await (onlyId ? st.bind(onlyId) : st).all()).results) || []) as any[]
+  const emails = [...new Set(rows.map(r => String(r.email || '').trim().toLowerCase()).filter(Boolean))]
+  const held: Record<string, any> = {}
+  for (let i = 0; i < emails.length; i += 90) {
+    const part = emails.slice(i, i + 90)
+    const found = ((await c.env.DB.prepare(
+      `SELECT id, lower(email) AS e, badge_type, payment_status, role, pass_downloaded_at, last_login_at FROM attendees WHERE event_id = 1 AND lower(email) IN (${part.map(() => '?').join(',')}) ORDER BY id DESC`
+    ).bind(...part).all()).results || []) as any[]
+    for (const f of found) held[f.e] = f
+  }
+  return rows.map(r => {
+    let meta: any = {}
+    try { meta = JSON.parse(r.metadata || '{}') || {} } catch { meta = {} }
+    const a = held[String(r.email || '').trim().toLowerCase()] || null
+    const cur = String(a?.badge_type || '')
+    const unpaid = PAID_TIERS.includes(cur) && ['pending', 'refunded'].includes(String(a?.payment_status || '').trim().toLowerCase())
+    const keeps = !!a && !!cur && cur.toLowerCase() !== 'general' && canInitiateNetworking(cur) && !unpaid && !MEDIA_PASS_BADGES.includes(cur)
+    return {
+      id: r.id, ref: mediaPassRef(r.id), created_at: r.created_at, updated_at: r.updated_at, name: r.name, email: r.email, phone: r.phone,
+      organization: r.organization, subject: r.subject, message: r.message, status: r.status, state: mediaPassState(r.status),
+      admin_notes: r.admin_notes || '', assigned_to: r.assigned_to || '',
+      kind: MEDIA_PASS_KINDS.includes(meta.kind) ? meta.kind : '', from_form: meta.source === 'media_pass_form',
+      answers: meta.source === 'media_pass_form' ? {
+        designation: meta.designation || '', city: meta.city || '', outlet: meta.outlet || '', beat: meta.beat || '',
+        work_links: Array.isArray(meta.work_links) ? meta.work_links : [], coverage: meta.coverage || '',
+        platforms: Array.isArray(meta.platforms) ? meta.platforms : [], followers_total: Number(meta.followers_total) || 0,
+        niche: meta.niche || '', audience: meta.audience || '', formats: Array.isArray(meta.formats) ? meta.formats : [],
+        before: meta.before || '', during: meta.during || '', after: meta.after || '',
+        samples: Array.isArray(meta.samples) ? meta.samples : [], collabs: meta.collabs || '',
+      } : null,
+      decision: meta.decision || null,
+      attendee: a ? { id: a.id, badge_type: cur, payment_status: a.payment_status || '', unpaid, pass_downloaded_at: a.pass_downloaded_at || null, last_login_at: a.last_login_at || null } : null,
+      keeps_pass: keeps ? cur : '',
+    }
+  })
+}
+
+app.get('/api/admin/media-pass', async (c) => {
+  const rows = await mediaPassRows(c)
+  const counts: Record<string, number> = { new: 0, approved: 0, declined: 0, all: rows.length }
+  for (const r of rows) counts[r.state] = (counts[r.state] || 0) + 1
+  return c.json({
+    ok: true, rows, counts,
+    labels: { platforms: Object.fromEntries(MEDIA_PLATFORMS), formats: Object.fromEntries(MEDIA_FORMATS), kinds: MEDIA_PASS_WORD, passes: MEDIA_PASS_BADGE },
+  })
+})
+
+app.get('/api/admin/media-pass/count', async (c) => {
+  const r = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM inquiries WHERE event_id = 1 AND inquiry_type = 'media' AND status IN (${INQUIRY_OPEN.map(() => '?').join(',')})`
+  ).bind(...INQUIRY_OPEN).first() as any
+  return c.json({ new: Number(r?.n || 0) })
+})
+
+// The pass for an approved request: a Media Pass or an Influencer Pass on the attendee
+// row for that email, the rules issueSpeakerPass keeps. A free Visitor Pass, an empty
+// one, or a paid tier nobody paid for is raised (and one of these two moves to the other);
+// any other pass is theirs and is kept. Blank details are filled in, never overwritten.
+async function issueMediaPass(c: any, x: { kind: string; name: string; email: string; mobile: string; company: string; designation: string; city: string; linkedin: string }):
+    Promise<{ attendeeId: number; pass: string; created: boolean; raised: boolean; kept: boolean } | { error: string }> {
+  const email = String(x.email || '').trim().toLowerCase()
+  if (!validEmailSyntax(email)) return { error: 'That email address does not look right, so no pass was issued. Correct it in Inquiries first.' }
+  const eventId = 1
+  const target = MEDIA_PASS_BADGE[x.kind] || 'Media Pass', role = MEDIA_PASS_ROLE[x.kind] || 'Media'
+  const cols = await attendeeColumns(c)
+  const row = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = ? AND lower(email) = ? ORDER BY id LIMIT 1').bind(eventId, email).first() as any
+  // One mobile, one attendee: a number someone else holds is left off.
+  const freeMobile = async (exceptId: any) => {
+    const m = String(x.mobile || '').trim()
+    return m && !(await mobileHolder(c, eventId, m, exceptId)) ? m : ''
+  }
+  if (row) {
+    const id = Number(row.id), cur = String(row.badge_type || '')
+    const unpaid = PAID_TIERS.includes(cur) && ['pending', 'refunded'].includes(String(row.payment_status || '').trim().toLowerCase())
+    const visitorLike = !cur || cur.toLowerCase() === 'general' || !canInitiateNetworking(cur) || unpaid
+    const raised = cur !== target && (visitorLike || MEDIA_PASS_BADGES.includes(cur))
+    const sets: string[] = [], vals: any[] = []
+    const put = (col: string, v: any) => { if (cols.has(col)) { sets.push(col + ' = ?'); vals.push(v) } }
+    const blank = (col: string) => !String(row[col] ?? '').trim()
+    if (raised) {
+      put('badge_type', target); put('payment_status', 'waived'); put('main_event', 1)
+      const r = String(row.role || '').trim().toLowerCase()
+      if (!r || r === 'attendee' || r === 'media' || r === 'influencer') put('role', role)
+    }
+    if ((raised || cur === target) && String(row.lunch_inclusion || '') !== 'Yes') put('lunch_inclusion', 'Yes')
+    if (cur === target && Number(row.main_event ?? 1) !== 1) put('main_event', 1)
+    if (x.designation && blank('job_title')) put('job_title', x.designation)
+    if (x.company && blank('company')) put('company', x.company)
+    if (x.city && blank('city')) put('city', x.city)
+    if (x.linkedin && blank('linkedin_url')) put('linkedin_url', x.linkedin)
+    if (x.mobile && blank('mobile')) { const m = await freeMobile(id); if (m) put('mobile', m) }
+    if (sets.length) await c.env.DB.prepare(`UPDATE attendees SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run()
+    if (raised) await audit(c, 'attendee.media-pass', 'attendee', id, { badge_type: [cur || null, target] })
+    return { attendeeId: id, pass: raised ? target : cur, created: false, raised, kept: !raised && cur !== target }
+  }
+  const set: Record<string, any> = {
+    company: String(x.company || '').trim(), job_title: String(x.designation || '').trim(), city: String(x.city || '').trim(),
+    linkedin_url: String(x.linkedin || '').trim(), mobile: await freeMobile(null),
+    badge_type: target, role, country: 'India', payment_status: 'waived', lunch_inclusion: 'Yes',
+    registration_date: new Date().toISOString().slice(0, 19).replace('T', ' '),
+  }
+  const name = String(x.name || '').trim() || email
+  const names: string[] = ['event_id', 'name', 'email']
+  const vals: any[] = [eventId, name, email]
+  for (const f of ADMIN_ATTENDEE_FIELDS) {
+    if (f === 'name' || f === 'email' || !cols.has(f)) continue
+    names.push(f)
+    vals.push(set[f] ?? '')
+  }
+  if (cols.has('main_event')) { names.push('main_event'); vals.push(1) }
+  if (cols.has('registration_source')) { names.push('registration_source'); vals.push('media_pass') }
+  names.push('is_online')
+  vals.push(0)
+  const r = await c.env.DB.prepare(`INSERT INTO attendees (${names.join(', ')}) VALUES (${names.map(() => '?').join(', ')})`).bind(...vals).run()
+  const attendeeId = Number(r.meta.last_row_id)
+  await audit(c, 'attendee.create', 'attendee', attendeeId, { name, email, badge_type: target, source: 'media_pass' })
+  return { attendeeId, pass: target, created: true, raised: false, kept: false }
+}
+
+// "Your pass is approved", with the button that signs them in at their pass.
+async function mediaPassApprovedMail(c: any, x: { name: string; email: string; pass: string; kept: boolean; note: string }): Promise<{ subject: string; html: string }> {
+  const e = payEsc
+  const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+  const email = String(x.email || '').trim().toLowerCase()
+  let href = appUrl + '?email=' + encodeURIComponent(email) + '&action=download-pass'
+  try {
+    if (await verifiedLoginEnabled(c)) href += '&token=' + (await createLoginToken(c, 1, email, PROFILE_LINK_TTL_MINUTES, 2)).token
+  } catch { /* the plain link opens the sign-in box on their address */ }
+  const first = String(x.name || '').trim().split(' ')[0] || 'there'
+  const html = mediaMailShell('Your request is approved', `
+        ${payP('Hi <strong>' + e(first) + '</strong>,')}
+        ${payP(x.kept
+          ? 'Thank you for applying. Your request is approved. You already hold a <strong>' + e(x.pass) + '</strong> for Bharat AI Innovation 2026, so you keep it: it is the pass you show at the entrance.'
+          : 'Good news: your request is approved. Your <strong>' + e(x.pass) + '</strong> for Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai, is ready.')}
+        ${x.note ? payP('<strong>A note from our team:</strong> ' + e(x.note).replace(/\n/g, '<br>')) : ''}
+        <div style="text-align:center;margin:20px 0;">${payButton(href, 'Download my pass')}</div>
+        ${payP('The button signs you in to the event app with this email address and opens your pass. Keep the pass on your phone, or print it, and bring a photo ID.')}
+        ${payP('If the button has stopped working, open <a href="' + e(appUrl) + '" style="color:#C84F00;">' + e(appUrl.replace(/^https?:\/\//, '')) + '</a> and sign in with ' + e(email) + '.')}
+        ${payP('When you post about the event, please tag Bharat AI Innovation (' + MEDIA_PASS_INSTAGRAM + ' on Instagram).')}`)
+  return { subject: x.kept ? 'Your request is approved - Bharat AI Innovation 2026' : 'Your ' + x.pass + ' is approved - Bharat AI Innovation 2026', html }
+}
+
+function mediaPassDeclinedMail(x: { name: string; kind: string; note: string }): { subject: string; html: string } {
+  const e = payEsc
+  const first = String(x.name || '').trim().split(' ')[0] || 'there'
+  const pass = MEDIA_PASS_BADGE[x.kind] || 'Media Pass'
+  const html = mediaMailShell('About your request', `
+        ${payP('Hi <strong>' + e(first) + '</strong>,')}
+        ${payP('Thank you for applying for ' + (pass === 'Influencer Pass' ? 'an ' : 'a ') + e(pass) + ' to Bharat AI Innovation 2026, and for telling us about your work.')}
+        ${payP('We review every request, and this time we are not able to offer you a pass.')}
+        ${x.note ? payP(e(x.note).replace(/\n/g, '<br>')) : ''}
+        ${payP('You are welcome to attend. The passes are here:')}
+        <div style="text-align:center;margin:18px 0;">${payButton('https://bharataiinnovation.com/passes', 'See the passes')}</div>`)
+  return { subject: 'Your ' + pass + ' request - Bharat AI Innovation 2026', html }
+}
+
+async function mediaPassInquiry(c: any): Promise<any> {
+  const id = parseInt(String(c.req.param('id') || ''), 10) || 0
+  return id ? await c.env.DB.prepare("SELECT * FROM inquiries WHERE id = ? AND event_id = 1 AND inquiry_type = 'media'").bind(id).first() : null
+}
+const mediaPassMeta = (inq: any) => { try { return JSON.parse(inq?.metadata || '{}') || {} } catch { return {} } }
+async function mediaPassDecide(c: any, inq: any, status: string, meta: any, line: string): Promise<void> {
+  const merged = inq.admin_notes ? inq.admin_notes + '\n' + line : line
+  const cols = await inqColumns(c)
+  const sets = ['status = ?', 'admin_notes = ?', 'metadata = ?', "updated_at = datetime('now')"]
+  if (cols.has('responded_at')) sets.push("responded_at = COALESCE(responded_at, datetime('now'))")
+  await c.env.DB.prepare(`UPDATE inquiries SET ${sets.join(', ')} WHERE id = ?`).bind(status, merged.slice(-20000), JSON.stringify(meta), inq.id).run()
+}
+
+app.post('/api/admin/media-pass/:id/approve', async (c) => {
+  const inq = await mediaPassInquiry(c)
+  if (!inq) return c.json({ error: 'That request is not on the list.' }, 404)
+  if (inq.status === 'won') return c.json({ error: 'This request is already approved.' }, 409)
+  const body = await c.req.json().catch(() => ({})) as any
+  const meta = mediaPassMeta(inq)
+  const kind = MEDIA_PASS_KINDS.includes(String(body.kind)) ? String(body.kind) : MEDIA_PASS_KINDS.includes(meta.kind) ? meta.kind : 'media'
+  const note = String(body.note ?? '').trim().slice(0, 600)
+  const tell = body.email !== false
+  const li = (Array.isArray(meta.platforms) ? meta.platforms : []).find((p: any) => p?.platform === 'linkedin' && /^https:\/\/([a-z]+\.)?linkedin\.com\//i.test(String(p.handle || '')))
+  const issued = await issueMediaPass(c, {
+    kind, name: inq.name, email: inq.email, mobile: inq.phone || '', company: inq.organization || '',
+    designation: meta.designation || '', city: meta.city || '', linkedin: li ? String(li.handle) : '',
+  })
+  if ('error' in issued) return c.json({ error: issued.error }, 400)
+  let emailed = false, emailError = ''
+  if (tell) {
+    const mail = await mediaPassApprovedMail(c, { name: inq.name, email: inq.email, pass: issued.pass, kept: issued.kept, note })
+    const sent = await sendAdminEmail(c, String(inq.email).trim().toLowerCase(), mail.subject, mail.html, { unsubscribe: false })
+    emailed = sent.ok
+    if (!sent.ok) emailError = sent.error
+  }
+  const me = inqActorName(c)
+  const at = new Date().toISOString()
+  meta.decision = { state: 'approved', kind, pass: issued.pass, kept: issued.kept, created: issued.created, attendee_id: issued.attendeeId, by: me, at, note, emailed }
+  const did = issued.kept ? 'keeps their ' + issued.pass : issued.pass + ' issued'
+  await mediaPassDecide(c, inq, 'won', meta, `[approved ${istStamp(at)}${me ? ' by ' + me : ''}] ${did}${tell ? (emailed ? ', emailed the pass link' : ', the email could not be sent') : ', not emailed'}${note ? '. ' + note : ''}`)
+  await audit(c, 'media-pass.approved', 'inquiry', inq.id, { kind, pass: issued.pass, kept: issued.kept, created: issued.created, attendee_id: issued.attendeeId, emailed, ...(emailError ? { email_error: emailError } : {}) })
+  return c.json({ ok: true, pass: issued.pass, kept: issued.kept, created: issued.created, attendee_id: issued.attendeeId, emailed, email_error: emailError, row: (await mediaPassRows(c, inq.id))[0] || null })
+})
+
+// The pass link again, for an approved request whose email went astray.
+app.post('/api/admin/media-pass/:id/resend', async (c) => {
+  const inq = await mediaPassInquiry(c)
+  if (!inq) return c.json({ error: 'That request is not on the list.' }, 404)
+  if (inq.status !== 'won') return c.json({ error: 'Only an approved request has a pass link to send.' }, 409)
+  const meta = mediaPassMeta(inq)
+  const a = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE event_id = 1 AND lower(email) = ? ORDER BY id LIMIT 1').bind(String(inq.email || '').trim().toLowerCase()).first() as any
+  if (!a) return c.json({ error: 'Nobody is registered with this email any more. Approve it again from Inquiries, or add them in Attendees.' }, 409)
+  const pass = String(a.badge_type || '')
+  const mail = await mediaPassApprovedMail(c, { name: inq.name, email: inq.email, pass, kept: !MEDIA_PASS_BADGES.includes(pass), note: '' })
+  const sent = await sendAdminEmail(c, String(inq.email).trim().toLowerCase(), mail.subject, mail.html, { unsubscribe: false })
+  if (!sent.ok) return c.json({ error: 'The email could not be sent: ' + sent.error }, 502)
+  const me = inqActorName(c), at = new Date().toISOString()
+  meta.decision = { ...(meta.decision || {}), resent_at: at, resent_by: me }
+  await mediaPassDecide(c, inq, 'won', meta, `[pass link sent again ${istStamp(at)}${me ? ' by ' + me : ''}]`)
+  await audit(c, 'media-pass.resent', 'inquiry', inq.id, { pass })
+  return c.json({ ok: true, row: (await mediaPassRows(c, inq.id))[0] || null })
+})
+
+app.post('/api/admin/media-pass/:id/decline', async (c) => {
+  const inq = await mediaPassInquiry(c)
+  if (!inq) return c.json({ error: 'That request is not on the list.' }, 404)
+  if (inq.status === 'won') return c.json({ error: 'This request is approved and the pass is issued. To take the pass back, change it in Attendees.' }, 409)
+  if (mediaPassState(inq.status) === 'declined') return c.json({ error: 'This request is already declined.' }, 409)
+  const body = await c.req.json().catch(() => ({})) as any
+  const meta = mediaPassMeta(inq)
+  const kind = MEDIA_PASS_KINDS.includes(String(body.kind)) ? String(body.kind) : MEDIA_PASS_KINDS.includes(meta.kind) ? meta.kind : 'media'
+  const note = String(body.note ?? '').trim().slice(0, 600)
+  const tell = body.email === true
+  // The email first: when it cannot go, nothing changes and the screen says so.
+  if (tell) {
+    const mail = mediaPassDeclinedMail({ name: inq.name, kind, note })
+    const sent = await sendAdminEmail(c, String(inq.email).trim().toLowerCase(), mail.subject, mail.html, { unsubscribe: false })
+    if (!sent.ok) return c.json({ error: 'Not declined: the email could not be sent (' + sent.error + '). Try again, or untick Email them.' }, 502)
+  }
+  const me = inqActorName(c), at = new Date().toISOString()
+  meta.decision = { state: 'declined', kind, by: me, at, note, emailed: tell }
+  await mediaPassDecide(c, inq, 'closed', meta, `[declined ${istStamp(at)}${me ? ' by ' + me : ''}]${tell ? ' emailed a polite no' : ' not emailed'}${note ? '. ' + note : ''}`)
+  await audit(c, 'media-pass.declined', 'inquiry', inq.id, { kind, emailed: tell })
+  return c.json({ ok: true, emailed: tell, row: (await mediaPassRows(c, inq.id))[0] || null })
+})
+
 // ==================== STANDALONE INQUIRY FORM (embeddable URL for main website) ====================
 
 app.get('/inquiry', (c) => {
@@ -23353,11 +25601,12 @@ ${sharedNavHTML('contact')}
       <div class="w-12 h-12 rounded-xl bg-rose-500/20 flex items-center justify-center mb-3"><i class="fas fa-newspaper text-xl text-rose-400"></i></div>
       <h3 class="font-bold text-base text-rose-300">Media / Press</h3>
       <p class="text-xs text-gray-400 mt-1">Press accreditation, interviews, media coverage</p>
+      <a href="/media-pass" onclick="event.stopPropagation()" class="inline-block mt-2 text-xs font-semibold text-rose-300 underline">Apply for a Media &amp; Influencer Pass</a>
     </div>
     <div class="glass rounded-2xl p-6 card-hover cursor-pointer border border-green-500/20 hover:border-green-400/40" onclick="selectType('group_registration')">
       <div class="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center mb-3"><i class="fas fa-users text-xl text-green-400"></i></div>
       <h3 class="font-bold text-base text-green-300">Group Registration</h3>
-      <p class="text-xs text-gray-400 mt-1">Delegation discounts for 5+ people, corporate bookings</p>
+      <p class="text-xs text-gray-400 mt-1">${GROUP_MIN}+ passes: ${groupPctFor(GROUP_MIN)}% off each, ${GROUP_TIERS[0].min}+: ${GROUP_DISCOUNT_PCT}% off, booked online. Corporate bookings</p>
     </div>
   </div>
 
@@ -23470,7 +25719,7 @@ const TYPE_CONFIG = {
   sponsorship: { icon: 'fa-handshake', color: 'orange', title: 'Sponsorship Inquiry', subtitle: 'Brand visibility & partnership opportunities' },
   speaking: { icon: 'fa-microphone-alt', color: 'purple', title: 'Speaking Opportunity', subtitle: 'Submit your talk or workshop proposal' },
   media: { icon: 'fa-newspaper', color: 'rose', title: 'Media / Press Inquiry', subtitle: 'Accreditation, interviews & coverage' },
-  group_registration: { icon: 'fa-users', color: 'green', title: 'Group Registration', subtitle: 'Delegation discounts for 5+ people' },
+  group_registration: { icon: 'fa-users', color: 'green', title: 'Group Registration', subtitle: '${GROUP_MIN}+ passes: ${groupPctFor(GROUP_MIN)}% off each, ${GROUP_TIERS[0].min}+: ${GROUP_DISCOUNT_PCT}% off, booked online at /group' },
   meeting_room: { icon: 'fa-handshake', color: 'green', title: 'Private Boardroom', subtitle: 'Reserve a WTC boardroom by the hour for 20-21 Nov' },
 };
 
@@ -23490,7 +25739,9 @@ function selectType(type) {
   } else if (type === 'speaking') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
   } else if (type === 'group_registration') {
-    extra = '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs text-gray-400 mb-1 block">Group Size</label><input type="number" id="cf-groupsize" autocomplete="off" min="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Number of people"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Pass Type</label><select id="cf-passtype" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select pass</option><option value="Delegate">Delegate (${rsPrice('Delegate Pass')} + GST)</option><option value="Premium Delegate">Premium Delegate (${rsPrice('Premium Delegate Pass')} + GST)</option><option value="VIP">VIP (${rsPrice('VIP Pass')} + GST)</option><option value="Academic">Academic (${rsPrice('Academic Pass')} + GST)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div></div>';
+    // Group booking is online now (12 Nov 2026): the notice first, the form kept for questions.
+    extra = '<div class="rounded-xl p-4 text-sm leading-relaxed" style="background:rgba(255,107,0,0.08);border:1px solid rgba(255,107,0,0.3);margin-bottom:16px;"><p style="margin:0 0 10px;"><strong>Booking ${GROUP_MIN} or more passes? Book online with up to ${GROUP_DISCOUNT_PCT}% off.</strong> ${GROUP_RULE_TEXT}</p><a href="/group" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#C84F00;color:#fff;font-weight:700;text-decoration:none;">Book for your group</a><p style="margin:10px 0 0;">Only a question? Send it below.</p></div>' +
+      '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs text-gray-400 mb-1 block">Group Size</label><input type="number" id="cf-groupsize" autocomplete="off" min="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Number of people"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Pass Type</label><select id="cf-passtype" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select pass</option><option value="Delegate">Delegate (${rsPrice('Delegate Pass')} + GST)</option><option value="Premium Delegate">Premium Delegate (${rsPrice('Premium Delegate Pass')} + GST)</option><option value="VIP">VIP (${rsPrice('VIP Pass')} + GST)</option><option value="Academic">Academic (${rsPrice('Academic Pass')} + GST)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div></div>';
   } else if (type === 'sponsorship') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Budget Range</label><select id="cf-budget" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select range</option><option value="Under ₹1 Lakh">Under ₹1 Lakh</option><option value="₹1-3 Lakhs">₹1-3 Lakhs</option><option value="₹3-5 Lakhs">₹3-5 Lakhs</option><option value="₹5-10 Lakhs">₹5-10 Lakhs</option><option value="₹10+ Lakhs">₹10+ Lakhs</option></select></div>';
   }
@@ -23723,8 +25974,11 @@ ${sharedFooterHTML()}
 // old table promised a VIP dinner, a hackathon and an image suite). Prices are read
 // from the table that charges them (rsPrice), dated, so the 5 Nov switch shows here.
 function passComparisonHTML(): string {
+  // 12 Nov 2026 (organiser): a Student Pass beside the Academic Pass, the floor and the
+  // stage demos as two rows, and the certificate, for everyone, last.
   const passes = [
     { name: 'Visitor', price: 'Free', color: '#2B8CFF' },
+    { name: 'Student', price: priceNow('Student Pass'), color: '#AD1457', late: latePriceTag('Student Pass') },
     { name: 'Academic', price: priceNow('Academic Pass'), color: '#7C5CFF', late: latePriceTag('Academic Pass') },
     { name: 'Delegate', price: priceNow('Delegate Pass'), color: '#00996C', late: latePriceTag('Delegate Pass') },
     { name: 'Premium Delegate', price: priceNow('Premium Delegate Pass'), color: '#0B7A75', late: latePriceTag('Premium Delegate Pass') },
@@ -23735,25 +25989,28 @@ function passComparisonHTML(): string {
     { title: 'The event', rows: [
       // Organiser, 28 Oct 2026: a free pass is admitted as entry slots allow (the
       // slot is confirmed by email before the event); a paid pass is guaranteed in.
-      ['Guaranteed entry on both days <small>not on a free Visitor Pass: entry depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email</small>', [0, 1, 1, 1, 1]],
-      ['Exhibition floor and product demos', [1, 1, 1, 1, 1]],
-      ['Conference sessions, both days', [0, 1, 1, 1, 1]],
-      ['AI Marketplace listing', [1, 1, 1, 1, 1]],
-      ['Certificate of participation', [0, 1, 1, 1, 1]],
+      ['Guaranteed entry on both days <small>not on a free Visitor Pass: entry depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email</small>', [0, 1, 1, 1, 1, 1]],
+      ['Exhibition floor', [1, 1, 1, 1, 1, 1]],
+      ['AI Innovation Talk and Showcase <small>live product demos on the Innovation Stage</small>', [1, 1, 1, 1, 1, 1]],
+      ['Conference sessions, both days', [0, 1, 1, 1, 1, 1]],
+      ['AI Marketplace listing', [1, 1, 1, 1, 1, 1]],
     ] },
     { title: 'Networking', rows: [
-      ['Full directory, start conversations, book meetings', [0, 1, 1, 1, 1]],
-      ['Student networking zone', [0, 1, 0, 0, 0]],
+      ['Full directory, start conversations, book meetings', [0, 1, 1, 1, 1, 1]],
+      ['Student networking zone', [0, 1, 1, 0, 0, 0]],
     ] },
     { title: 'Networking lunch and workshops', rows: [
-      ['Conference kit', [0, 0, 1, 1, 1]],
-      ['Networking lunch', [0, 0, 1, 1, 1]],
-      ['One hands-on workshop <small>seats first come, first served</small>', [0, 0, 0, 1, 1]],
+      ['Conference kit', [0, 0, 0, 1, 1, 1]],
+      ['Networking lunch', [0, 0, 0, 1, 1, 1]],
+      ['One hands-on workshop <small>seats first come, first served; Student Passes up to half of each workshop</small>', [0, 1, 0, 0, 1, 1]],
     ] },
     { title: 'VIP', rows: [
-      ['Bharat AI Leaders’ Evening, Day 1', [0, 0, 0, 0, 1]],
-      ['VIP lounge and priority seating', [0, 0, 0, 0, 1]],
-      ['Speaker meet &amp; greet', [0, 0, 0, 0, 1]],
+      ['Bharat AI Leaders’ Evening, Day 1', [0, 0, 0, 0, 0, 1]],
+      ['VIP lounge and priority seating', [0, 0, 0, 0, 0, 1]],
+      ['Speaker meet &amp; greet', [0, 0, 0, 0, 0, 1]],
+    ] },
+    { title: 'Certificate', rows: [
+      ['Certificate of participation <small>for everyone checked in at the venue, naming your pass and any workshop you attended</small>', [1, 1, 1, 1, 1, 1]],
     ] },
   ]
   const yes = '<span class="pcmp-yes" role="img" aria-label="Included">&#10003;</span>'
@@ -23785,8 +26042,8 @@ function passComparisonHTML(): string {
       .pcmp-no{color:#B7BCD3}
       .pcmp small{display:block;font-size:11px;color:#5E6585;font-weight:400}
       @media (max-width:640px){
-        .pcmp thead th{font-size:11px;padding:10px 2px}
-        .pcmp thead th span{font-size:11px}
+        .pcmp thead th{font-size:10px;padding:10px 1px;overflow-wrap:anywhere}
+        .pcmp thead th span{font-size:10px}
         .pcmp thead th.pcmp-what,.pcmp-row th,.pcmp-group{display:none}
         .pcmp-group.pcmp-narrow{display:table-row}
         .pcmp-label{display:table-row;border-top:1px solid #EEF0F7}
@@ -23803,7 +26060,7 @@ function passComparisonHTML(): string {
       </table>
     </div>
     <p style="margin:10px 2px 0;font-size:12px;line-height:1.6;color:#5E6585;">${priceDeadlineNote()} ${GROUP_RATE_TEXT}</p>
-    <p style="margin:6px 2px 0;font-size:12px;line-height:1.6;color:#5E6585;">Paid passes are + 18% GST. Workshop seats are limited and go first come, first served: after you pay, you choose your seat in the app, one per pass. The Academic Pass needs a valid student or faculty ID at the badge desk. Media passes are by invitation.</p>`
+    <p style="margin:6px 2px 0;font-size:12px;line-height:1.6;color:#5E6585;">Paid passes are + 18% GST. Workshop seats are limited and go first come, first served: after you pay, you choose your seat in the app, one per pass. The Student Pass needs a valid student ID, and the Academic Pass a faculty or institution ID, at the badge desk. Media passes are by invitation.</p>`
 }
 
 // The site's own menu, in the site's order (a change to it in public/*.html belongs here too), for the
@@ -23831,7 +26088,9 @@ function siteHeaderHTML(current: string): string {
 // shared with /passes (passes-design.css, passes-motion.css and .js) and added to in booking-*. To stop
 // the movement, empty BOOKING_MOTION and BOOKING_SCRIPTS: every word and every form stay. Older pages:
 // docs/page-backups/register-before-redesign-2026-11-06.html and inquiry-before-redesign-2026-11-06.html
-const BOOKING_DESIGN = '<link rel="stylesheet" href="/css/passes-design.css?v=20261106"><link rel="stylesheet" href="/css/booking-design.css?v=20261106">'
+// Five passes to choose from since the Student Pass (12 Nov 2026): on the smallest phones the one-line
+// description goes, so the paid form's button stays on the first screen.
+const BOOKING_DESIGN = '<link rel="stylesheet" href="/css/passes-design.css?v=20261112m"><link rel="stylesheet" href="/css/booking-design.css?v=20261106"><style>@media (max-width:360px){.rg-choice-what{display:none}.rg-choice > div{padding:8px 10px}}</style>'
 const BOOKING_MOTION = '<link rel="stylesheet" href="/css/passes-motion.css?v=20261106"><link rel="stylesheet" href="/css/booking-motion.css?v=20261106">'
 const BOOKING_SCRIPTS = '<script src="/js/passes-motion.js?v=20261106" defer></script><script src="/js/booking-motion.js?v=20261106" defer></script>'
 const BOOKING_CREDIT = '<p class="ps-credit">Motion effects from <a href="https://skiper-ui.com" target="_blank" rel="noopener noreferrer">Skiper UI</a> and <a href="https://github.com/Ashutoshx7/VengeanceUI" target="_blank" rel="noopener noreferrer">Vengeance UI</a>, and small details after <a href="https://uiverse.io" target="_blank" rel="noopener noreferrer">Uiverse</a>.</p>'
@@ -23861,24 +26120,26 @@ function passesPageHTML(opts: { waitlist?: boolean } = {}): string {
     ['Every session', 'Delegate', '#delegate'],
     ['A workshop too', 'Premium Delegate', '#premium'],
     ['The Leaders’ Evening', 'VIP', '#vip'],
-    ['Student or faculty', 'Academic', '#academic'],
+    ['A student', 'Student', '#student'],
+    ['Faculty', 'Academic', '#academic'],
     ['Just the exhibition floor', 'Visitor', '#visitor'],
   ]
   const faq: [string, string][] = [
-    ['Which pass should I buy?', 'Coming for the conference: the <strong>Delegate Pass</strong>. Want a hands-on workshop seat as well: <strong>Premium Delegate</strong>. Want the Bharat AI Leaders’ Evening, the lounge and the speaker meet &amp; greet: <strong>VIP</strong>. A student or faculty member with ID: <strong>Academic</strong>. Only the exhibition floor: the free <strong>Visitor Pass</strong>, where entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.'],
+    ['Which pass should I buy?', 'Coming for the conference: the <strong>Delegate Pass</strong>. Want a hands-on workshop seat as well: <strong>Premium Delegate</strong>. Want the Bharat AI Leaders’ Evening, the lounge and the speaker meet &amp; greet: <strong>VIP</strong>. A student with a student ID: <strong>Student</strong>, which includes a workshop. Faculty or a researcher: <strong>Academic</strong>. Only the exhibition floor: the free <strong>Visitor Pass</strong>, where entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email.'],
     ['Is entry guaranteed?', 'On every paid pass, yes, on both days. ' + (waitlist ? WAITLIST_PAGE_TEXT : FREE_ENTRY_TEXT)],
     ['What does the price include?', 'Prices are + 18% GST. ' + priceDeadlineNote() + ' An order keeps the price it was made at.'],
     ['Can I get a GST invoice in my company&rsquo;s name?', 'Yes. The paid form has a section for the registered company name, GSTIN and billing address. A receipt is emailed the moment the payment goes through, and the GST invoice follows from the accounts team.'],
     ['How do I pay?', 'On this site, through CCAvenue: UPI, credit and debit cards, net banking and wallets. Your pass is confirmed the moment the payment goes through and you are brought straight back here.'],
     ['What if I can&rsquo;t come after all?', 'Transfer the pass to a colleague free of charge, or take a credit note for 100% of the amount paid, until 13 Nov 2026. Cash refunds follow the <a href="/refund" class="text-primary-400 underline">refund policy</a>.'],
-    ['How do workshop seats work?', 'One hands-on workshop comes with the Premium Delegate and VIP passes. Seats are limited and go first come, first served: after you pay, you choose your seat in the app.'],
-    ['We are a team of five or more', GROUP_RATE_TEXT + ' <a href="/contact#group_registration" class="text-primary-400 underline">Ask for a group rate</a>.'],
-    ['I already hold a paid pass. Can I move up?', 'Yes. A confirmed Delegate, Premium Delegate or Academic pass moves up to any dearer pass, and you pay only the difference between the two prices. <a href="/app?action=pay&amp;pass=premium" class="text-primary-400 underline">Open the app</a>, sign in, and tap <strong>Upgrade my pass</strong> on your pass card. It shows the difference before you pay.'],
+    ['How do workshop seats work?', 'One hands-on workshop comes with the Student, Premium Delegate and VIP passes. Seats are limited and go first come, first served: after you pay, you choose your seat in the app.'],
+    [`Booking for ${GROUP_MIN_WORD} or more?`, GROUP_RULE_TEXT + ' <a href="/group" class="text-primary-400 underline">Book for your group</a>.'],
+    ['I already hold a paid pass. Can I move up?', 'Yes. A confirmed Student, Academic, Delegate or Premium Delegate pass moves up to any dearer pass, and you pay only the difference between the two prices. <a href="/app?action=pay&amp;pass=premium" class="text-primary-400 underline">Open the app</a>, sign in, and tap <strong>Upgrade my pass</strong> on your pass card. It shows the difference before you pay.'],
+    ...(offersActive() ? [['Can I speak on stage?', `A few ${SHOWCASE_MINUTES}-minute Innovation Showcase slots are open on ${SHOWCASE_PLACE}: &#8377;${SHOWCASE_PRICES_INR[SHOWCASE_SLOT].toLocaleString('en-IN')} + GST with an Exhibition Speaker pass, or &#8377;${SHOWCASE_PRICES_INR[SHOWCASE_SLOT_VIP].toLocaleString('en-IN')} + GST with a VIP Pass. <a href="/showcase-slot" class="text-primary-400 underline">Book a slot</a>.`] as [string, string]] : []),
   ]
   // Design: css/passes-design.css. Motion: delete the two lines naming passes-motion (here and at
   // the foot) and every word stays. The older page: docs/page-backups/passes-before-redesign-2026-11-06.html
-  const extraHead = '<link rel="stylesheet" href="/css/passes-design.css?v=20261106"><link rel="stylesheet" href="/css/passes-motion.css?v=20261106"></head>'
-  return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass (entry not guaranteed, by slot as available), Academic, Delegate, Premium Delegate and VIP, all + GST. " + (latePricing() ? '' : 'Standard prices until ' + PRICE_DEADLINE_TEXT + '. ') + "20–21 Nov, World Trade Center Mumbai.").replace('</head>', extraHead)}
+  const extraHead = '<link rel="stylesheet" href="/css/passes-design.css?v=20261112m"><link rel="stylesheet" href="/css/passes-motion.css?v=20261106"></head>'
+  return `${sharedHeadHTML('Passes', '/passes', "Every pass for Bharat AI Innovation 2026 compared: free Visitor Pass (entry not guaranteed, by slot as available), Student (with a workshop), Academic, Delegate, Premium Delegate and VIP, all + GST. " + (latePricing() ? '' : 'Standard prices until ' + PRICE_DEADLINE_TEXT + '. ') + "20–21 Nov, World Trade Center Mumbai.").replace('</head>', extraHead)}
 <body class="min-h-screen ps-page">
 ${siteHeaderHTML('/passes')}
 
@@ -23889,6 +26150,7 @@ ${siteHeaderHTML('/passes')}
       <div>
         <p class="ps-tag"><i class="fas fa-ticket-alt" aria-hidden="true"></i>${latePricing() ? 'PRICES WENT UP ON 6 NOV' : 'STANDARD PRICES UNTIL ' + PRICE_DEADLINE_TEXT.toUpperCase()}</p>
         <h1 class="ps-title" aria-label="Passes for Bharat AI Innovation 2026"><span class="ps-w ps-w--big"><span style="--i:0">Passes</span></span> <span class="ps-w"><span style="--i:1">for</span></span> <span class="ps-w"><span style="--i:2">Bharat</span></span> <span class="ps-w"><span style="--i:3">AI</span></span> <span class="ps-w"><span style="--i:4">Innovation</span></span> <span class="ps-w"><span style="--i:5">2026</span></span></h1>
+        <p class="ps-hi" lang="hi" style="margin:4px 0 0;font-family:Mukta,Manrope,sans-serif;font-weight:800;font-size:clamp(20px,4vw,42px);line-height:1.15;"><span style="color:#E06A00;">भारत</span> <span style="color:#000080;">एआई</span> <span style="color:#138808;">इनोवेशन</span></p>
         <p class="ps-sub">20&ndash;21 Nov 2026, World Trade Center Mumbai. Every paid pass has guaranteed entry on both days and includes the networking app. ${priceDeadlineNote()}</p>
       </div>
       <nav class="ps-pick" aria-label="Find your pass">
@@ -23907,7 +26169,8 @@ ${siteHeaderHTML('/passes')}
         ${pass('premium', 'Premium Delegate Pass', '#0B7A75', 'Includes a workshop', ['Everything in Delegate', 'One hands-on workshop, seat chosen in the app', 'Seats first come, first served'])}
         ${pass('vip', 'VIP Pass', '#8A6500', 'All access', ['Everything in Premium Delegate', 'Bharat AI Leaders’ Evening, Day 1', 'VIP lounge and priority seating', 'Speaker meet &amp; greet'])}
       </div>
-      ${pass('academic', 'Academic Pass', '#6A4BE8', 'Students and faculty', ['Guaranteed entry on both days', 'Every conference session', 'Student networking zone', 'Bring your student or faculty ID', 'No lunch, no workshop'], true)}
+      ${pass('student', 'Student Pass', '#AD1457', 'Students: a workshop included', ['Guaranteed entry on both days', 'Every conference session', 'One hands-on workshop, seat chosen in the app', 'Student networking zone', 'Bring your student ID', 'No lunch'], true)}
+      ${pass('academic', 'Academic Pass', '#6A4BE8', 'Faculty and researchers', ['Guaranteed entry on both days', 'Every conference session', 'Student networking zone', 'Bring your faculty or institution ID', 'No lunch, no workshop'], true)}
       <section class="ps-visitor" id="visitor" aria-labelledby="ps-visitor-title">
         <div>
           <h2 id="ps-visitor-title">Free Visitor Pass</h2>
@@ -23929,6 +26192,7 @@ ${siteHeaderHTML('/passes')}
           <p class="ps-go-q">Pick your pass</p>
           <ul class="ps-go-list">
             <li><a href="/register?source=passes-compare-visitor">Visitor, free</a></li>
+            <li><a href="/register?source=passes-compare#student">Student</a></li>
             <li><a href="/register?source=passes-compare#academic">Academic</a></li>
             <li class="is-lead"><a href="/register?source=passes-compare#delegate">Delegate</a></li>
             <li><a href="/register?source=passes-compare#premium">Premium Delegate</a></li>
@@ -23942,9 +26206,9 @@ ${siteHeaderHTML('/passes')}
       <div class="ps-wrap ps-team-in">
         <div>
           <h2 id="ps-team-title">Coming as a team?</h2>
-          <p>${GROUP_RATE_TEXT}</p>
+          <p>${GROUP_RULE_TEXT}</p>
         </div>
-        <a class="ps-buy" href="/contact#group_registration">Ask for a group rate</a>
+        <a class="ps-buy" href="/group">Book for your group</a>
       </div>
     </section>
 
@@ -24015,6 +26279,7 @@ ${siteHeaderHTML('/passes')}
       <div>
         <p class="ps-tag"><i class="fas fa-ticket-alt" aria-hidden="true"></i>${latePricing() ? 'PRICES WENT UP ON 6 NOV' : 'STANDARD PRICES UNTIL 5 NOV'}</p>
         <h1 class="ps-title" aria-label="Register for Bharat AI Innovation 2026"><span class="ps-w ps-w--big"><span style="--i:0">Register</span></span> <span class="ps-w"><span style="--i:1">for</span></span> <span class="ps-w"><span style="--i:2">Bharat</span></span> <span class="ps-w"><span style="--i:3">AI</span></span> <span class="ps-w"><span style="--i:4">Innovation</span></span> <span class="ps-w"><span style="--i:5">2026</span></span></h1>
+        <p class="ps-hi" lang="hi" style="margin:4px 0 0;font-family:Mukta,Manrope,sans-serif;font-weight:800;font-size:clamp(20px,4vw,42px);line-height:1.15;"><span style="color:#E06A00;">भारत</span> <span style="color:#000080;">एआई</span> <span style="color:#138808;">इनोवेशन</span></p>
       </div>
       <p class="ps-sub">World Trade Center, Mumbai, 20&ndash;21 Nov 2026.<span class="hidden sm:inline"> Take a free Visitor Pass for the exhibition floor, or a Delegate Pass for every session, the networking lunch, the networking app and guaranteed entry on both days.</span></p>
     </div>
@@ -24204,7 +26469,7 @@ ${siteHeaderHTML('/passes')}
             </a>
             <a href="/app#workshops" class="rs-row">
               <span class="rs-ic" style="color:#0B7A75;background:#E6F4F3;"><i class="fas fa-chalkboard-teacher"></i></span>
-              <span class="rs-row-body"><strong>Hands-on workshops</strong><span>Learn by doing, with experts. Included in the Premium Delegate and VIP passes.</span></span>
+              <span class="rs-row-body"><strong>Hands-on workshops</strong><span>Learn by doing, with experts. Included in the Student, Premium Delegate and VIP passes.</span></span>
               <i class="fas fa-chevron-right rs-chev"></i>
             </a>
             <a href="/app#schedule" class="rs-row">
@@ -24281,13 +26546,14 @@ ${siteHeaderHTML('/passes')}
         <div class="rg-paid">
           <section class="rg-offer" aria-labelledby="rg-offer-title">
             <h2 id="rg-offer-title">Want Full Conference Access?</h2>
-            <p>Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. A workshop comes only with Premium Delegate and VIP: one each, seats first come, first served.</p>
+            <p>Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. A workshop comes with the Student, Premium Delegate and VIP passes: one each, seats first come, first served.</p>
             <p class="rg-clock"><i class="fas fa-clock" aria-hidden="true"></i><span>${latePricing() ? PRICE_ROSE_TEXT : `Prices rise on ${PRICE_LATE_FROM_TEXT}. Book by ${PRICE_DEADLINE_TEXT} to pay the standard price.`}</span></p>
             <ul class="rg-tiers">
               ${tier('delegate', 'Delegate Pass', 'Delegate Pass', 'Full 2-day conference + networking lunch + networking app', 'Most popular', '#0F7B47', true)}
               ${tier('premium', 'Premium Delegate Pass', 'Premium Delegate', 'Delegate + one workshop (first come, first served)', 'Includes a workshop', '#0B7A75')}
               ${tier('vip', 'VIP Pass', 'VIP Pass', 'Premium + Bharat AI Leaders’ Evening + VIP lounge + speaker meet &amp; greet', 'All access', '#8A6500')}
-              ${tier('academic', 'Academic Pass', 'Academic Pass', 'Conference + student zone, with a student or faculty ID', 'Students and faculty', '#6A4BE8')}
+              ${tier('student', 'Student Pass', 'Student Pass', 'Conference + one workshop + student zone, with a student ID', 'Students', '#AD1457')}
+              ${tier('academic', 'Academic Pass', 'Academic Pass', 'Conference + student zone, with a faculty or institution ID', 'Faculty and researchers', '#6A4BE8')}
             </ul>
             <a href="#compare" class="rg-compare">Compare every pass, side by side</a>
           </section>
@@ -24295,9 +26561,9 @@ ${siteHeaderHTML('/passes')}
           <!-- Group Discount -->
           <section class="rg-group" id="delegation-section" aria-labelledby="rg-group-title">
             <h3 id="rg-group-title">Group Registration</h3>
-            <p>Bringing a team of five or more? Five passes for the price of four, on Delegate and Premium Delegate passes, on request.</p>
+            <p>Bringing a team? ${GROUP_RULE_TEXT}</p>
             <div class="rg-group-go">
-              <a href="/contact#group_registration" class="rg-ghost">Ask for a group rate</a>
+              <a href="/group" class="rg-ghost">Book for your group</a>
               <a href="#compare" class="ps-link">Compare passes</a>
             </div>
           </section>
@@ -24471,7 +26737,7 @@ async function submitRegistration(e) {
 // the two fields collapse to a single "College Name", which is the only affiliation
 // we need to validate a student rate.
 function rppApplyPassFields(passType) {
-  const academic = passType === 'Academic Pass';
+  const academic = passType === 'Academic Pass' || passType === 'Student Pass';
   const label    = document.getElementById('rpp-company-label');
   const company  = document.getElementById('rpp-company');
   const desigFld = document.getElementById('rpp-designation-field');
@@ -24507,7 +26773,7 @@ function openRegisterPaidPassModal(preselect) {
 // On hashchange too: a link to /register#delegate from this same page changes only
 // the hash, and until 4 Oct 2026 the success screen's Upgrade buttons did nothing.
 function rppOpenFromHash() {
-  const PASS_BY_HASH = { delegate: 'Delegate Pass', premium: 'Premium Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
+  const PASS_BY_HASH = { delegate: 'Delegate Pass', premium: 'Premium Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass', student: 'Student Pass' };
   const want = PASS_BY_HASH[(window.location.hash || '').replace('#', '').toLowerCase()];
   if (!want) return;
   // Someone who came for a paid pass and closes the form is left among the paid passes on a phone.
@@ -24579,7 +26845,7 @@ async function submitRegisterPaidPassForm(e) {
 
   // Checked before the payment tab opens: sending someone to checkout and only then
   // telling them a field is missing loses the payment and the details together.
-  const academic = passType === 'Academic Pass';
+  const academic = passType === 'Academic Pass' || passType === 'Student Pass';
   const gaps = [];
   if (!passType) gaps.push('pass type');
   if (!name) gaps.push('name');
@@ -24648,7 +26914,7 @@ var _rppSigninSentTo = '';
 function rppAlreadyRegistered(data, email, passType) {
   var box = document.getElementById('rpp-notice');
   if (!box) { showToast(data.message || 'That email is already registered. Please sign in.', 'error'); return; }
-  var KEY = { 'Delegate Pass': 'delegate', 'Premium Delegate Pass': 'premium', 'VIP Pass': 'vip', 'Academic Pass': 'academic' };
+  var KEY = { 'Delegate Pass': 'delegate', 'Premium Delegate Pass': 'premium', 'VIP Pass': 'vip', 'Academic Pass': 'academic', 'Student Pass': 'student' };
   var tier = KEY[passType] || 'delegate';
   var text = document.createElement('p');
   text.style.cssText = 'margin:0 0 10px;';
@@ -24800,7 +27066,8 @@ document.querySelectorAll('input[name="rg-view"]').forEach(function (r) {
           ['Delegate Pass', 'Delegate', '2 days + networking lunch', '#0F7B47'],
           ['Premium Delegate Pass', 'Premium Delegate', 'Delegate + 1 workshop', '#0B7A75'],
           ['VIP Pass', 'VIP', 'Workshop + Leaders’ Evening + lounge', '#8A6500'],
-          ['Academic Pass', 'Academic', 'Students', '#6A4BE8'],
+          ['Student Pass', 'Student', '1 workshop included', '#AD1457'],
+          ['Academic Pass', 'Academic', 'Faculty', '#6A4BE8'],
         ].map(([pass, short, what, color]) => `<label class="rg-choice" style="--c:${color};">
           <input class="rg-sr" type="radio" name="rpp-pass" value="${pass}" onchange="document.getElementById('rpp-pass-type').value=this.value;rppApplyPassFields(this.value)">
           <div data-rpp-card>
@@ -26194,6 +28461,7 @@ function mainPageHTML(): string {
                 <p class="text-xs text-gray-400 mb-3" id="pcc-pass-note">Keep it on your phone — the badge desk scans it to check you in.</p>
                 <p class="hidden text-xs text-gray-300 mb-3" id="pcc-workshop"></p>
                 <p class="hidden text-xs text-gray-300 mb-3" id="pcc-upgrade"></p>
+                <p class="hidden text-xs text-gray-300 mb-3" id="pcc-showcase"></p>
                 <!-- The download comes first; a pass still waiting for payment
                      shows Pay now before it, and a free pass its guarantee after it. -->
                 <button type="button" id="pcc-pay-btn" onclick="payPendingPass()" class="hidden px-4 mr-2 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-credit-card mr-1.5"></i>Pay now</button>
@@ -26441,12 +28709,28 @@ function mainPageHTML(): string {
                 </ul>
               </div>
 
+              <!-- Student Pass -->
+              <div class="glass rounded-2xl p-5 border border-violet-500/30 hover:border-violet-400/50 transition-all group">
+                <div class="text-2xl mb-2">🎓</div>
+                <h3 class="font-bold text-base text-violet-300">Student Pass</h3>
+                <div class="text-xl font-black text-white mt-1">${priceNow('Student Pass')}<span class="text-xs font-normal text-gray-400"> + GST / person</span></div>
+                <div class="text-[10px] font-semibold text-violet-400 mt-0.5">Students, with a student ID</div>
+                <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full conference access</li>
+                  <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>One hands-on workshop</li>
+                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Student networking zone</li>
+                  <li><i class="fas fa-check text-violet-400 mr-1.5 text-[10px]"></i>Certificate of participation</li>
+                  <li><i class="fas fa-wifi text-primary-400 mr-1.5 text-[10px]"></i><span class="text-primary-300 font-semibold">Access to networking app</span></li>
+                  <li class="text-gray-500"><i class="fas fa-minus mr-1.5 text-[10px]"></i>No lunch</li>
+                </ul>
+              </div>
+
               <!-- Academic Pass -->
               <div class="glass rounded-2xl p-5 border border-violet-500/30 hover:border-violet-400/50 transition-all group">
                 <div class="text-2xl mb-2">🎓</div>
                 <h3 class="font-bold text-base text-violet-300">Academic Pass</h3>
                 <div class="text-xl font-black text-white mt-1">${priceNow('Academic Pass')}<span class="text-xs font-normal text-gray-400"> + GST / person</span></div>
-                <div class="text-[10px] font-semibold text-violet-400 mt-0.5">Teachers, Students & researchers</div>
+                <div class="text-[10px] font-semibold text-violet-400 mt-0.5">Faculty and researchers</div>
                 <ul class="mt-3 space-y-1.5 text-xs text-gray-300">
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Full conference access</li>
                   <li><i class="fas fa-check text-green-400 mr-1.5 text-[10px]"></i>Exhibition floor pass</li>
@@ -26844,6 +29128,7 @@ function mainPageHTML(): string {
               <option value="Premium Delegate Pass">Premium Delegate Pass</option>
               <option value="VIP Pass">VIP Pass</option>
               <option value="Academic Pass">Academic Pass</option>
+              <option value="Student Pass">Student Pass</option>
               <option value="Visitor Pass">Visitor Pass</option>
               <option value="Media Pass">Media Pass</option>
               <option value="Finalist">Finalists</option>
@@ -27683,7 +29968,7 @@ function mainPageHTML(): string {
           <!-- CTA -->
           <div class="text-center">
             <h3 class="text-xl font-bold mb-2">Ready to Master AI Technologies?</h3>
-            <p class="text-gray-400 text-sm mb-4">A seat in one workshop comes with the Premium Delegate (${priceNow('Premium Delegate Pass')} + GST) and VIP (${priceNow('VIP Pass')} + GST) passes, first come, first served.</p>
+            <p class="text-gray-400 text-sm mb-4">A seat in one workshop comes with the Student (${priceNow('Student Pass')} + GST, students), Premium Delegate (${priceNow('Premium Delegate Pass')} + GST) and VIP (${priceNow('VIP Pass')} + GST) passes, first come, first served.</p>
             <div class="flex flex-col sm:flex-row justify-center gap-3">
               <a href="/register#premium" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 transition-all text-sm shadow-lg shadow-teal-500/20">
                 <i class="fas fa-ticket-alt mr-2"></i>Get a workshop seat
@@ -28166,7 +30451,7 @@ function mainPageHTML(): string {
               <i class="fas fa-graduation-cap text-purple-400 text-lg mb-1 block"></i>
               <div class="text-white font-semibold text-xs">Academic</div>
               <div class="text-purple-300 font-bold text-sm">${priceNow('Academic Pass')} + GST</div>
-              <div class="text-gray-500 text-[10px]">Students &amp; researchers</div>
+              <div class="text-gray-500 text-[10px]">Faculty &amp; researchers</div>
             </div>
           </label>
         </div>
@@ -28413,7 +30698,7 @@ function mainPageScript(): string {
     function vipUpsellLine(name) {
       if (!currentUser) return '';
       var b = String(currentUser.badge_type || '');
-      if (!/visitor|general|delegate|academic/i.test(b) || /vip/i.test(b)) return '';
+      if (!/visitor|general|delegate|academic|student/i.test(b) || /vip/i.test(b)) return '';
       if (/speaker|exhibitor|organiser|jury|media|staff/i.test(String(currentUser.role || ''))) return '';
       return '<button type="button" onclick="closeProfileModal();showUpgradeModal(&quot;vip&quot;, this.getAttribute(&quot;data-name&quot;))" data-name="' + esc(name) + '"' +
         ' class="w-full py-2.5 rounded-xl text-sm font-medium text-center" style="background:rgba(245,158,11,0.12);color:#FBBF24;"><i class="fas fa-crown mr-1"></i>Meet ' + esc(name) + ' at the speaker meet &amp; greet (VIP)</button>';
@@ -29902,7 +32187,7 @@ function mainPageScript(): string {
         : /pass/i.test(badge) ? titled
         : 'Your ' + titled + ' pass';
       const pending = String(currentUser.payment_status || '').toLowerCase() === 'pending'
-        && /delegate|academic|vip/i.test(badge);
+        && /delegate|academic|student|vip/i.test(badge);
       document.getElementById('pcc-pass-name').textContent = name;
       const payNow = pending;
       const payBtn = document.getElementById('pcc-pay-btn');
@@ -29939,11 +32224,29 @@ function mainPageScript(): string {
       var steps = upgradeStepsFor(paidUpgradeFrom());
       if (btn) btn.classList.toggle('hidden', !steps.length);
       if (!el) return;
+      // An Exhibitor signed in after the prices loaded: ask once more, with the session.
+      var b = currentUser ? String(currentUser.badge_type || '') : '';
+      if (_ppOffers && TEAM_PASSES_APP.indexOf(b) >= 0 && !offerSteps(b) && _ppOffersAskedFor !== currentUser.id) { _ppOffersAskedFor = currentUser.id; loadPassPrices(); }
+      renderShowcaseLine();
       var priced = steps.filter(function (s) { return s.up; });
       if (!priced.length) { el.classList.add('hidden'); return; }
-      el.innerHTML = '<i class="fas fa-arrow-up mr-1.5 text-amber-400"></i>Move up and pay only the difference: ' + priced.map(function (s) {
-        return esc(s.pass.replace(' Pass', '')) + ', &#8377;' + inr(s.up.base) + ' + GST';
+      var anyOffer = priced.some(function (s) { return s.up.offer; });
+      el.innerHTML = '<i class="fas fa-arrow-up mr-1.5 text-amber-400"></i>' + (anyOffer ? 'This week’s offer' + (offersEnd() ? ', until ' + esc(offersEnd()) : '') + ': ' : 'Move up and pay only the difference: ') + priced.map(function (s) {
+        return esc(s.pass.replace(' Pass', '')) + ', &#8377;' + inr(s.up.base) + ' + GST' + (s.up.was ? ' <s class="text-gray-500">&#8377;' + inr(s.up.was) + '</s>' : '');
       }).join(' &middot; ') + '.';
+      el.classList.remove('hidden');
+    }
+    // The paid showcase slot, offered on the pass card while slots are left.
+    function renderShowcaseLine() {
+      var el = document.getElementById('pcc-showcase');
+      if (!el) return;
+      var s = _ppOffers && _ppOffers.showcase;
+      var b = currentUser ? String(currentUser.badge_type || '') : '';
+      if (!currentUser || !s || !s.prices || b === 'Academic Pass' || b === 'Student Pass') { el.classList.add('hidden'); return; }
+      var price = Number(s.prices['Innovation Showcase Slot'] || 0);
+      el.innerHTML = '<i class="fas fa-microphone-lines mr-1.5 text-amber-400"></i>Speak on the Innovation Stage: a ' + Number(s.minutes || 10) + '-minute showcase slot' +
+        (price ? ', &#8377;' + inr(price) + ' + GST' : '') + (s.few_left ? ', only ' + Number(s.few_left) + ' left' : '') +
+        '. <a href="/showcase-slot" class="font-semibold underline" style="color:#FF8C38;">Book a slot</a>';
       el.classList.remove('hidden');
     }
 
@@ -30348,7 +32651,7 @@ function mainPageScript(): string {
         head = from ? 'Add a workshop to your ' + esc(from) : 'Workshop seats';
         sub = from
           ? 'Move up to Premium Delegate for the difference' + (up ? ', &#8377;' + inr(up.base) + ' + GST' : '') + ', and choose your seat straight away. Seats go first come, first served.'
-          : 'A seat in one workshop comes with the Premium Delegate' + (passPriceText('Premium Delegate Pass') ? ' (' + passPriceText('Premium Delegate Pass') + ')' : '') + ' and VIP' + (passPriceText('VIP Pass') ? ' (' + passPriceText('VIP Pass') + ')' : '') + ' passes. Seats go first come, first served.' + priceDeadlineLine('Premium Delegate Pass');
+          : 'A seat in one workshop comes with the ' + 'Student' + (passPriceText('Student Pass') ? ' (' + passPriceText('Student Pass') + ', students)' : ' (students)') + ', ' + 'Premium Delegate' + (passPriceText('Premium Delegate Pass') ? ' (' + passPriceText('Premium Delegate Pass') + ')' : '') + ' and VIP' + (passPriceText('VIP Pass') ? ' (' + passPriceText('VIP Pass') + ')' : '') + ' passes. Seats go first come, first served.' + priceDeadlineLine('Premium Delegate Pass');
         cta = currentUser
           ? '<button type="button" onclick="openUpgradeFor(&quot;Premium Delegate Pass&quot;, &quot;workshop&quot;)" class="px-5 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:' + teal + ';">' +
             (from ? 'Move up to Premium Delegate' + (up ? ' &mdash; &#8377;' + inr(up.total) + ' incl. GST' : '') : 'Get Premium Delegate') + '</button>'
@@ -30408,7 +32711,7 @@ function mainPageScript(): string {
     // A paid pass chosen on a form and not paid for works like a Visitor Pass until
     // the payment lands, exactly as the server sees it (unpaidPaidPass).
     function passAwaitingPayment() {
-      return !!currentUser && ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(currentUser.badge_type || '')) >= 0
+      return !!currentUser && ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass'].indexOf(String(currentUser.badge_type || '')) >= 0
         && ['pending', 'refunded'].indexOf(String(currentUser.payment_status || '').toLowerCase()) >= 0;
     }
     // The pass card's third ask: bring a colleague. The link carries the inviter's
@@ -30462,18 +32765,39 @@ function mainPageScript(): string {
     function paidUpgradeFrom() {
       if (!currentUser || passAwaitingPayment()) return '';
       var b = String(currentUser.badge_type || '');
-      return ['Delegate Pass', 'Premium Delegate Pass', 'Academic Pass'].indexOf(b) >= 0
+      // This week's offers: an Exhibitor pass moves up to VIP at the server's price.
+      if (TEAM_PASSES_APP.indexOf(b) >= 0) return offerSteps(b) ? b : '';
+      return ['Delegate Pass', 'Premium Delegate Pass', 'Academic Pass', 'Student Pass'].indexOf(b) >= 0
         && String(currentUser.payment_status || '').toLowerCase() === 'paid' ? b : '';
+    }
+    // The last-week offers from /api/payments/config (null when off): what each step
+    // costs this week, the end date, the showcase slots.
+    var _ppOffers = null, _ppOffersAskedFor = null;
+    var TEAM_PASSES_APP = ['Exhibitor', 'Exhibition Speaker'];
+    function offerSteps(from) {
+      return _ppOffers && _ppOffers.steps && _ppOffers.steps[from] ? _ppOffers.steps[from] : null;
+    }
+    function offersEnd() {
+      return _ppOffers ? String(_ppOffers.last_day_text || '') : '';
     }
     // Rupees before GST, and the total with it, from the server's own prices
     // (/api/payments/config), so nothing here can disagree with the charge. null
-    // until the prices have loaded, and when the step is not up.
+    // until the prices have loaded, and when the step is not up. An offer price is
+    // never more than the difference (upgradeStep on the server).
     function upgradePrice(from, to) {
       var p = _ppPrices || {};
       if (!p[to]) return null;
       var base = Number(p[to].base) - (from && p[from] ? Number(p[from].base) : 0);
+      var steps = from ? offerSteps(from) : null;
+      var offer = steps && steps[to] ? Number(steps[to]) : 0;
+      var was = 0;
+      if (offer) {
+        was = base;
+        base = from && p[from] && base > 0 ? Math.min(base, offer) : offer;
+        if (was <= base) was = 0;
+      }
       if (base <= 0) return null;
-      return { base: base, total: Math.round(base * (100 + _ppGst)) / 100 };
+      return { base: base, total: Math.round(base * (100 + _ppGst)) / 100, offer: !!offer, was: was };
     }
     function inr(n) { return Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
     // "4,999 + GST" from the server's prices; '' before they load, so this copy
@@ -30513,6 +32837,13 @@ function mainPageScript(): string {
     // figure; once they have, only the steps that cost something.
     var UPGRADE_LADDER = ['Academic Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'];
     function upgradeStepsFor(from) {
+      if (from && TEAM_PASSES_APP.indexOf(from) >= 0) {
+        var st = offerSteps(from);
+        return st && st['VIP Pass'] ? [{ pass: 'VIP Pass', up: upgradePrice(from, 'VIP Pass') }].filter(function (s) { return !_ppPrices || s.up; }) : [];
+      }
+      // A Student Pass keeps its workshop: it moves up to the passes that have one.
+      if (from === 'Student Pass') return ['Premium Delegate Pass', 'VIP Pass'].map(function (p) { return { pass: p, up: upgradePrice(from, p) }; })
+        .filter(function (s) { return !_ppPrices || s.up; });
       var at = UPGRADE_LADDER.indexOf(from);
       if (!from || at < 0) return [];
       return UPGRADE_LADDER.slice(at + 1).map(function (p) { return { pass: p, up: upgradePrice(from, p) }; })
@@ -30521,10 +32852,13 @@ function mainPageScript(): string {
     // What the pass adds to the one already held, in a line.
     function upgradeAdds(from, to) {
       var vip = 'the Bharat AI Leaders’ Evening on Day 1, the VIP lounge, priority seating and the speaker meet &amp; greet';
+      // The Student Pass includes a workshop already.
+      var academicSeat = from === 'Student Pass';
+      if (TEAM_PASSES_APP.indexOf(from) >= 0) return 'Adds every conference session, one hands-on workshop, ' + vip;
       if (to === 'Delegate Pass') return 'Adds the networking lunch and the conference kit';
-      if (to === 'Premium Delegate Pass') return from === 'Academic Pass' ? 'Adds the networking lunch, the conference kit and one hands-on workshop' : 'Adds one hands-on workshop';
+      if (to === 'Premium Delegate Pass') return (from === 'Academic Pass' || academicSeat) ? (academicSeat ? 'Adds the networking lunch and the conference kit' : 'Adds the networking lunch, the conference kit and one hands-on workshop') : 'Adds one hands-on workshop';
       if (from === 'Premium Delegate Pass') return 'Adds ' + vip;
-      return (from === 'Academic Pass' ? 'Adds the networking lunch, one hands-on workshop, ' : 'Adds one hands-on workshop, ') + vip;
+      return ((from === 'Academic Pass' || academicSeat) ? (academicSeat ? 'Adds the networking lunch, ' : 'Adds the networking lunch, one hands-on workshop, ') : 'Adds one hands-on workshop, ') + vip;
     }
     // The steps a confirmed paid pass is offered, inside the upgrade modal: one
     // row per pass above theirs with what it adds and the difference, the sum
@@ -30548,10 +32882,18 @@ function mainPageScript(): string {
           (s.up ? '<span class="shrink-0 text-right"><span class="block font-bold text-sm whitespace-nowrap" style="color:#1E2140;">+ &#8377;' + inr(s.up.base) + '</span><span class="block text-[11px]" style="color:#5E6585;">+ GST</span></span>' : '') +
           '</button>';
       }).join('');
-      if (sel && sel.up && _ppPrices && _ppPrices[sel.pass] && _ppPrices[from]) {
-        var row = function (k, v, strong) {
-          return '<div class="flex justify-between gap-3 ' + (strong ? 'font-bold text-sm' : 'text-xs') + '" style="padding:3px 0;color:' + (strong ? '#1E2140' : '#5E6585') + ';"><span>' + k + '</span><span class="whitespace-nowrap">' + v + '</span></div>';
-        };
+      var row = function (k, v, strong) {
+        return '<div class="flex justify-between gap-3 ' + (strong ? 'font-bold text-sm' : 'text-xs') + '" style="padding:3px 0;color:' + (strong ? '#1E2140' : '#5E6585') + ';"><span>' + k + '</span><span class="whitespace-nowrap">' + v + '</span></div>';
+      };
+      if (sel && sel.up && sel.up.offer) {
+        // This week's offer: a fixed sum, the usual one struck through beside it.
+        html += '<div class="rounded-xl px-4 py-3 mt-3" id="upgrade-modal-sum" style="background:#F7F8FC;border:1px solid #E4E7F4;">' +
+          row(esc(sel.pass) + ', this week’s offer' + (offersEnd() ? ' (until ' + esc(offersEnd()) + ')' : ''), '&#8377;' + inr(sel.up.base)) +
+          (sel.up.was ? row('Usually', '<s>&#8377;' + inr(sel.up.was) + '</s>') : '') +
+          row('GST ' + _ppGst + '%', '&#8377;' + inr(Math.round((sel.up.total - sel.up.base) * 100) / 100)) +
+          '<div style="border-top:1px solid #E4E7F4;margin:6px 0 4px;"></div>' +
+          row('You pay now', '&#8377;' + inr(sel.up.total), true) + '</div>';
+      } else if (sel && sel.up && _ppPrices && _ppPrices[sel.pass] && _ppPrices[from]) {
         html += '<div class="rounded-xl px-4 py-3 mt-3" id="upgrade-modal-sum" style="background:#F7F8FC;border:1px solid #E4E7F4;">' +
           row(esc(sel.pass) + ', today’s price', '&#8377;' + inr(_ppPrices[sel.pass].base)) +
           row('Less your ' + esc(from) + ', today’s price', '&minus; &#8377;' + inr(_ppPrices[from].base)) +
@@ -30619,11 +32961,17 @@ function mainPageScript(): string {
         var seat = reason === 'workshop' || reason === 'agenda';
         _upgradeTarget = upgradeStepsFor(from).some(function (s) { return s.pass === asked; }) ? asked
           : (reason === 'vip' || seat) ? upgradeTargetFor(reason, from) : '';
+        var teamPass = TEAM_PASSES_APP.indexOf(from) >= 0;
+        var vipOffer = upgradePrice(from, 'VIP Pass');
         title.textContent = reason === 'vip' ? (who ? 'Meet ' + who + ' in person' : 'Move up to VIP')
+          : teamPass ? 'Move up to VIP'
           : seat ? (who ? 'Take a seat in ' + who : 'Add a workshop to your pass')
           : 'Upgrade your ' + from;
-        copy.innerHTML = 'Your <span class="text-white font-semibold">' + esc(from) + '</span> is paid for. To move up you pay only the difference in price' +
-          (seat ? ', and you choose your workshop seat the moment the payment goes through.' : '.');
+        copy.innerHTML = teamPass
+          ? 'Your <span class="text-white font-semibold">' + esc(from) + '</span> pass gets you to your booth. This week' + (offersEnd() ? ', until ' + esc(offersEnd()) + ',' : '') + ' it moves up to a VIP Pass at the offer price, and you stay on your company’s team.'
+          : 'Your <span class="text-white font-semibold">' + esc(from) + '</span> is paid for. To move up you pay only the difference in price' +
+            (seat ? ', and you choose your workshop seat the moment the payment goes through.' : '.') +
+            (vipOffer && vipOffer.offer ? ' This week' + (offersEnd() ? ', until ' + esc(offersEnd()) + ',' : '') + ' the step up to VIP is &#8377;' + inr(vipOffer.base) + ' + GST.' : '');
         m.classList.remove('hidden');
         m.classList.add('flex');
         renderUpgradeSteps();
@@ -30660,7 +33008,9 @@ function mainPageScript(): string {
         if (reason === 'workshop') {
           title.textContent = who ? 'Take a seat in ' + who : 'Take a workshop seat';
           copy.innerHTML = 'One hands-on workshop comes with the <span class="text-primary-300 font-semibold">Premium Delegate Pass</span>' + (premiumPrice ? ' (' + premiumPrice + ')' : '') +
-            ' and the <span class="text-amber-300 font-semibold">VIP Pass</span>. Seats go first come, first served, and are chosen in the app the moment the payment goes through.' + priceDeadlineLine('Premium Delegate Pass');
+            ' and the <span class="text-amber-300 font-semibold">VIP Pass</span>' +
+            ', and with the <span class="text-white font-semibold">Student Pass</span>' + (passPriceText('Student Pass') ? ' (' + passPriceText('Student Pass') + ')' : '') + ' for students' +
+            '. Seats go first come, first served, and are chosen in the app the moment the payment goes through.' + priceDeadlineLine('Premium Delegate Pass');
           _upgradeTarget = 'Premium Delegate Pass';
         }
         if (reason === 'vip') {
@@ -30716,7 +33066,7 @@ function mainPageScript(): string {
       if (paidUpgradeFrom()) { showUpgradeModal(reason || 'passcard', '', pass); return; }
       if (reason) trackUpgradePrompt(reason, pass);
       if (passAwaitingPayment()) { payPendingPass(); return; }
-      resumePayment(pass === 'VIP Pass' ? 'vip' : pass === 'Premium Delegate Pass' ? 'premium' : pass === 'Academic Pass' ? 'academic' : 'delegate');
+      resumePayment(pass === 'VIP Pass' ? 'vip' : pass === 'Premium Delegate Pass' ? 'premium' : pass === 'Academic Pass' ? 'academic' : pass === 'Student Pass' ? 'student' : 'delegate');
     }
     // Which prompts people meet, once per sitting per reason and target, as the
     // person (POST /api/upgrade-prompt). Admin, Payments shows them against orders.
@@ -33989,6 +36339,17 @@ function mainPageScript(): string {
       ctx.fillStyle = '#9698ac'; ctx.font = '400 22px Inter, Arial';
       ctx.fillText(ws ? ((ws.speaker ? 'conducted by ' + ws.speaker + ' at ' : 'at ') + 'Bharat AI Innovation 2026') : "India's B2B AI Conference & Exhibition", W/2, 705);
       ctx.fillText('20–21 November 2026 · World Trade Center, Mumbai', W/2, 745);
+      if (!ws) {
+        var certPass = String((gate && gate.pass) || '').trim();
+        var certWs = gate && gate.workshop && gate.workshop.eligible ? String(gate.workshop.title || '') : '';
+        if (certPass) { ctx.fillStyle = '#ff9a52'; ctx.font = '600 24px Inter, Arial'; ctx.fillText('Pass: ' + certPass, W/2, 805); }
+        if (certWs) {
+          var certLine = 'Workshop attended: ' + certWs, certSize = 22;
+          ctx.fillStyle = '#c8c9d6'; ctx.font = '400 ' + certSize + 'px Inter, Arial';
+          while (certSize > 15 && ctx.measureText(certLine).width > W - 260) { certSize -= 1; ctx.font = '400 ' + certSize + 'px Inter, Arial'; }
+          ctx.fillText(certLine, W/2, 848);
+        }
+      }
       // Signature line
       ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(W/2-150, 900, 300, 2);
       ctx.fillStyle = '#9698ac'; ctx.font = '400 18px Inter, Arial'; ctx.fillText('Organizing Committee · Aegis Knowledge Trust', W/2, 935);
@@ -34075,7 +36436,7 @@ function mainPageScript(): string {
       // The server's own rule (unpaidPaidPass): one of the four paid passes, pending
       // or refunded. The old test also caught VIP Guest and complimentary
       // Delegates, and named the pass "V I P" (2 Nov 2026).
-      var awaitingPayment = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(user.badge_type || '')) >= 0
+      var awaitingPayment = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass'].indexOf(String(user.badge_type || '')) >= 0
         && ['pending', 'refunded'].indexOf(String(user.payment_status || '').toLowerCase()) >= 0;
       if (awaitingPayment && !adminAttendee) {
         trackStep('pass', 'blocked', 'payment pending');
@@ -35812,7 +38173,7 @@ function mainPageScript(): string {
     function profileGaps(u) {
       u = u || currentUser || {};
       const has = (v) => String(v == null ? '' : v).trim().length > 0;
-      const academic = String(u.badge_type || '') === 'Academic Pass';
+      const academic = ['Academic Pass', 'Student Pass'].indexOf(String(u.badge_type || '')) >= 0;
       const gaps = [];
       if (!hasUploadedPhoto(u.avatar_url)) gaps.push('photo');
       if (!has(u.company)) gaps.push(academic ? 'college name' : 'organisation');
@@ -36072,7 +38433,7 @@ function mainPageScript(): string {
       document.getElementById('edit-industry').value = currentUser.industry || '';
       // A student has no employer and no job title, so the Academic tier collapses
       // both into a College Name - the same rule the registration form uses.
-      var acad = String(currentUser.badge_type || '') === 'Academic Pass';
+      var acad = ['Academic Pass', 'Student Pass'].indexOf(String(currentUser.badge_type || '')) >= 0;
       document.getElementById('edit-jobtitle-field').style.display = acad ? 'none' : '';
       document.getElementById('edit-company-label').textContent = acad ? 'College Name *' : 'Organisation *';
       document.getElementById('edit-bio').value = currentUser.bio || '';
@@ -36475,7 +38836,7 @@ function mainPageScript(): string {
 
       // Checked before the payment tab opens: sending someone to checkout and only
       // then telling them a field is missing loses the payment and the details.
-      var academic = passType === 'Academic Pass';
+      var academic = passType === 'Academic Pass' || passType === 'Student Pass';
       var gaps = [];
       if (!passType) gaps.push('pass type');
       if (!name) gaps.push('name');
@@ -36614,6 +38975,7 @@ function mainPageScript(): string {
         _ppLateFrom = String((j && j.late_from_text) || '');
         _ppLatePasses = (j && j.late_passes) || null;
         _ppStandardPasses = (j && j.standard_passes) || null;
+        _ppOffers = (j && j.offers) || null;
         _ppPricesAt = Date.now();
         ppShowTotal();
         renderPassUpgradeLine();
@@ -36633,10 +38995,19 @@ function mainPageScript(): string {
     function resumePayment(passKey) {
       if (!currentUser) return;
       var badge = String(currentUser.badge_type || '');
-      var paidTier = /delegate|academic|vip/i.test(badge);
+      var paidTier = /delegate|academic|student|vip/i.test(badge);
       if (paidTier && String(currentUser.payment_status || '').toLowerCase() === 'pending') { payPendingPass(); return; }
-      var PASS = { delegate: 'Delegate Pass', premium: 'Premium Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' };
+      var PASS = { delegate: 'Delegate Pass', premium: 'Premium Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass', student: 'Student Pass' };
       var want = PASS[String(passKey || '').toLowerCase()] || 'Delegate Pass';
+      // An Exhibitor pass (this week's offer): the VIP sheet at their booth's price,
+      // once the prices have been read with their session.
+      if (TEAM_PASSES_APP.indexOf(badge) >= 0) {
+        loadPassPrices().then(function () {
+          if (paidUpgradeFrom()) showUpgradeModal('link', '', 'VIP Pass');
+          else showToast('Your ' + badge + ' pass is arranged by the organisers.', 'success');
+        });
+        return;
+      }
       if (paidTier) {
         // A confirmed pass moving up is shown its steps, on the pass the link
         // named, with the difference to pay. It does not wait for the prices: the
@@ -36961,6 +39332,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('submissions')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="submissions" title="Submissions: logos, photos and team lists sent by email">
         <i class="fas fa-image w-5 text-center shrink-0"></i><span class="sidebar-label">Submissions <span id="sub-new-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Waiting for a decision"></span></span>
       </button>
+      <button onclick="switchSection('media')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="media" title="Media &amp; Influencer Pass requests">
+        <i class="fas fa-newspaper w-5 text-center shrink-0"></i><span class="sidebar-label">Media &amp; Influencer <span id="media-new-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Requests waiting for a decision"></span></span>
+      </button>
       <a href="/marketplace/admin" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all no-underline" title="AI Marketplace: review company listings">
         <i class="fas fa-robot w-5 text-center shrink-0"></i><span class="sidebar-label">AI Marketplace <span id="mp-pending-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Listings waiting for review"></span></span>
       </a>
@@ -37049,6 +39423,7 @@ function adminPageHTML(): string {
       <!-- Inquiries Section -->
       <div id="section-inquiries" class="section-content hidden"></div>
       <div id="section-submissions" class="section-content hidden"></div>
+      <div id="section-media" class="section-content hidden"></div>
       <!-- Payments & Invoices Section -->
       <div id="section-payments" class="section-content hidden"></div>
       <!-- Workshop Seats Section -->
@@ -37402,6 +39777,7 @@ function adminPageScript(): string {
       loadOverview();
       mpLoadPendingBadge();
       subLoadBadge();
+      mediaLoadBadge();
       startAutoRefresh();
       // Now that there is a dashboard to show, honour the deep link that arrived
       // before there was one - /admin#rooms opened while signed out lands on
@@ -37494,8 +39870,8 @@ function adminPageScript(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', liveqa:'Live Q&A', delhi2027:'Delhi 2027', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', delhi2027:'Partner and discount codes for Delhi passes, and what each has sold', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', media:'Media & Influencer Pass', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', liveqa:'Live Q&A', delhi2027:'Delhi 2027', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', media:'Requests from journalists and creators: read the answers, then approve and issue the pass, or decline', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', delhi2027:'Partner and discount codes for Delhi passes, and what each has sold', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -37610,6 +39986,7 @@ function adminPageScript(): string {
         case 'startup-pitch': loadAdminStartupPitch(); break;
         case 'inquiries': loadAdminInquiries(); break;
         case 'submissions': loadAdminSubmissions(); break;
+        case 'media': loadAdminMedia(); break;
         case 'payments': loadPayments(); break;
         case 'workshops': loadAdminWorkshops(); break;
         case 'rooms': loadAdminRooms(); break;
@@ -37966,6 +40343,7 @@ function adminPageScript(): string {
               }).join('') +
               '<div class="text-[11px] text-gray-500 mt-1">A secret reaches the site only through a deployment made after it was set.</div>' +
             '</div>' : '') +
+            '<div id="offers-block"></div>' +
             '<div id="abandoned-block"></div>' +
             '<div id="upgrade-campaign-block"></div>' +
             '<div id="upgrade-funnel-block"></div>' +
@@ -37990,6 +40368,7 @@ function adminPageScript(): string {
         loadAbandoned();
         loadUpgradeCampaign();
         loadUpgradeFunnel();
+        loadOffersDesk();
       } catch (err) {
         el.innerHTML = '<div class="text-center py-12 text-red-400"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p>Failed to load payments: ' + err.message + '</p></div>';
       }
@@ -38298,7 +40677,7 @@ function adminPageScript(): string {
         '<h3 class="text-sm font-semibold text-white mb-1">Upgrade campaign</h3>' +
         '<p class="text-[11px] text-gray-500 mb-2">One email to each free Visitor, with a button that signs them in and opens the paid form on the pass that fits. No discount: the normal price, with GST shown. Anyone who unsubscribed, holds a paid pass already, or has been sent one before is left out. Progress and Resume are under Settings, Bulk email.</p>' +
         row('senior', 'Senior Visitors (founders, CXOs, directors, VPs, heads, partners)', 'Delegate Pass', Number(d.senior || 0)) +
-        row('students', 'Students, interns and scholars', 'Academic Pass', Number(d.students || 0)) +
+        row('students', 'Students, interns and scholars', 'Student Pass', Number(d.students || 0)) +
       '</div>';
     }
     // What sells: the upgrade prompts people met in the app over the last fortnight,
@@ -38359,7 +40738,7 @@ function adminPageScript(): string {
     }
     async function startUpgradeCampaign(key, n) {
       if (!n) return;
-      var pass = key === 'students' ? 'Academic Pass' : 'Delegate Pass';
+      var pass = key === 'students' ? 'Student Pass' : 'Delegate Pass';
       if (!confirm('Email the ' + pass + ' offer to ' + n + ' Visitors?\\n\\nReal email, one at a time, only between 9am and 9pm IST. It carries on by itself on the server, even with this tab closed; Pause (Settings, Bulk email) stops it. Nobody is sent two.')) return;
       var camp = await startCampaign('upgrade', { audience: key });
       if (camp) setTimeout(loadUpgradeCampaign, 1500);
@@ -38593,7 +40972,7 @@ function adminPageScript(): string {
     // lands (unpaidPaidPass). The grid printed the chosen tier in its gold chip,
     // so everyone who abandoned a VIP checkout read as a VIP (29 Oct 2026).
     function attUnpaidTier(a) {
-      return !!a && ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(a.badge_type || '')) >= 0
+      return !!a && ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass'].indexOf(String(a.badge_type || '')) >= 0
         && ['pending', 'refunded'].indexOf(String(a.payment_status || '').trim().toLowerCase()) >= 0;
     }
     // What the Badge column, its filter and the drawer call a row. The same words
@@ -38601,7 +40980,7 @@ function adminPageScript(): string {
     // A paid tier given by hand is 'waived' (noAnswerPassIds on the server), and
     // is counted apart from the ones sold.
     function attGivenTier(a) {
-      return !!a && ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(a.badge_type || '')) >= 0
+      return !!a && ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass'].indexOf(String(a.badge_type || '')) >= 0
         && String(a.payment_status || '').trim().toLowerCase() === 'waived';
     }
     function attPassLabel(a) {
@@ -38921,7 +41300,7 @@ function adminPageScript(): string {
       return '&#8377;' + Math.round(Number(p || 0) / 100).toLocaleString('en-IN');
     }
     function boardHTML(b, ev) {
-      var ORDER = ['Visitor Pass', 'Academic Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'];
+      var ORDER = ['Visitor Pass', 'Student Pass', 'Academic Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'];
       var PAID = ORDER.slice(1);
       var byPass = {};
       b.passes.forEach(function (p) { byPass[p.pass] = p; });
@@ -39007,15 +41386,17 @@ function adminPageScript(): string {
       };
       // Workshop partner ideas have a line of their own, so a long speaking list never hides them.
       var wpNew = (t.inquiries || []).reduce(function (s, r) { return s + (r.type === 'workshop_partner' ? Number(r.n || 0) : 0); }, 0);
-      var inq = (t.inquiries || []).filter(function (r) { return r.type !== 'workshop_partner'; }).slice(0, 3).map(function (r) { return r.n + ' ' + escH(String(r.type).replace(/_/g, ' ')); }).join(', ');
+      var mpNew = (t.inquiries || []).reduce(function (s, r) { return s + (r.type === 'media' ? Number(r.n || 0) : 0); }, 0);
+      var inq = (t.inquiries || []).filter(function (r) { return r.type !== 'workshop_partner' && r.type !== 'media'; }).slice(0, 3).map(function (r) { return r.n + ' ' + escH(String(r.type).replace(/_/g, ' ')); }).join(', ');
       var waiting = (t.not_paid || 0) + (t.invoice_due || 0) + (t.inquiries_new || 0) + (t.booths_submitted || 0) + (t.listings_pending || 0) + (t.rooms_held || 0) + (t.workshop_unchosen || 0) + (t.photos_flagged || 0);
       var todoCard = '<div class="glass rounded-xl p-5">' +
         '<div class="flex items-center justify-between mb-2"><h3 class="font-semibold text-sm"><i class="fas fa-list-check text-amber-400 mr-2"></i>Waiting on you</h3>' +
           '<span class="text-[10px] text-gray-500">' + (waiting ? waiting.toLocaleString('en-IN') + ' in all' : 'Nothing is waiting') + '</span></div>' +
         item(t.not_paid || 0, 'chose a paid pass and have not paid: remind them to pay', 'payments') +
         item(t.invoice_due || 0, 'paid online, GST invoice still to raise', 'payments') +
-        item((t.inquiries_new || 0) - wpNew, 'new enquiries to answer' + (inq ? ' <span class="text-gray-500">(' + inq + ')</span>' : ''), 'inquiries') +
+        item((t.inquiries_new || 0) - wpNew - mpNew, 'new enquiries to answer' + (inq ? ' <span class="text-gray-500">(' + inq + ')</span>' : ''), 'inquiries') +
         item(wpNew, 'workshop partner ideas to read', '', '', 'openEnquiriesOfType(&quot;workshop_partner&quot;)') +
+        item(mpNew, 'Media &amp; Influencer Pass requests to decide', 'media') +
         item(t.booths_submitted || 0, 'booth requests to review', 'booth-requests') +
         item(t.listings_pending || 0, 'AI Marketplace listings to approve', '', '/marketplace/admin') +
         item(t.rooms_held || 0, 'boardroom bookings on hold, to confirm or refuse', 'rooms') +
@@ -40419,7 +42800,7 @@ function adminPageScript(): string {
     // something about money, so the admin is asked (5 Nov 2026). The same three
     // answers on Full Edit, the inline cell, Set pass on a selection and Add Attendee.
     // Moving between paid passes is not asked: what they paid stays as it is.
-    var HAND_SET_TIERS = ['Academic Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'];
+    var HAND_SET_TIERS = ['Student Pass', 'Academic Pass', 'Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'];
     function passMoveNeedsAnswer(from, to) {
       return HAND_SET_TIERS.indexOf(String(to || '')) >= 0 && HAND_SET_TIERS.indexOf(String(from || '')) < 0;
     }
@@ -48013,6 +50394,26 @@ function adminPageScript(): string {
       } catch(err) { toast('Failed to delete: ' + err.message, 'error'); }
     }
 
+    // ============ LAST-WEEK OFFERS (Payments) ============
+    // The screen is /js/admin-offers.js (one global, OffersDesk), loaded the first
+    // time Payments opens; it draws itself into #offers-block.
+    var OFFERS_DESK_VERSION = '20261112a';
+    var offersDeskAsset = null;
+    function loadOffersDesk() {
+      var host = document.getElementById('offers-block');
+      if (!host) return;
+      if (window.OffersDesk) { window.OffersDesk.mount(host, api); return; }
+      if (!offersDeskAsset) offersDeskAsset = new Promise(function (resolve, reject) {
+        var sc = document.createElement('script');
+        sc.src = '/js/admin-offers.js?v=' + OFFERS_DESK_VERSION;
+        sc.onload = function () { if (window.OffersDesk) resolve(); else reject(new Error('The offers card did not start.')); };
+        sc.onerror = function () { sc.remove(); reject(new Error('The offers card could not be downloaded.')); };
+        document.head.appendChild(sc);
+      }).catch(function (err) { offersDeskAsset = null; throw err; });
+      offersDeskAsset.then(function () { var h = document.getElementById('offers-block'); if (h) window.OffersDesk.mount(h, api); })
+        .catch(function (err) { var h = document.getElementById('offers-block'); if (h) h.innerHTML = '<div class="glass rounded-xl p-4 text-[12px] text-red-400">' + deskEsc(err.message) + '</div>'; });
+    }
+
     // ============ ADMIN INQUIRIES ============
     // The enquiry desk lives in /js/admin-inquiries.js (one global, InqDesk) with its
     // own stylesheet, both loaded the first time Inquiries opens. The Overview
@@ -48104,6 +50505,53 @@ function adminPageScript(): string {
     }
     function subLoadBadge() {
       api.get('/api/admin/inbox-submissions/count').then(function (s) { subSetBadge(Number(s && s.new) || 0); }).catch(function () {});
+    }
+
+    // Media & Influencer Pass requests live in /js/admin-media.js (one global,
+    // MediaDesk) with their own stylesheet, both loaded the first time the section
+    // opens. Bump the version on any change to either.
+    var MEDIA_DESK_VERSION = '20261112a';
+    var mediaDeskAssets = null;
+    function mediaDeskLoadAssets() {
+      if (window.MediaDesk) return Promise.resolve();
+      if (mediaDeskAssets) return mediaDeskAssets;
+      var css = new Promise(function (resolve) {
+        if (document.querySelector('link[data-media-desk]')) { resolve(); return; }
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/css/admin-media.css?v=' + MEDIA_DESK_VERSION;
+        l.setAttribute('data-media-desk', '1');
+        l.onload = function () { resolve(); };
+        l.onerror = function () { resolve(); };
+        document.head.appendChild(l);
+      });
+      var js = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/js/admin-media.js?v=' + MEDIA_DESK_VERSION;
+        s.onload = function () { if (window.MediaDesk) resolve(); else reject(new Error('The Media and Influencer screen did not start.')); };
+        s.onerror = function () { s.remove(); reject(new Error('The Media and Influencer screen could not be downloaded. Check the connection and press Try again.')); };
+        document.head.appendChild(s);
+      });
+      mediaDeskAssets = Promise.all([css, js]).catch(function (err) { mediaDeskAssets = null; throw err; });
+      return mediaDeskAssets;
+    }
+    async function loadAdminMedia() {
+      var host = document.getElementById('section-media');
+      if (!window.MediaDesk) {
+        if (!host.firstChild) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading requests...</div>';
+        try { await mediaDeskLoadAssets(); }
+        catch (err) { sectionError(host, 'media and influencer requests', { message: err.message }, 'loadAdminMedia()'); return; }
+      }
+      await window.MediaDesk.mount(host, { api: api, toast: toast, operator: getOperator, onCount: mediaSetBadge });
+    }
+    function mediaSetBadge(n) {
+      var el = document.getElementById('media-new-badge');
+      if (!el) return;
+      el.textContent = String(n);
+      el.classList.toggle('hidden', !(n > 0));
+    }
+    function mediaLoadBadge() {
+      api.get('/api/admin/media-pass/count').then(function (s) { mediaSetBadge(Number(s && s.new) || 0); }).catch(function () {});
     }
 
     // ============ ANALYTICS ============
