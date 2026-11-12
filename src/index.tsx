@@ -9,6 +9,7 @@ import conference, { configureConference, draftFilterSql, venueSelectSql, fillVe
 import { signinPayIntent } from './lib/signin-pay'
 import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
 import { invoicePdf } from './lib/invoice-pdf'
+import { signInLink as mpSignInLink } from './routes/marketplace'
 import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPageHTML, marketplaceAdminPageHTML, marketplaceFaqPageHTML } from './routes/marketplace-pages'
 
 type Bindings = {
@@ -18808,6 +18809,7 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'upgrade' ? `/api/admin/attendees/${r.attendee_id}/send-upgrade`
     : kind === 'networking' ? `/api/admin/attendees/${r.attendee_id}/send-networking`
     : kind === 'waitlist_confirm' ? `/api/admin/attendees/${r.attendee_id}/send-waitlist-confirm`
+    : kind === 'feedback' ? `/api/admin/attendees/${r.attendee_id}/send-feedback`
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
     const url = new URL(c.req.url)
@@ -18907,7 +18909,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
@@ -18952,7 +18954,8 @@ app.post('/api/admin/campaigns', async (c) => {
     : kind === 'networking' ? 'Networking app email'
     : kind === 'thankyou' ? 'Post-event thank you'
     : kind === 'profile_reminder' ? 'Complete your profile'
-    : kind === 'waitlist_confirm' ? 'Waiting list: your Free Visitor Pass is confirmed' : 'Announcement')).slice(0, 160)
+    : kind === 'waitlist_confirm' ? 'Waiting list: your Free Visitor Pass is confirmed'
+    : kind === 'feedback' ? 'Feedback survey' : 'Announcement')).slice(0, 160)
   const ins = await c.env.DB.prepare(
     'INSERT INTO campaigns (kind, title, ref_id, audience, status, total, created_by) VALUES (?,?,?,?,?,?,?)'
   ).bind(kind, title, refId, audience, 'running', rows.length, who.actor).run()
@@ -20616,6 +20619,325 @@ app.get('/api/admin/delhi/passes', async (c) => {
        FROM attendees a WHERE a.event_id = ? ORDER BY a.id DESC`
   ).bind(DELHI_EVENT_ID).all() as any
   return c.json({ results: results || [] })
+})
+
+// ==================== AFTER THE EVENT: FEEDBACK AND EXHIBITOR RESULTS ====================
+//
+// 12 Nov 2026, from the gap review against MWC, Web Summit and GITEX: ask everyone who
+// came how it went on the last evening, and send every exhibitor its numbers straight
+// after. Exhibitors who see numbers book again.
+//
+// The survey: six questions on /feedback (public/feedback.html), opened from a signed
+// link in the email (a = attendee id, k = its signature) or signed in to the app.
+// Opening a link saves nothing, because email scanners open links; only "Send my
+// answers" does. Answering again replaces the answers (one row per person, table
+// feedback, migration 0057). Sent as the bulk email kind 'feedback', usually to the
+// people who checked in (Admin -> After the Event).
+//
+// Exhibitor results: one email per exhibitor to its booth contact (exhibitors.contact_email,
+// "Dear" from exhibitor_team_settings.contact_name): the badges its team scanned, the
+// meetings its team held, app booth visits when there were any, a signed link to its
+// leads in the exhibitor dashboard, and Delhi 2027. Sent once unless sent again on
+// purpose; the record is admin_audit 'exhibitor_results.sent'. Never a mobile number.
+const AFTER_EVENT_ID = 1
+const FEEDBACK_USEFUL: Record<string, string> = { talks: 'Talks and panels', exhibition: 'The exhibition', people: 'Meeting people', workshops: 'Workshops', innovation_talks: 'Innovation Talks', app: 'The event app' }
+const FEEDBACK_MET: Record<string, string> = { several: 'Yes, several people', one: 'Yes, one person', none: 'Not this time' }
+const FEEDBACK_ENTRY: Record<string, string> = { good: 'Good', okay: 'Okay', poor: 'Poor' }
+const FEEDBACK_DELHI: Record<string, string> = { yes: 'Yes', maybe: 'Maybe', no: 'No' }
+const feedbackOwn = (list: Record<string, string>, v: any): string => {
+  const s = String(v ?? '')
+  return Object.prototype.hasOwnProperty.call(list, s) ? s : ''
+}
+const feedbackTableMissing = (e: any) => /no such table/i.test(String(e?.message || e || ''))
+
+async function feedbackSig(c: any, id: any): Promise<string> {
+  const secret = String(c.env?.ADMIN_SECRET || '')
+  const n = Number(id)
+  if (!secret || !Number.isInteger(n) || n <= 0) return ''
+  return (await hmacHexA(secret, 'feedback:' + n)).slice(0, 32)
+}
+// Who is answering: the signed link from the email, or the app's sign-in.
+async function feedbackWho(c: any, a: any, k: any): Promise<number | null> {
+  if (a !== undefined && a !== null && String(a) !== '') {
+    const want = await feedbackSig(c, String(a))
+    return want && safeEqualA(String(k || ''), want) ? Number(a) : null
+  }
+  return await verifyAttendeeSession(c)
+}
+async function afterSiteBase(c: any): Promise<string> {
+  return ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+}
+async function feedbackLink(c: any, id: any, score: number | null = null): Promise<string> {
+  return `${await afterSiteBase(c)}/feedback?a=${Number(id)}&k=${await feedbackSig(c, id)}${score === null ? '' : '&r=' + score}`
+}
+
+// The survey email. preview: links open the page in preview, which saves nothing.
+async function feedbackMail(c: any, a: any, preview = false): Promise<{ subject: string; html: string }> {
+  const base = await afterSiteBase(c)
+  const link = async (score: number | null) => preview
+    ? `${base}/feedback?preview=1${score === null ? '' : '&r=' + score}`
+    : await feedbackLink(c, a.id, score)
+  const cells: string[] = []
+  for (let i = 0; i <= 10; i++) {
+    cells.push(`<td align="center" style="padding:0 1px;"><a href="${await link(i)}" style="display:block;width:24px;padding:10px 0;border:1px solid #D5D9EE;border-radius:6px;background:#ffffff;color:#1E2140;font-weight:bold;font-size:13px;text-decoration:none;">${i}</a></td>`)
+  }
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('How was it?', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:26px 20px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${netFirstName(a.name)}</strong>,</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#555;">Thank you for coming to Bharat AI Innovation 2026. We have six quick questions. They take about two minutes, and your answers shape the Delhi edition in July 2027.</p>
+        <p style="margin:0 0 10px;font-size:15px;line-height:1.5;font-weight:bold;color:#1E2140;text-align:center;">How likely are you to recommend Bharat AI Innovation to a colleague?</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border-collapse:collapse;"><tr>${cells.join('')}</tr></table>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:330px;margin:6px auto 0;"><tr><td style="font-size:11px;color:#888;">0 = not at all</td><td align="right" style="font-size:11px;color:#888;">10 = certainly</td></tr></table>
+        <p style="margin:18px 0 0;font-size:13px;line-height:1.6;color:#555;text-align:center;">Tap a number to start. The other five questions are on the next page.</p>
+        <div style="text-align:center;margin:18px 0 6px;">
+          <a href="${await link(null)}" style="display:inline-block;padding:12px 30px;background:#C84F00;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Answer the six questions</a>
+        </div>
+        <p style="margin:16px 0 0;font-size:11.5px;line-height:1.6;color:#999;text-align:center;">You are getting this because you registered for Bharat AI Innovation 2026.</p>
+      </div>
+    </div></body></html>`
+  return { subject: 'Two minutes: how was Bharat AI Innovation 2026?', html }
+}
+
+// What the survey page shows: the person's first name and any answers already given.
+app.get('/api/feedback', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const id = await feedbackWho(c, c.req.query('a'), c.req.query('k'))
+  if (!id) return c.json({ error: 'This link is not complete. Please open the survey again from the email we sent you.' }, 401)
+  const a = await c.env.DB.prepare('SELECT id, name FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!a) return c.json({ error: 'We could not find your registration. Please write to register@bharataiinnovation.com.' }, 404)
+  let answer: any = null
+  try {
+    answer = await c.env.DB.prepare('SELECT recommend, useful, met, entry, delhi, fix, updated_at FROM feedback WHERE event_id = ? AND attendee_id = ?').bind(AFTER_EVENT_ID, id).first()
+  } catch (e: any) { if (!feedbackTableMissing(e)) throw e }
+  return c.json({
+    first_name: netPlain(String(a.name || '').trim().split(/\s+/)[0] || '', 40),
+    answered: answer ? {
+      recommend: answer.recommend, useful: String(answer.useful || '').split(',').filter(Boolean),
+      met: answer.met || '', entry: answer.entry || '', delhi: answer.delhi || '', fix: answer.fix || '', updated_at: answer.updated_at,
+    } : null,
+  })
+})
+
+// "Send my answers". The first question is the only one that must be answered.
+app.post('/api/feedback', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const id = await feedbackWho(c, body.a, body.k)
+  if (!id) return c.json({ error: 'This link is not complete. Please open the survey again from the email we sent you.' }, 401)
+  const recommend = Number(body.recommend)
+  if (body.recommend === null || body.recommend === undefined || body.recommend === '' || !Number.isInteger(recommend) || recommend < 0 || recommend > 10) {
+    return c.json({ error: 'Choose a number from 0 to 10 for the first question.', field: 'recommend' }, 400)
+  }
+  const useful = Array.from(new Set((Array.isArray(body.useful) ? body.useful : []).map((v: any) => feedbackOwn(FEEDBACK_USEFUL, v)).filter(Boolean)))
+  const met = feedbackOwn(FEEDBACK_MET, body.met)
+  const entry = feedbackOwn(FEEDBACK_ENTRY, body.entry)
+  const delhi = feedbackOwn(FEEDBACK_DELHI, body.delhi)
+  const fix = String(body.fix ?? '').replace(/\r\n?/g, '\n').trim().slice(0, 1000)
+  const a = await c.env.DB.prepare('SELECT id FROM attendees WHERE id = ?').bind(id).first() as any
+  if (!a) return c.json({ error: 'We could not find your registration. Please write to register@bharataiinnovation.com.' }, 404)
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO feedback (event_id, attendee_id, recommend, useful, met, entry, delhi, fix) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(event_id, attendee_id) DO UPDATE SET recommend = excluded.recommend, useful = excluded.useful, met = excluded.met,
+         entry = excluded.entry, delhi = excluded.delhi, fix = excluded.fix, updated_at = CURRENT_TIMESTAMP`
+    ).bind(AFTER_EVENT_ID, id, recommend, useful.join(','), met, entry, delhi, fix).run()
+  } catch (e: any) {
+    if (feedbackTableMissing(e)) return c.json({ error: 'The survey opens in a few minutes. Please try again shortly; your answers are still on this page.' }, 503)
+    throw e
+  }
+  return c.json({ success: true, delhi })
+})
+
+// One person's survey email, for the bulk run (campaignSendOne, kind 'feedback').
+// Someone who has already answered is skipped, not asked again.
+app.post('/api/admin/attendees/:id/send-feedback', async (c) => {
+  const a = await c.env.DB.prepare('SELECT id, name, email FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
+  if (!a) return c.json({ error: 'Attendee not found' }, 404)
+  if (!validEmailSyntax(a.email)) return c.json({ error: 'This person has no usable email address.' }, 400)
+  try {
+    const done = await c.env.DB.prepare('SELECT id FROM feedback WHERE event_id = ? AND attendee_id = ?').bind(AFTER_EVENT_ID, a.id).first()
+    if (done) return c.json({ skipped: true, reason: 'Already answered the survey' })
+  } catch (e: any) { if (!feedbackTableMissing(e)) throw e }
+  const mail = await feedbackMail(c, a)
+  const sent = await sendAdminEmail(c, String(a.email).trim(), mail.subject, mail.html)
+  if (!sent.ok) return c.json({ error: sent.error }, 502)
+  return c.json({ success: true })
+})
+
+// The email as everyone gets it, with preview links that save nothing.
+app.get('/api/admin/feedback/preview', async (c) => {
+  const mail = await feedbackMail(c, { id: 0, name: 'Asha Rao' }, true)
+  return c.json({ subject: mail.subject, html: mail.html })
+})
+app.post('/api/admin/feedback/test', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const to = String(body.to || '').trim()
+  if (!validEmailSyntax(to)) return c.json({ error: 'Type the email address to send the test to.' }, 400)
+  const mail = await feedbackMail(c, { id: 0, name: 'Asha Rao' }, true)
+  const sent = await sendAdminEmail(c, to, '[Test] ' + mail.subject, mail.html, { unsubscribe: false })
+  if (!sent.ok) return c.json({ error: sent.error }, 502)
+  await audit(c, 'feedback.test_sent', 'feedback', null, { to })
+  return c.json({ success: true })
+})
+
+async function feedbackRows(c: any): Promise<any[] | null> {
+  try {
+    const { results } = await c.env.DB.prepare(
+      `SELECT f.attendee_id, f.recommend, f.useful, f.met, f.entry, f.delhi, f.fix, f.created_at, f.updated_at,
+              a.name, a.email, a.company, a.job_title, a.badge_type
+         FROM feedback f LEFT JOIN attendees a ON a.id = f.attendee_id
+        WHERE f.event_id = ? ORDER BY f.updated_at DESC, f.id DESC`
+    ).bind(AFTER_EVENT_ID).all() as any
+    return (results || []) as any[]
+  } catch (e: any) {
+    if (feedbackTableMissing(e)) return null
+    throw e
+  }
+}
+
+// What people said, for Admin: how many answered, the recommend score, the counts per
+// answer, who would come to Delhi, and the one thing each would fix.
+app.get('/api/admin/feedback/summary', async (c) => {
+  const rows = await feedbackRows(c)
+  if (rows === null) return c.json({ ready: false })
+  const came = Number(((await c.env.DB.prepare('SELECT COUNT(*) AS n FROM attendees WHERE event_id = ? AND checked_in_at IS NOT NULL').bind(AFTER_EVENT_ID).first()) as any)?.n || 0)
+  const campaigns = await c.env.DB.prepare("SELECT id, status, total, sent, failed, created_at FROM campaigns WHERE kind = 'feedback' ORDER BY id DESC LIMIT 5").all()
+    .then((r: any) => (r.results || []) as any[]).catch(() => [] as any[])
+  const by = Array.from({ length: 11 }, () => 0)
+  let sum = 0
+  for (const r of rows) { const n = Number(r.recommend); if (n >= 0 && n <= 10) { by[n]++; sum += n } }
+  const n = rows.length
+  const promoters = by[9] + by[10], detractors = by.slice(0, 7).reduce((s, v) => s + v, 0)
+  const tally = (list: Record<string, string>, pick: (r: any) => string[]) => Object.keys(list).map((key) => ({ key, label: list[key], n: rows.filter((r) => pick(r).includes(key)).length }))
+  return c.json({
+    ready: true, came, answered: n, campaigns,
+    recommend: { average: n ? Math.round((sum / n) * 10) / 10 : null, score: n ? Math.round(((promoters - detractors) / n) * 100) : null, promoters, passives: by[7] + by[8], detractors, by },
+    useful: tally(FEEDBACK_USEFUL, (r) => String(r.useful || '').split(',')),
+    met: tally(FEEDBACK_MET, (r) => [r.met]),
+    entry: tally(FEEDBACK_ENTRY, (r) => [r.entry]),
+    delhi: tally(FEEDBACK_DELHI, (r) => [r.delhi]),
+    delhi_people: rows.filter((r) => r.delhi === 'yes' || r.delhi === 'maybe').slice(0, 300)
+      .map((r) => ({ id: r.attendee_id, name: r.name || '', email: r.email || '', company: r.company || '', job_title: r.job_title || '', delhi: r.delhi })),
+    comments: rows.filter((r) => String(r.fix || '').trim()).slice(0, 200)
+      .map((r) => ({ id: r.attendee_id, name: r.name || '', company: r.company || '', recommend: r.recommend, fix: r.fix, at: r.updated_at })),
+  })
+})
+
+app.get('/api/admin/feedback.csv', async (c) => {
+  const rows = await feedbackRows(c)
+  if (rows === null) return c.json({ error: 'Apply migration 0057 on the database first.' }, 409)
+  // A cell that starts like a formula is opened as text, so an answer cannot run in a spreadsheet.
+  const cell = (v: any) => { let t = String(v ?? ''); if (/^[=+\-@\t\r]/.test(t)) t = "'" + t; return /[",\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t }
+  const names = (list: Record<string, string>, v: any) => String(v || '').split(',').filter(Boolean).map((k) => list[k] || k).join('; ')
+  const head = ['Answered (India time)', 'Name', 'Email', 'Organisation', 'Designation', 'Pass', 'Recommend (0-10)', 'Most useful', 'Met someone to follow up', 'Getting in and finding the way', 'Delhi 2027', 'One thing to fix']
+  const lines = rows.map((r) => [istStamp(r.updated_at), r.name, r.email, r.company, r.job_title, r.badge_type, r.recommend,
+    names(FEEDBACK_USEFUL, r.useful), names(FEEDBACK_MET, r.met), names(FEEDBACK_ENTRY, r.entry), names(FEEDBACK_DELHI, r.delhi), r.fix].map(cell).join(','))
+  await audit(c, 'feedback.export', 'feedback', null, { rows: rows.length })
+  return new Response('﻿' + [head.join(',')].concat(lines).join('\r\n'), {
+    headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="feedback-bharat-ai-innovation-2026.csv"', 'Cache-Control': 'no-store' },
+  })
+})
+
+// ---- Exhibitor results ----
+async function exhibitorResultRows(c: any): Promise<any[]> {
+  const all = async (sql: string, ...b: any[]): Promise<any[]> => {
+    try { return (((await c.env.DB.prepare(sql).bind(...b).all()) as any).results || []) as any[] }
+    catch (e: any) { if (feedbackTableMissing(e)) return []; throw e }
+  }
+  const ex = await all('SELECT id, company_name, contact_email, booth_number, attendee_id FROM exhibitors WHERE event_id = ? ORDER BY company_name COLLATE NOCASE', AFTER_EVENT_ID)
+  const names = new Map((await all('SELECT exhibitor_id, contact_name FROM exhibitor_team_settings')).map((r) => [Number(r.exhibitor_id), String(r.contact_name || '')]))
+  const visits = new Map((await all('SELECT exhibitor_id, COUNT(DISTINCT attendee_id) AS n FROM booth_visits WHERE event_id = ? GROUP BY exhibitor_id', AFTER_EVENT_ID)).map((r) => [Number(r.exhibitor_id), Number(r.n) || 0]))
+  const leads = new Map((await all(
+    `SELECT exhibitor_id, COUNT(*) AS n, SUM(CASE WHEN rating = 'hot' THEN 1 ELSE 0 END) AS hot,
+            SUM(CASE WHEN rating = 'warm' THEN 1 ELSE 0 END) AS warm, SUM(CASE WHEN rating = 'cold' THEN 1 ELSE 0 END) AS cold
+       FROM exhibitor_leads WHERE event_id = ? GROUP BY exhibitor_id`, AFTER_EVENT_ID)).map((r) => [Number(r.exhibitor_id), r]))
+  // Whose meetings count: the team members with a pass, and the exhibitor's own attendee row.
+  const exhibitorsOf = new Map<number, Set<number>>()
+  const add = (exId: number, at: any) => { const n = Number(at); if (!Number.isFinite(n) || n <= 0) return; if (!exhibitorsOf.has(n)) exhibitorsOf.set(n, new Set()); exhibitorsOf.get(n)!.add(exId) }
+  for (const t of await all('SELECT exhibitor_id, attendee_id FROM exhibitor_team WHERE attendee_id IS NOT NULL')) add(Number(t.exhibitor_id), t.attendee_id)
+  for (const e of ex) add(Number(e.id), e.attendee_id)
+  const meetings = new Map<number, number>()
+  for (const m of await all("SELECT requester_id, requestee_id FROM meetings WHERE status = 'accepted' AND event_id = ?", AFTER_EVENT_ID)) {
+    const hit = new Set<number>([...(exhibitorsOf.get(Number(m.requester_id)) || []), ...(exhibitorsOf.get(Number(m.requestee_id)) || [])])
+    for (const exId of hit) meetings.set(exId, (meetings.get(exId) || 0) + 1)
+  }
+  const sent = new Map((await all("SELECT entity_id, MAX(created_at) AS at, COUNT(*) AS n FROM admin_audit WHERE action = 'exhibitor_results.sent' AND entity = 'exhibitor' GROUP BY entity_id")).map((r) => [String(r.entity_id), r]))
+  return ex.map((e) => {
+    const l = leads.get(Number(e.id)) || {}
+    const s = sent.get(String(e.id))
+    return {
+      id: Number(e.id), company: e.company_name || '', email: String(e.contact_email || '').trim(), contact_name: names.get(Number(e.id)) || '', booth: e.booth_number || '',
+      scanned: Number(l.n) || 0, hot: Number(l.hot) || 0, warm: Number(l.warm) || 0, cold: Number(l.cold) || 0,
+      meetings: meetings.get(Number(e.id)) || 0, visits: visits.get(Number(e.id)) || 0,
+      sent_at: s ? istStamp(s.at) : '', sent_count: s ? Number(s.n) || 0 : 0,
+    }
+  })
+}
+
+async function exhibitorResultsMail(c: any, r: any, preview = false): Promise<{ subject: string; html: string }> {
+  const base = await afterSiteBase(c)
+  let leadsUrl = base + '/marketplace/dashboard#leads'
+  if (!preview) {
+    const byId = await c.env.DB.prepare('SELECT id FROM mp_companies WHERE exhibitor_id = ? ORDER BY id LIMIT 1').bind(r.id).first().catch(() => null) as any
+    const acct = byId || (r.email ? await c.env.DB.prepare('SELECT id FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(String(r.email).toLowerCase()).first().catch(() => null) as any : null)
+    if (acct) leadsUrl = await mpSignInLink(c, acct.id, 'leads')
+  }
+  const first = String(r.contact_name || '').trim().split(/\s+/)[0]
+  const tile = (n: number, label: string, sub = '') => `<td valign="top" style="width:50%;padding:6px;"><div style="background:#F8F9FB;border-radius:10px;padding:16px 10px;text-align:center;">
+      <div style="font-size:30px;line-height:1.1;font-weight:bold;color:#1E2140;">${n}</div>
+      <div style="margin-top:6px;font-size:13px;line-height:1.4;color:#555;">${label}</div>${sub ? `<div style="margin-top:4px;font-size:12px;color:#888;">${sub}</div>` : ''}</div></td>`
+  const rated = [r.hot ? r.hot + ' hot' : '', r.warm ? r.warm + ' warm' : '', r.cold ? r.cold + ' cold' : ''].filter(Boolean).join(' &middot; ')
+  const leadsPara = r.scanned > 0
+    ? `<p style="margin:16px 0 0;font-size:14px;line-height:1.7;color:#555;">Every badge your team scanned is in your exhibitor dashboard, with your ratings and notes. Download them this week, while the conversations are fresh.</p>
+       <div style="text-align:center;margin:18px 0 4px;"><a href="${leadsUrl}" style="display:inline-block;padding:12px 30px;background:#C84F00;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">See my leads</a></div>`
+    : `<p style="margin:16px 0 0;font-size:14px;line-height:1.7;color:#555;">Your team did not scan any badges this time. Next time, scan each visitor's badge with the event app: their name, organisation and email come to you, with your own note.</p>`
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('Your results', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:26px 20px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Dear <strong>${first ? escEmail(first) : 'team'}</strong>,</p>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#555;">Thank you for exhibiting at Bharat AI Innovation 2026. Here is what <strong>${escEmail(r.company)}</strong> did over the two days.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;"><tr>
+          ${tile(r.scanned, 'badges your team scanned', rated)}
+          ${tile(r.meetings, 'meetings your team held through the app')}
+        </tr></table>
+        ${r.visits > 0 ? `<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#555;text-align:center;">And ${r.visits} ${r.visits === 1 ? 'person' : 'people'} tapped &ldquo;Visit booth&rdquo; for you in the app.</p>` : ''}
+        ${leadsPara}
+        <div style="margin:24px 0 0;padding:18px;border:1px solid #F0D9C7;border-radius:12px;background:#FFF8F2;">
+          <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;">Exhibit again in Delhi</p>
+          <p style="margin:0 0 12px;font-size:13.5px;line-height:1.6;color:#555;">28&ndash;29 July 2027, Bharat Mandapam, New Delhi. Booths are by application, and we reply within 2 working days.</p>
+          <a href="${base}/delhi-exhibit" style="display:inline-block;padding:10px 22px;border:2px solid #C84F00;color:#C84F00;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Apply for a booth in Delhi</a>
+        </div>
+        <p style="margin:20px 0 0;font-size:13.5px;line-height:1.7;color:#555;">Reply to this email with one thing we should do better for exhibitors. It reaches the organising team.</p>
+        <p style="margin:16px 0 0;font-size:11.5px;line-height:1.6;color:#999;text-align:center;">You are getting this because ${escEmail(r.company)} exhibited at Bharat AI Innovation 2026.</p>
+      </div>
+    </div></body></html>`
+  return { subject: 'Your results from Bharat AI Innovation 2026: ' + netPlain(r.company, 80), html }
+}
+
+app.get('/api/admin/exhibitor-results', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  return c.json({ results: await exhibitorResultRows(c) })
+})
+app.get('/api/admin/exhibitor-results/:id/preview', async (c) => {
+  const r = (await exhibitorResultRows(c)).find((x) => x.id === Number(c.req.param('id')))
+  if (!r) return c.json({ error: 'Exhibitor not found' }, 404)
+  const mail = await exhibitorResultsMail(c, r, true)
+  return c.json({ to: r.email, subject: mail.subject, html: mail.html })
+})
+// Sends one exhibitor its results. Once only, unless { again: true }.
+app.post('/api/admin/exhibitor-results/:id/send', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const r = (await exhibitorResultRows(c)).find((x) => x.id === Number(c.req.param('id')))
+  if (!r) return c.json({ error: 'Exhibitor not found' }, 404)
+  if (r.sent_count && body.again !== true) return c.json({ error: 'Already sent on ' + r.sent_at + '. Choose "Send again" to send it once more.', already: true, sent_at: r.sent_at }, 409)
+  if (!validEmailSyntax(r.email)) return c.json({ error: 'This exhibitor has no booth contact email. Add one under Exhibitors first.' }, 400)
+  const mail = await exhibitorResultsMail(c, r)
+  const sent = await sendAdminEmail(c, r.email, mail.subject, mail.html, { unsubscribe: false })
+  if (!sent.ok) return c.json({ error: sent.error }, 502)
+  await audit(c, 'exhibitor_results.sent', 'exhibitor', r.id, { to: r.email, scanned: r.scanned, meetings: r.meetings, visits: r.visits, again: body.again === true })
+  return c.json({ success: true, sent_at: istStamp(new Date().toISOString()) })
 })
 
 // ==================== DELHI 2027: THE FREE VISITOR PASS ====================
@@ -35359,6 +35681,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('rooms')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="rooms" title="Boardrooms">
         <i class="fas fa-door-open w-5 text-center shrink-0"></i><span class="sidebar-label">Boardrooms</span>
       </button>
+      <button onclick="switchSection('after')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="after" title="After the Event: feedback survey and exhibitor results">
+        <i class="fas fa-flag-checkered w-5 text-center shrink-0"></i><span class="sidebar-label">After the Event</span>
+      </button>
       <div class="border-t border-white/10 my-2"></div>
       <button onclick="switchSection('settings')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="settings" title="Settings">
         <i class="fas fa-cog w-5 text-center shrink-0"></i><span class="sidebar-label">Settings</span>
@@ -35429,6 +35754,7 @@ function adminPageHTML(): string {
       <div id="section-analytics" class="section-content hidden"></div>
       <!-- Boardrooms Section -->
       <div id="section-rooms" class="section-content hidden"></div>
+      <div id="section-after" class="section-content hidden"></div>
       <!-- Settings Section -->
       <div id="section-settings" class="section-content hidden"></div>
     </div>
@@ -35860,8 +36186,8 @@ function adminPageScript(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -35978,9 +36304,48 @@ function adminPageScript(): string {
         case 'payments': loadPayments(); break;
         case 'workshops': loadAdminWorkshops(); break;
         case 'rooms': loadAdminRooms(); break;
+        case 'after': loadAdminAfter(); break;
         case 'badge-desk': loadBadgeDesk(); break;
         case 'settings': loadSettings(); break;
       }
+    }
+
+    // After the Event: the feedback survey and each exhibitor's results live in
+    // /js/admin-after.js (one global, AfterDesk) with their own stylesheet, loaded the
+    // first time the section opens. Bump AFTER_DESK_VERSION on any change to either.
+    var AFTER_DESK_VERSION = '20261112a';
+    var afterDeskAssets = null;
+    function afterDeskLoadAssets() {
+      if (window.AfterDesk) return Promise.resolve();
+      if (afterDeskAssets) return afterDeskAssets;
+      var css = new Promise(function (resolve) {
+        if (document.querySelector('link[data-after-desk]')) { resolve(); return; }
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/css/admin-after.css?v=' + AFTER_DESK_VERSION;
+        l.setAttribute('data-after-desk', '1');
+        l.onload = function () { resolve(); };
+        l.onerror = function () { resolve(); };
+        document.head.appendChild(l);
+      });
+      var js = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/js/admin-after.js?v=' + AFTER_DESK_VERSION;
+        s.onload = function () { if (window.AfterDesk) resolve(); else reject(new Error('The After the Event screen did not start.')); };
+        s.onerror = function () { s.remove(); reject(new Error('The After the Event screen could not be downloaded. Check the connection and press Try again.')); };
+        document.head.appendChild(s);
+      });
+      afterDeskAssets = Promise.all([css, js]).catch(function (err) { afterDeskAssets = null; throw err; });
+      return afterDeskAssets;
+    }
+    async function loadAdminAfter() {
+      var host = document.getElementById('section-after');
+      if (!window.AfterDesk) {
+        if (!host.firstChild) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading...</div>';
+        try { await afterDeskLoadAssets(); }
+        catch (err) { sectionError(host, 'after', { message: err.message }, 'loadAdminAfter()'); return; }
+      }
+      await window.AfterDesk.mount(host, { api: api, toast: toast, startCampaign: startCampaign, authHeaders: authHeaders });
     }
 
     // ============ AUDIENCE PROFILE ============

@@ -80,8 +80,11 @@ const moveUp = ready ? ((html(ready).match(/href="([^"]*action=pay&(?:amp;)?pass
 const token = (moveUp.match(/token=([0-9a-f]{64})/) || [])[1] || '';
 check('its "Move up" link opens the app on the payment, for Premium, with a sign-in token', /\/app\?email=meera%40example\.com&action=pay&pass=premium&token=/.test(moveUp) && !!token, moveUp.slice(0, 160));
 // Older than two minutes, so the opening is hers and not an email scanner's.
-W.db.run("UPDATE login_tokens SET created_at = datetime('now', '-3 minutes') WHERE email = ?", [EMAIL]);
+// The link was made on the pinned clock (5 Nov) and is opened on the real one, so its
+// 7-day life moves with it (from 12 Nov 2026 it otherwise read as expired). The real
+// clock first: while the clock is pinned, the database's 'now' is pinned too.
 realClock();
+W.db.run("UPDATE login_tokens SET expires_at = datetime(expires_at, '+' || (julianday('now') - julianday(created_at)) || ' days', '-3 minutes'), created_at = datetime('now', '-3 minutes') WHERE email = ?", [EMAIL]);
 r = await hit('POST', '/api/events/1/attendees/login', { email: EMAIL, token });
 check('and the link signs her in as herself, a paid Delegate (the app then opens the upgrade sheet: pay-test.cjs 3b)', r.status === 200 && r.json?.id === ME && r.json?.badge_type === 'Delegate Pass' && r.json?.payment_status === 'paid', r.status + ' ' + r.text.slice(0, 160));
 at(STANDARD);

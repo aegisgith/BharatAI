@@ -279,8 +279,9 @@ const verifySignInToken = async (c: any, token: string): Promise<{ id: number; f
   if (!safeEqual(sig, await hmacHex(secret, `mplink:${id}.${exp}.${fp}`))) return null
   return { id: parseInt(id, 10), fp }
 }
-// go: where the link lands, from a fixed list ('team' opens the dashboard's Team screen).
-const signInLink = async (c: any, companyId: number | string, go: '' | 'team' = '') => {
+// go: where the link lands, from a fixed list ('team' opens the dashboard's Team screen,
+// 'leads' its Leads screen, for the exhibitor results email after the event).
+export const signInLink = async (c: any, companyId: number | string, go: '' | 'team' | 'leads' = '') => {
   const row = await c.env.DB.prepare('SELECT password_hash FROM mp_companies WHERE id = ?').bind(companyId).first() as any
   return `${siteOrigin(c)}/marketplace/signin?t=${await signInToken(c, companyId, String(row?.password_hash || ''))}${go ? '&go=' + go : ''}`
 }
@@ -656,6 +657,7 @@ mp.get('/marketplace/signin', async (c) => {
   try { await hooks.audit?.(c, SIGNED_IN, 'mp_company', company.id, undefined, { actor: 'marketplace', kind: 'system' }) } catch { /* the sign-in stands either way */ }
   // The "add your team" email lands on the Team screen.
   if (c.req.query('go') === 'team' && company.exhibitor_id) return c.redirect('/marketplace/dashboard#team')
+  if (c.req.query('go') === 'leads' && company.exhibitor_id) return c.redirect('/marketplace/dashboard#leads')
   // An exhibitor with a stage slot has two things to do, the listing and the talk, and
   // the dashboard's to-do list shows both. Anyone else goes straight to the listing
   // form until they have a listing.
