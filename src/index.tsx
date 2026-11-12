@@ -17618,7 +17618,8 @@ app.get('/api/admin/innovation-talks/contacts', async (c) => {
   // 0050 may not have run: no team list then, only booth contacts.
   const team = ((await c.env.DB.prepare("SELECT exhibitor_id, first_name, last_name, email FROM exhibitor_team WHERE event_id = ? AND trim(email) <> ''").bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
   const contacts: Record<string, any> = {}
-  for (const t of talks) contacts[t.id] = { ...italkContactFor(t, exhibitors, team), protocol: italkIsProtocol(t) }
+  const heldIds = await italkHeldIds(c)
+  for (const t of talks) contacts[t.id] = { ...italkContactFor(t, exhibitors, team), protocol: italkIsProtocol(t) || heldIds.has(Number(t.id)) }
   return c.json({ contacts })
 })
 
@@ -17631,7 +17632,7 @@ const ITALK_ASK: Record<string, { label: string; why: string }> = {
   speaker_bio: { label: 'Two or three lines about you', why: 'The host reads this out to introduce you on stage.' },
   speaker_phone: { label: 'Your mobile number', why: 'We use it only on the day, if your time or stage changes.' },
   showcase: { label: 'What you will show on stage', why: 'A line or two about the product or demo you will present.' },
-  company: { label: 'Your company name, as it should be shown', why: 'It is shown with your talk in the programme and on your pass.' },
+  company: { label: 'Your company name, as it should be shown', why: 'It is shown with your talk in the programme and in the event app.' },
 }
 
 // With a link (12 Nov 2026, organiser: speakers "should be able to update by themselves
@@ -17731,18 +17732,35 @@ app.post('/api/admin/innovation-talks/:id/request-details', async (c) => {
   const subject = italkRequestSubject(t, toSpeaker, link)
   const html = italkRequestEmailHTML(t, items, note, toSpeaker, link)
   if (body.preview) return c.json({ preview: true, to, subject, html })
+  // A government official is written to only from the envelope on their row (again:
+  // true), never by "Ask everyone", even if the page could not load who is one.
+  if (body.again !== true && (italkIsProtocol(t) || (await italkHeldIds(c)).has(id))) {
+    return c.json({ error: 'A government official: write to them yourself, from the envelope on their row.', protocol: true }, 409)
+  }
   // Asked in the last half hour, by hand or by the clock: "Ask everyone" and the clock
   // must not both write to one speaker minutes apart. The envelope on a row sends
-  // again: true (a person's own choice); Ask everyone never does.
+  // again: true (a person's own choice); Ask everyone never does. With fresh: true
+  // ("Ask everyone" with "already asked" unticked) any earlier ask counts, whatever the
+  // open page last loaded.
   if (body.again !== true) {
     const lastHand = t.details_requested_at ? Date.parse(String(t.details_requested_at).replace(' ', 'T') + 'Z') : 0
     const lastAuto = Date.parse(String((await italkAutoLog(c))[String(id)]?.at || '')) || 0
-    const mins = Math.floor((Date.now() - Math.max(Number.isFinite(lastHand) ? lastHand : 0, lastAuto)) / 60000)
+    const last = Math.max(Number.isFinite(lastHand) ? lastHand : 0, lastAuto)
+    const mins = Math.floor((Date.now() - last) / 60000)
+    if (body.fresh === true && last) return c.json({ error: `Asked already, on ${new Date(last + 19800000).toISOString().slice(0, 16).replace('T', ' at ')}, so not sent again.`, recent: true }, 409)
     if (mins >= 0 && mins < ITALK_RECENT_MINUTES) return c.json({ error: `Asked ${mins < 1 ? 'a moment' : mins + ' minute' + (mins === 1 ? '' : 's')} ago, so not sent again.`, recent: true }, 409)
   }
+  // Marked as asked before it is sent, so the minute clock in that same second sees it;
+  // put back as it was if the send fails. (Before 0052 there is no column: nothing to do.)
+  const stamp = new Date().toISOString().slice(0, 19).replace('T', ' ')
+  const before = t.details_requested_at ?? null
+  await c.env.DB.prepare('UPDATE innovation_talks SET details_requested_at = ? WHERE id = ?').bind(stamp, id).run().catch(() => null)
   // An operational email to a speaker, not a campaign: no unsubscribe footer.
   const sent = await sendAdminEmail(c, to, subject, html, { unsubscribe: false })
-  if (!sent.ok) return c.json({ error: sent.error }, 502)
+  if (!sent.ok) {
+    await c.env.DB.prepare('UPDATE innovation_talks SET details_requested_at = ? WHERE id = ?').bind(before, id).run().catch(() => null)
+    return c.json({ error: sent.error }, 502)
+  }
   let recorded = true
   try {
     // The worker's clock, as the automatic email writes it, so both read the same.
@@ -17750,7 +17768,7 @@ app.post('/api/admin/innovation-talks/:id/request-details', async (c) => {
       `UPDATE innovation_talks SET details_requested_at = ?, details_requested_to = ?,
          speaker_email = CASE WHEN ? = 1 AND trim(ifnull(speaker_email, '')) = '' THEN ? ELSE speaker_email END
        WHERE id = ?`
-    ).bind(new Date().toISOString().slice(0, 19).replace('T', ' '), to, body.save_email ? 1 : 0, to, id).run()
+    ).bind(stamp, to, body.save_email ? 1 : 0, to, id).run()
   } catch { recorded = false /* before 0052: the email went, there is nowhere to note it */ }
   await audit(c, 'innovation_talk.request_details', 'innovation_talk', id, { to, items, speaker: t.speaker_name, company: t.company })
   return c.json({ success: true, sent_to: to, recorded })
@@ -17765,7 +17783,7 @@ app.post('/api/admin/innovation-talks/:id/request-details', async (c) => {
 // or by itself, restarts the wait, so nobody is asked twice in two days. A talk that
 // has everything is never written to. Off when shipped: the organisers turn it on.
 const ITALK_AUTO_KEY = 'italk_auto_request'
-const ITALK_AUTO_LOG = 'italk_auto_log'      // { "<talk id>": { n: times sent by itself, at: last time, ISO, fails?, failed_at? } }
+const ITALK_AUTO_LOG = 'italk_auto_log'      // { "<talk id>": { n: times sent by itself, at: last time, ISO, fails?, failed_at?, error? } }
 const ITALK_AUTO_EVERY_HOURS = 48
 const ITALK_AUTO_MAX = 3
 // The moment the email first carried the "Add my details" button (c804578 went live at
@@ -17773,16 +17791,21 @@ const ITALK_AUTO_MAX = 3
 // with no button; the organiser chose to send the button from 9 am on 13 Nov, so a hand
 // email sent before this does not start the wait.
 const ITALK_LINK_SINCE = Date.parse('2026-11-12T14:25:00Z')
-// A send that fails is tried again an hour later, at most this many times, so one bad
-// address never holds up everyone behind it.
-const ITALK_AUTO_FAILS = 3
+// A send that fails is tried again an hour later, so one bad address never holds up
+// everyone behind it. There is no last try: a failure is nearly always the email
+// service itself (no key, no credits, a fault), which ends, and then everyone still goes.
+const ITALK_RETRY_MINUTES = 60
+// A talk once found to be a government official's stays held back, even if its name,
+// designation or company changes later (the speaker's own page can change two of them).
+// A JSON list of talk ids; take an id out of it to let the clock write to that talk.
+const ITALK_HELD_KEY = 'italk_held_ids'
 // "Ask everyone" and the clock never write to one talk twice within this long.
 const ITALK_RECENT_MINUTES = 30
 // What a talk must have: the list the admin tab calls missing (italkNeeded there).
 const ITALK_NEEDED = ['topic', 'speaker_title', 'company', 'speaker_photo_url', 'speaker_bio', 'speaker_phone']
 const italkGaps = (t: any): string[] => ITALK_NEEDED.filter(k => !String(t?.[k] ?? '').trim())
 
-async function italkAutoLog(c: any): Promise<Record<string, { n: number; at: string; fails?: number; failed_at?: string }>> {
+async function italkAutoLog(c: any): Promise<Record<string, { n: number; at: string; fails?: number; failed_at?: string; error?: string }>> {
   try { const v = JSON.parse((await settingValue(c, ITALK_AUTO_LOG)) || '{}'); return v && typeof v === 'object' ? v : {} } catch { return {} }
 }
 // Who would get it now, longest-waiting first.
@@ -17793,22 +17816,31 @@ async function italkAutoLog(c: any): Promise<Record<string, { n: number; at: str
 // Principal Scientific Adviser's office). A person writes to their offices; the envelope
 // on their row still sends one email by hand. Caught: a name that opens with Hon'ble; a
 // designation naming a Minister or a Secretary of any rank (Joint, Additional, Deputy,
-// Secy...); the services' letters IAS, IFS, IPS, IRS in the name or designation; a
-// government word in the designation or the company. A Company Secretary is not one.
+// Secy...); the services' letters IAS, IFS, IPS, IRS (also with dots) in the name or
+// designation; a government word or GoI, PSA, MeitY, NITI, O/o in the designation or the
+// company. A Company Secretary is not one. Once held, a talk stays held (italkHeldIds).
 const ITALK_PROTOCOL_RE = /\b(minister|ministers|secretary|secretaries|secy)\b/i
-const ITALK_SERVICE_RE = /\b(IAS|IFS|IPS|IRS)\b/
-const ITALK_GOVT_RE = /\b(government|govt|ministry|department|dept|directorate|secretariat|commissioner|collector)\b|principal scientific advis/i
+const ITALK_SERVICE_RE = /\b(IAS|IFS|IPS|IRS)\b|\bI\.\s?[AFPR]\.\s?S\b/
+const ITALK_GOVT_RE = /\b(government|govt|ministry|department|dept|directorate|secretariat|commissioner|collector)\b|principal scientific advis|niti aayog|\bo\/o\b/i
+const ITALK_GOVT_ACR_RE = /\b(GoI|PSA|MeitY|NITI)\b/
 function italkIsProtocol(t: any): boolean {
   const name = String(t?.speaker_name || '')
   const title = String(t?.speaker_title || '').replace(/\bcompany secretary\b/gi, ' ')
   const company = String(t?.company || '')
   return /^\s*hon[’']?ble\b/i.test(name) || ITALK_PROTOCOL_RE.test(title)
     || ITALK_SERVICE_RE.test(name + ' ' + title) || ITALK_GOVT_RE.test(title + ' ' + company)
+    || ITALK_GOVT_ACR_RE.test(title + ' ' + company)
+}
+async function italkHeldIds(c: any): Promise<Set<number>> {
+  try {
+    const v = JSON.parse((await settingValue(c, ITALK_HELD_KEY)) || '[]')
+    return new Set((Array.isArray(v) ? v : []).map(Number).filter(Number.isFinite))
+  } catch { return new Set() }
 }
 
 async function italkAutoDue(c: any, eventId: number, nowMs: number) {
   const q = async (sql: string) => ((await c.env.DB.prepare(sql).bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
-  const [talks, exhibitors, team, log, ev] = await Promise.all([
+  const [talks, exhibitors, team, log, ev, heldIds] = await Promise.all([
     // The talks the Innovation Talks tab lists. An exhibitor's stage-talk draft with no
     // time yet is hidden there, so it is not written to either: its company's talk from
     // the organisers' sheet is, so nobody gets two emails with two links.
@@ -17816,26 +17848,29 @@ async function italkAutoDue(c: any, eventId: number, nowMs: number) {
     q('SELECT id, company_name, contact_email FROM exhibitors WHERE event_id = ?'),
     q("SELECT exhibitor_id, first_name, last_name, email FROM exhibitor_team WHERE event_id = ? AND trim(email) <> ''"),
     italkAutoLog(c),
-    q('SELECT start_date FROM events WHERE id = ?')])
+    q('SELECT start_date FROM events WHERE id = ?'),
+    italkHeldIds(c)])
   const out: { talk: any; contact: { email: string; source: string }; gaps: string[]; n: number; last: number }[] = []
   const held: any[] = []
   // From the event's first day (midnight in India) nothing goes by itself: the email
   // says the programme is being got ready.
   const firstDay = String(ev[0]?.start_date || '').slice(0, 10)
   const closed = /^\d{4}-\d{2}-\d{2}$/.test(firstDay) && nowMs >= Date.parse(firstDay + 'T00:00:00+05:30')
+  const newlyHeld: number[] = []
   for (const t of talks) {
     if (t.status === 'cancelled') continue
+    const official = italkIsProtocol(t)
+    if (official && !heldIds.has(Number(t.id))) newlyHeld.push(Number(t.id))
     const gaps = italkGaps(t)
     if (!gaps.length) continue
-    if (italkIsProtocol(t)) { held.push(t); continue }
+    if (official || heldIds.has(Number(t.id))) { held.push(t); continue }
     if (closed) continue
     const contact = italkContactFor(t, exhibitors, team)
     if (!contact.email || !validEmailSyntax(contact.email)) continue
     const mine = log[String(t.id)] || { n: 0, at: '' }
     if (mine.n >= ITALK_AUTO_MAX) continue
-    // A send that failed: again an hour later, and not after ITALK_AUTO_FAILS failures.
-    if ((Number(mine.fails) || 0) >= ITALK_AUTO_FAILS) continue
-    if (mine.failed_at && nowMs - (Date.parse(mine.failed_at) || 0) < 3600_000) continue
+    // A send that failed: again an hour later.
+    if (mine.failed_at && nowMs - (Date.parse(mine.failed_at) || 0) < ITALK_RETRY_MINUTES * 60_000) continue
     // The last time anyone asked: by hand (on the talk, UTC) or by itself (the log). A
     // hand email from before the button existed does not count (ITALK_LINK_SINCE).
     const byHandAt = t.details_requested_at ? Date.parse(String(t.details_requested_at).replace(' ', 'T') + 'Z') : 0
@@ -17843,6 +17878,10 @@ async function italkAutoDue(c: any, eventId: number, nowMs: number) {
     const last = Math.max(byHand, mine.at ? Date.parse(mine.at) || 0 : 0)
     if (last && nowMs - last < ITALK_AUTO_EVERY_HOURS * 3600_000) continue
     out.push({ talk: t, contact, gaps, n: mine.n, last })
+  }
+  // Remembered, so a later change to the name, designation or company does not free them.
+  if (newlyHeld.length) {
+    await settingWrite(c, ITALK_HELD_KEY, JSON.stringify(Array.from(new Set([...heldIds, ...newlyHeld])).sort((a, b) => a - b))).catch(() => null)
   }
   return { due: out.sort((a, b) => a.last - b.last || Number(a.talk.id) - Number(b.talk.id)), held, closed }
 }
@@ -17879,14 +17918,21 @@ async function autoItalkRequests(c: any): Promise<Record<string, any>> {
   log[id] = { n: d.n + 1, at: new Date(now).toISOString() }
   if (!(await italkLogSwap(c, raw, JSON.stringify(log)))) return { on: true, sent: 0, waiting: 'another clock is sending' }
   const toSpeaker = d.contact.source !== 'booth'
-  const link = await talkDetailsLink(c, Number(t.id))
-  const sent = await sendAdminEmail(c, to, italkRequestSubject(t, toSpeaker, link), italkRequestEmailHTML(t, d.gaps, '', toSpeaker, link), { unsubscribe: false })
+  let sent: { ok: boolean; error?: string }
+  try {
+    const link = await talkDetailsLink(c, Number(t.id))
+    sent = await sendAdminEmail(c, to, italkRequestSubject(t, toSpeaker, link), italkRequestEmailHTML(t, d.gaps, '', toSpeaker, link), { unsubscribe: false })
+  } catch (e: any) { sent = { ok: false, error: String(e?.message || e) } }
   if (!sent.ok) {
-    // Not counted. Tried again in an hour, at most ITALK_AUTO_FAILS times, so the next
-    // speaker is not held up behind a bad address.
-    const again = await italkAutoLog(c)
-    again[id] = { ...(prev || { n: 0, at: '' }), fails: (Number(prev?.fails) || 0) + 1, failed_at: new Date(now).toISOString() }
-    await settingWrite(c, ITALK_AUTO_LOG, JSON.stringify(again))
+    // Not counted. Tried again in an hour, so the next speaker is not held up. Written
+    // by swap too, so another clock's entry in the same minute is never lost.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const raw2 = await settingValue(c, ITALK_AUTO_LOG)
+      let again: Record<string, any> = {}
+      try { const v = JSON.parse(raw2 || '{}'); if (v && typeof v === 'object') again = v } catch { /* starts again */ }
+      again[id] = { ...(prev || { n: 0, at: '' }), fails: (Number(prev?.fails) || 0) + 1, failed_at: new Date(now).toISOString(), error: String(sent.error || '').slice(0, 160) }
+      if (await italkLogSwap(c, raw2, JSON.stringify(again))) break
+    }
     return { on: true, sent: 0, error: sent.error, due: due.length }
   }
   try {
@@ -17909,6 +17955,8 @@ async function italkAutoSummary(c: any, eventId: number) {
     held: held.map((t: any) => ({ id: Number(t.id), speaker: t.speaker_name || '', title: t.speaker_title || '' })),
     next: due.slice(0, 5).map(d => ({ id: Number(d.talk.id), speaker: d.talk.speaker_name || '', company: d.talk.company || '', missing: d.gaps })),
     sent_by_itself: Object.values(log).reduce((n, x: any) => n + (Number(x?.n) || 0), 0),
+    // Sends that failed and wait to be tried again, with what the email service said.
+    failing: Object.entries(log).filter(([, x]: any) => x && x.failed_at).map(([id, x]: any) => ({ id: Number(id), fails: Number(x.fails) || 0, error: String(x.error || '') })),
     window: sendWindowState(),
   }
 }
@@ -46931,7 +46979,8 @@ function adminPageScript(): string {
             + (a.due ? a.due + ' speaker' + (a.due === 1 ? '' : 's') + ' would get one.' : 'Nobody would get one now.'))
         + (a.closed ? ' The event has begun, so nothing more goes by itself.' : '')
         + ' Government officials (Ministers, Secretaries, IAS and IFS officers, anyone at a Ministry or Department) are never emailed by itself' + (a.held && a.held.length ? ': ' + a.held.length + ' to write to yourself (' + a.held.map(function (h) { return escH(h.speaker); }).join(', ') + ').' : '.')
-        + (a.sent_by_itself ? ' Sent by itself so far: ' + a.sent_by_itself + '.' : '') + '</div></div>'
+        + (a.sent_by_itself ? ' Sent by itself so far: ' + a.sent_by_itself + '.' : '')
+        + (a.failing && a.failing.length ? ' <span class="text-amber-400">' + a.failing.length + ' could not be sent yet (' + escH(a.failing[0].error || 'the email service refused it') + '); each is tried again every hour.</span>' : '') + '</div></div>'
         + '<button onclick="italkAutoPreview()" class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-eye mr-1"></i>Preview the email</button>'
         + '<button onclick="italkAutoToggle()" id="italk-auto-btn" class="px-4 py-2 rounded-xl text-xs font-medium ' + (a.on ? 'glass hover:bg-white/10' : 'bg-primary-600 hover:bg-primary-500 text-white') + ' transition">' + (a.on ? 'Turn off' : 'Turn on') + '</button></div>';
     }
@@ -47301,21 +47350,21 @@ function adminPageScript(): string {
       if (!confirm('Send ' + list.length + ' email' + (list.length === 1 ? '' : 's') + ' now, one every 4 seconds?')) return;
       italkBulkStop = false;
       if (go) { go.disabled = true; go.style.opacity = '0.6'; }
-      var ok = 0, failed = [], recent = [];
+      var ok = 0, failed = [], recent = [], official = [];
       for (var i = 0; i < list.length; i++) {
         if (italkBulkStop) break;
         var t = list[i], em = italkEmailFor(t);
         if (prog) prog.textContent = 'Sending ' + (i + 1) + ' of ' + list.length + ': ' + t.speaker_name + '...';
         try {
-          await api.post('/api/admin/innovation-talks/' + t.id + '/request-details', { to: em.email, items: italkSpeakerGaps(t), to_speaker: em.source !== 'booth', save_email: em.source === 'team' });
+          await api.post('/api/admin/innovation-talks/' + t.id + '/request-details', { to: em.email, items: italkSpeakerGaps(t), to_speaker: em.source !== 'booth', save_email: em.source === 'team', fresh: !again });
           ok++;
           // Marked here too, so a second click before the list reloads cannot ask again.
           t.details_requested_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
           t.details_requested_to = em.email;
-        } catch (err) { if (/^Asked /.test(String(err.message))) recent.push(t.speaker_name); else failed.push(t.speaker_name + ': ' + err.message); }
+        } catch (err) { if (/^Asked /.test(String(err.message))) recent.push(t.speaker_name); else if (/^A government official/.test(String(err.message))) official.push(t.speaker_name); else failed.push(t.speaker_name + ': ' + err.message); }
         if (i < list.length - 1 && !italkBulkStop) await new Promise(function (res) { setTimeout(res, 4000); });
       }
-      if (prog) prog.textContent = ok + ' sent' + (recent.length ? ', ' + recent.length + ' left out because they were asked in the last half hour (' + recent.join(', ') + ')' : '') + (failed.length ? ', ' + failed.length + ' not sent (' + failed.join('; ') + ')' : '') + (italkBulkStop ? '. Stopped.' : '.');
+      if (prog) prog.textContent = ok + ' sent' + (recent.length ? ', ' + recent.length + ' left out because they were asked already (' + recent.join(', ') + ')' : '') + (official.length ? ', ' + official.length + ' left out as government officials, to write to yourself (' + official.join(', ') + ')' : '') + (failed.length ? ', ' + failed.length + ' not sent (' + failed.join('; ') + ')' : '') + (italkBulkStop ? '. Stopped.' : '.');
       if (go) { go.disabled = false; go.style.opacity = ''; }
       toast(ok + ' email' + (ok === 1 ? '' : 's') + ' sent' + (failed.length ? ', ' + failed.length + ' failed' : ''), failed.length ? 'error' : 'success');
       await loadInnovationTalks();

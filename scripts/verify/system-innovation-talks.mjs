@@ -103,7 +103,7 @@ el('italk-all-again').checked = true;
 await F.italkAskAllRun();
 // Since 12 Nov 2026 (night): never twice within half an hour, so Ask everyone and the
 // minute clock cannot both write to one speaker minutes apart.
-check('ticking "already asked" a minute later: nobody is written to twice within half an hour, and it says so', W.sent.length === 0 && /left out because they were asked in the last half hour/.test(el('italk-all-progress').textContent), [W.sent.length, el('italk-all-progress').textContent]);
+check('ticking "already asked" a minute later: nobody is written to twice within half an hour, and it says so', W.sent.length === 0 && /left out because they were asked already/.test(el('italk-all-progress').textContent), [W.sent.length, el('italk-all-progress').textContent]);
 W.db.run("UPDATE innovation_talks SET details_requested_at = datetime('now', '-1 hour') WHERE details_requested_at IS NOT NULL");
 await reload();
 await F.italkAskAllRun();

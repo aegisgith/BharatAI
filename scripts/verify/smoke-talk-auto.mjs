@@ -146,17 +146,32 @@ check('the next minute the next speaker goes; the failed one is not tried again 
 at('2026-11-13', '12:01');
 r = await W2.hit('POST', '/api/cron/tick', {}, { Authorization: 'Bearer ' + ADMIN });
 check('an hour later the failed one goes', r.json.talk_requests.sent === 1 && W2.sent.filter(x => x.Recipients.To[0] === 'fail@x.test').length === 1, r.json.talk_requests);
-// Three failures in a row and the clock gives up on that address.
+// A long outage of the email service (the review of 119a24e): every hour each talk is
+// tried again, and once the service is back everyone still gets their email.
 const W2b = await talksWorld({ times: true });
 W2b.db.run("UPDATE innovation_talks SET speaker_email = 'bounce@x.test' WHERE speaker_name = 'Vineet Upadhayay'");
 await W2b.as('POST', '/api/admin/innovation-talks/auto', { on: true });
 W2b.setMailDown(true);
-for (const hhmm of ['11:00', '12:01', '13:02']) { at('2026-11-13', hhmm); await W2b.hit('POST', '/api/cron/tick', {}, { Authorization: 'Bearer ' + ADMIN }); }
+for (const hhmm of ['11:00', '12:01', '13:02', '14:03', '15:04']) { at('2026-11-13', hhmm); await W2b.hit('POST', '/api/cron/tick', {}, { Authorization: 'Bearer ' + ADMIN }); }
+const vid = String(W2b.talk("speaker_name = 'Vineet Upadhayay'").id);
+let blog = JSON.parse(W2b.rows("SELECT value FROM app_settings WHERE key = 'italk_auto_log'")[0].value);
+check('five hours of failed sends: each counted as a failure, none as sent', blog[vid].fails === 5 && blog[vid].n === 0 && W2b.sent.length === 0, blog[vid]);
+r = await W2b.as('GET', '/api/admin/innovation-talks/auto?event_id=1');
+check('the tab is told which sends are waiting, and what the email service said', r.json.failing.length === 1 && r.json.failing[0].fails === 5 && r.json.failing[0].error.length > 0, r.json.failing);
 W2b.setMailDown(false);
-at('2026-11-13', '15:00');
+at('2026-11-13', '16:05');
 r = await W2b.hit('POST', '/api/cron/tick', {}, { Authorization: 'Bearer ' + ADMIN });
-const blog = JSON.parse(W2b.rows("SELECT value FROM app_settings WHERE key = 'italk_auto_log'")[0].value);
-check('after three failed sends it stops trying that address (and none was counted as sent)', r.json.talk_requests.sent === 0 && W2b.sent.length === 0 && blog[String(W2b.talk("speaker_name = 'Vineet Upadhayay'").id)].fails === 3 && blog[String(W2b.talk("speaker_name = 'Vineet Upadhayay'").id)].n === 0, [r.json.talk_requests, blog]);
+blog = JSON.parse(W2b.rows("SELECT value FROM app_settings WHERE key = 'italk_auto_log'")[0].value);
+check('when the service is back, it goes: no speaker is given up on', r.json.talk_requests.sent === 1 && W2b.sent.length === 1 && blog[vid].n === 1 && !blog[vid].fails, [r.json.talk_requests, blog[vid]]);
+r = await W2b.as('GET', '/api/admin/innovation-talks/auto?event_id=1');
+check('...and the tab no longer lists it as waiting', r.json.failing.length === 0, r.json.failing);
+// A send by hand that fails puts the talk back as it was (it is marked before it goes).
+W2b.setMailDown(true);
+const vBefore = W2b.talk("speaker_name = 'Vineet Upadhayay'").details_requested_at;
+at('2026-11-15', '18:00');
+r = await W2b.as('POST', '/api/admin/innovation-talks/' + vid + '/request-details', { to: 'bounce@x.test', items: ['topic'], again: true });
+check('a hand send that fails leaves the talk as it was', r.status === 502 && W2b.talk("speaker_name = 'Vineet Upadhayay'").details_requested_at === vBefore, [r.status, vBefore, W2b.talk("speaker_name = 'Vineet Upadhayay'").details_requested_at]);
+W2b.setMailDown(false);
 
 // ---- 12 Nov 2026 night: what the go-check found before the switch went on ----
 at('2026-11-13', '10:00');
@@ -203,6 +218,27 @@ check('a preview is never refused', g.status === 200 && g.json.preview === true,
 at('2026-11-13', '10:31');
 g = await W3.as('POST', '/api/admin/innovation-talks/' + am3.id + '/request-details', { to: 'before@x.test', items: ['topic'] });
 check('after half an hour it sends', g.status === 200 && mails3().length === 3, [g.status, g.json]);
+// A government official is refused on the server too, unless it is the envelope.
+const gn = T3('Ganesh Nagarajan');
+g = await W3.as('POST', '/api/admin/innovation-talks/' + gn.id + '/request-details', { to: 'gn@gov.test', items: ['speaker_bio'] });
+check('"Ask everyone" to a government official is refused by the server, in words', g.status === 409 && g.json.protocol === true && /^A government official/.test(g.json.error), [g.status, g.json]);
+g = await W3.as('POST', '/api/admin/innovation-talks/' + gn.id + '/request-details', { to: 'gn@gov.test', items: ['speaker_bio'], again: true });
+check('the envelope on his row still writes to him', g.status === 200, [g.status, g.json]);
+// "Ask everyone" with "already asked" unticked: any earlier ask counts, whatever the page shows.
+const rd3 = T3('Raveesh Dewan');
+g = await W3.as('POST', '/api/admin/innovation-talks/' + rd3.id + '/request-details', { to: 'after@x.test', items: ['speaker_bio'], fresh: true });
+check('"Ask everyone" (not again) to a talk asked yesterday: refused, saying when', g.status === 409 && /^Asked already, on 2026-11-12 at 20:30, so not sent again\.$/.test(g.json.error), [g.status, g.json]);
+// Once held, always held: the speaker's own page can change the company or designation.
+const sk = T3('Srinivas Kancharla');
+W3.db.run("UPDATE innovation_talks SET speaker_email = 'sk@x.test', company = 'Science Office' WHERE id = ?", [sk.id]);
+s3 = await auto3();
+const heldIds = JSON.parse(W3.rows("SELECT value FROM app_settings WHERE key = 'italk_held_ids'")[0]?.value || '[]');
+check('an official whose company was changed stays held back (remembered by id)', heldIds.includes(sk.id) && s3.held.some(h => h.speaker === 'Srinivas Kancharla') && !s3.next.some(n => n.speaker === 'Srinivas Kancharla'), [heldIds, s3.held.map(h => h.speaker)]);
+W3.db.run("UPDATE innovation_talks SET speaker_title = 'Scientist, O/o PSA' WHERE speaker_name = 'Aditi Saini'");
+W3.db.run("UPDATE innovation_talks SET speaker_title = 'Adviser, NITI Aayog' WHERE speaker_name = 'Dr. Anand Deshpande'");
+W3.db.run("UPDATE innovation_talks SET speaker_name = 'Shri R. Kumar, I.A.S.' WHERE speaker_name = 'Harshal Wakharkar'");
+const F3 = (await W3.as('GET', '/api/admin/innovation-talks/contacts?event_id=1')).json.contacts;
+check('"O/o PSA", "NITI Aayog" and "I.A.S." with dots are held back too', F3[T3('Aditi Saini').id].protocol === true && F3[T3('Dr. Anand Deshpande').id].protocol === true && F3[T3('Shri R. Kumar, I.A.S.').id].protocol === true);
 // The team-list name match needs six letters for a part of a name.
 W3.db.run("INSERT INTO exhibitors (id, event_id, company_name, contact_email) VALUES (42, 1, 'OliAI', 'spoc@oli.test')");
 W3.db.run("INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_name, email) VALUES (1, 42, 'Raj', '', 'raj@oli.test')");
