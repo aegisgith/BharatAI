@@ -19612,6 +19612,8 @@ app.post('/api/booth-application', async (c) => {
   if (!ev) return c.json({ error: 'Please choose the event: Mumbai or Delhi.' }, 400)
 
   const booth = text(b.booth, 80)
+  // The stand picked on /exhibition's floor plan, when the application started there.
+  const stand = text(b.stand, 40)
   const boothName = booth === 'Undecided' ? '' : (Object.keys(BOOTH_APP_BOOTHS).find((n) => booth === n || booth.startsWith(n + ' - ')) ?? null)
   const f = {
     zone: text(b.zone, 60),
@@ -19665,7 +19667,7 @@ app.post('/api/booth-application', async (c) => {
   const meta: Record<string, any> = {
     application: 'Booth application, ' + ev.label,
     ...(eventKey === 'delhi' ? { edition: 'delhi-2027' } : {}),
-    booth_type: booth || 'Undecided', booth_quantity: 1, preferred_zone: f.zone, estimated_total: price,
+    booth_type: booth || 'Undecided', booth_quantity: 1, preferred_zone: f.zone, estimated_total: price, ...(stand ? { preferred_stand: stand } : {}),
     website: site, company_type: f.company_type, annual_revenue: f.revenue,
     product: f.product, what_it_does: f.what, how_far_along: f.stage, who_uses_it: f.users, market: f.market, sells_to: f.industry,
     stage_talk: f.talk, designation: f.designation, city: f.city,
@@ -19689,7 +19691,7 @@ app.post('/api/booth-application', async (c) => {
   // The team reads every answer in its email; the desk shows them under Details.
   const summary = [
     'Booth application, ' + ev.label,
-    'Booth: ' + boothWords + (f.zone ? ', zone: ' + f.zone : ''),
+    'Booth: ' + boothWords + (f.zone ? ', zone: ' + f.zone : '') + (stand ? ', stand on the floor plan: ' + stand : ''),
     'Company: ' + f.company + ' (' + site + ')',
     'They are: ' + f.company_type + '. Annual revenue: ' + f.revenue,
     'Product: ' + f.product,
@@ -21370,7 +21372,8 @@ function selectType(type) {
   // Extra fields
   let extra = '';
   if (type === 'exhibition') {
-    extra = '<div><label class="text-xs text-gray-400 mb-1 block">Preferred Booth Type</label><select id="cf-booth" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select booth type</option><option value="Startup Pod - 1.5×1.5m - ₹48,000">Startup Pod — 1.5 × 1.5 m — ₹48,000</option><option value="Explorer Booth - 2×2m - ₹1,29,000">Explorer Booth — 2 × 2 m — ₹1,29,000</option><option value="Innovator Booth - 3×2m - ₹1,95,000">Innovator Booth — 3 × 2 m — ₹1,95,000</option><option value="Accelerator Booth - 3×3m - ₹2,91,000">Accelerator Booth — 3 × 3 m — ₹2,91,000</option><option value="Enterprise Booth - 4×2m - ₹2,58,000">Enterprise Booth — 4 × 2 m — ₹2,58,000</option><option value="Flagship Pavilion - 6×2m - ₹3,87,000">Flagship Pavilion — 6 × 2 m — ₹3,87,000</option><option value="Mega Pavilion - 7×7.7m - ₹17,40,000">Mega Pavilion — 7 × 7.7 m — ₹17,40,000</option><option value="Undecided">Not sure yet / Need consultation</option></select></div><div class="mt-4"><label class="text-xs text-gray-400 mb-1 block">Preferred Zone</label><select id="cf-zone" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Any zone</option><option value="Main Hall">Main Hall</option><option value="Innovation Hub">Innovation Hub</option><option value="Startup Alley">Startup Alley</option><option value="Enterprise Zone">Enterprise Zone</option></select></div>';
+    // A booth is applied for on /inquiry (12 Nov 2026); this form still takes a question.
+    extra = '<div class="rounded-xl p-4 text-sm leading-relaxed" style="background:rgba(255,107,0,0.08);border:1px solid rgba(255,107,0,0.3);"><p style="margin:0 0 10px;"><strong>To book a booth, apply for one.</strong> Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.</p><a href="/inquiry#inquiry-form-card" style="display:inline-block;padding:10px 18px;border-radius:10px;background:#C84F00;color:#fff;font-weight:700;text-decoration:none;">Apply for a booth</a><p style="margin:10px 0 0;">Only a question about exhibiting? Send it below.</p></div>';
   } else if (type === 'speaking') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
   } else if (type === 'group_registration') {
@@ -22876,6 +22879,7 @@ ${siteHeaderHTML('/exhibition')}
                 </select>
               </div>
             </div>
+            <p id="iq-stand" class="hidden rg-fine" style="margin:0;text-align:left;"></p>
 
             <!-- Price Summary -->
             <div id="iq-price-summary" class="hidden bk-sum">
@@ -23171,7 +23175,8 @@ async function submitBoothInquiry(e) {
         industry: v('iq-industry'), talk: v('iq-talk'),
         name: v('iq-name'), designation: v('iq-designation'), email: v('iq-email'), mobile: v('iq-phone'), city: v('iq-city'),
         message: v('iq-message'),
-        source: from.get('utm_source') || from.get('source') || ''
+        source: from.get('utm_source') || from.get('source') || '',
+        stand: from.get('stand') || ''
       })
     });
     var data = await resp.json().catch(function () { return {}; });
@@ -23209,7 +23214,16 @@ if (preselect) {
   if (matchKey) {
     document.getElementById('iq-booth-type').value = matchKey;
     updatePriceSummary();
+  } else if (preselect.toLowerCase() === 'undecided') {
+    document.getElementById('iq-booth-type').value = 'Undecided';
   }
+}
+// From the floor plan: the stand they picked is shown, and sent with the application.
+var standWanted = String(urlParams.get('stand') || '').slice(0, 40);
+if (standWanted) {
+  var standNote = document.getElementById('iq-stand');
+  standNote.textContent = 'From the floor plan: ' + standWanted + '.';
+  standNote.classList.remove('hidden');
 }
 </script>
 </body>
@@ -27121,6 +27135,7 @@ function mainPageScript(): string {
     };
 
     function openInquiryForm(type) {
+      if (type === 'exhibition') { window.location.href = '/inquiry#inquiry-form-card'; return; }
       const cfg = INQUIRY_CONFIG[type] || INQUIRY_CONFIG.general;
       document.getElementById('inq-type').value = type;
       document.getElementById('inq-icon').className = 'fas ' + cfg.icon + ' text-lg ' + cfg.color;
@@ -30148,7 +30163,13 @@ function mainPageScript(): string {
       \`);
     }
 
+    // 12 Nov 2026: a booth is applied for on /inquiry, and the team replies within 2 working
+    // days. The package goes with it; the older in-app request below is no longer opened.
     function openBoothRequestForm(boothTypeId) {
+      const wanted = boothTypesCache.find(b => b.id === boothTypeId);
+      window.location.href = '/inquiry?booth=' + encodeURIComponent(String((wanted && wanted.name) || '').split(' ')[0].toLowerCase()) + '#inquiry-form-card';
+    }
+    function boothRequestFormInApp(boothTypeId) {
       const bt = boothTypesCache.find(b => b.id === boothTypeId);
       if (!bt) { showToast('Booth type not found', 'error'); return; }
       const modal = document.getElementById('booth-request-modal');

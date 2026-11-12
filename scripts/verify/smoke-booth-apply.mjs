@@ -176,6 +176,14 @@ const count = () => q('SELECT COUNT(*) AS n FROM inquiries')[0].n;
   await settle(200);
 }
 
+{
+  sent.length = 0;
+  const r = await apply({ ...APPLY, event: 'mumbai', booth: 'Explorer Booth - 2x2m - Rs.1,29,000', email: 'stand@acme.example', mobile: '9100000555', stand: 'B12' });
+  await settle(120);
+  const m = JSON.parse(last().metadata);
+  check('from the floor plan: the stand travels with the application, and the team is told it', r.status === 201 && m.preferred_stand === 'B12' && sent.some((p) => p.Content.Body[0].Content.includes('stand on the floor plan: B12')), last().metadata);
+}
+
 // ======== where the organisers act on it ========
 {
   const list = await hit('GET', '/api/admin/inquiries?type=booth_inquiry', undefined, ADMIN);
@@ -197,6 +205,13 @@ const count = () => q('SELECT COUNT(*) AS n FROM inquiries')[0].n;
     check(`/inquiry: ${id} offers exactly the server's ${name}`, JSON.stringify(optionsOf(html, id)) === JSON.stringify(list(name)), JSON.stringify(optionsOf(html, id)));
   }
   check('/inquiry: the organiser\'s words and the button', html.includes('Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days.') && html.includes('Send my application'));
+  check('/inquiry: shows the floor plan\'s stand when it arrives with one', html.includes('id="iq-stand"') && html.includes("urlParams.get('stand')"));
+  const fpjs = read('public/js/floor-plan.js');
+  check('the floor plan\'s panel applies, with the stand and the package, and no longer sends its own enquiry', fpjs.includes("'/inquiry?booth='+encodeURIComponent(word)+'&stand='") && !fpjs.includes('/api/inquiries') && read('public/exhibition.html').includes('id="fpApply"') && !read('public/exhibition.html').includes('id="fpFSubmit"'));
+  const contact = (await hit('GET', '/contact')).text;
+  check('/contact: Exhibition points to the application and still takes a question', contact.includes('To book a booth, apply for one.') && contact.includes('Only a question about exhibiting?'));
+  const appJs = (await hit('GET', '/app.js')).text;
+  check('the app: booth buttons and the Exhibition enquiry open the application', appJs.includes("window.location.href = '/inquiry?booth='") && appJs.includes("if (type === 'exhibition') { window.location.href = '/inquiry#inquiry-form-card'; return; }"));
   const ex = read('public/exhibition.html');
   check('/exhibition: each package\'s button opens the application on that booth', ['startup', 'explorer', 'innovator', 'accelerator', 'enterprise', 'flagship', 'mega'].every((k) => ex.includes(`href="/inquiry?booth=${k}#inquiry-form-card"`)) && !ex.includes('>Enquire Now <'));
 }

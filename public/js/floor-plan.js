@@ -100,8 +100,8 @@
   }
   function zoomAt(px,py,f){ const ns=Math.max(MIN,Math.min(MAX,s*f)); tx=px-(px-tx)*(ns/s); ty=py-(py-ty)*(ns/s); s=ns; apply(); }
   wrap.addEventListener('wheel',e=>{e.preventDefault();const r=wrap.getBoundingClientRect();zoomAt(e.clientX-r.left,e.clientY-r.top,e.deltaY<0?1.12:1/1.12);},{passive:false});
-  let drag=null;
-  wrap.addEventListener('pointerdown',e=>{ if(e.target.closest('.fp-mapctl'))return; drag={x:e.clientX,y:e.clientY,tx,ty};moved=false;wrap.classList.add('fp-grabbing');wrap.setPointerCapture(e.pointerId); });
+  let drag=null, downHot=null;
+  wrap.addEventListener('pointerdown',e=>{ downHot=null; if(e.target.closest('.fp-mapctl'))return; downHot=e.target.closest('.fp-hot'); drag={x:e.clientX,y:e.clientY,tx,ty};moved=false;wrap.classList.add('fp-grabbing');wrap.setPointerCapture(e.pointerId); });
   wrap.addEventListener('pointermove',e=>{ if(!drag){moveTip(e);return;} const dx=e.clientX-drag.x,dy=e.clientY-drag.y; if(Math.abs(dx)+Math.abs(dy)>4)moved=true; tx=drag.tx+dx;ty=drag.ty+dy;apply(); });
   function endDrag(){ if(drag){drag=null;wrap.classList.remove('fp-grabbing');} }
   wrap.addEventListener('pointerup',endDrag); wrap.addEventListener('pointercancel',endDrag);
@@ -179,10 +179,8 @@
       qs('#fpSpDim').textContent='—'; qs('#fpSpArea').textContent='—'; qs('#fpSpType').textContent='Open plot';
       qs('#fpSpPrice').textContent='On request';
       qs('#fpPnBlurb').textContent='A flexible open plot — tell us your size and build requirements and our team will scope it for you.';
-      qs('#fpFBooth').value='Plot '+it.label;
       qs('#fpPnBookedNote').style.display='none';
-      qs('#fpFormTitle').textContent='Enquire about this plot';
-      qs('#fpFSubmit').querySelector('span').textContent='Send plot enquiry';
+      setApply('undecided','Plot '+it.label,'Apply for an open plot');
     } else {
       const col=colorOf(it.type);
       qs('#fpPnHead').style.background=`linear-gradient(135deg,${col},color-mix(in oklab,${col},#ffffff 26%))`;
@@ -195,7 +193,6 @@
       qs('#fpSpType').textContent=TYPE_META[it.type].name.replace(' Booth','').replace(' Pavilion','');
       qs('#fpSpPrice').innerHTML=(it.type==='pod'?'<s style="font-size:.7em;font-weight:600;opacity:.6;">'+inr(38000)+'</s> ':'')+inr(it.price);
       qs('#fpPnBlurb').textContent=it.blurb;
-      qs('#fpFBooth').value=`${it.code} — ${TYPE_META[it.type].name} (${it.dim.replace('m x ','m × ')})`;
       const note=qs('#fpPnBookedNote'), noteTxt=qs('#fpPnBookedText');
       if(note) note.style.display=st==='available'?'none':'flex';
       if(noteTxt && st!=='available'){
@@ -206,90 +203,29 @@
         : it.company     ? 'Booth '+it.code+' has been taken by '+it.company+'. Tell us your needs and we’ll suggest the closest available alternatives.'
         :                  'Booth '+it.code+' is already sold. Tell us your needs and we’ll suggest the closest available alternatives.';
       }
-      qs('#fpFormTitle').textContent=st==='available'?'Enquire about this booth':'Request a similar booth';
-      qs('#fpFSubmit').querySelector('span').textContent=st==='available'?'Send booth enquiry':'Find me a booth';
+      // The size's first word is what /inquiry's ?booth= picks the package by.
+      setApply(TYPE_META[it.type].name.split(' ')[0].toLowerCase(),it.code,st==='available'?'Apply for this booth':'Apply for a similar booth');
     }
-    qs('#fpPnForm').style.display='block'; qs('#fpPnSuccess').classList.remove('fp-pn-success-show'); clearFormError(); qs('#fpPnBody').scrollTop=0;
+    qs('#fpPnBody').scrollTop=0;
     panel.classList.add('fp-panel-open'); panel.setAttribute('aria-hidden','false'); scrim.classList.add('fp-scrim-show');
   }
   function closePanel(){ panel.classList.remove('fp-panel-open'); panel.setAttribute('aria-hidden','true'); scrim.classList.remove('fp-scrim-show'); root.querySelectorAll('.fp-hot.fp-sel').forEach(e=>e.classList.remove('fp-sel')); current=null; }
   qs('#fpPnClose').onclick=closePanel; scrim.onclick=closePanel;
   document.addEventListener('keydown',e=>{ if(e.key==='Escape')closePanel(); });
-  overlay.addEventListener('click',e=>{ if(moved)return; const t=e.target.closest('.fp-hot'); if(!t||t.classList.contains('fp-hide'))return; openPanel(t); });
+  // The plan holds the pointer while it can be dragged (setPointerCapture above), so a mouse
+  // click lands on the plan, not on the stand, and never reached the stand's listener: on a
+  // laptop no stand opened. The stand under the press is remembered and used instead.
+  wrap.addEventListener('click',e=>{ if(moved)return; const t=e.target.closest('.fp-hot')||downHot; downHot=null; if(!t||t.classList.contains('fp-hide'))return; openPanel(t); });
 
-  /* ---------- form ----------
-     Enquiries POST to /api/inquiries (same origin — the Worker owns /api/*) so they
-     land in the inquiries table and show up in admin. This previously fired a
-     mailto: and then declared success unconditionally, which meant every enquiry
-     from a visitor with no mail client configured was lost while the UI said it
-     had been sent. Success is now shown only on a 2xx; mailto survives purely as a
-     manual fallback offered on failure. */
-  const esc=s=>String(s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
-  function mailtoHref(label,name,company,email,msg){
-    const subject=encodeURIComponent(`Booth Enquiry — ${label} — Bharat AI Innovation 2026`);
-    const body=encodeURIComponent(`Name: ${name}\nCompany: ${company}\nEmail: ${email}\nBooth: ${qs('#fpFBooth').value}\nMessage: ${msg}`);
-    return `mailto:info@bharataiinnovation.com?subject=${subject}&body=${body}`;
+  /* ---------- apply ----------
+     12 Nov 2026: a booth is applied for, not enquired about, and the team replies within
+     2 working days. The panel hands the stand and its package to /inquiry's application. */
+  function setApply(word,stand,label){
+    const a=qs('#fpApply');
+    a.href='/inquiry?booth='+encodeURIComponent(word)+'&stand='+encodeURIComponent(stand)+'#inquiry-form-card';
+    a.querySelector('span').textContent=label;
+    qs('#fpFormTitle').textContent=label;
   }
-  function showFormError(html){
-    let box=qs('#fpFError');
-    if(!box){
-      box=document.createElement('div'); box.id='fpFError';
-      box.style.cssText='margin:10px 0 0;padding:10px 12px;border-radius:8px;background:rgba(224,72,58,0.08);border:1px solid rgba(224,72,58,0.35);color:#a3271c;font-size:12.5px;line-height:1.5;';
-      qs('#fpFSubmit').insertAdjacentElement('afterend',box);
-    }
-    box.innerHTML=html; box.style.display='block';
-  }
-  const clearFormError=()=>{ const b=qs('#fpFError'); if(b) b.style.display='none'; };
-
-  qs('#fpFSubmit').onclick=async function(){
-    const btn=this, lbl=btn.querySelector('span');
-    if(btn.disabled) return;
-    const n=qs('#fpFName'),c=qs('#fpFCompany'),em=qs('#fpFEmail'),ms=qs('#fpFMsg'); let ok=true;
-    [n,c,em].forEach(f=>{ if(!f.value.trim()){f.style.borderColor='#e0483a';ok=false;}else f.style.borderColor=''; });
-    if(em.value&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em.value)){em.style.borderColor='#e0483a';ok=false;}
-    if(!ok)return;
-    clearFormError();
-
-    const it=current.item, label=current.plot?('Plot '+it.label):(it.code);
-    const name=n.value.trim(), company=c.value.trim(), email=em.value.trim(), msg=ms.value.trim();
-    const original=lbl.textContent;
-    btn.disabled=true; lbl.textContent='Sending…';
-
-    try{
-      const res=await fetch('/api/inquiries',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          inquiry_type:'booth_inquiry',
-          name, email, organization:company,
-          subject:`Booth enquiry — ${label}`,
-          message:msg,
-          metadata:{
-            source:'exhibition-floor-plan',
-            booth_code:current.plot?it.label:it.code,
-            booth_label:qs('#fpFBooth').value,
-            booth_type:current.plot?'plot':it.type,
-            booth_status:current.plot?'plot':(it.status||'available'),
-            already_booked:!current.plot && (it.status||'available')!=='available'
-          }
-        })
-      });
-      if(!res.ok) throw new Error('HTTP '+res.status);
-    }catch(err){
-      // Never claim success we cannot verify — offer the email route instead.
-      btn.disabled=false; lbl.textContent=original;
-      showFormError(`We couldn't submit that just now. Please <a href="${mailtoHref(label,name,company,email,msg)}" style="color:#a3271c;text-decoration:underline;font-weight:600;">email us the enquiry</a> or call +91 89765 80367 — your details are still in the form.`);
-      return;
-    }
-
-    qs('#fpSuccessMsg').innerHTML=(!current.plot && (it.status||'available')!=='available')
-      ? `Thanks, <b>${esc(name.split(' ')[0])}</b>! Our team will suggest booths close to <b>${esc(label)}</b> within one business day.`
-      : `Thanks, <b>${esc(name.split(' ')[0])}</b>! Your enquiry about <b>${esc(label)}</b> has been sent. We'll reply within one business day.`;
-    qs('#fpPnForm').style.display='none'; qs('#fpPnSuccess').classList.add('fp-pn-success-show');
-    btn.disabled=false; lbl.textContent=original;
-    [n,c,em,ms].forEach(f=>f.value='');
-  };
-  qs('#fpSuccessBack').onclick=closePanel;
 
   /* ---------- live availability ----------
      GET /api/events/:id/booths -> { ready, booths:[{code,status,company}], summary }.
