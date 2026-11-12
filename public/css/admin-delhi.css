@@ -1,0 +1,35 @@
+/* Admin, Delhi 2027. Everything is under .dld so nothing here reaches another admin section. */
+.dld { --dl-ink: #1e2140; --dl-muted: #5b6178; --dl-line: #e3e6ef; --dl-soft: #f6f7fb; --dl-accent: #c84f00; color: var(--dl-ink); font-size: 14px; line-height: 1.45; display: grid; gap: 14px; }
+.dld *, .dld *::before, .dld *::after { box-sizing: border-box; }
+.dld button, .dld input { font: inherit; }
+.dld-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.dld-card { background: #fff; border: 1px solid var(--dl-line); border-radius: 14px; padding: 18px; }
+.dld-card h2 { margin: 0 0 6px; font-size: 17px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.dld-card h2 i { color: var(--dl-accent); }
+.dld-lead { margin: 0 0 14px; color: var(--dl-muted); max-width: 80ch; }
+.dld-warn { margin: 0; padding: 10px 12px; border-radius: 10px; background: #fffaeb; color: #93370d; font-weight: 600; }
+.dld-note { color: var(--dl-muted); font-size: 13px; margin: 0; }
+.dld-sub { color: var(--dl-muted); font-size: 12.5px; }
+.dld-ok { color: #067647; font-weight: 700; }
+.dld-off { color: #b42318; font-weight: 700; }
+.dld-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.dld-grid label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; font-size: 13px; }
+.dld-grid small { font-weight: 500; color: var(--dl-muted); font-size: 12px; }
+.dld-grid input { min-height: 38px; padding: 0 10px; border: 1px solid var(--dl-line); border-radius: 9px; background: #fff; color: var(--dl-ink); font-weight: 500; }
+.dld-grid .dld-wide { grid-column: 1 / -1; }
+.dld-passes { border: 0; padding: 0; margin: 12px 0; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.dld-passes legend { font-weight: 700; font-size: 13px; margin-bottom: 6px; padding: 0; }
+.dld-passes label { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
+.dld-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--dl-line); border-radius: 9px; background: #fff; color: var(--dl-ink); font-weight: 700; font-size: 13px; cursor: pointer; }
+.dld-btn + .dld-btn { margin-left: 6px; }
+.dld-btn:focus-visible { outline: 3px solid rgba(200, 79, 0, 0.35); outline-offset: 2px; }
+.dld-primary { min-height: 38px; padding: 0 16px; background: var(--dl-accent); border-color: var(--dl-accent); color: #fff; }
+.dld-wrap { overflow-x: auto; background: #fff; border: 1px solid var(--dl-line); border-radius: 12px; }
+.dld-table { width: 100%; border-collapse: collapse; min-width: 960px; }
+.dld-table th, .dld-inner th { text-align: left; font-size: 12px; font-weight: 700; color: var(--dl-muted); background: var(--dl-soft); padding: 8px 10px; white-space: nowrap; }
+.dld-table td { padding: 9px 10px; border-top: 1px solid var(--dl-line); vertical-align: top; }
+.dld-n { text-align: right; font-variant-numeric: tabular-nums; }
+.dld-acts { white-space: nowrap; text-align: right; }
+.dld-buyers td { background: var(--dl-soft); }
+.dld-inner { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; }
+.dld-inner td { padding: 6px 10px; border-top: 1px solid var(--dl-line); }

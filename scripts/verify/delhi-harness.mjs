@@ -19,6 +19,8 @@ const worker = (await import(pathToFileURL(join(ROOT, 'dist', '_worker.js')).hre
 const SQL = await initSqlJs();
 const db = new SQL.Database();
 db.exec(readFileSync(join(ROOT, 'scripts', 'verify', 'prod-schema.sql'), 'utf8'));
+// The Delhi code tables (0061), for browser-delhi-codes.cjs.
+db.exec(readFileSync(join(ROOT, 'migrations', '0061_delhi_codes.sql'), 'utf8'));
 db.run("INSERT INTO events (id, title, start_date, end_date) VALUES (1, 'Bharat AI Innovation 2026', '2026-11-20', '2026-11-21')");
 
 const clean = (a) => a.map(v => (v === undefined ? null : typeof v === 'boolean' ? Number(v) : v));

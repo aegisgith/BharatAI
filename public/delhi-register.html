@@ -58,6 +58,15 @@
     .dr-total { margin: 1rem 0 0.5rem; text-align: center; font-size: 0.98rem; color: var(--charcoal); line-height: 1.4; }
     .dr-total b { font-weight: 800; }
     .dr-submit { width: 100%; justify-content: center; min-height: 52px; }
+    .dr-code { margin-top: 0.9rem; }
+    .dr-code .dr-opt { font-weight: 500; color: var(--dark-grey); }
+    .dr-code-row { display: flex; gap: 0.5rem; }
+    .dr-code-row input { flex: 1; min-width: 0; text-transform: uppercase; }
+    .dr-code-btn { flex: none; min-height: 46px; padding: 0 1.1rem; border: 1.5px solid var(--charcoal); border-radius: 10px; background: #fff; color: var(--charcoal); font: inherit; font-weight: 700; cursor: pointer; }
+    .dr-code-msg { margin: 0.35rem 0 0; font-size: 0.86rem; line-height: 1.4; min-height: 1.2em; }
+    .dr-code-msg.ok { color: #0E6B06; font-weight: 700; }
+    .dr-code-msg.bad { color: #A0281D; font-weight: 600; }
+    .dr-total s { color: var(--dark-grey); font-weight: 500; }
     .dr-error { margin: 0.7rem 0 0; padding: 0.6rem 0.8rem; background: #FDECEA; color: #A0281D; border-radius: 10px; font-size: 0.9rem; font-weight: 600; line-height: 1.45; }
     .dr-note { margin: 0.7rem 0 0; font-size: 0.8rem; line-height: 1.5; color: var(--dark-grey); text-align: center; }
     .dr-note a { color: var(--dark-grey); text-decoration: underline; }
@@ -149,6 +158,14 @@
                             <p>A receipt is emailed the moment the payment goes through; the GST invoice follows from the accounts team. Leave this empty for an invoice in your own name.</p>
                         </div>
                     </details>
+                    <div class="dr-field dr-code">
+                        <label class="dr-label" for="dr-code">Partner or discount code <span class="dr-opt">(optional)</span></label>
+                        <div class="dr-code-row">
+                            <input id="dr-code" type="text" autocapitalize="characters" autocomplete="off" spellcheck="false" maxlength="24">
+                            <button type="button" id="dr-code-apply" class="dr-code-btn">Apply</button>
+                        </div>
+                        <p class="dr-code-msg" id="dr-code-msg" aria-live="polite"></p>
+                    </div>
                     <p class="dr-total" id="dr-total"></p>
                     <button type="submit" class="btn btn-primary dr-submit" id="dr-submit">Proceed to Payment <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
                     <p class="dr-error" id="dr-error" role="alert" hidden></p>
@@ -180,17 +197,62 @@
         var academic = isAcademic();
         byId('dr-org-label').textContent = academic ? 'College name' : 'Organisation';
         byId('dr-job-box').hidden = academic;
-        total.innerHTML = 'To pay: <b>₹' + p.getAttribute('data-total') + '</b> including 18% GST';
+        showTotal();
       }
+      // A code is checked by the server for the chosen pass; the price it shows is the one
+      // POST /api/delhi/pay charges. ?code= on a partner's link fills it in.
+      var codeBox = byId('dr-code'), codeMsg = byId('dr-code-msg');
+      var applied = null;
+      function money(n) { return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+      function showTotal() {
+        var p = passInput();
+        if (applied && applied.pass === p.value && applied.percent > 0) {
+          total.innerHTML = 'To pay: <s>₹' + p.getAttribute('data-total') + '</s> <b>₹' + money(applied.total) + '</b> including 18% GST';
+        } else {
+          total.innerHTML = 'To pay: <b>₹' + p.getAttribute('data-total') + '</b> including 18% GST';
+        }
+      }
+      function applyCode() {
+        var code = codeBox.value.trim().toUpperCase();
+        codeBox.value = code;
+        codeBox.removeAttribute('aria-invalid');
+        applied = null;
+        codeMsg.textContent = '';
+        codeMsg.className = 'dr-code-msg';
+        if (!code) { showTotal(); return; }
+        var pass = passInput().value;
+        codeMsg.textContent = 'Checking...';
+        fetch('/api/delhi/code?code=' + encodeURIComponent(code) + '&pass=' + encodeURIComponent(pass), { cache: 'no-store' }).then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (d) {
+            if (passInput().value !== pass || codeBox.value.trim().toUpperCase() !== code) return;
+            if (!r.ok) {
+              codeMsg.textContent = d.error || 'That code did not work.';
+              codeMsg.className = 'dr-code-msg bad';
+              codeBox.setAttribute('aria-invalid', 'true');
+            } else {
+              applied = { code: d.code, pass: pass, total: d.total, percent: d.percent };
+              codeMsg.textContent = d.percent ? 'Code ' + d.code + ': ' + d.percent + '% off this pass.' : 'Code ' + d.code + ' noted. It does not change the price.';
+              codeMsg.className = 'dr-code-msg ok';
+            }
+            showTotal();
+          });
+        }).catch(function () {
+          codeMsg.textContent = 'Could not check the code. Check your internet and press Apply again.';
+          codeMsg.className = 'dr-code-msg bad';
+        });
+      }
+      byId('dr-code-apply').addEventListener('click', applyCode);
+      codeBox.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); applyCode(); } });
       function pickFromHash() {
         var key = String(location.hash || '').replace('#', '');
         var r = key && form.querySelector('input[name="pass"][data-key="' + key.replace(/[^a-z]/g, '') + '"]');
         if (r) r.checked = true;
         syncForm();
       }
-      form.addEventListener('change', function (e) { if (e.target.name === 'pass') syncForm(); });
+      form.addEventListener('change', function (e) { if (e.target.name === 'pass') { syncForm(); if (codeBox.value.trim()) applyCode(); } });
       window.addEventListener('hashchange', pickFromHash);
       pickFromHash();
+      if (params.get('code')) { codeBox.value = params.get('code').slice(0, 24); applyCode(); }
 
       function fail(msg, id) {
         err.textContent = msg;
@@ -241,17 +303,19 @@
             city: value('dr-city'),
             industry: byId('dr-industry').value,
             registration_source: source ? 'delhi-' + source : 'delhi-page',
-            billing: bill.billing
+            billing: bill.billing,
+            code: codeBox.value.trim().toUpperCase()
           })
         }).then(function (r) {
           return r.json().catch(function () { return {}; }).then(function (d) {
+            if (d.field === 'code') { var ce = new Error(d.error); ce.box = 'dr-code'; throw ce; }
             if (!r.ok || !d.pay_url) throw new Error(d.error || 'We could not open the payment. Nothing was charged. Please try again.');
             location.href = d.pay_url;
           });
         }).catch(function (x) {
           btn.disabled = false;
           btn.innerHTML = LABEL;
-          fail(x && x.message && x.message !== 'Failed to fetch' ? x.message : 'Could not connect. Nothing was charged. Please check your internet and try again.');
+          fail(x && x.message && x.message !== 'Failed to fetch' ? x.message : 'Could not connect. Nothing was charged. Please check your internet and try again.', x && x.box);
         });
       });
     })();

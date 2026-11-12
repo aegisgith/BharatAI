@@ -15,7 +15,7 @@ const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
 check('the page has one script of its own', script.length === 1, script.length);
 
 const PASSES = [...html.matchAll(/<input type="radio" name="pass" value="([^"]+)" data-key="([^"]+)" data-total="([^"]+)"/g)].map((m) => ({ value: m[1], key: m[2], total: m[3] }));
-const IDS = ['dr-form', 'dr-error', 'dr-submit', 'dr-total', 'dr-org-label', 'dr-job-box', 'dr-name', 'dr-email', 'dr-phone', 'dr-org', 'dr-job', 'dr-city', 'dr-industry', 'dr-website', 'dr-gst', 'dr-gst-name', 'dr-gstin', 'dr-gst-address'];
+const IDS = ['dr-form', 'dr-error', 'dr-submit', 'dr-total', 'dr-org-label', 'dr-job-box', 'dr-name', 'dr-email', 'dr-phone', 'dr-org', 'dr-job', 'dr-city', 'dr-industry', 'dr-website', 'dr-gst', 'dr-gst-name', 'dr-gstin', 'dr-gst-address', 'dr-code', 'dr-code-msg', 'dr-code-apply'];
 function openPage({ hash = '', search = '', fetch } = {}) {
   const focused = { id: null };
   const el = (id) => { const attrs = {}; const listeners = {}; return { id, value: '', hidden: false, textContent: '', innerHTML: '', disabled: false, open: false, attrs, listeners, setAttribute(k, v) { attrs[k] = v; }, removeAttribute(k) { delete attrs[k]; }, getAttribute(k) { return attrs[k]; }, focus() { focused.id = id; }, addEventListener(t, f) { listeners[t] = f; } }; };
@@ -35,11 +35,11 @@ function openPage({ hash = '', search = '', fetch } = {}) {
   const location = { search, hash, href: '' };
   const windowListeners = {};
   const sandbox = { document: { getElementById: (id) => els[id] || null }, location, URLSearchParams, JSON, Error, Array, console, window: { addEventListener: (t, f) => { windowListeners[t] = f; } },
-    fetch: (url, init) => { sent.push({ url, body: JSON.parse(init.body) }); return (fetch || (async () => ({ ok: true, json: async () => ({ pay_url: '/pay/ccavenue/T' }) })))(url, init); } };
+    fetch: (url, init) => { sent.push({ url, body: init && init.body ? JSON.parse(init.body) : null }); return (fetch || (async () => ({ ok: true, json: async () => ({ pay_url: '/pay/ccavenue/T' }) })))(url, init); } };
   vm.runInNewContext(script[0][1], sandbox);
   const settle = async () => { for (let i = 0; i < 30; i++) await new Promise((r) => setImmediate(r)); };
   return {
-    els, sent, focused, location,
+    els, sent, focused, location, settle,
     passNow: () => chosen.value,
     choose(v) { chosen = PASSES.find((p) => p.value === v); form.listeners.change({ target: { name: 'pass' } }); },
     hashTo(h) { location.hash = h; windowListeners.hashchange(); },
@@ -133,6 +133,30 @@ check('an unknown # is ignored', openPage({ hash: '#nonsense"]' }).passNow() ===
   const p = openPage({ fetch: async () => ({ ok: true, json: async () => ({}) }) });
   const r = await p.submit(GOOD);
   check('an answer with no link is not treated as success', r.error.includes('try again') && p.location.href === '', r.error);
+}
+
+// ---- a partner or discount code (12 Nov 2026) ----
+{
+  const answer = async (url) => (String(url).startsWith('/api/delhi/code')
+    ? { ok: true, json: async () => ({ code: 'PARTNER20', percent: 20, total: 4718.82 }) }
+    : { ok: true, json: async () => ({ pay_url: '/pay/ccavenue/T' }) });
+  const p = openPage({ search: '?code=partner20', fetch: answer });
+  await p.settle();
+  check("a partner's link fills the code in, in capitals, and asks the server", p.els['dr-code'].value === 'PARTNER20' && p.sent[0]?.url === '/api/delhi/code?code=PARTNER20&pass=Delegate%20Pass', JSON.stringify(p.sent[0]));
+  check('the total strikes the old price and shows the new one', p.els['dr-total'].innerHTML.includes('<s>₹5,898.82</s>') && p.els['dr-total'].innerHTML.includes('₹4,718.82') && p.els['dr-code-msg'].textContent === 'Code PARTNER20: 20% off this pass.', p.els['dr-total'].innerHTML);
+  const r = await p.submit(GOOD);
+  check('the code goes with the order; the price still does not', r.body.code === 'PARTNER20' && !('amount' in r.body), JSON.stringify(r.body));
+}
+{
+  const p = openPage();
+  const r = await p.submit(GOOD);
+  check('with no code nothing is asked and the code is empty', r.body.code === '' && p.sent.length === 1, JSON.stringify(p.sent.map((x) => x.url)));
+}
+{
+  const p = openPage({ fetch: async () => ({ ok: false, json: async () => ({ error: 'That code has expired.', field: 'code' }) }) });
+  p.els['dr-code'].value = 'oldcode';
+  const r = await p.submit(GOOD);
+  check('a code refused at checkout: the server\'s words, the code box marked', r.error === 'That code has expired.' && p.focused.id === 'dr-code' && p.els['dr-submit'].disabled === false, JSON.stringify(r));
 }
 
 // ---- the figures agree ----

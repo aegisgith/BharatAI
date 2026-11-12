@@ -21106,11 +21106,167 @@ function delhiPayRefusal(a: any, passType: string): string | null {
   return 'Your Delhi pass (' + badge + ') is arranged by the organisers and cannot be changed here. Write to info@bharataiinnovation.com and we will sort it out.'
 }
 
+// ---- Delhi 2027: partner and discount codes (12 Nov 2026) ----
+//
+// The organiser asked for promo and referral codes for Delhi passes. One mechanism does
+// both: a code gives a percentage off (0 = no discount, it only counts a partner's sales),
+// for some passes or all, until a last day, up to a number of paid uses. Admin -> Delhi
+// 2027 makes and pauses them and shows each code's sales. A code is applied when the
+// order is made, so payment_orders already holds the price after the discount: the
+// gateway's amount check, the receipt and the invoice need nothing new. A code is for a
+// new pass, not for moving up. Tables delhi_codes and delhi_code_orders (migration 0061).
+const DELHI_CODE_RE = /^[A-Z0-9][A-Z0-9-]{2,23}$/
+const DELHI_CODE_MAX_PERCENT = 90
+const DELHI_CODE_BAD_PER_IP_HOUR = 20
+const delhiCodeTablesMissing = (e: any) => /no such table/i.test(String(e?.message || e || ''))
+
+// The code's row when it can be used for this pass now, or the reason it cannot, in words.
+async function delhiCodeCheck(c: any, raw: any, passType: string): Promise<{ row: any } | { error: string } | null> {
+  const code = String(raw ?? '').trim().toUpperCase()
+  if (!code) return null
+  if (!DELHI_CODE_RE.test(code)) return { error: 'That code is not valid. Please check it.' }
+  let row: any = null
+  try { row = await c.env.DB.prepare('SELECT * FROM delhi_codes WHERE code = ?').bind(code).first() }
+  catch (e: any) { if (!delhiCodeTablesMissing(e)) throw e }
+  if (!row || !Number(row.active)) return { error: 'That code is not valid. Please check it.' }
+  if (row.valid_until && istDate() > String(row.valid_until)) return { error: 'That code has expired.' }
+  const passes = String(row.passes || '').split(',').map((p: string) => p.trim()).filter(Boolean)
+  if (passes.length && !passes.includes(passType)) return { error: 'That code is not for the ' + passType + '. It works for: ' + humanList(passes) + '.' }
+  if (Number(row.max_uses) > 0) {
+    const used = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM delhi_code_orders u JOIN payment_orders o ON o.order_id = u.order_id WHERE u.code = ? AND o.status = 'paid'"
+    ).bind(code).first() as any
+    if (Number(used?.n || 0) >= Number(row.max_uses)) return { error: 'That code has been used up.' }
+  }
+  return { row }
+}
+
+// The price after the code: whole rupees before GST, GST on what is paid.
+function delhiCodeAmounts(amounts: { base: number; gst: number; total: number }, percent: number): { base: number; gst: number; total: number } {
+  const pct = Math.max(0, Math.min(DELHI_CODE_MAX_PERCENT, Math.round(Number(percent) || 0)))
+  if (!pct) return amounts
+  const base = Math.round((amounts.base * (100 - pct)) / 100 / 100) * 100
+  const gst = Math.round(base * PASS_GST_RATE / 100)
+  return { base, gst, total: base + gst }
+}
+
+// The form asks before checkout, so the buyer sees the price they will pay. Wrong codes
+// from one connection are counted, so codes cannot be guessed by the thousand.
+app.get('/api/delhi/code', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const passType = String(c.req.query('pass') || '')
+  const list = delhiPassAmounts(passType)
+  if (!list) return c.json({ error: 'Choose a pass first.' }, 400)
+  const ip = String(c.req.header('CF-Connecting-IP') || '').slice(0, 64)
+  if (ip) {
+    const bad = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'delhi.code_bad' AND ip = ? AND created_at > datetime('now', '-1 hour')").bind(ip).first().catch(() => null) as any
+    if (Number(bad?.n || 0) >= DELHI_CODE_BAD_PER_IP_HOUR) return c.json({ error: 'Too many codes tried from this connection. Please try again in an hour.' }, 429)
+  }
+  const r = await delhiCodeCheck(c, c.req.query('code'), passType)
+  if (!r) return c.json({ error: 'Type your code first.' }, 400)
+  if ('error' in r) {
+    await audit(c, 'delhi.code_bad', 'delhi_code', String(c.req.query('code') || '').slice(0, 30), { pass: passType }, { actor: 'public registration', kind: 'public' })
+    return c.json({ error: r.error }, 400)
+  }
+  const after = delhiCodeAmounts(list, r.row.percent)
+  return c.json({ code: r.row.code, percent: Number(r.row.percent) || 0, list_total: list.total / 100, total: after.total / 100, base: after.base / 100, gst: after.gst / 100 })
+})
+
+// Admin: the codes, each with what it has sold.
+app.get('/api/admin/delhi/codes', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  try {
+    const { results } = await c.env.DB.prepare(
+      `SELECT d.*,
+              (SELECT COUNT(*) FROM delhi_code_orders u JOIN payment_orders o ON o.order_id = u.order_id WHERE u.code = d.code AND o.status = 'paid') AS paid,
+              (SELECT COALESCE(SUM(o.amount_paise), 0) FROM delhi_code_orders u JOIN payment_orders o ON o.order_id = u.order_id WHERE u.code = d.code AND o.status = 'paid') AS paid_paise,
+              (SELECT COALESCE(SUM(u.discount_paise), 0) FROM delhi_code_orders u JOIN payment_orders o ON o.order_id = u.order_id WHERE u.code = d.code AND o.status = 'paid') AS discount_paise,
+              (SELECT COUNT(DISTINCT u.attendee_id) FROM delhi_code_orders u WHERE u.code = d.code) AS started
+         FROM delhi_codes d ORDER BY d.created_at DESC, d.code`
+    ).all() as any
+    const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+    return c.json({ ready: true, passes: Object.keys(DELHI_PASS_PRICES_INR), codes: ((results || []) as any[]).map((r) => ({ ...r, link: base + '/delhi-register?code=' + encodeURIComponent(r.code) })) })
+  } catch (e: any) {
+    if (delhiCodeTablesMissing(e)) return c.json({ ready: false, passes: Object.keys(DELHI_PASS_PRICES_INR), codes: [] })
+    throw e
+  }
+})
+
+function delhiCodeFields(b: any): { error: string } | { partner: string; percent: number; passes: string; valid_until: string; max_uses: number; note: string } {
+  const percent = Number(b.percent ?? 0)
+  if (!Number.isInteger(percent) || percent < 0 || percent > DELHI_CODE_MAX_PERCENT) return { error: 'The discount is a whole number from 0 to ' + DELHI_CODE_MAX_PERCENT + ' per cent (0 only counts sales).' }
+  const passes = (Array.isArray(b.passes) ? b.passes : []).map(String).filter((p: string) => DELHI_PASS_PRICES_INR[p])
+  const valid = String(b.valid_until ?? '').trim()
+  if (valid && !/^\d{4}-\d{2}-\d{2}$/.test(valid)) return { error: 'The last day is a date, or empty for no end.' }
+  const max = Number(b.max_uses ?? 0)
+  if (!Number.isInteger(max) || max < 0 || max > 100000) return { error: 'The number of uses is a whole number, or 0 for no limit.' }
+  return { partner: String(b.partner ?? '').trim().slice(0, 120), percent, passes: Array.from(new Set(passes)).join(','), valid_until: valid, max_uses: max, note: String(b.note ?? '').trim().slice(0, 500) }
+}
+
+app.post('/api/admin/delhi/codes', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const code = String(b.code ?? '').trim().toUpperCase()
+  if (!DELHI_CODE_RE.test(code)) return c.json({ error: 'A code is 3 to 24 letters, digits or hyphens, starting with a letter or digit.' }, 400)
+  const f = delhiCodeFields(b)
+  if ('error' in f) return c.json({ error: f.error }, 400)
+  if (!f.partner) return c.json({ error: 'Say whose code it is: the partner or community, or the campaign.' }, 400)
+  try {
+    const had = await c.env.DB.prepare('SELECT code FROM delhi_codes WHERE code = ?').bind(code).first()
+    if (had) return c.json({ error: 'There is already a code ' + code + '. Choose another.' }, 409)
+    await c.env.DB.prepare('INSERT INTO delhi_codes (code, partner, percent, passes, valid_until, max_uses, note, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(code, f.partner, f.percent, f.passes, f.valid_until, f.max_uses, f.note, adminActor(c).actor).run()
+  } catch (e: any) {
+    if (delhiCodeTablesMissing(e)) return c.json({ error: 'Apply migration 0061 on the database first.' }, 409)
+    throw e
+  }
+  await audit(c, 'delhi.code_made', 'delhi_code', code, { ...f })
+  return c.json({ success: true, code }, 201)
+})
+
+// Change a code, or pause it (active: false) and start it again.
+app.put('/api/admin/delhi/codes/:code', async (c) => {
+  const code = String(c.req.param('code') || '').toUpperCase()
+  const b = await c.req.json().catch(() => ({})) as any
+  const row = await c.env.DB.prepare('SELECT * FROM delhi_codes WHERE code = ?').bind(code).first().catch(() => null) as any
+  if (!row) return c.json({ error: 'Code not found.' }, 404)
+  const f = delhiCodeFields({ ...row, passes: String(row.passes || '').split(',').filter(Boolean), ...b })
+  if ('error' in f) return c.json({ error: f.error }, 400)
+  const active = b.active === undefined ? Number(row.active) : (b.active ? 1 : 0)
+  await c.env.DB.prepare("UPDATE delhi_codes SET partner = ?, percent = ?, passes = ?, valid_until = ?, max_uses = ?, note = ?, active = ?, updated_at = datetime('now') WHERE code = ?")
+    .bind(f.partner || row.partner, f.percent, f.passes, f.valid_until, f.max_uses, f.note, active, code).run()
+  await audit(c, 'delhi.code_changed', 'delhi_code', code, { ...f, active })
+  return c.json({ success: true })
+})
+
+// Who bought with a code, for the partner's thank-you or commission.
+app.get('/api/admin/delhi/codes/:code/orders', async (c) => {
+  const code = String(c.req.param('code') || '').toUpperCase()
+  const { results } = await c.env.DB.prepare(
+    `SELECT u.order_id, u.created_at, u.list_paise, u.discount_paise, o.status, o.amount_paise, o.pass_type, a.name, a.email, a.company
+       FROM delhi_code_orders u JOIN payment_orders o ON o.order_id = u.order_id LEFT JOIN attendees a ON a.id = u.attendee_id
+      WHERE u.code = ? ORDER BY u.created_at DESC LIMIT 1000`
+  ).bind(code).all().catch(() => ({ results: [] })) as any
+  return c.json({ results: results || [] })
+})
+
+// The line on the confirmation emails when a code was used.
+async function delhiCodeRows(c: any, orderId: string): Promise<Array<[string, string]>> {
+  const u = await c.env.DB.prepare('SELECT u.code, d.percent FROM delhi_code_orders u LEFT JOIN delhi_codes d ON d.code = u.code WHERE u.order_id = ?').bind(orderId).first().catch(() => null) as any
+  if (!u) return []
+  return [['Code', payEsc(u.code) + (Number(u.percent) ? ' (' + Number(u.percent) + '% off)' : '')]]
+}
+
 // Ten orders per person per hour and a link good for an hour, as in Mumbai.
-async function startDelhiOrder(c: any, a: any, passType: string): Promise<{ order_id: string; amount: number; pay_url: string } | { error: string; status: number }> {
+async function startDelhiOrder(c: any, a: any, passType: string, codeRow: any = null): Promise<{ order_id: string; amount: number; pay_url: string } | { error: string; status: number }> {
   const refused = delhiPayRefusal(a, passType)
   if (refused) return { error: refused, status: 409 }
-  const amounts = delhiOrderAmounts(a, passType) as { base: number; gst: number; total: number }
+  const list = delhiOrderAmounts(a, passType) as { base: number; gst: number; total: number }
+  let amounts = list
+  if (codeRow) {
+    const from = DELHI_PASS_PRICES_INR[settledPaidTier(a)] || 0
+    if (from && (DELHI_PASS_PRICES_INR[passType] || 0) > from) return { error: 'Codes are for a new pass, not for moving up. Remove the code to move up.', status: 400 }
+    amounts = delhiCodeAmounts(list, codeRow.percent)
+  }
   const recent = await c.env.DB.prepare(
     "SELECT COUNT(*) AS n FROM payment_orders WHERE attendee_id = ? AND created_at > datetime('now', '-1 hour')"
   ).bind(a.id).first() as any
@@ -21122,7 +21278,11 @@ async function startDelhiOrder(c: any, a: any, passType: string): Promise<{ orde
   await c.env.DB.prepare(
     'INSERT INTO payment_orders (order_id, attendee_id, event_id, pass_type, previous_badge, base_paise, gst_paise, amount_paise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(orderId, a.id, DELHI_EVENT_ID, passType, a.badge_type || '', amounts.base, amounts.gst, amounts.total).run()
-  await audit(c, 'delhi.pay', 'attendee', a.id, { order_id: orderId, pass_type: passType, amount_paise: amounts.total }, { actor: 'public registration', kind: 'public' })
+  if (codeRow) {
+    await c.env.DB.prepare('INSERT INTO delhi_code_orders (order_id, code, attendee_id, list_paise, discount_paise) VALUES (?, ?, ?, ?, ?)')
+      .bind(orderId, codeRow.code, a.id, list.total, list.total - amounts.total).run()
+  }
+  await audit(c, 'delhi.pay', 'attendee', a.id, { order_id: orderId, pass_type: passType, amount_paise: amounts.total, ...(codeRow ? { code: codeRow.code } : {}) }, { actor: 'public registration', kind: 'public' })
   return { order_id: orderId, amount: amounts.total / 100, pay_url: '/pay/ccavenue/' + await payLinkToken(c, orderId) }
 }
 
@@ -21158,6 +21318,9 @@ app.post('/api/delhi/pay', async (c) => {
   // A GSTIN that is not one is refused before anyone leaves for the gateway, as in Mumbai.
   const billing = b.billing === undefined ? undefined : cleanBilling(b.billing)
   if (billing && 'error' in billing) return c.json({ error: billing.error }, 400)
+  // A code is checked before anything is saved, so a wrong one costs nothing.
+  const codeCheck = await delhiCodeCheck(c, b.code, passType)
+  if (codeCheck && 'error' in codeCheck) return c.json({ error: codeCheck.error, field: 'code' }, 400)
 
   const ip = String(c.req.header('CF-Connecting-IP') || '').slice(0, 64)
   if (ip) {
@@ -21210,7 +21373,7 @@ app.post('/api/delhi/pay', async (c) => {
     }
   }
   if (billing) await saveBilling(c, a.id, billing.billing)
-  const r = await startDelhiOrder(c, a, passType)
+  const r = await startDelhiOrder(c, a, passType, codeCheck ? codeCheck.row : null)
   if ('error' in r) return c.json({ error: r.error }, r.status as any)
   return c.json(r, 201)
 })
@@ -21223,7 +21386,14 @@ app.post('/api/delhi/pay-again', async (c) => {
   if (!order || !isDelhiOrder(order)) return c.json({ error: 'That link is not valid. Please start again from the Delhi page.' }, 400)
   const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any
   if (!a) return c.json({ error: 'That link is not valid. Please start again from the Delhi page.' }, 400)
-  const r = await startDelhiOrder(c, a, String(order.pass_type))
+  let codeRow: any = null
+  const used = await c.env.DB.prepare('SELECT code FROM delhi_code_orders WHERE order_id = ?').bind(order.order_id).first().catch(() => null) as any
+  if (used) {
+    const chk = await delhiCodeCheck(c, used.code, String(order.pass_type))
+    if (chk && 'error' in chk) return c.json({ error: 'Your code ' + used.code + ' no longer works: ' + chk.error + ' To pay the full price, start again from the Delhi page.' }, 409)
+    codeRow = chk ? chk.row : null
+  }
+  const r = await startDelhiOrder(c, a, String(order.pass_type), codeRow)
   if ('error' in r) return c.json({ error: r.error }, r.status as any)
   return c.json(r, 201)
 })
@@ -21240,6 +21410,7 @@ async function sendDelhiPaymentEmails(c: any, a: any, order: any, trackingId: st
       ['Dates', 'Wednesday 28 and Thursday 29 July 2027'],
       ['Venue', 'Bharat Mandapam, Pragati Maidan, New Delhi'],
       ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${PASS_GST_RATE}% GST)</span>`],
+      ...(await delhiCodeRows(c, order.order_id)),
       ['Order number', payEsc(order.order_id)],
       ['CCAvenue reference', payEsc(trackingId)],
       ['Paid on', payEsc(istStamp(new Date().toISOString()))],
@@ -36699,6 +36870,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('liveqa')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="liveqa" title="Live Q&amp;A: questions from the room and the moderator links">
         <i class="fas fa-comments w-5 text-center shrink-0"></i><span class="sidebar-label">Live Q&amp;A</span>
       </button>
+      <button onclick="switchSection('delhi2027')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="delhi2027" title="Delhi 2027: partner and discount codes">
+        <i class="fas fa-ticket w-5 text-center shrink-0"></i><span class="sidebar-label">Delhi 2027</span>
+      </button>
       <div class="border-t border-white/10 my-2"></div>
       <button onclick="switchSection('settings')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="settings" title="Settings">
         <i class="fas fa-cog w-5 text-center shrink-0"></i><span class="sidebar-label">Settings</span>
@@ -36772,6 +36946,7 @@ function adminPageHTML(): string {
       <div id="section-rooms" class="section-content hidden"></div>
       <div id="section-after" class="section-content hidden"></div>
       <div id="section-liveqa" class="section-content hidden"></div>
+      <div id="section-delhi2027" class="section-content hidden"></div>
       <!-- Settings Section -->
       <div id="section-settings" class="section-content hidden"></div>
     </div>
@@ -37204,8 +37379,8 @@ function adminPageScript(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', liveqa:'Live Q&A', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', liveqa:'Live Q&A', delhi2027:'Delhi 2027', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', delhi2027:'Partner and discount codes for Delhi passes, and what each has sold', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -37325,6 +37500,7 @@ function adminPageScript(): string {
         case 'rooms': loadAdminRooms(); break;
         case 'after': loadAdminAfter(); break;
         case 'liveqa': loadAdminLiveQa(); break;
+        case 'delhi2027': loadAdminDelhi(); break;
         case 'badge-desk': loadBadgeDesk(); break;
         case 'settings': loadSettings(); break;
       }
@@ -37403,6 +37579,43 @@ function adminPageScript(): string {
         catch (err) { sectionError(host, 'liveqa', { message: err.message }, 'loadAdminLiveQa()'); return; }
       }
       await window.QaDesk.mount(host, { api: api, toast: toast });
+    }
+    // Delhi 2027: partner and discount codes, in /js/admin-delhi.js (one global, DelhiDesk)
+    // with its own stylesheet, loaded the first time the section opens. Bump
+    // DELHI_DESK_VERSION on any change to either.
+    var DELHI_DESK_VERSION = '20261112a';
+    var delhiDeskAssets = null;
+    function delhiDeskLoadAssets() {
+      if (window.DelhiDesk) return Promise.resolve();
+      if (delhiDeskAssets) return delhiDeskAssets;
+      var css = new Promise(function (resolve) {
+        if (document.querySelector('link[data-delhi-desk]')) { resolve(); return; }
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/css/admin-delhi.css?v=' + DELHI_DESK_VERSION;
+        l.setAttribute('data-delhi-desk', '1');
+        l.onload = function () { resolve(); };
+        l.onerror = function () { resolve(); };
+        document.head.appendChild(l);
+      });
+      var js = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/js/admin-delhi.js?v=' + DELHI_DESK_VERSION;
+        s.onload = function () { if (window.DelhiDesk) resolve(); else reject(new Error('The Delhi 2027 screen did not start.')); };
+        s.onerror = function () { s.remove(); reject(new Error('The Delhi 2027 screen could not be downloaded. Check the connection and press Try again.')); };
+        document.head.appendChild(s);
+      });
+      delhiDeskAssets = Promise.all([css, js]).catch(function (err) { delhiDeskAssets = null; throw err; });
+      return delhiDeskAssets;
+    }
+    async function loadAdminDelhi() {
+      var host = document.getElementById('section-delhi2027');
+      if (!window.DelhiDesk) {
+        if (!host.firstChild) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading...</div>';
+        try { await delhiDeskLoadAssets(); }
+        catch (err) { sectionError(host, 'delhi2027', { message: err.message }, 'loadAdminDelhi()'); return; }
+      }
+      await window.DelhiDesk.mount(host, { api: api, toast: toast });
     }
 
     // ============ AUDIENCE PROFILE ============
