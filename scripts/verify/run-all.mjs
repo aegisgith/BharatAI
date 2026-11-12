@@ -109,6 +109,10 @@ const SUITES = [
   { name: 'integration: the enquiry desk on real SQLite (owners by type, the automatic acknowledgement and its limits, who each sender already is, scores and suggested types, changes one and many, notes, replies, settings, the morning summary from the clock, 0053 before and after)', args: ['smoke-inquiry-desk.mjs'] },
   { name: 'system: one booth buyer from the enquiry form to Won (acknowledgement, owner, Hot, the summary chasing, the saved reply, value and follow-up, booth and pass, Won in Insights)', args: ['system-inquiry-journey.mjs'] },
   { name: 'browser: Admin Inquiries on a laptop and a phone (views, search, keys, one enquiry, many at once, Pipeline by dragging, Insights, Automation, export, a link from an email)', args: ['browser-inquiry-desk.cjs'], harness: 'inquiry-harness.mjs', port: 8861, portEnv: true },  // Admin -> Conference: programme, speakers, halls, announcing (12 Nov 2026), at four levels.
+  // Admin -> Conference: programme, speakers, halls, announcing (12 Nov 2026), at four levels.
+  { name: 'unit: Admin Conference, each rule alone (one person however the agenda spells them, the speaker line the app splits, clashes, times in words, both hall names, the slot email and its escaping)', args: ['unit-conference.mjs'] },
+  { name: 'integration: Admin Conference on real SQLite before and after 0054 (who may call it, speakers refused, added, renamed, hidden, deleted, sessions writing the line, clashes, drafts, halls, announce, slot email, photo, the real agenda)', args: ['smoke-conference.mjs'] },
+  { name: 'browser: Admin Conference on a laptop and a phone (the board, a session by clicking a hall, a clash, a draft, a speaker with a photo given a slot, announce, slot email, hide, halls, list, CSV, run sheet) and the app on a phone (When and where, both hall names, nothing typed runs)', args: ['browser-conference.cjs'], harness: 'conference-harness.mjs', port: 8857, portEnv: true },
 ];
 
 const run = (args, opts = {}) => new Promise((resolve) => {

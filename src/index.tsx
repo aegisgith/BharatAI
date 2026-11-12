@@ -5,6 +5,7 @@ import { Hono } from 'hono'
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE } from './routes/marketplace'
+import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
 import { signinPayIntent } from './lib/signin-pay'
 import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
 import { invoicePdf } from './lib/invoice-pdf'
@@ -458,6 +459,13 @@ configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, 
   issueTeamPass, releaseTeamPass, teamMobileHolder, passToken: (c: any, id: number) => signPassToken(c, id) })
 app.route('/', mp)
 
+// Admin -> Conference (12 Nov 2026): the programme, speakers, halls and speaker
+// announcements, in routes/conference.ts; its screen is public/static/conference-admin.js.
+// Mounted here, after the /api/admin/* guard above, so every one of its routes needs
+// an admin. It also owns POST/PUT/DELETE /api/admin/sessions.
+configureConference({ sendEmail: sendAdminEmail, audit, changedFields, emailHeader: emailBrandHeader, actor: (c: any) => adminActor(c).actor })
+app.route('/', conference)
+
 // Marketplace page routes
 app.get('/marketplace', (c) => c.html(marketplacePageHTML()))
 app.get('/marketplace/faq', (c) => c.html(marketplaceFaqPageHTML()))
@@ -496,7 +504,8 @@ app.get('/api/events/:id/sessions', async (c) => {
   const track = c.req.query('track')
 
   const room = c.req.query('room')
-  let query = 'SELECT * FROM sessions WHERE event_id = ?'
+  // Each session also carries its hall's venue name (venue_room): delegates see both.
+  let query = 'SELECT *' + (await venueSelectSql(c)) + ' FROM sessions WHERE event_id = ?'
   const params: any[] = [eventId]
 
   if (date) {
@@ -516,10 +525,12 @@ app.get('/api/events/:id/sessions', async (c) => {
     params.push(room)
   }
 
+  // A session kept as a draft in Admin -> Conference is not shown to attendees.
+  query += await draftFilterSql(c)
   query += ' ORDER BY start_time ASC'
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all()
-  return c.json(results)
+  return c.json(fillVenues(results as any[]))
 })
 
 app.get('/api/events/:id/sessions/tracks', async (c) => {
@@ -6608,6 +6619,8 @@ app.get('/api/events/:id/speakers', async (c) => {
     candidates = ((await c.env.DB.prepare('SELECT id, name, email, company, job_title FROM attendees WHERE event_id = ? AND (' + where + ')')
       .bind(eventId, ...names, ...emails).all()).results || []) as any[]
   }
+  // When and where each one speaks (Admin -> Conference), published sessions only.
+  const slots = await speakerSlots(c, Number(eventId) || 1, speakers)
   const out = speakers.map(sp => {
     const spEmail = String(sp.email || '').trim().toLowerCase()
     const spName = String(sp.name || '').trim().toLowerCase()
@@ -6626,6 +6639,7 @@ app.get('/api/events/:id/speakers', async (c) => {
       id: sp.id, slug: sp.slug, name: sp.name, role: sp.role || '', organisation: sp.organisation || '', topic: sp.topic || '',
       bio: sp.bio || '', photo_url: /^(\/|https:\/\/)/.test(photo) ? photo : '',
       linkedin_url: /^https:\/\//.test(lin) ? lin : '', attendee_id: link ? link.id : null,
+      sessions: slots.get(Number(sp.id)) || [],
     }
   })
   return c.json(out)
@@ -13441,38 +13455,9 @@ app.put('/api/admin/events/:id', async (c) => {
   return c.json({ success: true })
 })
 
-// Admin: CRUD sessions
-app.post('/api/admin/sessions', async (c) => {
-  const b = await c.req.json()
-  const result = await c.env.DB.prepare(
-    'INSERT INTO sessions (event_id, title, description, speaker_name, speaker_title, speaker_avatar, session_type, track, room, start_time, end_time, capacity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
-  ).bind(b.event_id, b.title, b.description||'', b.speaker_name||'', b.speaker_title||'', b.speaker_avatar||'', b.session_type, b.track||'', b.room||'', b.start_time, b.end_time, b.capacity||100).run()
-  await audit(c, 'session.create', 'session', result.meta.last_row_id, { title: b.title, start_time: b.start_time, room: b.room || '' })
-  return c.json({ id: result.meta.last_row_id, success: true }, 201)
-})
-
-app.put('/api/admin/sessions/:id', async (c) => {
-  const id = c.req.param('id')
-  const b = await c.req.json()
-  // Keyed in the column order of the UPDATE, so the same object feeds the bind and
-  // the before/after in the audit entry.
-  const after = { title: b.title, description: b.description||'', speaker_name: b.speaker_name||'', speaker_title: b.speaker_title||'', speaker_avatar: b.speaker_avatar||'',
-    session_type: b.session_type, track: b.track||'', room: b.room||'', start_time: b.start_time, end_time: b.end_time, capacity: b.capacity||100 }
-  const before = await c.env.DB.prepare('SELECT ' + Object.keys(after).join(', ') + ' FROM sessions WHERE id = ?').bind(id).first()
-  await c.env.DB.prepare(
-    'UPDATE sessions SET title=?, description=?, speaker_name=?, speaker_title=?, speaker_avatar=?, session_type=?, track=?, room=?, start_time=?, end_time=?, capacity=? WHERE id=?'
-  ).bind(...Object.values(after), id).run()
-  await audit(c, 'session.update', 'session', id, { title: b.title, changes: changedFields(before, after) })
-  return c.json({ success: true })
-})
-
-app.delete('/api/admin/sessions/:id', async (c) => {
-  const id = c.req.param('id')
-  const before = await c.env.DB.prepare('SELECT title, start_time, room FROM sessions WHERE id = ?').bind(id).first() as any
-  await c.env.DB.prepare('DELETE FROM sessions WHERE id=?').bind(id).run()
-  await audit(c, 'session.delete', 'session', id, before || {})
-  return c.json({ success: true })
-})
+// Admin: sessions are created, edited and deleted in routes/conference.ts (Admin ->
+// Conference), which checks the times, the hall and the speakers, warns of clashes,
+// and writes the speaker line from the speakers chosen.
 
 // Admin: Update attendees
 app.put('/api/admin/attendees/:id', async (c) => {
@@ -25815,6 +25800,34 @@ function mainPageScript(): string {
         ).join('') + '</div>';
       el.classList.remove('hidden');
     }
+    // When and where a speaker is on stage, from Admin -> Conference: the day, the
+    // time, the hall and the room at the venue, each with the agenda star.
+    function speakerSlotsHtml(sp) {
+      var list = Array.isArray(sp && sp.sessions) ? sp.sessions : [];
+      if (!list.length) return '';
+      var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      var day = function (t) { var d = new Date(String(t || '').slice(0, 10) + 'T00:00:00Z'); return isNaN(d.getTime()) ? '' : DAYS[d.getUTCDay()] + ' ' + d.getUTCDate() + ' ' + MON[d.getUTCMonth()]; };
+      var clk = function (t) { var hm = String(t || '').slice(11, 16).split(':'); var h = parseInt(hm[0], 10); if (isNaN(h)) return ''; return (h % 12 || 12) + ':' + (hm[1] || '00') + (h < 12 ? ' am' : ' pm'); };
+      var ROLE = { keynote: 'Keynote', panellist: 'Panellist', moderator: 'Moderator', host: 'Host', chair: 'Chair', speaker: 'Speaker' };
+      return '<div class="mt-4 space-y-2"><div class="text-[11px] text-gray-500">When and where</div>' +
+        list.map(function (s) {
+          var starred = isInAgenda(s.id);
+          var where = s.room ? hallLabel(s.room, s.venue_room) : 'Hall to be announced';
+          return '<div class="p-3 rounded-xl glass flex items-start gap-3">' +
+            '<div class="min-w-0 flex-1">' +
+              '<div class="text-[10px] font-semibold uppercase tracking-wide text-primary-400">' + esc(ROLE[s.role] || 'Speaker') + '</div>' +
+              '<div class="text-sm font-semibold leading-snug">' + esc(s.title) + '</div>' +
+              '<div class="text-xs text-gray-300 mt-1"><i class="fas fa-clock mr-1 text-gray-500"></i>' + esc(day(s.start_time)) + ', ' + esc(clk(s.start_time)) + ' to ' + esc(clk(s.end_time)) + '</div>' +
+              '<div class="text-xs text-gray-300 mt-0.5"><i class="fas fa-location-dot mr-1 text-gray-500"></i>' + esc(where) + '</div>' +
+              (s.location ? '<div class="text-[11px] text-gray-500 mt-0.5">' + esc(s.location) + '</div>' : '') +
+            '</div>' +
+            '<button type="button" onclick="toggleAgenda(' + Number(s.id) + ', this)" title="' + (starred ? 'In your agenda' : 'Add to my agenda') + '" aria-label="Add to my agenda"' +
+              ' class="agenda-star ml-auto w-8 h-8 rounded-lg flex items-center justify-center transition ' + (starred ? 'text-amber-400 bg-amber-500/15' : 'text-gray-500 hover:text-amber-400 hover:bg-white/5') + '">' +
+              '<i class="fa' + (starred ? 's' : 'r') + ' fa-star text-sm"></i></button>' +
+          '</div>';
+        }).join('') + '</div>';
+    }
     function openSpeakerProfile(id) {
       const sp = (speakerStripData || []).find(x => Number(x.id) === Number(id));
       if (!sp) return;
@@ -25827,6 +25840,7 @@ function mainPageScript(): string {
           (sp.organisation ? '<p class="text-sm text-gray-400">' + esc(sp.organisation) + '</p>' : '') +
         '</div>' +
         (sp.topic ? '<div class="mt-4 p-3 rounded-xl glass"><div class="text-[11px] text-gray-500 mb-1">Speaking on</div><div class="text-sm font-semibold">' + esc(sp.topic) + '</div></div>' : '') +
+        speakerSlotsHtml(sp) +
         (sp.bio ? '<p class="mt-4 text-sm text-gray-300 leading-relaxed">' + esc(sp.bio) + '</p>' : '') +
         '<div class="mt-4 flex flex-col gap-2">' +
           (sp.attendee_id
@@ -27251,13 +27265,13 @@ function mainPageScript(): string {
         document.getElementById('upcoming-sessions').innerHTML = upcoming.length ? upcoming.map(s => \`
           <div class="glass rounded-xl p-4 card-hover cursor-pointer" onclick="switchTab('schedule')">
             <div class="flex items-center gap-2 mb-2">
-              <span class="text-lg">\${s.speaker_avatar || '📌'}</span>
-              <span class="px-2 py-0.5 rounded-full text-xs font-medium \${getSessionTypeClass(s.session_type)}">\${s.session_type}</span>
+              <span class="text-lg">\${esc(s.speaker_avatar || '📌')}</span>
+              <span class="px-2 py-0.5 rounded-full text-xs font-medium \${getSessionTypeClass(s.session_type)}">\${esc(s.session_type)}</span>
             </div>
-            <h3 class="font-semibold text-sm mb-1">\${s.title}</h3>
+            <h3 class="font-semibold text-sm mb-1">\${esc(s.title)}</h3>
             <div class="text-xs text-gray-500">
               <span><i class="fas fa-clock mr-1"></i>\${formatTime(s.start_time)} - \${formatTime(s.end_time)}</span>
-              \${s.room ? \`<span class="ml-2"><i class="fas fa-map-pin mr-1"></i>\${s.room}</span>\` : ''}
+              \${s.room ? \`<span class="ml-2"><i class="fas fa-map-pin mr-1"></i>\${esc(hallLabel(s.room, s.venue_room))}</span>\` : ''}
             </div>
           </div>
         \`).join('') : sessions.length ? \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-calendar-check text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">No more sessions today</p><a href="#" onclick="switchTab('schedule');return false;" class="text-xs text-primary-400 hover:underline mt-1 inline-block">View the conference schedule</a></div>\` : \`<div class="glass rounded-xl p-8 text-center"><i class="fas fa-calendar-alt text-2xl text-gray-600 mb-3"></i><p class="text-sm text-gray-400">Conference schedule coming soon</p><a href="#" onclick="switchTab('schedule');return false;" class="text-xs text-primary-400 hover:underline mt-1 inline-block">View the conference schedule</a></div>\`;
@@ -27458,13 +27472,23 @@ function mainPageScript(): string {
     let selectedHall = 'Homi J. Bhabha Hall';
     let selectedTrack = '';
 
+    // venue: what the World Trade Center calls the room. Delegates see both names
+    // (organiser, 12 Nov 2026), because the venue's staff know only theirs. The
+    // sessions list sends venue_room from Admin -> Conference; this is the fallback.
     const HALLS = [
       { key: '', short: 'All halls', icon: '🗓️' },
-      { key: 'Homi J. Bhabha Hall', short: 'Bhabha Hall', icon: '🏛️' },
-      { key: 'Kalam Theatre',       short: 'Kalam',       icon: '🎭' },
-      { key: 'Raman Theatre',       short: 'Raman',       icon: '🔬' },
-      { key: 'Aryabhata Theatre',   short: 'Aryabhata',   icon: '🚀' },
+      { key: 'Homi J. Bhabha Hall', short: 'Bhabha Hall', icon: '🏛️', venue: 'Peacock Hall' },
+      { key: 'Kalam Theatre',       short: 'Kalam',       icon: '🎭', venue: 'Centrum Hall A' },
+      { key: 'Raman Theatre',       short: 'Raman',       icon: '🔬', venue: 'Centrum Hall B' },
+      { key: 'Aryabhata Theatre',   short: 'Aryabhata',   icon: '🚀', venue: 'Expo Hall' },
     ];
+    // "Aryabhata Theatre · Expo Hall": the event's name, then the venue's.
+    function hallLabel(room, venue) {
+      var r = String(room || '').trim();
+      var v = String(venue || '').trim();
+      if (!v) { for (var i = 0; i < HALLS.length; i++) if (HALLS[i].key === r && HALLS[i].venue) v = HALLS[i].venue; }
+      return r && v && v.toLowerCase() !== r.toLowerCase() ? r + ' · ' + v : (r || v);
+    }
 
     // ---- Personal agenda (add-to-my-schedule). Stored locally so it works
     // offline via the PWA and needs no backend/migration. ----
@@ -27499,7 +27523,7 @@ function mainPageScript(): string {
         var en = stamp(s.end_time) || st;
         lines.push('BEGIN:VEVENT', 'UID:session-' + s.id + '@bharataiinnovation.com', 'DTSTAMP:' + now, 'DTSTART:' + st, 'DTEND:' + en,
           'SUMMARY:' + clean(s.title),
-          'LOCATION:' + clean((s.room ? s.room + ', ' : '') + 'World Trade Center, Mumbai'),
+          'LOCATION:' + clean((s.room ? hallLabel(s.room, s.venue_room) + ', ' : '') + 'World Trade Center, Mumbai'),
           'DESCRIPTION:' + clean((s.track ? s.track + '. ' : '') + (s.speaker_name ? 'With ' + s.speaker_name + '. ' : '') + 'Bharat AI Innovation 2026.'),
           'URL:https://bharataiinnovation.com/app#schedule', 'END:VEVENT');
       });
@@ -27574,10 +27598,10 @@ function mainPageScript(): string {
                 const isMod = pInfo.toLowerCase() === 'moderator' || pName.toLowerCase().includes('moderator');
                 const cleanName = pName.replace(/\\s*\\(moderator\\)/i, '').trim();
                 return \`<div class="flex items-center gap-2 glass-light rounded-xl px-3 py-2 \${isMod ? 'border border-amber-500/30' : ''}">
-                  <img src="\${getAvatarUrl(null, cleanName, 40)}" alt="\${cleanName}" class="w-8 h-8 rounded-full object-cover shrink-0">
+                  <img src="\${getAvatarUrl(null, cleanName, 40)}" alt="\${esc(cleanName)}" class="w-8 h-8 rounded-full object-cover shrink-0">
                   <div class="min-w-0">
-                    <div class="text-xs font-semibold text-white truncate">\${cleanName}</div>
-                    \${pInfo ? \`<div class="text-[10px] text-gray-400 truncate">\${pInfo}</div>\` : ''}
+                    <div class="text-xs font-semibold text-white truncate">\${esc(cleanName)}</div>
+                    \${pInfo ? \`<div class="text-[10px] text-gray-400 truncate">\${esc(pInfo)}</div>\` : ''}
                     \${isMod && pInfo.toLowerCase() !== 'moderator' ? \`<div class="text-[10px] text-amber-400 font-semibold">Moderator</div>\` : ''}
                   </div>
                 </div>\`;
@@ -27586,8 +27610,8 @@ function mainPageScript(): string {
           </div>\`;
       } else if (s.speaker_name) {
         speakerHtml = \`<div class="flex items-center gap-2 mt-2">
-          <img src="\${getAvatarUrl(null, s.speaker_name, 40)}" alt="\${s.speaker_name}" class="w-7 h-7 rounded-full object-cover shrink-0">
-          <span class="text-xs text-gray-300 font-medium">\${s.speaker_name}\${s.speaker_title ? ' <span class="text-gray-500 font-normal">· ' + s.speaker_title + '</span>' : ''}</span>
+          <img src="\${getAvatarUrl(null, s.speaker_name, 40)}" alt="\${esc(s.speaker_name)}" class="w-7 h-7 rounded-full object-cover shrink-0">
+          <span class="text-xs text-gray-300 font-medium">\${esc(s.speaker_name)}\${s.speaker_title ? ' <span class="text-gray-500 font-normal">· ' + esc(s.speaker_title) + '</span>' : ''}</span>
         </div>\`;
       }
 
@@ -27619,18 +27643,18 @@ function mainPageScript(): string {
           <!-- Content -->
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-              <span class="text-lg leading-none">\${s.speaker_avatar || '📌'}</span>
-              <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold \${getSessionTypeClass(s.session_type)}">\${s.session_type}</span>
-              \${s.track ? \`<span class="px-2 py-0.5 rounded-full text-[11px] bg-white/5 text-gray-400">\${s.track}</span>\` : ''}
+              <span class="text-lg leading-none">\${esc(s.speaker_avatar || '📌')}</span>
+              <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold \${getSessionTypeClass(s.session_type)}">\${esc(s.session_type)}</span>
+              \${s.track ? \`<span class="px-2 py-0.5 rounded-full text-[11px] bg-white/5 text-gray-400">\${esc(s.track)}</span>\` : ''}
               \${!isBreak ? \`<button onclick="event.stopPropagation();toggleAgenda(\${s.id},this)" class="agenda-star ml-auto w-8 h-8 rounded-lg flex items-center justify-center transition \${isInAgenda(s.id) ? 'text-amber-400 bg-amber-500/15' : 'text-gray-500 hover:text-amber-400 hover:bg-white/5'}" title="\${isInAgenda(s.id) ? 'In your agenda' : 'Add to my agenda'}"><i class="fa\${isInAgenda(s.id) ? 's' : 'r'} fa-star text-sm"></i></button>\` : ''}
             </div>
-            <h3 class="font-bold text-[15px] leading-snug mb-1 \${isBreak ? 'text-gray-400' : 'text-white'}">\${s.title}</h3>
+            <h3 class="font-bold text-[15px] leading-snug mb-1 \${isBreak ? 'text-gray-400' : 'text-white'}">\${esc(s.title)}</h3>
             \${delegateSessionChip(s)}
-            \${s.description && !isBreak ? \`<p class="text-xs text-gray-400 mb-2 leading-relaxed">\${s.description}</p>\` : ''}
+            \${s.description && !isBreak ? \`<p class="text-xs text-gray-400 mb-2 leading-relaxed">\${esc(s.description)}</p>\` : ''}
             \${s.title.toLowerCase().includes('innovation talk') ? \`<button onclick="event.stopPropagation();switchTab('innovation')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/15 text-amber-400 hover:bg-amber-500/25 transition mb-2"><i class="fas fa-lightbulb"></i>Full Innovation Talk Schedule <i class="fas fa-arrow-right text-[10px]"></i></button>\` : ''}
             \${s.title.toLowerCase().includes('startup pitch') ? \`<button onclick="event.stopPropagation();switchTab('startup-pitch')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/15 text-violet-400 hover:bg-violet-500/25 transition mb-2"><i class="fas fa-rocket"></i>View Startup Pitch Schedule <i class="fas fa-arrow-right text-[10px]"></i></button>\` : ''}
             \${!isPanel ? speakerHtml : ''}
-            \${s.room && selectedHall === '' ? \`<div class="mt-1.5 text-[11px] text-gray-500"><i class="fas fa-map-pin mr-1 text-accent-400"></i>\${s.room}</div>\` : ''}
+            \${s.room && selectedHall === '' ? \`<div class="mt-1.5 text-[11px] text-gray-500"><i class="fas fa-map-pin mr-1 text-accent-400"></i>\${esc(hallLabel(s.room, s.venue_room))}</div>\` : ''}
             \${isPanel ? speakerHtml : ''}
           </div>
         </div>
@@ -27661,8 +27685,11 @@ function mainPageScript(): string {
           <button onclick="selectedHall='\${h.key}'; selectedTrack=''; loadSchedule()"
             class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all \${selectedHall === h.key ? 'bg-primary-500/30 text-primary-300 border border-primary-500/40' : 'glass text-gray-400 hover:text-white'}">
             <span class="text-base leading-none">\${h.icon}</span>
-            <span class="hidden sm:inline">\${h.key || h.short}</span>
-            <span class="sm:hidden">\${h.short}</span>
+            <span class="flex flex-col items-start leading-tight">
+              <span class="hidden sm:inline">\${h.key || h.short}</span>
+              <span class="sm:hidden">\${h.short}</span>
+              \${h.venue ? \`<span class="text-[10px] font-medium opacity-75">\${h.venue}</span>\` : ''}
+            </span>
           </button>\`).join('');
 
         // ── Track filter ──
@@ -27707,7 +27734,7 @@ function mainPageScript(): string {
       if (isNaN(d.getTime())) return 'Day and time to be announced';
       var day = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
       var t = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' });
-      return day + ', ' + t + (w.room ? ' &middot; ' + esc(w.room) : '');
+      return day + ', ' + t + (w.room ? ' &middot; ' + esc(hallLabel(w.room)) : '');
     }
     function wsCloseText(v) {
       var d = new Date(String(v || '').replace(' ', 'T') + ':00+05:30');
@@ -31006,7 +31033,7 @@ function mainPageScript(): string {
       const wrap = document.getElementById('venue-halls');
       if (wrap && typeof HALLS !== 'undefined') {
         wrap.innerHTML = HALLS.map(h => \`<button onclick="switchTab('schedule');selectedHall='\${h.key}';setTimeout(loadSchedule,50)" class="rounded-xl p-3 text-left transition hover:bg-white/5 border border-white/8">
-          <div class="text-2xl mb-1">\${h.icon}</div><div class="text-xs font-semibold leading-tight">\${h.key}</div><div class="text-[10px] text-gray-500 mt-0.5">View sessions</div></button>\`).join('');
+          <div class="text-2xl mb-1">\${h.icon}</div><div class="text-xs font-semibold leading-tight">\${h.key || h.short}</div>\${h.venue ? \`<div class="text-[11px] text-gray-400 leading-tight">\${h.venue}</div>\` : ''}<div class="text-[10px] text-gray-500 mt-0.5">View sessions</div></button>\`).join('');
       }
     }
 
@@ -33908,6 +33935,7 @@ function adminPageHTML(): string {
        is the card that speaker would have made themselves. -->
   <script src="/js/social-card.js?v=20261102"></script>
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
+  <link rel="stylesheet" href="/static/conference-admin.css?v=20261112">
   <style>
     * { font-family: 'Manrope', sans-serif; }
     body { background: #F8F9FF; color: #1E2140; }
@@ -34127,8 +34155,8 @@ function adminPageHTML(): string {
       <button onclick="switchSection('attendees')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="attendees" title="Attendees">
         <i class="fas fa-users w-5 text-center shrink-0"></i><span class="sidebar-label">Attendees</span>
       </button>
-      <button onclick="switchSection('sessions')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="sessions" title="Sessions">
-        <i class="fas fa-calendar-alt w-5 text-center shrink-0"></i><span class="sidebar-label">Sessions</span>
+      <button onclick="switchSection('sessions')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="sessions" title="Conference: programme, speakers, halls">
+        <i class="fas fa-microphone-lines w-5 text-center shrink-0"></i><span class="sidebar-label">Conference</span>
       </button>
       <button onclick="switchSection('exhibitors')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="exhibitors" title="Exhibitors">
         <i class="fas fa-store w-5 text-center shrink-0"></i><span class="sidebar-label">Exhibitors</span>
@@ -34258,6 +34286,7 @@ function adminPageHTML(): string {
   </div>
 
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
+  <script src="/static/conference-admin.js?v=20261112"></script>
 </body>
 </html>`
 }
@@ -34677,8 +34706,8 @@ function adminPageScript(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Session Management', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'Create and manage event sessions', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
+      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', settings:'Settings' };
+      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -39943,6 +39972,9 @@ function adminPageScript(): string {
 
     // ============ SESSIONS ============
     async function loadAdminSessions() {
+      // Admin -> Conference (public/static/conference-admin.js). The table below is
+      // what shows if that file did not load.
+      if (window.ConfDesk) { window.ConfDesk.load(); return; }
       var _el = document.getElementById('section-sessions');
       if (_el && !_el.innerHTML.trim()) sectionLoading(_el);
       var sessions;

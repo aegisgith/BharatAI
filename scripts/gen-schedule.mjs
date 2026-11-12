@@ -10,14 +10,17 @@
 //
 // 1. public/conference.html, between <!-- schedule:start --> and <!-- schedule:end -->:
 //    a tab per hall and a combined "Full Schedule" tab, two days each. The event's
-//    hall names map to the venue's rooms (organiser, 11 Nov 2026): Homi J. Bhabha Hall
-//    = Peacock Hall, Aryabhata Theatre = Centrum Hall A, Raman Theatre = Centrum Hall B,
-//    Kalam Theatre = the Expo Stage. Each hall tab says which room it is.
+//    hall names map to the venue's rooms (organiser, 12 Nov 2026, Kalam and Aryabhata
+//    swapped that day): Homi J. Bhabha Hall = Peacock Hall, Kalam Theatre = Centrum Hall
+//    A, Raman Theatre = Centrum Hall B, Aryabhata Theatre = the Expo Hall. The hall
+//    keys in schedule.json name the ROOMS (key "kalam" is the Expo Hall, key
+//    "aryabhata" is Centrum Hall A); only their "name" changed. Each hall tab says
+//    which room it is.
 // 2. scripts/sql/schedule.sql: replaces the app's sessions for event 1 (the app's
 //    Conference Schedule tab reads them) and sets the workshops' times and room.
 //    The organiser runs it.
 //
-// Kalam Theatre rows name only the company: the speaker and topic come from
+// Expo Hall (Innovation Talks) rows name only the company: the speaker and topic come from
 // scripts/data/innovation-talks.json, so a talk changes in one place.
 import { readFileSync, writeFileSync } from 'node:fs'
 
@@ -36,7 +39,7 @@ const hall = (key) => {
   return h
 }
 
-// Kalam Theatre talks: the speaker and topic from the talks list.
+// Expo Hall talks: the speaker and topic from the talks list.
 for (const s of S.sessions) {
   hall(s.hall)
   if (!s.company) continue
@@ -114,7 +117,7 @@ S.halls.forEach((h, i) => {
 })
 
 // Full Schedule: every hall in time order. Breaks and registration come from the
-// main hall only, and a run of short Kalam Theatre talks shows as one block.
+// main hall only, and a run of short Expo Hall talks shows as one block.
 const full = S.halls.length
 html.push('<!-- FULL SCHEDULE (all halls) -->', `<div class="hall-panel" id="hall-${full}">`)
 html.push(indent(dayTabs(`hall-${full}`), 4))

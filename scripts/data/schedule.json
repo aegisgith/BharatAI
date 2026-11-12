@@ -2,9 +2,9 @@
   "source": "Organiser's Drive workbook \"BHAI Nov 2026_Agenda_Panel & Innovation Talk.xlsx\", tabs Agenda_Peacock Hall, Agenda_Centrum Hall A, Agenda_Centrun Hall B and Expo_Innovation Talk, read 11 Nov 2026. Public-safe: no internal notes, no tentative names, no speaker the organiser has taken off the site.",
   "halls": [
     { "key": "bhabha", "name": "Homi J. Bhabha Hall", "venue": "Peacock Hall, Ground Floor, Centre One", "icon": "🏛️" },
-    { "key": "kalam", "name": "Kalam Theatre", "venue": "Expo Stage, on the exhibition floor", "icon": "🎭", "about": "Innovation Talks by exhibitors" },
+    { "key": "kalam", "name": "Aryabhata Theatre", "venue": "Expo Hall, on the exhibition floor", "icon": "🚀", "about": "Innovation Talks by exhibitors" },
     { "key": "raman", "name": "Raman Theatre", "venue": "Centrum Hall B, First Floor, Centre One", "icon": "🔬", "about": "Workshops" },
-    { "key": "aryabhata", "name": "Aryabhata Theatre", "venue": "Centrum Hall A, First Floor, Centre One", "icon": "🚀" }
+    { "key": "aryabhata", "name": "Kalam Theatre", "venue": "Centrum Hall A, First Floor, Centre One", "icon": "🎭" }
   ],
   "sessions": [
     { "hall": "bhabha", "day": 1, "start": "08:30", "end": "09:30", "type": "break", "label": "Registration", "title": "Registration", "note": "Collect your badge at the registration desk." },
