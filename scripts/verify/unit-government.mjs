@@ -166,7 +166,7 @@ const badMenu = withMenu.filter((f) => {
   const menu = s.slice(s.indexOf('class="nav-menu"'), s.indexOf('nav-toggle'));
   const order = [...menu.matchAll(/href="([^"]+)" (?:target="_blank" rel="noopener noreferrer" )?class="nav-link/g)].map((m) => m[1]);
   const at = order.indexOf('/government');
-  return order.filter((h) => h === '/government').length !== 1 || order[at - 1] !== '/partner' || order[at + 1] !== '/training-workshop' || !/href="\/government" class="nav-link[^"]*">Govt</.test(menu);
+  return order.filter((h) => h === '/government').length !== 1 || order[at - 1] !== '/partner' || order[at + 1] !== '/training-workshop' || !/href="\/government" class="nav-link[^"]*">(Govt|सरकार)</.test(menu);
 });
 check('every menu has Govt once, after Partner, before Workshops', badMenu.length === 0, badMenu.join(', '));
 check('Govt is the current tab only on its own page', html.includes('href="/government" class="nav-link active"') && withMenu.filter((f) => f !== 'government.html' && read('public/' + f).includes('href="/government" class="nav-link active"')).length === 0);
