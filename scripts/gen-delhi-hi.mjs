@@ -288,7 +288,8 @@ const out = crlf ? s.replace(/\n/g, '\r\n') : s;
 if (process.argv.includes('--check')) {
   let have = '';
   try { have = readFileSync(OUT, 'utf8'); } catch {}
-  if (have !== out) { console.error('gen-delhi-hi: public/delhi-hi.html is out of date. Run node scripts/gen-delhi-hi.mjs'); process.exit(1); }
+  // Line endings differ between checkouts (git stores LF); only the words count.
+  if (have.replace(/\r\n/g, '\n') !== out.replace(/\r\n/g, '\n')) { console.error('gen-delhi-hi: public/delhi-hi.html is out of date. Run node scripts/gen-delhi-hi.mjs'); process.exit(1); }
   console.log('gen-delhi-hi: public/delhi-hi.html is up to date');
 } else {
   writeFileSync(OUT, out);
