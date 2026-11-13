@@ -166,6 +166,9 @@ const SUITES = [
   { name: 'integration: a speaker\'s own talk page on real SQLite (the page, the link opening its talk and no other, a save and what it never touches, refusals, the audit log, a photo, the email with the button for a speaker and a booth contact, the automatic email previewed, before 0052)', args: ['smoke-talk-self.mjs'] },
   { name: 'system: one speaker from "please add your details" to a complete talk (the email that went, its link, everything filled in, the tab, the automatic email no longer counting her, the public list, the audit trail)', args: ['system-talk-self.mjs'] },
   { name: 'browser: a speaker\'s own talk page on a phone and a laptop (the link from the email, Needed and In, a short mobile named, a photo, saved and back again, expired and altered links) and Admin\'s "Preview the email" for the automatic email', args: ['browser-talk-self.cjs'], harness: 'talk-self-harness.mjs', port: 8881, portEnv: true },
+  // Who an admin email is sent from (13 Nov 2026): the event's address or one of the organising team on our domain.
+  { name: 'unit: who an admin email is sent from, each rule alone (our domain only, the team listed once, a typed or forged address refused, the old From unchanged, a blind copy to the event address, a name that cannot break the header)', args: ['unit-senders.mjs'] },
+  { name: 'integration: who an admin email may be sent from, on real SQLite (admins only, the event address first, Organiser pass holders on our domain, outside addresses apart with the reason, not another event\'s team, the Settings sender)', args: ['smoke-senders.mjs'] },
 ];
 
 const run = (args, opts = {}) => new Promise((resolve) => {

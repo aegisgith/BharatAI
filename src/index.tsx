@@ -10,6 +10,7 @@ import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
+import { SENDER_DOMAIN, sendAs, sendersFor, pickSender } from './lib/senders'
 import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
 import { invoicePdf } from './lib/invoice-pdf'
 import { signInLink as mpSignInLink } from './routes/marketplace'
@@ -155,13 +156,21 @@ const UNSUB_FOOTER = (url: string) =>
 // notifications below use it too. Never throws: returns { ok:false, error } on a
 // missing key, a non-2xx, or an unreachable service. Sets no ReplyTo on purpose --
 // a notification must never hand one attendee another attendee's address.
-async function sendAdminEmail(c: any, to: string, subject: string, html: string, opts: { unsubscribe?: boolean } = {}):
+// opts.from (13 Nov 2026) sends as one of the organising team instead: pick it with
+// pickAdminSender() below, never from what a request typed. Only an
+// @bharataiinnovation.com address is accepted; the event's own address gets a blind
+// copy, so everything sent in a team member's name is still on record in one place
+// (lib/senders.ts sendAs has the rules).
+async function sendAdminEmail(c: any, to: string, subject: string, html: string,
+    opts: { unsubscribe?: boolean; from?: { email: string; name: string } | null } = {}):
     Promise<{ ok: true } | { ok: false; error: string }> {
   const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
   const key = await elasticKey(c)
   if (!key) return { ok: false, error: 'Email service is not configured (no API key in Settings).' }
-  const fromEmail = senderEmailOrDefault(await g('sender_email'))
-  const fromName = (await g('sender_name')) || 'Bharat AI Innovation Conference & Exhibition 2026'
+  const ownEmail = senderEmailOrDefault(await g('sender_email'))
+  const ownName = (await g('sender_name')) || 'Bharat AI Innovation Conference & Exhibition 2026'
+  const env = sendAs({ email: ownEmail, name: ownName }, opts.from, to)
+  if (!env.ok) return env
   // Campaign-style mail (opts.unsubscribe !== false) carries the unsubscribe
   // footer and header; a reply to somebody's own request may pass false.
   const unsub = opts.unsubscribe === false ? '' : await unsubscribeUrl(c, to)
@@ -172,10 +181,10 @@ async function sendAdminEmail(c: any, to: string, subject: string, html: string,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': key },
       body: JSON.stringify({
-        Recipients: { To: [to] },
+        Recipients: env.bcc.length ? { To: [to], BCC: env.bcc } : { To: [to] },
         Content: {
           Body: [{ ContentType: 'HTML', Content: finalHtml, Charset: 'utf-8' }],
-          From: `${fromName} <${fromEmail}>`,
+          From: env.from,
           Subject: subject,
           ...(unsub ? { Headers: { 'List-Unsubscribe': `<${unsub}>` } } : {}),
         },
@@ -469,6 +478,24 @@ async function sessionAttendee(c: any): Promise<{ id: number; email: string; nam
 configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, audit, ensureDelegate: ensureExhibitorDelegate, attendeeOf: sessionAttendee,
   issueTeamPass, releaseTeamPass, teamMobileHolder, passToken: (c: any, id: number) => signPassToken(c, id) })
 app.route('/', mp)
+
+// Who an admin email may be sent from (13 Nov 2026): the event's own address, or one of
+// the organising team (Organiser pass) on our own domain; lib/senders.ts has the rules.
+// pickAdminSender answers null for an address not on the list, so a caller refuses
+// instead of sending as somebody else. Pass the result to sendAdminEmail as opts.from.
+async function ownSender(c: any): Promise<{ email: string; name: string }> {
+  return { email: senderEmailOrDefault(await settingValue(c, 'sender_email')),
+    name: (await settingValue(c, 'sender_name')) || 'Bharat AI Innovation Conference & Exhibition 2026' }
+}
+async function pickAdminSender(c: any, eventId: number, email: unknown) {
+  return pickSender(c.env.DB, eventId, await ownSender(c), email)
+}
+app.get('/api/admin/events/:id/senders', async (c) => {
+  const id = Number(c.req.param('id'))
+  if (!Number.isInteger(id) || id < 1) return c.json({ error: 'Unknown event.' }, 400)
+  const r = await sendersFor(c.env.DB, id, await ownSender(c))
+  return c.json({ domain: SENDER_DOMAIN, senders: r.senders, outside: r.outside })
+})
 
 // Admin -> Conference (12 Nov 2026): the programme, speakers, halls and speaker
 // announcements, in routes/conference.ts; its screen is public/static/conference-admin.js.
