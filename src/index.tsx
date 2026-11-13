@@ -21890,9 +21890,10 @@ async function subTidy(c: any, by: string): Promise<{ looked: number; set_aside:
     const ev = Number(r.event_id) || 1
     if (!worlds.has(ev)) worlds.set(ev, await subWorld(c, ev))
     const kind = subKind(r.subject, r.body, keep, people)
+    // Taken before the files are matched (that changes them in place), so a new match is saved.
+    const before = JSON.stringify({ a: r.attachments, k: r.kind, m: r.matches })
     for (const kf of keep) subAiMatchFile(kf, worlds.get(ev)!)
     const matches = { ...subMatch({ from_email: r.from_email, from_name: r.from_name, subject: r.subject, body: r.body, filenames: keep.map((x: SubFile) => x.filename), reads: keep.map((x: SubFile) => x.ai && !x.ai.ours ? x.ai.reads : '') }, worlds.get(ev)!), people, ...(r.matches?.ai_tried ? { ai_tried: true, ai_people: r.matches.ai_people || [] } : {}) }
-    const before = JSON.stringify({ a: r.attachments, k: r.kind, m: r.matches })
     if (before === JSON.stringify({ a: keep, k: kind, m: matches })) continue
     await c.env.DB.prepare("UPDATE inbox_submissions SET attachments = ?, kind = ?, matches = ? WHERE id = ? AND status = 'new' AND applied = '[]'").bind(JSON.stringify(keep), kind, JSON.stringify(matches), r.id).run()
     out.rematched++
