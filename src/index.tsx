@@ -51144,7 +51144,7 @@ function adminPageScript(): string {
     // Submissions (logos, photos and team lists that clients emailed) live in
     // /js/admin-submissions.js (one global, SubDesk) with their own stylesheet, both
     // loaded the first time the section opens. Bump the version on any change to either.
-    var SUB_DESK_VERSION = '20261113a';
+    var SUB_DESK_VERSION = '20261113b';
     var subDeskAssets = null;
     function subDeskLoadAssets() {
       if (window.SubDesk) return Promise.resolve();
