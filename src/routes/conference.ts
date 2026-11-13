@@ -1192,6 +1192,40 @@ conf.post('/api/admin/speakers/:id/announce', async (c) => {
   return c.json({ success: true, announcement_id: annId, logged: r.log }, 201)
 })
 
+// Announcing a whole panel (13 Nov 2026, organiser: "announce panel discussion speakers
+// as well with details of their co-panellists along with time slot, hall, date"). One
+// post in the app's announcements; every speaker shown on the session is then recorded
+// as announced, so their cards say so. The words come from the screen and may be
+// changed there; a draft is refused, since attendees cannot see it yet.
+conf.post('/api/admin/sessions/:id/announce', async (c) => {
+  const id = Number(c.req.param('id'))
+  const s = await one(c, 'SELECT id, event_id, title, speaker_name, session_type FROM sessions WHERE id = ?', id)
+  if (!s) return c.json({ error: 'That session is not on the programme any more.' }, 404)
+  const r = await adminReady(c)
+  if (r.drafts && await one(c, "SELECT 1 AS d FROM session_admin WHERE session_id = ? AND status = 'draft'", id))
+    return c.json({ error: 'This session is a draft, so attendees cannot see it. Untick "Keep as a draft" and save it first.' }, 409)
+  const b = await c.req.json().catch(() => ({})) as any
+  const title = String(b.title || '').replace(/\s+/g, ' ').trim().slice(0, 160)
+  const content = String(b.content || '').replace(/\r\n/g, '\n').trim().slice(0, 4000)
+  if (!title || !content) return c.json({ error: 'Write the headline and the message.' }, 400)
+  const speakers = await all(c, 'SELECT id, name, is_published FROM speakers WHERE event_id = ?', s.event_id)
+  const saved = r.links ? await all(c, 'SELECT speaker_id FROM session_speakers WHERE session_id = ? ORDER BY sort_order, id', id) : []
+  const links = saved.length ? saved : deriveLinks(s.speaker_name, speakers, s.session_type).links
+  const shown = new Map(speakers.filter((x: any) => Number(x.is_published) !== 0).map((x: any) => [Number(x.id), x]))
+  const people = [...new Set(links.map((l: any) => Number(l.speaker_id)))].filter(sid => shown.has(sid))
+  const res = await c.env.DB.prepare('INSERT INTO announcements (event_id, title, content, announcement_type, author_name, pinned) VALUES (?, ?, ?, ?, ?, ?)')
+    .bind(s.event_id, title, content, 'general', 'Bharat AI Innovation', b.pinned ? 1 : 0).run()
+  const annId = Number(res.meta.last_row_id)
+  if (r.log) {
+    for (const sid of people) {
+      await c.env.DB.prepare('INSERT INTO speaker_announcements (event_id, speaker_id, session_id, announcement_id, emailed, created_by) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(s.event_id, sid, id, annId, b.email_it ? 1 : 0, hooks.actor ? hooks.actor(c) : null).run()
+    }
+  }
+  await audit(c, 'session.announce', 'session', id, { title: s.title, announcement_id: annId, speakers: people.map(sid => shown.get(sid).name), pinned: !!b.pinned, email_it: !!b.email_it })
+  return c.json({ success: true, announcement_id: annId, speakers: people.length, logged: r.log }, 201)
+})
+
 // ---------- telling a speaker their slot ----------
 
 const escH = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')

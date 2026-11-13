@@ -33123,7 +33123,7 @@ function mainPageScript(): string {
                   <h3 class="font-semibold text-sm">\${esc(a.title)}</h3>
                   \${a.pinned ? '<span class="text-xs text-accent-400"><i class="fas fa-thumbtack"></i></span>' : ''}
                 </div>
-                <p class="text-sm text-gray-400">\${linkify(esc(a.content))}</p>
+                <p class="text-sm text-gray-400" style="white-space:pre-line">\${linkify(esc(a.content))}</p>
                 <div class="flex items-center gap-3 mt-2 text-xs text-gray-500">
                   <span><i class="fas fa-user mr-1"></i>\${esc(a.author_name)}</span>
                   <span><i class="fas fa-clock mr-1"></i>\${parseDbTime(a.created_at).toLocaleString()}</span>
@@ -40594,7 +40594,7 @@ function adminPageHTML(): string {
     <div id="modal-box" class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;"></div>
   </div>
 
-  <script src="/static/conference-admin.js?v=20261112c"></script>
+  <script src="/static/conference-admin.js?v=20261113"></script>
   <script src="/static/speaker-brief.js?v=20261113"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
 </body>

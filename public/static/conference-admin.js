@@ -455,6 +455,7 @@
       '<div class="cm-f"><label for="cm-s-note">Team note <em>(never shown to attendees)</em></label><textarea id="cm-s-note" class="cm-in" maxlength="1000" placeholder="e.g. Waiting for the second panellist to confirm"' + (r.drafts ? '' : ' disabled') + '>' + esc(s.note || '') + '</textarea></div>';
     var foot = '<button type="button" class="cm-btn is-primary" data-cm="save-session" id="cm-s-save"><i class="fas fa-floppy-disk"></i>' + (s.id ? 'Save changes' : 'Add to the programme') + '</button>' +
       '<button type="button" class="cm-btn" data-cm="close">Cancel</button><span class="cm-spacer"></span>' +
+      (s.id && s.status !== 'draft' && live() ? '<button type="button" class="cm-btn" data-cm="announce-session" data-id="' + s.id + '" title="Post it in the app with the time, the hall and everyone on it, as last saved"><i class="fas fa-bullhorn"></i>Announce</button>' : '') +
       (s.id ? '<button type="button" class="cm-btn" data-cm="dup-session" data-id="' + s.id + '"><i class="fas fa-plus"></i>Copy</button><button type="button" class="cm-btn is-danger" data-cm="del-session" data-id="' + s.id + '"><i class="fas fa-trash"></i>Delete</button>' : '');
     drawer(s.id ? 'Change session' : 'Add a session', html, foot);
     drawPeople();
@@ -738,21 +739,103 @@
   }
 
   // ---------- announcing ----------
+  function whoLine(sp) { return sp.name + ([sp.role, sp.organisation].filter(Boolean).length ? ', ' + [sp.role, sp.organisation].filter(Boolean).join(', ') : ''); }
+  // In a sentence the venue's name goes in brackets: "Aryabhata Theatre (Expo Hall)" (handbook §4).
+  function whereLine(s) { var h = hallByName(s.room); return s.room ? s.room + (h && h.venue_room && h.venue_room !== s.room ? ' (' + h.venue_room + ')' : '') : 'a hall we will confirm soon'; }
+  function whenLine(s) { return dayLabel(s.start_time, true) + ', ' + clock(s.start_time) + ' to ' + clock(s.end_time); }
+  // The people on a session as an announcement names them (13 Nov 2026): speakers shown
+  // to attendees only (a hidden one has dropped out or is not confirmed), the moderator
+  // apart, and anyone typed by hand. `except` leaves out the speaker being announced.
+  function panelOf(s, except) {
+    var out = { moderators: [], people: [], hidden: [], typed: String(s.others || '').trim() };
+    (s.links || []).forEach(function (l) {
+      if (except != null && Number(l.speaker_id) === Number(except)) return;
+      var sp = speakerById(l.speaker_id); if (!sp) return;
+      if (Number(sp.is_published) === 0) { out.hidden.push(sp.name); return; }
+      (l.role === 'moderator' || l.role === 'chair' || l.role === 'host' ? out.moderators : out.people).push(whoLine(sp));
+    });
+    return out;
+  }
+  function bullets(list) { return list.map(function (x) { return '• ' + x; }).join('\n'); }
   function announceText(sp, s) {
-    var who = sp.name + ([sp.role, sp.organisation].filter(Boolean).length ? ', ' + [sp.role, sp.organisation].filter(Boolean).join(', ') : '');
+    var who = whoLine(sp);
     var W = words();
     if (!s) return live()
       ? { title: sp.name + ' speaks at Bharat AI Innovation 2026', content: who + ', is speaking at Bharat AI Innovation 2026 on 20-21 November at the World Trade Center, Mumbai.' }
       : { title: sp.name + ' speaks at ' + W.name, content: who + ', is speaking at ' + W.name + (W.when ? ' on ' + W.when : '') + (W.venue ? ' at ' + W.venue : '') + '.' };
-    var h = hallByName(s.room);
-    // In a sentence the venue's name goes in brackets: "Aryabhata Theatre (Expo Hall)" (handbook §4).
-    var where = s.room ? s.room + (h && h.venue_room && h.venue_room !== s.room ? ' (' + h.venue_room + ')' : '') : 'a hall we will confirm soon';
     var part = roleIn(s, sp.id);
     var as = part === 'moderator' ? 'moderates' : part === 'keynote' ? 'gives the keynote' : part === 'panellist' ? 'joins the panel' : 'speaks';
+    // Who else is on it, so a panellist's announcement names the rest of the panel.
+    var p = panelOf(s, sp.id), with_ = '';
+    var others = p.people.concat(p.typed ? [p.typed] : []);
+    if (part === 'moderator') { if (others.length) with_ = '\n\nOn the panel:\n' + bullets(others); }
+    else {
+      if (others.length) with_ = '\n\n' + (s.session_type === 'panel' || part === 'panellist' ? 'Also on the panel:' : 'Also speaking:') + '\n' + bullets(others);
+      if (p.moderators.length) with_ += '\n\nModerated by ' + p.moderators.join(' and ') + '.';
+    }
     return {
       title: sp.name + ' ' + (part === 'keynote' ? 'gives a keynote' : part === 'moderator' ? 'moderates a session' : 'speaks') + ' on ' + dayLabel(s.start_time),
-      content: who + ', ' + as + ' at ' + (live() ? 'Bharat AI Innovation 2026' : W.name) + ': "' + s.title + '".\n\n' + dayLabel(s.start_time, true) + ', ' + clock(s.start_time) + ' to ' + clock(s.end_time) + ', ' + where + '.\n\nStar the session in your Conference Schedule so you do not miss it.',
+      content: who + ', ' + as + ' at ' + (live() ? 'Bharat AI Innovation 2026' : W.name) + ': "' + s.title + '".\n\n' + whenLine(s) + ', ' + whereLine(s) + '.' + with_ + '\n\nStar the session in your Conference Schedule so you do not miss it.',
     };
+  }
+  // The whole session in one announcement: title, day, time, hall, moderator, every speaker.
+  function panelAnnounceText(s) {
+    var p = panelOf(s, null);
+    var kind = s.session_type === 'panel' ? 'Panel discussion' : (TYPE_WORD[s.session_type] || 'Session');
+    var many = p.people.length + (p.typed ? 1 : 0) > 1;
+    var lines = ['"' + s.title + '"', whenLine(s) + ', ' + whereLine(s) + '.'];
+    if (p.moderators.length) lines.push('', (p.moderators.length > 1 ? 'Moderators:' : 'Moderator:') + '\n' + bullets(p.moderators));
+    if (p.people.length || p.typed) lines.push('', (s.session_type === 'panel' ? 'Panellists:' : many ? 'Speakers:' : 'Speaker:') + '\n' + bullets(p.people.concat(p.typed ? [p.typed] : [])));
+    lines.push('', 'Star the session in your Conference Schedule so you do not miss it.');
+    return { title: (kind + ' on ' + dayLabel(s.start_time) + ': ' + s.title).slice(0, 160), content: lines.join('\n') };
+  }
+  function openPanelAnnounce(id) {
+    var s = sessionById(id); if (!s) return;
+    if (s.status === 'draft') { say('This session is a draft, so attendees cannot see it. Untick "Keep as a draft" and save it first.', 'error'); return; }
+    var p = panelOf(s, null), t = panelAnnounceText(s), r = S.d.ready || {};
+    var n = p.moderators.length + p.people.length;
+    var done = (s.links || []).filter(function (l) { var sp = speakerById(l.speaker_id); return sp && sp.announced; }).length;
+    openModal('<div class="cm-wrap"><h3 class="text-lg font-bold mb-1"><i class="fas fa-bullhorn mr-2" style="color:#C84F00"></i>Announce the ' + (s.session_type === 'panel' ? 'panel' : 'session') + '</h3>' +
+      '<p class="cm-help" style="margin-bottom:14px">One post in the app’s announcements with the time, the hall and everyone on it. You can change every word first.' +
+        (n ? ' The ' + n + ' speaker' + (n === 1 ? '' : 's') + ' named here will show as announced.' : '') + (done ? ' ' + done + ' of them already announced on their own.' : '') + '</p>' +
+      (p.hidden.length ? '<p class="cm-help" style="margin-bottom:10px"><i class="fas fa-eye-slash"></i> Not named, because they are hidden from attendees: ' + esc(p.hidden.join(', ')) + '.</p>' : '') +
+      (n || p.typed ? '' : '<p class="cm-help" style="margin-bottom:10px"><i class="fas fa-triangle-exclamation"></i> Nobody is on this session yet. Add the speakers first so the announcement can name them.</p>') +
+      '<div id="cm-a-err"></div>' +
+      '<div class="cm-f"><label for="cm-a-title">Headline</label><input id="cm-a-title" class="cm-in" maxlength="160" value="' + esc(t.title) + '"></div>' +
+      '<div class="cm-f"><label for="cm-a-content">Message</label><textarea id="cm-a-content" class="cm-in" rows="12" maxlength="4000">' + esc(t.content) + '</textarea></div>' +
+      '<label class="cm-toggle" style="margin-bottom:10px"><input type="checkbox" id="cm-a-pin"><span><b>Pin it to the top</b><small>It stays first in the app until you unpin it in Announcements</small></span></label>' +
+      '<label class="cm-toggle" style="margin-bottom:6px"><input type="checkbox" id="cm-a-email" data-cm-input="a-email"><span><b>Also email it to attendees</b><small>A campaign: one email at a time, people who unsubscribed are left out</small></span></label>' +
+      '<div id="cm-a-aud" style="display:none" class="cm-f"><select id="cm-a-audience" class="cm-in"><option value="all">Everyone with an email address</option><option value="confirmed">Only those who said they are coming</option><option value="checked_in">Only those checked in at the venue</option></select></div>' +
+      (r.log ? '' : '<p class="cm-help">The record of who was announced starts once migration 0054 runs. The announcement itself posts now.</p>') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button type="button" class="cm-btn is-primary" data-cm="post-panel-announce" data-id="' + s.id + '" id="cm-a-post"><i class="fas fa-paper-plane"></i>Post it</button>' +
+      '<button type="button" class="cm-btn" data-cm="copy-announce"><i class="fas fa-link"></i>Copy the words</button>' +
+      '<button type="button" class="cm-btn" data-cm="modal-close">Cancel</button></div></div>');
+  }
+  async function postPanelAnnounce(id) {
+    var s = sessionById(id); if (!s) return;
+    var title = val('cm-a-title').trim(), content = val('cm-a-content').trim();
+    var emailIt = $('cm-a-email') && $('cm-a-email').checked;
+    var audience = val('cm-a-audience') || 'all';
+    if (!title || !content) { $('cm-a-err').innerHTML = '<div class="cm-err">Write the headline and the message.</div>'; return; }
+    if (emailIt && !confirm('Post it in the app, then email it to ' + (audience === 'all' ? 'every attendee with an email address' : audience === 'confirmed' ? 'everyone who said they are coming' : 'everyone checked in') + '?\n\nKeep this tab open while it sends.')) return;
+    var btn = $('cm-a-post'); if (btn) btn.disabled = true;
+    try {
+      var r = await api.post('/api/admin/sessions/' + id + '/announce', { title: title, content: content, pinned: $('cm-a-pin') && $('cm-a-pin').checked, email_it: !!emailIt });
+      closeModal();
+      say('Posted in the app.' + (r.speakers ? ' ' + r.speakers + ' speaker' + (r.speakers === 1 ? '' : 's') + ' now show as announced.' : ''));
+      if (emailIt && typeof startCampaign === 'function') await startCampaign('announcement', { ref_id: r.announcement_id, audience: audience, title: 'Session: ' + String(title).slice(0, 80) });
+      await load();
+    } catch (e) {
+      if (btn) btn.disabled = false;
+      $('cm-a-err').innerHTML = '<div class="cm-err">' + esc(errText(e)) + '</div>';
+    }
+  }
+  // In a speaker's own Announce: the whole panel instead, when the session has others on it.
+  function panelSwitch(s) {
+    var p = s ? panelOf(s, null) : null;
+    return p && (p.moderators.length + p.people.length + (p.typed ? 1 : 0)) > 1
+      ? '<button type="button" class="cm-btn is-small" data-cm="announce-session" data-id="' + s.id + '"><i class="fas fa-users"></i>Announce the whole ' + (s.session_type === 'panel' ? 'panel' : 'session') + ' instead</button>'
+      : '';
   }
   function openAnnounce(id) {
     var sp = speakerById(id); if (!sp) return;
@@ -764,6 +847,7 @@
       '<p class="cm-help" style="margin-bottom:14px">Posted in the app’s announcements. You can change every word first.' + (sp.announced ? ' Already announced ' + sp.announced.n + ' time' + (sp.announced.n === 1 ? '' : 's') + '.' : '') + '</p>' +
       '<div id="cm-a-err"></div>' +
       (ss.length > 1 ? '<div class="cm-f"><label for="cm-a-session">About which session</label><select id="cm-a-session" class="cm-in" data-cm-input="a-session" data-id="' + sp.id + '">' + ss.map(function (s) { return '<option value="' + s.id + '">' + esc(dayLabel(s.start_time) + ', ' + clock(s.start_time) + ': ' + s.title) + '</option>'; }).join('') + '<option value="">No session: just that they are speaking</option></select></div>' : '<input type="hidden" id="cm-a-session" value="' + (first ? first.id : '') + '">') +
+      '<div id="cm-a-panel" style="margin:-4px 0 12px">' + panelSwitch(first) + '</div>' +
       '<div class="cm-f"><label for="cm-a-title">Headline</label><input id="cm-a-title" class="cm-in" maxlength="160" value="' + esc(t.title) + '"></div>' +
       '<div class="cm-f"><label for="cm-a-content">Message</label><textarea id="cm-a-content" class="cm-in" rows="6" maxlength="4000">' + esc(t.content) + '</textarea></div>' +
       '<label class="cm-toggle" style="margin-bottom:10px"><input type="checkbox" id="cm-a-pin"><span><b>Pin it to the top</b><small>It stays first in the app until you unpin it in Announcements</small></span></label>' +
@@ -1551,6 +1635,8 @@
     'spk-filter': function (el) { S.spk = el.getAttribute('data-k'); body(); },
     announce: function (el) { if (!live()) { say('Announcements go to the event app, and ' + words().name + ' has no app yet.', 'info'); return; } openAnnounce(el.getAttribute('data-id')); },
     'post-announce': function (el) { postAnnounce(el.getAttribute('data-id')); },
+    'announce-session': function (el) { if (!live()) { say('Announcements go to the event app, and ' + words().name + ' has no app yet.', 'info'); return; } var id = el.getAttribute('data-id'); if (drawerOpen()) closeDrawer(); closeModal(); openPanelAnnounce(id); },
+    'post-panel-announce': function (el) { postPanelAnnounce(el.getAttribute('data-id')); },
     'copy-announce': function () { copyText(val('cm-a-title') + '\n\n' + val('cm-a-content') + '\n\nhttps://bharataiinnovation.com/app'); },
     'slot-email': function (el) { openSlotEmail(el.getAttribute('data-id')); },
     'send-slot': function (el) { sendSlot(el.getAttribute('data-id')); },
@@ -1730,6 +1816,7 @@
       else if (k === 'a-session') {
         var sp = speakerById(el.getAttribute('data-id')); var s = sessionById(el.value);
         var t = announceText(sp, s); $('cm-a-title').value = t.title; $('cm-a-content').value = t.content;
+        var pn = $('cm-a-panel'); if (pn) pn.innerHTML = panelSwitch(s);
       } else if (k === 'photo') {
         var f = el.files && el.files[0]; if (!f || !SP) return;
         squarePhoto(f).then(function (dataUrl) {

@@ -170,6 +170,9 @@ const SUITES = [
   // Who an admin email is sent from (13 Nov 2026): the event's address or one of the organising team on our domain.
   { name: 'unit: who an admin email is sent from, each rule alone (our domain only, the team listed once, a typed or forged address refused, the old From unchanged, a blind copy to the event address, a name that cannot break the header)', args: ['unit-senders.mjs'] },
   { name: 'integration: who an admin email may be sent from, on real SQLite (admins only, the event address first, Organiser pass holders on our domain, outside addresses apart with the reason, not another event\'s team, the Settings sender)', args: ['smoke-senders.mjs'] },
+  // Announcing a whole panel (13 Nov 2026): one post with the time, hall and everyone on it.
+  { name: 'integration: announcing a whole panel on real SQLite (admins only, one post with line breaks kept, every shown speaker recorded as announced and not a hidden one, a draft refused, the audit log, before 0054, the app keeps line breaks)', args: ['smoke-panel-announce.mjs'] },
+  { name: 'browser: announcing a whole panel on a laptop and a phone (a panellist\'s Announce names the rest of the panel and the moderator, the whole panel instead, both cards Announced, Announce from the session editor, the app keeps the line breaks)', args: ['browser-panel-announce.cjs'], harness: 'conference-harness.mjs', port: 8887, portEnv: true },
 ];
 
 const run = (args, opts = {}) => new Promise((resolve) => {
