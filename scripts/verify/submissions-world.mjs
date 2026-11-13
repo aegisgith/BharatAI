@@ -70,7 +70,8 @@ export function makeWorld({ table = true, teams = true, talkContacts = true } = 
   const push = (o = {}, { secret = SECRET } = {}) => W.call('/api/external/inbox-submissions', {
     method: 'POST', headers: secret ? { Authorization: 'Bearer ' + secret } : {},
     body: { source: 'aimailpilot', source_id: 'msg-' + (++n), thread_id: '', from_email: 'ravi@acmerobotics.in', from_name: 'Ravi Kumar', to_email: 'puja@aegis.edu.in',
-      subject: 'Our logo', text: 'Hi Puja,\nPlease find our logo attached.\n\nRegards,\nRavi', received_at: '2026-11-12T04:30:00.000Z', link: 'https://aimailpilot.com/#inbox/msg-' + n, attachments: [], ...o },
+      // Ten minutes apart, so two test emails are never taken for one email in two mailboxes.
+      subject: 'Our logo', text: 'Hi Puja,\nPlease find our logo attached.\n\nRegards,\nRavi', received_at: new Date(Date.parse('2026-11-12T04:30:00.000Z') + n * 600000).toISOString(), link: 'https://aimailpilot.com/#inbox/msg-' + n, attachments: [], ...o },
   });
   const admin = (path, { method = 'GET', body, actor = 'Priya' } = {}) => W.call(path, { method, body, admin: true, actor });
   const sub = (id) => {

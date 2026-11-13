@@ -57,7 +57,7 @@ let logoId;
   const ex = s.matches.exhibitors[0];
   check('logo: the sender is the booth contact, for certain', ex?.id === ids.acme && ex.sure === true && ex.how === 'the booth contact', s.matches.exhibitors);
   check('logo: their own stage talk is offered too, as likely', s.matches.talks.some((t) => t.id === ids.talk && t.sure === false), s.matches.talks);
-  check('logo: the email is kept: who, to whom, subject, words, link, time', s.from_email === 'ravi@acmerobotics.in' && s.from_name === 'Ravi Kumar' && s.to_email === 'puja@aegis.edu.in' && s.subject === 'Our logo' && /logo attached/.test(s.body) && s.link === 'https://aimailpilot.com/#inbox/msg-' + s.link.split('msg-')[1] && s.received_at === '2026-11-12T04:30:00.000Z', s);
+  check('logo: the email is kept: who, to whom, subject, words, link, time', s.from_email === 'ravi@acmerobotics.in' && s.from_name === 'Ravi Kumar' && s.to_email === 'puja@aegis.edu.in' && s.subject === 'Our logo' && /logo attached/.test(s.body) && s.link === 'https://aimailpilot.com/#inbox/msg-' + s.link.split('msg-')[1] && /^2026-11-1[23]T\d\d:\d\d:00\.000Z$/.test(s.received_at), s);
   const got = await W.worker.fetch(new Request(ORIGIN + '/api/uploads/' + f.key), W.env, W.ctx);
   check('logo: the file is served as the picture it is, with no page rules needed', got.status === 200 && got.headers.get('content-type') === 'image/png' && !got.headers.get('content-security-policy') && (await got.arrayBuffer()).byteLength === 600);
   check('logo: arrival is in the history', audits(logoId, 'submission.received').length === 1);
@@ -301,6 +301,83 @@ let teamId;
   check('senders: booth contacts, booth buyers, teams, talk speakers and confirmed speakers', has('ravi@acmerobotics.in') && has('accounts@acmerobotics.in') && has('meera@acmerobotics.in') && has('asha.rao@acmerobotics.in') && has('neha.kapoor@bankofnorth.in') && has('zenith.founder@gmail.com'), s.emails);
   check('senders: nobody taken off the list', !has('old@gone.in'));
   check('senders: company domains, and never a free-mail one', s.domains.includes('acmerobotics.in') && s.domains.includes('bankofnorth.in') && !s.domains.includes('gmail.com') && s.keywords.includes('bharat ai'), s.domains);
+}
+
+// ======== 13 Nov 2026: what the first day of real mail taught ========
+{
+  // Our own team: never filed, never on the sender list, whatever else they say.
+  let r = await push({ source_id: 'own-1', from_email: 'puja@aegis.edu.in', from_name: 'Puja', subject: 'Bharat AI logo for the stage', text: 'Logo attached.', attachments: [file('bharat-ai-logo.png', png(900, 300, 120), 'image/png')] });
+  check('own domain: an email from our own team is not filed', r.status === 200 && r.json.status === 'ignored' && r.json.reason === 'our own team' && !rows("SELECT id FROM inbox_submissions WHERE source_id = 'own-1'").length, r.text);
+  W.insert('exhibitors', { event_id: 1, company_name: 'Aegis School of Data Science', contact_email: 'booth@aegis.edu.in' });
+  let se = (await W.call('/api/external/submission-senders', { headers: { Authorization: 'Bearer ' + SECRET } })).json;
+  check('own domain: never on the sender list, even as an exhibitor contact', !se.emails.includes('booth@aegis.edu.in') && !se.domains.includes('aegis.edu.in') && se.emails.includes('ravi@acmerobotics.in'), se.domains);
+  W.db.run("INSERT INTO app_settings (key, value) VALUES ('inbox_submissions_own_domains', 'ownco.in, other-own.org')");
+  r = await push({ source_id: 'own-2', from_email: 'staff@ownco.in', subject: 'Logo', text: 'logo', attachments: [file('x.png', png(700, 200, 121), 'image/png')] });
+  const r2 = await push({ source_id: 'own-3', from_email: 'puja@aegis.edu.in', subject: 'Photos for Bharat AI', text: 'Photo attached.', attachments: [file('p.jpg', jpeg(800, 1000, 122), 'image/jpeg')] });
+  check('own domain: the list can be set in Settings (app_settings), and then replaces the default', r.json.status === 'ignored' && r2.status === 201, [r.text, r2.text]);
+  W.db.run("DELETE FROM app_settings WHERE key = 'inbox_submissions_own_domains'");
+
+  // The same email in two team mailboxes.
+  const at = '2026-11-13T05:41:54.000Z';
+  const before = bucket.size;
+  r = await push({ source_id: 'twin-a', from_email: 'neha.kapoor@bankofnorth.in', from_name: 'Neha Kapoor', subject: 'Attendee details - Bank of the North', text: '1. Asha Iyer - Analyst - asha@bankofnorth.in\n2. Ravi Menon - Lead - ravi.m@bankofnorth.in', received_at: at, attachments: [file('team.jpg', jpeg(600, 800, 123), 'image/jpeg')] });
+  const r3 = await push({ source_id: 'twin-b', from_email: 'Neha.Kapoor@bankofnorth.in', from_name: 'Neha Kapoor', subject: 'Attendee details - Bank of the North', text: '1. Asha Iyer - Analyst - asha@bankofnorth.in\n2. Ravi Menon - Lead - ravi.m@bankofnorth.in', received_at: '2026-11-13T05:42:30.000Z', attachments: [file('team.jpg', jpeg(600, 800, 123), 'image/jpeg')] });
+  check('twin: the same email from a second team mailbox is the first one, and no file is stored again', r.status === 201 && r3.status === 200 && r3.json.status === 'duplicate' && r3.json.id === r.json.id && bucket.size === before + 1 && !rows("SELECT id FROM inbox_submissions WHERE source_id = 'twin-b'").length, [r.text, r3.text]);
+  const r4 = await push({ source_id: 'twin-c', from_email: 'neha.kapoor@bankofnorth.in', subject: 'Attendee details - Bank of the North', text: 'One more: 3. Kiran Shah - Designer - kiran@bankofnorth.in\n4. Om Rao - Lead - om@bankofnorth.in', received_at: '2026-11-13T06:10:00.000Z' });
+  check('twin: the same subject half an hour later is a new email', r4.status === 201, r4.text);
+
+  // A picture several companies send: a signature, or our own logo quoted back.
+  const sig = png(248, 94, 124);
+  r = await push({ source_id: 'sig-1', from_email: 'founder@first-co.com', subject: 'Re: Booth details for Bharat AI', text: 'Thanks, noted.', attachments: [file('image001.png', sig, 'image/png')] });
+  check('shared picture: the first company that sends it is filed (nobody can know yet)', r.status === 201, r.text);
+  r = await push({ source_id: 'sig-2', subject: 'Re: Bharat AI logo request', text: 'Our new logo attached.', attachments: [file('image001.png', sig, 'image/png'), file('acme-logo-2027.png', png(1200, 320, 125), 'image/png')] });
+  const s2 = sub(r.json.id);
+  check('shared picture: a second company sending it keeps only its own real file', r.status === 201 && s2.attachments.length === 1 && s2.attachments[0].filename === 'acme-logo-2027.png', s2?.attachments);
+  r = await push({ source_id: 'sig-3', from_email: 'ops@third-co.in', subject: 'Re: Lunch for Bharat AI', text: 'Confirmed.', attachments: [file('image001.png', sig, 'image/png')] });
+  check('shared picture: an email carrying only that picture is not filed', r.status === 200 && r.json.status === 'ignored', r.text);
+
+  // An everyday word never names a company.
+  W.insert('exhibitors', { event_id: 1, company_name: 'Image Infosystem', contact_email: 'hello@imageinfosystems.com' });
+  r = await push({ source_id: 'img-1', from_email: 'pr@unrelated-agency.com', subject: 'Re: Speaker confirmation for Bharat AI', text: 'Please find the photo.', attachments: [file('image.png', jpeg(900, 1200, 126), 'image/jpeg')] });
+  check('everyday words: a pasted picture called image.png does not suggest Image Infosystem', !sub(r.json.id).matches.exhibitors.some((e) => e.name === 'Image Infosystem'), sub(r.json.id).matches.exhibitors);
+  r = await push({ source_id: 'img-2', from_email: 'pr@unrelated-agency.com', subject: 'Logo for Image Infosystem', text: 'On behalf of Image Infosystem, their logo.', attachments: [file('ii.png', png(800, 200, 127), 'image/png')] });
+  check('everyday words: the company named in full is still found', sub(r.json.id).matches.exhibitors[0]?.name === 'Image Infosystem', sub(r.json.id).matches.exhibitors);
+  check('everyday words: a one-word company is still found by its name', (await push({ source_id: 'img-3', from_email: 'x@agency-two.com', subject: 'Zenith logo', text: 'For Zenith, the logo.', attachments: [file('z.png', png(700, 210, 128), 'image/png')] })).json && sub(rows("SELECT id FROM inbox_submissions WHERE source_id = 'img-3'")[0].id).matches.exhibitors.some((e) => e.id === ids.zenith));
+}
+
+// ======== the tidy: what was already waiting gets the same rules ========
+{
+  const old = (o) => W.insert('inbox_submissions', { event_id: 1, source: 'aimailpilot', status: 'new', applied: '[]', matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [] }), body: '', ...o });
+  const f = (hash, name = 'image001.png', w = 248, h = 94) => ({ key: 'submissions/old/' + hash.slice(0, 6) + '-' + name, filename: name, mime: 'image/png', size: 4000, w, h, use: 'logo', hash });
+  const H = (c) => c.repeat(64);
+  const ownRow = old({ source_id: 't-own', from_email: 'staff@aegis.edu.in', subject: 'Re: Bharat AI', received_at: '2026-11-13T05:00:00.000Z', kind: 'logo', attachments: JSON.stringify([f(H('1'), 'real.png', 900, 300)]) });
+  const twinA = old({ source_id: 't-twin-a', from_email: 'hr@rightangle.example', subject: 'Attendee Details - Rightangle', received_at: '2026-11-13T05:10:00.000Z', kind: 'team', attachments: '[]', matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [{ first_name: 'Manoj', last_name: 'A', designation: 'CEO', email: 'm@rightangle.example', mobile: '', line: '' }] }) });
+  const twinB = old({ source_id: 't-twin-b', from_email: 'hr@rightangle.example', subject: 'Attendee Details - Rightangle', received_at: '2026-11-13T05:10:40.000Z', kind: 'team', attachments: '[]', matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [{ first_name: 'Manoj', last_name: 'A', designation: 'CEO', email: 'm@rightangle.example', mobile: '', line: '' }] }) });
+  const sigOnly = old({ source_id: 't-sig', from_email: 'a@vendor-one.com', subject: 'Re: Quotation', received_at: '2026-11-13T05:20:00.000Z', kind: 'logo', attachments: JSON.stringify([f(H('2'))]) });
+  const sigPlus = old({ source_id: 't-sigplus', from_email: 'b@vendor-two.com', subject: 'Re: Our logo for Bharat AI', received_at: '2026-11-13T05:21:00.000Z', kind: 'logo', attachments: JSON.stringify([f(H('2')), f(H('3'), 'vendor-two-logo.png', 1200, 300)]) });
+  const wrong = old({ source_id: 't-wrong', from_email: 'pr@other-agency.com', subject: 'Re: Speaker photo', received_at: '2026-11-13T05:30:00.000Z', kind: 'photo', body: 'Photo attached.', attachments: JSON.stringify([f(H('4'), 'image.png', 900, 1200)]), matches: JSON.stringify({ exhibitors: [{ id: 999, name: 'Image Infosystem', detail: '', how: 'named in the email', sure: false }], talks: [], speakers: [], people: [] }) });
+  const kept = old({ source_id: 't-kept', from_email: 'staff2@aegis.edu.in', subject: 'Brought back', received_at: '2026-11-13T05:40:00.000Z', kind: 'logo', attachments: '[]', decided_by: 'Priya' });
+  const used = old({ source_id: 't-used', from_email: 'c@vendor-three.com', subject: 'Used one', received_at: '2026-11-13T05:50:00.000Z', kind: 'logo', attachments: JSON.stringify([f(H('2'))]), applied: JSON.stringify([{ what: 'logo', target: 'X', exhibitor_id: 1, file: 0, url: 'u', prev: '', at: 'now', by: 'Priya' }]) });
+  check('tidy: for Admin only', (await W.call('/api/admin/inbox-submissions/tidy', { method: 'POST' })).status === 401);
+  let r = await admin('/api/admin/inbox-submissions/tidy', { method: 'POST' });
+  const st = (id) => sub(id);
+  check('tidy: answers what it did, in words', r.status === 200 && r.json.ok && r.json.set_aside['our own team'] >= 1 && r.json.set_aside['the same email twice'] >= 1 && r.json.set_aside['only a picture other companies sent too'] >= 1 && r.json.pictures_removed >= 1, r.text);
+  check('tidy: our own team set aside, saying why', st(ownRow).status === 'dismissed' && st(ownRow).decided_by === 'automatic tidy (our own team)', st(ownRow).decided_by);
+  check('tidy: the second copy of one email set aside, naming the first', st(twinA).status === 'new' && st(twinB).status === 'dismissed' && st(twinB).decided_by === `automatic tidy (the same email in another mailbox, #${twinA})`, st(twinB).decided_by);
+  check('tidy: an email with only a shared picture set aside', st(sigOnly).status === 'dismissed' && /only a picture other companies sent too/.test(st(sigOnly).decided_by));
+  check('tidy: the shared picture taken off an email that has its own file too, which stays', st(sigPlus).status === 'new' && st(sigPlus).attachments.length === 1 && st(sigPlus).attachments[0].filename === 'vendor-two-logo.png', st(sigPlus).attachments);
+  check('tidy: a wrong guess re-matched by today\'s rules', st(wrong).status === 'new' && !st(wrong).matches.exhibitors.some((e) => e.name === 'Image Infosystem'), st(wrong).matches.exhibitors);
+  check('tidy: one a person brought back, and one something was used from, are left exactly as they were', st(kept).status === 'new' && st(kept).decided_by === 'Priya' && st(used).status === 'new' && st(used).attachments.length === 1);
+  check('tidy: in the history', rows("SELECT id FROM admin_audit WHERE action = 'submission.tidy'").length >= 1);
+  r = await admin('/api/admin/inbox-submissions/tidy', { method: 'POST' });
+  check('tidy: running it again changes nothing', r.json.rematched === 0 && r.json.pictures_removed === 0 && Object.keys(r.json.set_aside).length === 0, r.text);
+  // AImailPilot's ten-minute call runs it too.
+  const late = old({ source_id: 't-late', from_email: 'new.staff@bharataiinnovation.com', subject: 'Late own', received_at: '2026-11-13T07:00:00.000Z', kind: 'logo', attachments: '[]' });
+  await W.call('/api/external/submission-senders', { headers: { Authorization: 'Bearer ' + SECRET } });
+  check('tidy: AImailPilot\'s sender-list call tidies what is waiting', st(late).status === 'dismissed', st(late).status);
+  const back = await admin(`/api/admin/inbox-submissions/${late}/reopen`, { method: 'POST', body: {} });
+  await W.call('/api/external/submission-senders', { headers: { Authorization: 'Bearer ' + SECRET } });
+  check('tidy: Bring back is a person\'s decision, and the tidy leaves it alone after', back.json.row.status === 'new' && st(late).status === 'new' && st(late).decided_by === 'Priya', st(late));
 }
 
 // ======== a database without 0052 or 0050 ========

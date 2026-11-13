@@ -20765,7 +20765,18 @@ const SUB_EXT_MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpe
 const SUB_NOT_YET = 'The inbox submissions table is not there yet. Run: npx wrangler d1 execute bharatai-production --remote --file=./migrations/0055_inbox_submissions.sql'
 const SUB_FREE_MAIL_RE = /^(gmail|googlemail|yahoo|ymail|rocketmail|hotmail|outlook|live|msn|rediffmail|icloud|me|aol|protonmail|proton|gmx)\.[a-z.]+$/i
 // Words that say nothing about which company it is.
-const SUB_GENERIC_WORDS = new Set(['the', 'and', 'india', 'global', 'tech', 'technologies', 'technology', 'solutions', 'solution', 'systems', 'system', 'labs', 'lab', 'pvt', 'ltd', 'private', 'limited', 'llp', 'inc', 'co', 'company', 'services', 'service', 'group', 'international', 'software', 'digital', 'consulting', 'consultancy', 'enterprises', 'enterprise', 'innovations', 'innovation', 'networks', 'network', 'infotech', 'info', 'business'])
+const SUB_GENERIC_WORDS = new Set(['the', 'and', 'india', 'global', 'tech', 'technologies', 'technology', 'solutions', 'solution', 'systems', 'system', 'labs', 'lab', 'pvt', 'ltd', 'private', 'limited', 'llp', 'inc', 'co', 'company', 'services', 'service', 'group', 'international', 'software', 'digital', 'consulting', 'consultancy', 'enterprises', 'enterprise', 'innovations', 'innovation', 'networks', 'network', 'infotech', 'info', 'business',
+  // Words of a file name or an everyday sentence: Outlook calls a pasted picture image.png, and
+  // "image" alone named Image Infosystem for five unrelated emails on 13 Nov 2026.
+  'image', 'images', 'img', 'logo', 'logos', 'photo', 'photos', 'picture', 'pictures', 'png', 'jpg', 'jpeg', 'pdf', 'file', 'files',
+  'attachment', 'attached', 'final', 'new', 'data', 'science', 'school', 'cloud', 'smart', 'media', 'health', 'finance', 'design',
+  'research', 'education', 'learning', 'vision', 'mobile', 'web', 'world', 'future', 'next', 'one', 'first', 'prime', 'star',
+  'corp', 'corporation', 'plc', 'llc', 'ventures', 'industries', 'analytics', 'intelligence', 'artificial', 'automation'])
+// The organisers' own domains: staff mail is never a client's submission.
+const SUB_OWN_DOMAINS_DEFAULT = ['aegis.edu.in', 'bharataiinnovation.com', 'bellaward.com']
+// Two emails within this many minutes, same sender and subject, are one email in two mailboxes.
+const SUB_TWIN_MINUTES = 3
+const SUB_TIDY_BY = 'automatic tidy'
 const SUB_EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/
 const SUB_MOBILE_RE = /(?:\+?91[\s-]?)?0?([6-9]\d{4}[\s-]?\d{5})(?!\d)/
 const SUB_HONORIFIC_RE = /^(dr|mr|mrs|ms|miss|prof|shri|smt|er|ca|adv)\.?\s+/i
@@ -20805,6 +20816,29 @@ function subBeforeSignoff(text: string): string {
 function subDomain(email: any): string {
   const d = String(email || '').toLowerCase().trim().split('@')[1] || ''
   return !d || SUB_FREE_MAIL_RE.test(d) ? '' : d
+}
+// Who sent it, as one key per company: the company domain, or the address on a free-mail one.
+function subSenderKey(email: any): string {
+  const e = String(email || '').toLowerCase().trim()
+  return subDomain(e) || e
+}
+async function subOwnDomains(c: any): Promise<Set<string>> {
+  let list = SUB_OWN_DOMAINS_DEFAULT
+  try {
+    const r = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'inbox_submissions_own_domains'").first() as any
+    const v = String(r?.value || '').toLowerCase().split(/[\s,;]+/).map(x => x.trim()).filter(x => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(x))
+    if (v.length) list = v
+  } catch { /* the defaults */ }
+  return new Set(list)
+}
+function subIsOwn(email: any, own: Set<string>): boolean {
+  const d = String(email || '').toLowerCase().trim().split('@')[1] || ''
+  return !!d && own.has(d)
+}
+function subTwinWindow(iso: string): [string, string] {
+  const t = new Date(iso).getTime()
+  const m = SUB_TWIN_MINUTES * 60000
+  return [new Date(t - m).toISOString(), new Date(t + m).toISOString()]
 }
 function subSiteDomain(url: any): string {
   const m = String(url || '').toLowerCase().match(/^(?:https?:\/\/)?(?:www\.)?([a-z0-9.-]+\.[a-z]{2,})/)
@@ -21121,6 +21155,17 @@ app.post('/api/external/inbox-submissions', async (c) => {
   try { existing = await c.env.DB.prepare('SELECT id, status FROM inbox_submissions WHERE source = ? AND source_id = ?').bind(source, sourceId).first() }
   catch (e: any) { if (/no such table/i.test(String(e?.message || ''))) return c.json({ error: SUB_NOT_YET }, 503); throw e }
   if (existing) return c.json({ ok: true, status: 'duplicate', id: existing.id })
+  const fromEmail = String(b.from_email || '').toLowerCase().trim().slice(0, 200)
+  const subject = String(b.subject || '').slice(0, 300)
+  const when = new Date(String(b.received_at || ''))
+  const receivedAt = isNaN(when.getTime()) ? new Date().toISOString() : when.toISOString()
+  if (subIsOwn(fromEmail, await subOwnDomains(c))) return c.json({ ok: true, status: 'ignored', reason: 'our own team' })
+  // The same email sent to two of the team reaches AImailPilot twice, as two inbox rows.
+  if (fromEmail) {
+    const [lo, hi] = subTwinWindow(receivedAt)
+    const twin = await c.env.DB.prepare('SELECT id FROM inbox_submissions WHERE from_email = ? AND subject = ? AND received_at BETWEEN ? AND ? ORDER BY id LIMIT 1').bind(fromEmail, subject, lo, hi).first() as any
+    if (twin) return c.json({ ok: true, status: 'duplicate', id: twin.id, reason: 'the same email, from another team mailbox' })
+  }
   const incoming = Array.isArray(b.attachments) ? b.attachments.slice(0, SUB_MAX_FILES) : []
   const decoded: { bytes: Uint8Array; filename: string; mime: string; hash: string }[] = []
   let total = 0
@@ -21144,9 +21189,7 @@ app.post('/api/external/inbox-submissions', async (c) => {
     if (decoded.some(d => d.hash === hash)) { total -= bytes.length; continue }
     decoded.push({ bytes, filename, mime, hash })
   }
-  const subject = String(b.subject || '').slice(0, 300)
   const body = subText(b.text || b.body || '')
-  const fromEmail = String(b.from_email || '').toLowerCase().trim().slice(0, 200)
   const fromName = String(b.from_name || '').slice(0, 120)
   const people = subPeople(body)
   const threadId = String(b.thread_id || '').slice(0, 200)
@@ -21157,6 +21200,16 @@ app.post('/api/external/inbox-submissions', async (c) => {
     const earlier = ((await c.env.DB.prepare("SELECT attachments FROM inbox_submissions WHERE from_email = ? OR (thread_id <> '' AND thread_id = ?) ORDER BY id DESC LIMIT 40").bind(fromEmail, threadId).all()).results || []) as any[]
     for (const r of earlier) for (const f of subParse(r).attachments) if (f?.hash) seen.add(String(f.hash))
   } catch { /* nothing earlier to compare with */ }
+  // A picture another company has sent too is a signature, or our own logo quoted back in a
+  // reply (13 Nov 2026: one 248x94 logo came from 17 companies): it belongs to nobody here.
+  const me = subSenderKey(fromEmail)
+  for (const d of decoded) {
+    if (seen.has(d.hash)) continue
+    try {
+      const others = ((await c.env.DB.prepare('SELECT from_email FROM inbox_submissions WHERE attachments LIKE ? LIMIT 50').bind('%"hash":"' + d.hash + '"%').all()).results || []) as any[]
+      if (others.some(o => subSenderKey(o.from_email) !== me)) seen.add(d.hash)
+    } catch { /* nothing to compare with */ }
+  }
   const fresh = decoded.filter(d => !seen.has(d.hash))
   const metas = fresh.map(d => { const { w, h } = subImageSize(d.bytes, d.mime); return { ...d, w, h, use: subFileUse(d.filename, d.mime, w, h) } })
   const kind = subKind(subject, body, metas, people)
@@ -21173,8 +21226,6 @@ app.post('/api/external/inbox-submissions', async (c) => {
   }
   const world = await subWorld(c, eventId)
   const matches = { ...subMatch({ from_email: fromEmail, from_name: fromName, subject, body, filenames: stored.map(f => f.filename) }, world), people }
-  const when = new Date(String(b.received_at || ''))
-  const receivedAt = isNaN(when.getTime()) ? new Date().toISOString() : when.toISOString()
   let id: number
   try {
     const r = await c.env.DB.prepare('INSERT INTO inbox_submissions (event_id, source, source_id, thread_id, from_email, from_name, to_email, subject, body, link, received_at, kind, attachments, matches) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
@@ -21188,6 +21239,60 @@ app.post('/api/external/inbox-submissions', async (c) => {
   const done = await subAutoApply(c, { id, event_id: eventId, kind, attachments: stored, matches, applied: [] }, await subAutoSettings(c), subSays(subject, body))
   return c.json({ ok: true, status: done ? 'applied' : 'stored', id, kind, company: matches.exhibitors[0]?.name || '' }, 201)
 })
+
+// The tidy (13 Nov 2026): what is waiting gets the rules new mail gets at the door. Our own
+// team's mail and the second copy of one email are set aside; a picture two or more companies
+// sent is taken off (an email left with nothing is set aside); the rest is re-matched against
+// today's exhibitors, teams and speakers. Never touches an email something was used from, or one
+// a person brought back or decided on. Safe to run any number of times.
+async function subTidy(c: any, by: string): Promise<{ looked: number; set_aside: Record<string, number>; pictures_removed: number; rematched: number } | null> {
+  let all: any[]
+  try { all = ((await c.env.DB.prepare('SELECT * FROM inbox_submissions ORDER BY id').all()).results || []) as any[] }
+  catch { return null }
+  const rows = all.map(subParse)
+  const own = await subOwnDomains(c)
+  const senders = new Map<string, Set<string>>()
+  for (const r of rows) for (const f of r.attachments) if (f?.hash) {
+    if (!senders.has(f.hash)) senders.set(f.hash, new Set())
+    senders.get(f.hash)!.add(subSenderKey(r.from_email))
+  }
+  const worlds = new Map<number, SubWorld>()
+  const out = { looked: 0, set_aside: {} as Record<string, number>, pictures_removed: 0, rematched: 0 }
+  const now = new Date().toISOString()
+  for (const r of rows) {
+    if (r.status !== 'new' || r.applied.length) continue
+    if (r.decided_by && !String(r.decided_by).startsWith(SUB_TIDY_BY)) continue
+    out.looked++
+    let why = ''
+    if (subIsOwn(r.from_email, own)) why = 'our own team'
+    else if (r.from_email) {
+      const [lo, hi] = subTwinWindow(r.received_at)
+      const twin = rows.find(o => o.id < r.id && o.from_email === r.from_email && o.subject === r.subject && o.received_at >= lo && o.received_at <= hi)
+      if (twin) why = 'the same email in another mailbox, #' + twin.id
+    }
+    const keep = r.attachments.filter((f: SubFile) => !(f?.hash && (senders.get(f.hash)?.size || 0) >= 2))
+    const people = Array.isArray(r.matches?.people) ? r.matches.people : []
+    if (!why && !keep.length && !people.length && r.attachments.length) why = 'only a picture other companies sent too'
+    if (why) {
+      await c.env.DB.prepare("UPDATE inbox_submissions SET status = 'dismissed', decided_by = ?, decided_at = ? WHERE id = ? AND status = 'new'").bind(`${by} (${why})`, now, r.id).run()
+      const k = why.startsWith('the same email') ? 'the same email twice' : why
+      out.set_aside[k] = (out.set_aside[k] || 0) + 1
+      continue
+    }
+    out.pictures_removed += r.attachments.length - keep.length
+    const ev = Number(r.event_id) || 1
+    if (!worlds.has(ev)) worlds.set(ev, await subWorld(c, ev))
+    const kind = subKind(r.subject, r.body, keep, people)
+    const matches = { ...subMatch({ from_email: r.from_email, from_name: r.from_name, subject: r.subject, body: r.body, filenames: keep.map((x: SubFile) => x.filename) }, worlds.get(ev)!), people }
+    const before = JSON.stringify({ a: r.attachments, k: r.kind, m: r.matches })
+    if (before === JSON.stringify({ a: keep, k: kind, m: matches })) continue
+    await c.env.DB.prepare("UPDATE inbox_submissions SET attachments = ?, kind = ?, matches = ? WHERE id = ? AND status = 'new' AND applied = '[]'").bind(JSON.stringify(keep), kind, JSON.stringify(matches), r.id).run()
+    out.rematched++
+  }
+  const changed = out.rematched + out.pictures_removed + Object.values(out.set_aside).reduce((a, b) => a + b, 0)
+  if (changed) await audit(c, 'submission.tidy', 'submission', 'all', out, { actor: by, kind: by === SUB_TIDY_BY ? 'system' : 'admin' })
+  return out
+}
 
 // Who the sweeper listens for: every address on file for this event (booth contacts and
 // buyers, teams, speakers) and their company domains. Mail from anyone else stays in
@@ -21205,6 +21310,12 @@ app.get('/api/external/submission-senders', async (c) => {
   for (const m of world.team) add(m.email)
   for (const t of world.talks) add(t.speaker_email)
   for (const s of world.speakers) add(s.email)
+  const own = await subOwnDomains(c)
+  for (const e of [...emails]) if (subIsOwn(e, own)) emails.delete(e)
+  for (const d of [...domains]) if (own.has(d)) domains.delete(d)
+  // AImailPilot asks every ten minutes: what is waiting is tidied then, by the same rules.
+  const tidy = subTidy(c, SUB_TIDY_BY).catch(() => null)
+  try { c.executionCtx.waitUntil(tidy) } catch { await tidy }
   return c.json({ ok: true, emails: [...emails], domains: [...domains], keywords: ['bharat ai', 'bharatai'] })
 })
 
@@ -21304,8 +21415,16 @@ app.post('/api/admin/inbox-submissions/:id/dismiss', async (c) => {
 app.post('/api/admin/inbox-submissions/:id/reopen', async (c) => {
   const sub = await subRow(c, c.req.param('id')).catch(() => null)
   if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
-  await c.env.DB.prepare("UPDATE inbox_submissions SET status = ? WHERE id = ?").bind(sub.applied.some((e: any) => !e.undone) ? 'applied' : 'new', sub.id).run()
+  // Brought back by a person: the tidy leaves it alone from now on.
+  const by = String(c.req.header('X-Admin-Actor') || '').slice(0, 80) || 'admin'
+  await c.env.DB.prepare("UPDATE inbox_submissions SET status = ?, decided_by = ?, decided_at = ? WHERE id = ?").bind(sub.applied.some((e: any) => !e.undone) ? 'applied' : 'new', by, new Date().toISOString(), sub.id).run()
   return c.json({ ok: true, row: await subRow(c, sub.id) })
+})
+app.post('/api/admin/inbox-submissions/tidy', async (c) => {
+  const by = String(c.req.header('X-Admin-Actor') || '').slice(0, 80) || 'admin'
+  const r = await subTidy(c, SUB_TIDY_BY)
+  if (!r) return c.json({ error: SUB_NOT_YET, not_yet: true }, 503)
+  return c.json({ ok: true, ...r, by })
 })
 
 // ==================== INQUIRY DESK ====================
