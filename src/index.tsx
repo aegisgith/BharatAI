@@ -3428,7 +3428,17 @@ const OFFER_AUDIENCES: Record<string, { refId: number; title: string }> = {
   exhibitors: { refId: 2, title: 'Last-week offer: Exhibitor passes to VIP' },
   speakers: { refId: 3, title: 'Last-week offer: showcase slots to speaking requests' },
   colleagues: { refId: 4, title: 'Last-week offer: bring a colleague, 15% off' },
+  // Not on the switch (13 Nov): group booking and the Media & Influencer Pass are open
+  // to everyone, so their emails may go with the offers off.
+  groups: { refId: 5, title: 'Group booking: free visitors at companies with 3 or more registered' },
+  media: { refId: 6, title: 'Media & Influencer Pass: registered journalists and creators' },
 }
+const OFFER_SWITCHLESS = ['groups', 'media']
+const offerOpen = (audience: string) => offersActive() || OFFER_SWITCHLESS.includes(audience)
+// Company names that say nothing about a company, left out of the group email.
+const NO_COMPANY = ['', '-', '.', 'na', 'n/a', 'n.a', 'none', 'nil', 'no', 'self', 'self employed', 'self-employed', 'individual', 'freelance', 'freelancer', 'student', 'students', 'home', 'not applicable', 'nothing', 'test', 'personal', 'independent', 'unemployed', 'retired']
+const MEDIA_TITLE_SQL = '(' + ['journalist', 'editor', 'reporter', 'correspondent', 'anchor', 'influencer', 'creator', 'youtuber', 'blogger', 'podcast', 'media', 'press']
+  .map(w => `lower(COALESCE(job_title, '')) LIKE '%${w}%'`).join(' OR ') + ` OR lower(COALESCE(company, '')) LIKE '%media%' OR lower(COALESCE(company, '')) LIKE '%news%')`
 const offerAudienceOf = (refId: any) => Object.keys(OFFER_AUDIENCES).find(k => OFFER_AUDIENCES[k].refId === Number(refId)) || ''
 // The audience key is one of OFFER_AUDIENCES', never typed text.
 const offerNotSentSql = (aud: string, emailExpr: string) =>
@@ -3491,6 +3501,28 @@ async function offerAudienceRows(c: any, audience: string, ids?: any[]): Promise
     const { results } = await c.env.DB.prepare(
       `SELECT id, name, email FROM attendees WHERE event_id = 1 AND email IS NOT NULL AND TRIM(email) != ''
           AND badge_type IN (${COLLEAGUE_HOSTS.map(() => '?').join(', ')}) AND LOWER(COALESCE(payment_status, '')) = 'paid'${sc}${offerNotSentSql('colleagues', 'attendees.email')} ORDER BY id`).bind(...COLLEAGUE_HOSTS).all()
+    return (results as any[]) || []
+  }
+  if (audience === 'groups') {
+    // Free Visitors coming to the conference, not students, at a company with 3 or
+    // more such registrations: the people a team booking is for.
+    const co = `lower(TRIM(COALESCE(company, '')))`
+    const noCo = NO_COMPANY.map(() => '?').join(', ')
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE event_id = 1 AND email IS NOT NULL AND TRIM(email) != ''
+          AND badge_type = 'Visitor Pass' AND COALESCE(main_event, 1) = 1 AND ${STUDENT_RANK_SQL} = 0 AND ${co} NOT IN (${noCo})
+          AND ${co} IN (SELECT ${co} FROM attendees WHERE event_id = 1 AND badge_type = 'Visitor Pass' AND COALESCE(main_event, 1) = 1 GROUP BY ${co} HAVING COUNT(*) >= ${GROUP_MIN})
+          ${sc}${offerNotSentSql('groups', 'attendees.email')} ORDER BY id`).bind(...NO_COMPANY).all()
+    return (results as any[]) || []
+  }
+  if (audience === 'media') {
+    // Registered on a free pass, with a title or company that says media or creator,
+    // and no Media & Influencer request from that address yet.
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE event_id = 1 AND email IS NOT NULL AND TRIM(email) != ''
+          AND badge_type = 'Visitor Pass' AND ${MEDIA_TITLE_SQL}
+          AND NOT EXISTS (SELECT 1 FROM inquiries q WHERE q.inquiry_type = 'media' AND lower(q.email) = lower(attendees.email))
+          ${sc}${offerNotSentSql('media', 'attendees.email')} ORDER BY id`).all()
     return (results as any[]) || []
   }
   if (audience === 'speakers') {
@@ -3568,6 +3600,30 @@ async function offerMail(c: any, audience: string, a: any, to: string, preview: 
       `<p style="margin:0;font-size:12px;line-height:1.6;color:#888;text-align:center;">The link only opens the booking page at the lower price. It does not sign anyone in to your account, so it is safe to share. They pay on CCAvenue’s secure page.</p>`)
     return { subject: hello + `bring a colleague to Bharat AI Innovation, ${COLLEAGUE_PCT}% off`, html }
   }
+  const site = (await settingValue(c, 'app_url') || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+  if (audience === 'groups') {
+    // A free Visitor at a company with others registered: book the team together.
+    const company = String(a?.company || '').trim()
+    const top = GROUP_TIERS[0], small = GROUP_TIERS[GROUP_TIERS.length - 1]
+    const prices = GROUP_PASSES.map(p => `<strong>${payEsc(p)}</strong>: &#8377;${groupUnitInr(p, top.min).toLocaleString('en-IN')} + GST each for ${top.min} or more <span style="color:#888;">(usually &#8377;${passPriceInr(p).toLocaleString('en-IN')})</span>`)
+    const html = shell('Come as a team', payP(`Thank you for registering for Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.`) +
+      payP(`Coming with colleagues${company ? ' from <strong>' + payEsc(company) + '</strong>' : ''}? Book your passes together, paid online in one go:`) +
+      li([`${small.min} or ${top.min - 1} passes: <strong>${groupPctFor(small.min)}% off each</strong>`, `${top.min} or more passes: <strong>${top.pct}% off each</strong>`]) +
+      li(prices) +
+      payP('One person pays and gets the receipt; each person gets their own pass by email. Every paid pass has guaranteed entry on both days, every conference session and lunch. Put yourself on the list too, and your free pass becomes the paid one.') +
+      `<div style="text-align:center;margin:18px 0 8px;">${payButton(site + '/group', 'Book for my team')}</div>` +
+      `<p style="margin:0;font-size:12px;line-height:1.6;color:#888;text-align:center;">Delegate, Premium Delegate or VIP, one kind of pass per booking. You pay on CCAvenue’s secure page.</p>`)
+    return { subject: hello + `book your team’s passes together, up to ${top.pct}% off`, html }
+  }
+  if (audience === 'media') {
+    // Registered, and their title or company says media or creator: apply for a pass.
+    const html = shell('Cover Bharat AI Innovation', payP(`You are registered for Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai. Thank you.`) +
+      payP('If you write, report or create content about AI, technology or business, you can apply for a <strong>Media Pass</strong> or an <strong>Influencer Pass</strong>:') +
+      li(['Journalists, editors and broadcasters: the Media Pass', 'Creators on Instagram, YouTube, LinkedIn, X or a podcast: the Influencer Pass']) +
+      payP(`Tell us about your work, your channels and how you would cover the event. ${MEDIA_PASS_REPLY} If we approve your request, the email has the link to your pass.`) +
+      `<div style="text-align:center;margin:18px 0 8px;">${payButton(site + '/media-pass', 'Apply for a pass')}</div>`)
+    return { subject: hello + 'apply for a Media or Influencer Pass to Bharat AI Innovation', html }
+  }
   const url = preview ? '#preview' : await showcaseLinkUrl(c, to)
   const slot = SHOWCASE_PRICES_INR[SHOWCASE_SLOT].toLocaleString('en-IN'), vip = SHOWCASE_PRICES_INR[SHOWCASE_SLOT_VIP].toLocaleString('en-IN')
   const html = shell('A slot on the Innovation Stage',
@@ -3585,7 +3641,7 @@ async function offerMail(c: any, audience: string, a: any, to: string, preview: 
 app.post('/api/admin/offers/send', async (c) => {
   const audience = String(c.req.query('audience') || '')
   if (!OFFER_AUDIENCES[audience]) return c.json({ error: 'Unknown offer audience.' }, 400)
-  if (!offersActive()) return c.json({ skipped: true, reason: 'The last-week offers are off or over.' })
+  if (!offerOpen(audience)) return c.json({ skipped: true, reason: 'The last-week offers are off or over.' })
   let a: any = null, to = ''
   if (audience === 'speakers') {
     to = String(c.req.query('email') || '').trim().toLowerCase()
@@ -3606,6 +3662,8 @@ app.post('/api/admin/offers/send', async (c) => {
     if (audience === 'exhibitors' && !exhibitorOfferHolder(a)) return c.json({ skipped: true, reason: 'Holds ' + (badge || 'no pass') + ' now' })
     if (audience === 'colleagues' && !colleagueHost(a)) return c.json({ skipped: true, reason: 'Holds ' + (badge || 'no pass') + ' now, not a paid Delegate, Premium Delegate or VIP Pass' })
     if (audience === 'colleagues' && !(await groupReady(c))) return c.json({ skipped: true, reason: 'Group booking is not set up yet (migration 0059)' })
+    if ((audience === 'groups' || audience === 'media') && badge !== 'Visitor Pass') return c.json({ skipped: true, reason: 'Holds ' + (badge || 'no pass') + ' now' })
+    if (audience === 'groups' && !(await groupReady(c))) return c.json({ skipped: true, reason: 'Group booking is not set up yet (migration 0059)' })
   }
   if (!validEmailSyntax(to)) return c.json({ skipped: true, reason: 'No usable email address' })
   if (a?.unsubscribed_at || String(a?.marketing_consent ?? '') === '0') return c.json({ skipped: true, reason: 'Unsubscribed, or said no to email' })
@@ -3633,6 +3691,8 @@ app.get('/api/admin/offers', async (c) => {
   }
   const audiences: Record<string, number> = {}
   for (const k of Object.keys(OFFER_AUDIENCES)) audiences[k] = (await offerAudienceRows(c, k).catch(() => [])).length
+  // The Student Pass email is the upgrade campaign's (UPGRADE_OFFERS.students), listed here too.
+  audiences.students = (await campaignAudienceRows(c, 'upgrade', 'students').catch(() => [])).length
   const sold = (((await c.env.DB.prepare(
     `SELECT pass_type, previous_badge, COUNT(*) AS n, COALESCE(SUM(amount_paise), 0) AS paise FROM payment_orders
       WHERE event_id = 1 AND status = 'paid' AND paid_at >= '2026-11-12' AND (pass_type IN (?, ?) OR (pass_type = 'VIP Pass' AND previous_badge IN ('Delegate Pass', 'Premium Delegate Pass', 'Exhibitor', 'Exhibition Speaker')) OR pass_type = 'Student Pass')
@@ -19593,6 +19653,11 @@ const UPGRADE_AUDIENCE_SQL: Record<string, string> = {
 }
 const UPGRADE_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
     WHERE cp.kind = 'upgrade' AND cr.attendee_id IS NOT NULL AND cr.status IN ('pending', 'sending', 'sent'))`
+// The Student Pass (Rs 999 with a workshop) is a new offer from 12 Nov 2026: a student
+// sent the Academic Pass email before then hears of it once more (13 Nov: 313 had been).
+const STUDENT_PASS_FROM = '2026-11-12'
+const UPGRADE_STUDENTS_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+    WHERE cp.kind = 'upgrade' AND (cp.audience != 'students' OR cp.created_at >= '${STUDENT_PASS_FROM}') AND cr.attendee_id IS NOT NULL AND cr.status IN ('pending', 'sending', 'sent'))`
 
 // The upgrade email's subject test: A for an even registration number, B for odd.
 const upgradeSubjectVariant = (id: any): 'A' | 'B' => (Math.abs(Number(id) || 0) % 2 === 1 ? 'B' : 'A')
@@ -19855,7 +19920,7 @@ app.get('/api/admin/campaigns/upgrade-audiences', async (c) => {
           SUM(CASE WHEN cr.status = 'sent' THEN 1 ELSE 0 END) AS sent,
           SUM(CASE WHEN cr.status IN ('pending','sending') THEN 1 ELSE 0 END) AS left_to_send
         FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
-        WHERE cp.kind = 'upgrade' GROUP BY cp.audience, cp.status`
+        WHERE cp.kind = 'upgrade' AND (cp.audience != 'students' OR cp.created_at >= '${STUDENT_PASS_FROM}') GROUP BY cp.audience, cp.status`
     ).all()
     for (const r of (results as any[]) || []) {
       const q = onCampaign[r.audience] || (onCampaign[r.audience] = { total: 0, sent: 0, left: 0, paused: false })
@@ -19970,7 +20035,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
     const { results } = await c.env.DB.prepare(
       `SELECT id, name, email FROM attendees
         WHERE event_id = ? AND email IS NOT NULL AND TRIM(email) != '' AND badge_type = 'Visitor Pass'
-          AND ${who}${mc}${sc}${UPGRADE_NOT_YET_SQL}
+          AND ${who}${mc}${sc}${audience === 'students' ? UPGRADE_STUDENTS_NOT_YET_SQL : UPGRADE_NOT_YET_SQL}
         ORDER BY id`
     ).bind(eventId).all()
     return (results as any[]) || []
@@ -20024,9 +20089,9 @@ app.post('/api/admin/campaigns', async (c) => {
   }
   // Last-week offers (LAST-WEEK OFFERS): one of three audiences, each written to once.
   if (kind === 'offer') {
-    if (!OFFER_AUDIENCES[audience]) return c.json({ error: 'An offer campaign is for vip_delegates, exhibitors, speakers or colleagues.' }, 400)
-    if (!offersActive()) return c.json({ error: 'Switch the last-week offers on first.' }, 409)
-    if (audience === 'colleagues' && !(await groupReady(c))) return c.json({ error: 'The colleague invitation books on the group page, which needs migration 0059 first.' }, 409)
+    if (!OFFER_AUDIENCES[audience]) return c.json({ error: 'An offer campaign is for ' + Object.keys(OFFER_AUDIENCES).join(', ') + '.' }, 400)
+    if (!offerOpen(audience)) return c.json({ error: 'Switch the last-week offers on first.' }, 409)
+    if ((audience === 'colleagues' || audience === 'groups') && !(await groupReady(c))) return c.json({ error: 'The colleague invitation books on the group page, which needs migration 0059 first.' }, 409)
     refId = OFFER_AUDIENCES[audience].refId
   }
   if (kind === 'announcement' && !refId) return c.json({ error: 'An announcement campaign needs the announcement id.' }, 400)
@@ -50603,7 +50668,7 @@ function adminPageScript(): string {
     // ============ LAST-WEEK OFFERS (Payments) ============
     // The screen is /js/admin-offers.js (one global, OffersDesk), loaded the first
     // time Payments opens; it draws itself into #offers-block.
-    var OFFERS_DESK_VERSION = '20261113a';
+    var OFFERS_DESK_VERSION = '20261113b';
     var offersDeskAsset = null;
     function loadOffersDesk() {
       var host = document.getElementById('offers-block');

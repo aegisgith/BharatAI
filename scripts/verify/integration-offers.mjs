@@ -209,5 +209,48 @@ check('turned off: Delegate to VIP is the difference again', s.status === 201 &&
 r = await hit('GET', '/passes');
 check('turned off: the FAQ no longer mentions the offer', !/Can I speak on stage\?/.test(r.text), '');
 
+// ---- 10. the emails not tied to the switch (13 Nov): students, group booking, media ----
+exec('0059_group_orders.sql');
+const recips = (id) => q('SELECT email FROM campaign_recipients WHERE campaign_id = ? ORDER BY id', id).map(x => x.email);
+for (const i of [701, 702, 703]) person(i, { name: 'Acme ' + i, email: `a${i}@acme.example`, company: 'Acme Robotics', job_title: 'Engineer' });
+person(704, { name: 'Acme Student', email: 'a704@acme.example', company: 'Acme Robotics', job_title: 'Student' });
+for (const i of [705, 706]) person(i, { name: 'Beta ' + i, email: `b${i}@beta.example`, company: 'Beta', job_title: 'CTO' });
+for (const i of [707, 708, 709]) person(i, { name: 'No Company ' + i, email: `n${i}@x.example`, company: 'NA', job_title: 'Manager' });
+person(710, { name: 'Neha Reporter', email: 'neha@news.example', company: 'City News', job_title: 'Senior Reporter' });
+person(711, { name: 'Applied Creator', email: 'creator@yt.example', company: 'Own channel', job_title: 'YouTuber' });
+db.run("INSERT INTO inquiries (event_id, inquiry_type, name, email, subject, status) VALUES (1, 'media', 'Applied Creator', 'creator@yt.example', 'Influencer Pass', 'new')");
+person(712, { name: 'Paid Editor', email: 'editor@paid.example', job_title: 'Editor', badge_type: 'Delegate Pass', payment_amount: '10618.82' });
+person(720, { name: 'Old Mail Student', email: 's720@uni.example', company: 'Uni', job_title: 'Student' });
+person(721, { name: 'New Mail Student', email: 's721@uni.example', company: 'Uni', job_title: 'Student' });
+db.run("INSERT INTO campaigns (id, kind, title, ref_id, audience, status, total, sent, created_at) VALUES (901, 'upgrade', 'Upgrade offer: Academic Pass to students', 2, 'students', 'done', 1, 1, '2026-11-01 04:00:04'), (902, 'upgrade', 'Upgrade offer: Student Pass to students', 2, 'students', 'done', 1, 1, '2026-11-13 03:00:00')");
+db.run("INSERT INTO campaign_recipients (campaign_id, attendee_id, email, name, status) VALUES (901, 720, 's720@uni.example', 'Old Mail Student', 'sent'), (902, 721, 's721@uni.example', 'New Mail Student', 'sent')");
+
+r = await hit('GET', '/api/admin/offers', undefined, ADMIN);
+check('Admin lists the three new audiences with a count, offers off', r.status === 200 && r.json.active === false && typeof r.json.audiences.students === 'number' && typeof r.json.audiences.groups === 'number' && typeof r.json.audiences.media === 'number', JSON.stringify(r.json?.audiences));
+r = await hit('GET', '/api/admin/offers/preview?audience=groups', undefined, ADMIN);
+check('the group email preview: the team booking, both tiers, the button to /group', r.status === 200 && /book your team’s passes together, up to 30% off/.test(r.json.subject) && /3 or 4 passes: <strong>15% off each/.test(r.json.html) && /5 or more passes: <strong>30% off each/.test(r.json.html) && r.json.html.includes('/group"') && r.json.html.includes('&#8377;6,299 + GST each for 5 or more'), r.text.slice(0, 300));
+r = await hit('POST', '/api/admin/campaigns', { kind: 'offer', audience: 'groups' }, ADMIN);
+const gr = r.status === 201 ? recips(r.json.id) : [];
+check('the group run, with the offers off: the three at Acme, not the student, not a pair at Beta, not "NA"', r.status === 201 && ['a701@acme.example', 'a702@acme.example', 'a703@acme.example'].every(e => gr.includes(e)) && !gr.includes('a704@acme.example') && !gr.some(e => /beta\.example|@x\.example/.test(e)), r.status + ' ' + JSON.stringify(gr));
+sent.length = 0;
+// The last bulk send was moments ago: as if the shared gap has passed.
+setting('profile_reminder_last_sent_at', '1970-01-01T00:00:00.000Z');
+r = await hit('POST', '/api/admin/offers/send?audience=groups&attendee=701&force=1', undefined, ADMIN);
+await settle(100);
+const gm = mailTo('a701@acme.example').pop();
+check('a group email goes, naming their company, with no sign-in link', r.json?.success && gm && html(gm).includes('Acme Robotics') && !/token=/.test(html(gm)), r.text);
+r = await hit('POST', '/api/admin/campaigns', { kind: 'offer', audience: 'media' }, ADMIN);
+const mr = r.status === 201 ? recips(r.json.id) : [];
+check('the media run: the reporter; not the creator who has applied, not a paid pass', r.status === 201 && mr.includes('neha@news.example') && !mr.includes('creator@yt.example') && !mr.includes('editor@paid.example'), r.status + ' ' + JSON.stringify(mr));
+r = await hit('GET', '/api/admin/offers/preview?audience=media', undefined, ADMIN);
+check('the media email preview: apply, the reply promise, the button to /media-pass', r.status === 200 && /apply for a Media or Influencer Pass/.test(r.json.subject) && r.json.html.includes('/media-pass"') && /2 working days/.test(r.json.html), r.text.slice(0, 200));
+r = await hit('POST', '/api/admin/campaigns', { kind: 'offer', audience: 'colleagues' }, ADMIN);
+check('the colleague email still needs the switch on', r.status === 409, r.status + ' ' + r.text);
+r = await hit('GET', '/api/admin/campaigns/upgrade-preview?audience=students', undefined, ADMIN);
+check('the Student Pass email preview offers the Student Pass', r.status === 200 && /Student Pass/.test(r.json.html), r.text.slice(0, 200));
+r = await hit('POST', '/api/admin/campaigns', { kind: 'upgrade', audience: 'students' }, ADMIN);
+const sr = r.status === 201 ? recips(r.json.id) : [];
+check('the Student Pass run: a student sent the old Academic email (1 Nov) gets it; one sent the Student Pass email (13 Nov) does not', r.status === 201 && sr.includes('s720@uni.example') && !sr.includes('s721@uni.example') && sr.includes('a704@acme.example'), r.status + ' ' + JSON.stringify(sr));
+
 console.log(fails() ? `\n${fails()} FAILED` : '\nALL PASSED');
 process.exit(fails() ? 1 : 0);

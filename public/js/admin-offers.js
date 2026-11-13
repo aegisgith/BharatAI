@@ -14,11 +14,16 @@
   var S = { host: null, api: null, d: null, people: null, open: false, msg: '', busy: false };
   var BTN = 'px-3 py-1.5 rounded-lg text-[11px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30';
   var GHOST = 'px-2.5 py-1.5 rounded-lg text-[11px] glass hover:bg-white/10 text-gray-300';
+  // In the order to send them. always: not tied to the offers switch. upgrade: the
+  // Student Pass email is the upgrade campaign's (kind 'upgrade', audience 'students').
   var AUD = {
     vip_delegates: { label: 'Paid Delegates and Premium Delegates', offer: 'VIP for the offer price' },
     exhibitors: { label: 'Exhibitor and Exhibition Speaker passes', offer: 'VIP at the booth price' },
-    speakers: { label: 'People who asked to speak (ticked below)', offer: 'a paid showcase slot' },
     colleagues: { label: 'Paid Delegates, Premium Delegates and VIPs', offer: 'bring a colleague, 15% off' },
+    speakers: { label: 'People who asked to speak (ticked below)', offer: 'a paid showcase slot' },
+    students: { label: 'Students on a free Visitor Pass', offer: 'the Student Pass, &#8377;999 with a workshop', always: true, upgrade: true },
+    groups: { label: 'Free visitors at companies with 3 or more registered', offer: 'group booking, up to 30% off', always: true },
+    media: { label: 'Registered journalists, editors and creators', offer: 'apply for a Media or Influencer Pass', always: true },
   };
 
   function mount(host, api) {
@@ -72,9 +77,9 @@
       var n = (d.audiences || {})[k] || 0;
       return '<div class="flex flex-wrap items-center gap-3 py-3 border-b border-white/5">' +
         '<div style="flex:1;min-width:200px;"><div class="text-sm text-gray-200">' + AUD[k].label + '</div>' +
-        '<div class="text-[11px] text-gray-500">Offer: ' + AUD[k].offer + '. ' + n + ' still to write to (anyone already sent this offer is left out).</div></div>' +
+        '<div class="text-[11px] text-gray-500">Offer: ' + AUD[k].offer + '. ' + n + ' still to write to (anyone already sent this offer is left out).' + (AUD[k].always ? ' Open to everyone, so it may go with the offers off.' : '') + '</div></div>' +
         '<button type="button" class="' + GHOST + '" data-act="preview" data-aud="' + k + '">Preview</button>' +
-        '<button type="button" class="' + BTN + '" data-act="send" data-aud="' + k + '" data-n="' + n + '"' + (!d.active || !n ? ' disabled style="opacity:.5;"' : '') + '>Send to ' + n + '</button>' +
+        '<button type="button" class="' + BTN + '" data-act="send" data-aud="' + k + '" data-n="' + n + '"' + ((!d.active && !AUD[k].always) || !n ? ' disabled style="opacity:.5;"' : '') + '>Send to ' + n + '</button>' +
         '</div>';
     }).join('');
     var people = '';
@@ -116,7 +121,7 @@
           '<div class="max-h-96 overflow-y-auto pr-1">' + slots + '</div>'
         : '<p class="text-[11px] text-amber-300 mb-3">Needs migration 0058 (showcase_slots). Until it runs the booking page says the slots open shortly.</p>') +
       '<div class="text-sm font-semibold text-white mb-1" style="margin-top:16px;">Offer emails</div>' +
-      '<p class="text-[11px] text-gray-500 mb-1">From register@, one every ' + Number(d.gap_seconds || 0) + ' s between ' + esc(d.window || '') + ' IST, sent by the minute clock (progress under Settings, Bulk email).</p>' +
+      '<p class="text-[11px] text-gray-500 mb-1">From register@, one every ' + Number(d.gap_seconds || 0) + ' s between ' + esc(d.window || '') + ' IST, sent by the minute clock (progress under Settings, Bulk email). Pressed before 9am, they wait and start at 9am by themselves. Preview shows the email as the first person would get it.</p>' +
       aud +
       '<div style="margin-top:12px;"><button type="button" class="' + GHOST + '" data-act="people">' + (S.open ? 'Hide' : 'Show') + ' the people who asked to speak</button></div>' +
       (S.open ? '<div style="margin-top:12px;">' + people + '</div>' : '') +
@@ -125,7 +130,8 @@
   }
   function say(t, bad) { S.msg = t; var m = document.getElementById('offers-msg'); if (m) { m.textContent = t; m.style.color = bad ? '#fca5a5' : '#86efac'; } }
   function preview(aud) {
-    S.api.get('/api/admin/offers/preview?audience=' + encodeURIComponent(aud)).then(function (r) {
+    var url = AUD[aud] && AUD[aud].upgrade ? '/api/admin/campaigns/upgrade-preview?audience=' + encodeURIComponent(aud) : '/api/admin/offers/preview?audience=' + encodeURIComponent(aud);
+    S.api.get(url).then(function (r) {
       var wrap = document.createElement('div');
       wrap.setAttribute('style', 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px;');
       wrap.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:680px;width:100%;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">' +
@@ -141,7 +147,7 @@
     if (S.busy) return;
     if (!window.confirm('Send the ' + AUD[aud].offer + ' email to ' + n + ' people? Each person gets it once, from register@, paced by the minute clock.')) return;
     S.busy = true;
-    S.api.post('/api/admin/campaigns', ids ? { kind: 'offer', audience: aud, inquiry_ids: ids } : { kind: 'offer', audience: aud })
+    S.api.post('/api/admin/campaigns', ids ? { kind: 'offer', audience: aud, inquiry_ids: ids } : { kind: AUD[aud].upgrade ? 'upgrade' : 'offer', audience: aud })
       .then(function (r) { S.busy = false; S.msg = 'Started: ' + Number(r.total || 0) + ' emails queued (run ' + Number(r.id) + '). They go one at a time between 9am and 9pm.'; S.people = null; return load().then(function () { if (S.open) loadPeople(); }); })
       .catch(function (e) { S.busy = false; say(e.message, true); });
   }
