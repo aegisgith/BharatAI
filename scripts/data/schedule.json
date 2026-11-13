@@ -20,14 +20,14 @@
     { "hall": "bhabha", "day": 1, "start": "11:20", "end": "11:30", "type": "keynote", "label": "Keynote", "speaker": { "name": "Shri Kaustubh Dhavse", "role": "Chief Advisor to the Chief Minister, Government of Maharashtra" } },
     { "hall": "bhabha", "day": 1, "start": "11:30", "end": "12:30", "type": "panel", "label": "Panel: Governance", "track": "Government & Public Sector AI", "title": "AI for Viksit Bharat: Igniting 1.4 Billion Dreams and Transforming Governance",
       "panel": [
+        { "name": "Shri Vivek Khandekar (IFS)", "org": "Maharashtra Forest Department" },
+        { "name": "Shri K.K. Singh", "org": "MeitY" },
+        { "name": "Shri Sudeep Shrivastava", "org": "IndiaAI Mission" },
+        { "name": "Shri Praveen Pardeshi", "org": "MITRA" },
+        { "name": "Shri Kaustubh Dhavse", "org": "Government of Maharashtra" },
         { "name": "Shri Akshay Yadava", "org": "UIDAI" },
         { "name": "Shri Ganesh Nagarajan", "org": "Ministry of Tribal Affairs" },
-        { "name": "Shri K.K. Singh", "org": "MeitY" },
-        { "name": "Shri Sachin Itkar", "org": "MEDC" },
-        { "name": "Shri Praveen Pardeshi", "org": "MITRA" },
-        { "name": "Shri Sudeep Shrivastava", "org": "IndiaAI Mission" },
-        { "name": "Shri Kaustubh Dhavse", "org": "Government of Maharashtra" },
-        { "name": "Shri Vivek Khandekar (IFS)", "org": "Maharashtra Forest Department" }
+        { "name": "Shri Sachin Itkar", "org": "MEDC" }
       ],
       "moderator": { "name": "Mr. Bhupesh Daheria", "org": "Aegis Knowledge Trust" } },
     { "hall": "bhabha", "day": 1, "start": "12:30", "end": "12:40", "type": "keynote", "label": "Keynote", "speaker": { "name": "Shri Prakash Kumar", "role": "Additional Director, IndiaAI Mission, MeitY" } },
@@ -141,11 +141,11 @@
     { "hall": "aryabhata", "day": 2, "start": "10:40", "end": "11:00", "type": "talk", "label": "Leadership Talk", "track": "Healthcare & Life Sciences AI", "title": "Artificial Intelligence: From Molecules to Medicines", "speaker": { "name": "Dr. Sameer Agarwal", "role": "Executive Vice President, Molecule AI" } },
     { "hall": "aryabhata", "day": 2, "start": "11:00", "end": "12:00", "type": "panel", "label": "Panel: Agriculture", "track": "Agricultural AI", "title": "Transforming Indian Agriculture with AI: Doubling Farmer Income",
       "panel": [
-        { "name": "Dr. Vivek Mohanrao Bhoite", "org": "KVK Baramati, ICAR-ATARI" },
-        { "name": "Manish K. Prahlad", "org": "Verdant Impact" },
         { "name": "Shri Bhanudas Palwe (IAS)", "org": "Commissioner of Fisheries Maharashtra" },
-        { "name": "Dr. Omprakash Mandge", "org": "MET" },
+        { "name": "Dr. Vivek Mohanrao Bhoite", "org": "KVK Baramati, ICAR-ATARI" },
         { "name": "Parag Dabhade", "org": "Agriculture Department, Government of Maharashtra" },
+        { "name": "Manish K. Prahlad", "org": "Verdant Impact" },
+        { "name": "Dr. Omprakash Mandge", "org": "MET" },
         { "name": "Dr. Santosh Vyas", "org": "Kemin Animal Nutrition & Health" }
       ] },
     { "hall": "aryabhata", "day": 2, "start": "12:00", "end": "12:20", "type": "talk", "label": "Innovation Talk", "company": "Nu10 Technologies" },

@@ -69,14 +69,24 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 
 ## Confirmed speakers
 
+- **Hon’ble Shri Devendra Fadnavis** — Chief Minister of Maharashtra (inaugural keynote, 20 Nov)
 - **Hon'ble Shri Chandrakant Dada Patil** — Minister of Higher & Technical Education, Government of Maharashtra
 - **Hon'ble Shri Dattatray Bharane** — Minister of Agriculture, Government of Maharashtra
 - **Hon'ble Shri Ashish Nandkishore Jaiswal** — Minister of State for Finance, Planning, Agriculture, Assistance and Rehabilitation, Government of Maharashtra
+- **Shri Virendra Singh (IAS)** — Secretary, Electronics, Information Technology and Artificial Intelligence Department, Government of Maharashtra
+- **Shri Bhim Singh** — Secretary and CEO, State Rural Development Agency, Government of Chhattisgarh
+- **Shri Vivek Khandekar (IFS)** — Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department
 - **Shri. K.K. Singh** — Joint Secretary, Ministry of Electronics & Information Technology (MeitY), Government of India
 - **Shri Sudeep Shrivastava** — Joint Secretary, MeitY; COO, IndiaAI Mission
-- **Shri Virendra Singh (IAS)** — Secretary, Electronics, Information Technology and Artificial Intelligence Department, Government of Maharashtra
-- **Shri Prakash Kumar** — Additional Director, Ministry of Electronics & Information Technology, Government of India; IndiaAI Mission
+- **Shri Suhas Mapari (IAS)** — Joint Secretary, Chief Minister's Secretariat; Additional CEO, Vision Management Unit for Viksit Maharashtra 2047, Government of Maharashtra
+- **Shri Praveen Pardeshi** — CEO, MITRA / Chief Economic Advisor to CM Maharashtra
+- **Shri Kaustubh Dhavse** — Chief Advisor to the Chief Minister (Investments, Infrastructure, Technology and Strategy), Government of Maharashtra
+- **Shri Bhanudas Palwe (IAS)** — Commissioner of Fisheries, Government of Maharashtra
+- **Dr. Kunal Khemnar (IAS)** — Joint Chief Executive Officer, Maharashtra Industrial Development Corporation (MIDC)
 - **Akshay Yadava** — Director, Unique Identification Authority of India (UIDAI)
+- **Shri Prakash Kumar** — Additional Director, Ministry of Electronics & Information Technology, Government of India; IndiaAI Mission
+- **Bhupesh Daheria** — CEO, Aegis School of Data Science & Artificial Intelligence
+- **Shri Sachin Itkar** — Vice President, Maharashtra Economic Development Council (MEDC)
 - **Sudhir Kumar Rai** — Director, Data Science, Trellix
 - **Simon David Hunter** — President, Asian Screen Institute (ASI), Singapore; former President, New York Film Academy (NYFA)
 - **Saurabh Kushwah** — Co-Founder & Chief Product and Technology Officer, BULLET Microdrama, ZEEL (panel: Content, Creativity & AI, Day 2)
@@ -87,22 +97,12 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 - **Shallu Kaushik** — Chief Digital Officer, Tata Capital
 - **Dr. Pawan Chawla** — Senior VP & CISO, Tata AIA Life Insurance
 - **Abhay Tewari** — MD & CEO, Star Union Dai-ichi Life Insurance
-- **Hon’ble Shri Devendra Fadnavis** — Chief Minister of Maharashtra (inaugural keynote, 20 Nov)
 - **Nilesh Shah** — Managing Director, Kotak Mahindra Asset Management
 - **Reny Varghese** — Chief Operating Officer, Zynova Shalby Hospitals
 - **Dr. Vivek Mohanrao Bhoite** — Subject Matter Specialist, KVK Baramati, ICAR-ATARI
-- **Shri Praveen Pardeshi** — CEO, MITRA / Chief Economic Advisor to CM Maharashtra
-- **Dr. Kunal Khemnar (IAS)** — Joint Chief Executive Officer, Maharashtra Industrial Development Corporation (MIDC)
-- **Shri Suhas Mapari (IAS)** — Joint Secretary, Chief Minister's Secretariat; Additional CEO, Vision Management Unit for Viksit Maharashtra 2047, Government of Maharashtra
-- **Shri Kaustubh Dhavse** — Chief Advisor to the Chief Minister (Investments, Infrastructure, Technology and Strategy), Government of Maharashtra
-- **Shri Vivek Khandekar (IFS)** — Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department
-- **Shri Sachin Itkar** — Vice President, Maharashtra Economic Development Council (MEDC)
-- **Shri Bhanudas Palwe (IAS)** — Commissioner of Fisheries, Government of Maharashtra
-- **Shri Bhim Singh** — Secretary and CEO, State Rural Development Agency, Government of Chhattisgarh
 - **Dr. Ashish Tendulkar** — Lead AI, Google
 - **Shailesh Dhuri** — CEO, Decimal Point Analytics
 - **Rajesh Dhuddu, PhD** — Partner & Emerging Tech Leader, PwC
-- **Bhupesh Daheria** — CEO, Aegis School of Data Science & Artificial Intelligence
 - **Mukesh Jain** — Global EVP & CTO, Capgemini
 - **Pravin Kumar** — Chief Market Information Security Officer & Data Protection Officer, National Payments Corporation of India (NPCI)
 - **Manish Agrawal** — President & Chief Operating Officer, Comviva
