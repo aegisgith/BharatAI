@@ -19659,6 +19659,21 @@ const STUDENT_PASS_FROM = '2026-11-12'
 const UPGRADE_STUDENTS_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
     WHERE cp.kind = 'upgrade' AND (cp.audience != 'students' OR cp.created_at >= '${STUDENT_PASS_FROM}') AND cr.attendee_id IS NOT NULL AND cr.status IN ('pending', 'sending', 'sent'))`
 
+// The workshops named in the upgrade emails (organiser, 13 Nov 2026: every workshop
+// with its instructor, IBM's too), as scripts/data/schedule.json and
+// /training-workshop list them that day. Written by hand: change it when a workshop,
+// a topic or a trainer changes. [title, what follows it]
+const EMAIL_WORKSHOPS: [string, string][] = [
+  ['Workshop by IBM', ' (topic and trainer to be announced)'],
+  ['From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers', ', with Dr. Ashish Tendulkar, Google AI'],
+  ['Data Science to Agentic AI: A CXO&rsquo;s Guide to Strategic Decision-Making', ', with Dr. Vinay Kulkarni, IIT Bombay and Aegis School of Data Science &amp; AI'],
+  ['LLM Fine-Tuning, Hands-On', ', with Virendra Pal, AI and FinTech Expert'],
+  ['Automatic Speech Recognition (Speech-to-Text)', ', with Dr. Parijat Shukla, PhD, Iowa State University'],
+  ['A second workshop with Dr. Ashish Tendulkar', ', Google AI (topic to be announced)'],
+]
+// The organiser's figure for the Innovation Stage (13 Nov 2026).
+const EMAIL_INNOVATION_TALKS = 40
+
 // The upgrade email's subject test: A for an even registration number, B for odd.
 const upgradeSubjectVariant = (id: any): 'A' | 'B' => (Math.abs(Number(id) || 0) % 2 === 1 ? 'B' : 'A')
 
@@ -19802,26 +19817,36 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
   // Organiser, 28 Oct 2026: name every feature. The workshop is NOT in the
   // Delegate Pass (Premium Delegate and VIP only), so it is offered below the list
   // as the step up, never inside it.
+  // Organiser, 13 Nov 2026: show what the workshops are worth (every one with its
+  // instructor, IBM's too), the certificate, and the 40 Innovation Talks, as bullets.
+  const talks = `${EMAIL_INNOVATION_TALKS} Innovation Talks and Showcases: companies building AI for India present their work and demo it live on the Innovation Stage`
   const lines = academic ? [
     'Guaranteed entry on both days, 20&ndash;21 November 2026, World Trade Center, Mumbai, at the student rate',
-    'Access to the entire conference: every keynote, panel discussion and Innovation Talk',
+    'Access to the entire conference: every keynote and panel discussion',
+    talks,
     'The Bharat AI Connect networking app: the full attendee directory, connection requests, and meetings you book before you arrive',
-    'One hands-on workshop with an industry expert, your seat chosen in the app (student seats are limited)',
+    'One hands-on workshop with an industry expert, your seat chosen in the app (student seats are limited): the workshops are below',
+    'A certificate of participation, naming your pass and the workshop you attended',
     'The student networking zone, on top of the exhibition floor',
   ] : [
     'Guaranteed entry on both days, 20&ndash;21 November 2026, World Trade Center, Mumbai',
-    'Access to the entire conference: every keynote, panel discussion and Innovation Talk across both days',
+    'Access to the entire conference: every keynote and panel discussion across both days',
+    talks,
     'The Bharat AI Connect networking app: search everyone attending, start conversations and book 1:1 meetings before you arrive',
-    'Networking lunch at the venue, the conference kit and a certificate of participation',
+    'Networking lunch at the venue and the conference kit',
+    'A certificate of participation, naming your pass',
     'The exhibition floor and product demos',
   ]
+  const workshopList = `<ul style="margin:0 0 10px 18px;padding:0;font-size:13.5px;line-height:1.6;color:#1E2140;">${EMAIL_WORKSHOPS.map(([t, by]) => `<li style="margin:0 0 6px;"><strong>${t}</strong>${by}</li>`).join('')}</ul>`
   const premiumHref = preview ? '#preview' : href.replace('pass=delegate', 'pass=premium')
-  const workshopBox = academic ? (offersActive()
-    ? `<div style="margin:14px 0 4px;padding:14px 16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;"><p style="margin:0;font-size:14px;line-height:1.6;color:#1E2140;"><strong>A hands-on workshop is included this week.</strong> Book your Academic Pass and choose your workshop seat in the app. Student seats are limited and go first come, first served.</p></div>`
-    : '') :
-    `<div style="margin:14px 0 4px;padding:14px 16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;">` +
-    `<p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#1E2140;"><strong>Want a hands-on workshop too?</strong> The <strong>Premium Delegate Pass</strong> (${priceNow('Premium Delegate Pass')} + GST) is everything above plus one workshop. Seats are limited and go first come, first served.</p>` +
-    `<a href="${premiumHref}" style="font-size:13.5px;font-weight:bold;color:#0B7A75;">Get Premium Delegate &rarr;</a></div>`
+  const workshopBox = academic
+    ? `<div style="margin:14px 0 4px;padding:14px 16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;">` +
+      `<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#1E2140;"><strong>Your workshop, included in the Student Pass.</strong> Choose one of these:</p>` + workshopList +
+      `<p style="margin:0;font-size:13px;line-height:1.6;color:#1E2140;">Book your Student Pass, then choose your seat in the app. Student seats are limited and go first come, first served.</p></div>`
+    : `<div style="margin:14px 0 4px;padding:14px 16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;">` +
+      `<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#1E2140;"><strong>Want a hands-on workshop too?</strong> The <strong>Premium Delegate Pass</strong> (${priceNow('Premium Delegate Pass')} + GST) is everything above plus one workshop of your choice:</p>` + workshopList +
+      `<p style="margin:0 0 6px;font-size:13px;line-height:1.6;color:#1E2140;">Seats are limited and go first come, first served. Your certificate names the workshop you attended.</p>` +
+      `<a href="${premiumHref}" style="font-size:13.5px;font-weight:bold;color:#0B7A75;">Get Premium Delegate &rarr;</a></div>`
   const item = (t: string) =>
     `<tr><td width="24" valign="top" style="padding:0 0 10px;color:#0f7b47;font-size:14px;">&#10003;</td>` +
     `<td valign="top" style="padding:0 0 10px;font-size:14px;line-height:1.6;color:#333;">${t}</td></tr>`
