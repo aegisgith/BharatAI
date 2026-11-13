@@ -47,8 +47,10 @@
     { "hall": "bhabha", "day": 1, "start": "16:15", "end": "16:30", "type": "talk", "label": "Innovation Talk", "track": "Government & Public Sector AI", "title": "Ganesh Kavach App", "speaker": { "name": "Shri Vivek Khandekar (IFS)", "role": "Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department" } },
     { "hall": "bhabha", "day": 1, "start": "16:30", "end": "17:30", "type": "panel", "label": "Panel: Agentic AI", "track": "GenAI & Agentic AI", "title": "The Rise of Autonomous Enterprises: Leaders' Strategies for GenAI & Agentic AI",
       "panel": [
+        { "name": "Ms. Surbhi Gupta", "org": "Birla Opus Paints" },
         { "name": "Abhay Sharma", "org": "IBM" },
-        { "name": "Akhil Gupta", "org": "NoBroker" }
+        { "name": "Akhil Gupta", "org": "NoBroker" },
+        { "name": "Raveesh Dewan", "org": "Joget Inc." }
       ],
       "moderator": { "name": "Mukesh Jain", "org": "Capgemini" } },
     { "hall": "bhabha", "day": 1, "start": "17:30", "end": "17:45", "type": "talk", "label": "Innovation Talk", "track": "Healthcare & Life Sciences AI", "title": "PrAImaan", "speaker": { "name": "Dr. Vishal Deo", "role": "Scientist-C, ICMR-NIRDH" } },
@@ -69,15 +71,18 @@
       "panel": [
         { "name": "Dr. Ashish Tendulkar", "org": "Google" },
         { "name": "Sudhir Kumar Rai", "org": "Trellix" },
+        { "name": "Ashwani Kumar", "org": "Nielsen" },
         { "name": "Mahalakshmi AV", "org": "AWS" }
       ],
       "moderator": { "name": "Mr. Bhupesh Daheria", "org": "Aegis Knowledge Trust" } },
     { "hall": "bhabha", "day": 2, "start": "12:00", "end": "12:30", "type": "keynote", "label": "Keynote", "track": "Government & Public Sector AI", "title": "The AI components of MANTHAN–UTTHAN", "speaker": { "name": "Shri Srinivas Kancharla", "role": "Program Specialist, Office of the Principal Scientific Adviser to the Government of India" } },
     { "hall": "bhabha", "day": 2, "start": "12:30", "end": "13:30", "type": "panel", "label": "Panel: Insurance", "track": "BFSI & FinTech AI", "title": "Reinventing Insurance for Bharat with AI: Expanding Access, Trust and Inclusion",
       "panel": [
-        { "name": "Sandeep Kumar", "org": "Go Digit Insurance" }
-      ],
-      "note": "More panellists to be announced." },
+        { "name": "Sandeep Kumar", "org": "Go Digit Insurance" },
+        { "name": "Abhay Tiwari", "org": "Star Union Dai-ichi Life Insurance" },
+        { "name": "Shallu Kaushik", "org": "Tata Capital" },
+        { "name": "Dr. Pawan Chawla", "org": "Tata AIA Life Insurance" }
+      ] },
     { "hall": "bhabha", "day": 2, "start": "13:30", "end": "14:15", "type": "break", "label": "Lunch", "title": "Networking Lunch", "note": "The exhibition floor stays open." },
     { "hall": "bhabha", "day": 2, "start": "14:15", "end": "15:15", "type": "talk", "label": "Product Demonstration", "track": "Healthcare & Life Sciences AI", "title": "Product Demonstration and Talk", "note": "By Pramaan AI Labs." },
     { "hall": "bhabha", "day": 2, "start": "15:15", "end": "16:15", "type": "panel", "label": "Panel: Media", "track": "Media & Entertainment AI", "title": "Content, Creativity & AI: Redefining Media, Personalization, and Digital Experiences",
