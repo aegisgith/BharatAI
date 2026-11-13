@@ -27696,21 +27696,50 @@ ${siteHeaderHTML('/passes')}
         <h1 class="ps-title" aria-label="Register for Bharat AI Innovation 2026"><span class="ps-w ps-w--big"><span style="--i:0">Register</span></span> <span class="ps-w"><span style="--i:1">for</span></span> <span class="ps-w"><span style="--i:2">Bharat</span></span> <span class="ps-w"><span style="--i:3">AI</span></span> <span class="ps-w"><span style="--i:4">Innovation</span></span> <span class="ps-w"><span style="--i:5">2026</span></span></h1>
         <p class="ps-hi" lang="hi" style="margin:4px 0 0;font-family:Mukta,Manrope,sans-serif;font-weight:800;font-size:clamp(20px,4vw,42px);line-height:1.15;"><span style="color:#E06A00;">भारत</span> <span style="color:#000080;">एआई</span> <span style="color:#138808;">इनोवेशन</span></p>
       </div>
-      <p class="ps-sub">World Trade Center, Mumbai, 20&ndash;21 Nov 2026.<span class="hidden sm:inline"> Take a free Visitor Pass for the exhibition floor, or a Delegate Pass for every session, the networking lunch, the networking app and guaranteed entry on both days.</span></p>
+      <p class="ps-sub">World Trade Center, Mumbai, 20&ndash;21 Nov 2026.<span class="hidden sm:inline"> A Delegate Pass gets you every session, the networking lunch, the networking app and guaranteed entry on both days.</span></p>
     </div>
   </section>
 
   <section class="rg-book" id="rg-book" aria-label="Choose your pass and register">
     <div class="ps-wrap">
       <div class="rg-switch" id="rg-switch" role="radiogroup" aria-label="Which pass do you want?">
-        <input class="rg-sr" type="radio" name="rg-view" id="rg-view-free" autocomplete="off" checked>
-        <label for="rg-view-free"><b>Free Visitor Pass</b><span>${waitlist ? 'Waiting list' : 'Entry by time slot'}</span></label>
-        <input class="rg-sr" type="radio" name="rg-view" id="rg-view-paid" autocomplete="off">
+        <input class="rg-sr" type="radio" name="rg-view" id="rg-view-paid" autocomplete="off" checked>
         <label for="rg-view-paid"><b>Paid pass</b><span>Guaranteed entry</span></label>
+        <input class="rg-sr" type="radio" name="rg-view" id="rg-view-free" autocomplete="off">
+        <label for="rg-view-free"><b>Free Visitor Pass</b><span>${waitlist ? 'Waiting list' : 'Entry by time slot'}</span></label>
         <i class="rg-glider" aria-hidden="true"></i>
       </div>
 
       <div class="rg-grid">
+        <!-- The paid passes -->
+        <div class="rg-paid">
+          <section class="rg-offer" aria-labelledby="rg-offer-title">
+            <h2 id="rg-offer-title">Want Full Conference Access?</h2>
+            <p>Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. A workshop comes with the Student, Premium Delegate and VIP passes: one each, seats first come, first served.</p>
+            <p class="rg-clock"><i class="fas fa-clock" aria-hidden="true"></i><span>${latePricing() ? PRICE_ROSE_TEXT : `Prices rise on ${PRICE_LATE_FROM_TEXT}. Book by ${PRICE_DEADLINE_TEXT} to pay the standard price.`}</span></p>
+            <ul class="rg-tiers">
+              ${tier('delegate', 'Delegate Pass', 'Delegate Pass', 'Full 2-day conference + networking lunch + networking app', 'Most popular', '#0F7B47', true)}
+              ${tier('premium', 'Premium Delegate Pass', 'Premium Delegate', 'Delegate + one workshop (first come, first served)', 'Includes a workshop', '#0B7A75')}
+              ${tier('vip', 'VIP Pass', 'VIP Pass', 'Premium + Bharat AI Leaders’ Evening + VIP lounge + speaker meet &amp; greet', 'All access', '#8A6500')}
+              ${tier('student', 'Student Pass', 'Student Pass', 'Conference + one workshop + student zone, with a student ID', 'Students', '#AD1457')}
+              ${tier('academic', 'Academic Pass', 'Academic Pass', 'Conference + student zone, with a faculty or institution ID', 'Faculty and researchers', '#6A4BE8')}
+            </ul>
+            <a href="#compare" class="rg-compare">Compare every pass, side by side</a>
+          </section>
+
+          <!-- Group Discount -->
+          <section class="rg-group" id="delegation-section" aria-labelledby="rg-group-title">
+            <h3 id="rg-group-title">Group Registration</h3>
+            <p>Bringing a team? ${GROUP_RULE_TEXT}</p>
+            <div class="rg-group-go">
+              <a href="/group" class="rg-ghost">Book for your group</a>
+              <a href="#compare" class="ps-link">Compare passes</a>
+            </div>
+          </section>
+          <p class="rg-swap">Just the exhibition floor? <label for="rg-view-free">Get the free Visitor Pass</label></p>
+        </div>
+
+        <!-- The free pass: second, and the form a free link opens on -->
         <div class="rg-free">
           <div class="rg-card">
             <div id="reg-intro">
@@ -27955,34 +27984,6 @@ ${siteHeaderHTML('/passes')}
             </ul>
           </div>
           <p class="rg-swap">Want guaranteed entry? <label for="rg-view-paid">See the paid passes</label></p>
-        </div>
-
-        <!-- The paid passes -->
-        <div class="rg-paid">
-          <section class="rg-offer" aria-labelledby="rg-offer-title">
-            <h2 id="rg-offer-title">Want Full Conference Access?</h2>
-            <p>Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. A workshop comes with the Student, Premium Delegate and VIP passes: one each, seats first come, first served.</p>
-            <p class="rg-clock"><i class="fas fa-clock" aria-hidden="true"></i><span>${latePricing() ? PRICE_ROSE_TEXT : `Prices rise on ${PRICE_LATE_FROM_TEXT}. Book by ${PRICE_DEADLINE_TEXT} to pay the standard price.`}</span></p>
-            <ul class="rg-tiers">
-              ${tier('delegate', 'Delegate Pass', 'Delegate Pass', 'Full 2-day conference + networking lunch + networking app', 'Most popular', '#0F7B47', true)}
-              ${tier('premium', 'Premium Delegate Pass', 'Premium Delegate', 'Delegate + one workshop (first come, first served)', 'Includes a workshop', '#0B7A75')}
-              ${tier('vip', 'VIP Pass', 'VIP Pass', 'Premium + Bharat AI Leaders’ Evening + VIP lounge + speaker meet &amp; greet', 'All access', '#8A6500')}
-              ${tier('student', 'Student Pass', 'Student Pass', 'Conference + one workshop + student zone, with a student ID', 'Students', '#AD1457')}
-              ${tier('academic', 'Academic Pass', 'Academic Pass', 'Conference + student zone, with a faculty or institution ID', 'Faculty and researchers', '#6A4BE8')}
-            </ul>
-            <a href="#compare" class="rg-compare">Compare every pass, side by side</a>
-          </section>
-
-          <!-- Group Discount -->
-          <section class="rg-group" id="delegation-section" aria-labelledby="rg-group-title">
-            <h3 id="rg-group-title">Group Registration</h3>
-            <p>Bringing a team? ${GROUP_RULE_TEXT}</p>
-            <div class="rg-group-go">
-              <a href="/group" class="rg-ghost">Book for your group</a>
-              <a href="#compare" class="ps-link">Compare passes</a>
-            </div>
-          </section>
-          <p class="rg-swap">Just the exhibition floor? <label for="rg-view-free">Get the free Visitor Pass</label></p>
         </div>
       </div>
     </div>
@@ -28465,6 +28466,18 @@ document.addEventListener('DOMContentLoaded', function () {
   box.addEventListener('input', show);
   show();
 });
+
+// Paid passes come first (13 Nov 2026). A link that asked for the free pass
+// (?source=home-hero-free, passes-visitor, delhi-page-free ...) opens on the free form.
+(function () {
+  try {
+    var asked = (new URLSearchParams(location.search).get('source') || '').toLowerCase();
+    if (asked.indexOf('free') !== -1 || asked.indexOf('visitor') !== -1) {
+      var v = document.getElementById('rg-view-free');
+      if (v) v.checked = true;
+    }
+  } catch (err) { /* the paid passes stay first */ }
+})();
 
 // Swapping free and paid on a phone from far down the page: back up to the top of what was chosen.
 document.querySelectorAll('input[name="rg-view"]').forEach(function (r) {

@@ -299,6 +299,8 @@ const seed = async (name, email, mobile, over = {}) => {
   {
     const { ctx, page } = await phone();
     await page.goto(BASE + '/register', { waitUntil: 'load' });
+    await page.tap('.rg-switch label[for="rg-view-free"]');
+    await page.waitForTimeout(400);
     await page.fill('#rf-name', 'Asha Again');
     await page.fill('#rf-email', 'asha@example.com');
     await page.fill('#rf-phone', '9820011111');

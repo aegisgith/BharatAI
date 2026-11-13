@@ -35,6 +35,9 @@ const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate P
 
   // /register on a phone.
   await page.goto(BASE + '/register', { waitUntil: 'load' });
+  // Paid passes come first (13 Nov 2026): the free form is one tap away.
+  await page.tap('.rg-switch label[for="rg-view-free"]');
+  await page.waitForTimeout(400);
   const text = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
   check('/register: the heading and the words', text.includes('Free Visitor Pass: waiting list') && text.includes(WAITLIST_TEXT) && text.includes(WAITLIST_UPSELL), text.slice(0, 300));
   check('/register: the button in its own words', (await page.locator('#rf-submit').innerText()).trim().startsWith('Join the waiting list'));

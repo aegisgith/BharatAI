@@ -116,7 +116,8 @@ for (const [hash, pass, was, is] of [['delegate', 'Delegate Pass', '4,999', '8,9
   check(pass + ': the old price struck through and the new one, + GST', row.includes(`&#8377;${was}</s> &#8377;${is} <small>+ GST</small>`), row.slice(-300));
   check(pass + ': one card in the paid form, at the same price', new RegExp(`value="${pass}" onchange="[^"]*rppApplyPassFields\\(this.value\\)">\\s*<div data-rpp-card>[\\s\\S]*?&#8377;${was.replace(',', ',')}</s> &#8377;${is} <small>\\+ GST</small>`).test(regBody), pass);
 }
-check('the switch has two real radio buttons, free chosen', /id="rg-view-free" autocomplete="off" checked/.test(regBody) && /id="rg-view-paid" autocomplete="off">/.test(regBody));
+check('the switch has two real radio buttons, paid chosen and first (13 Nov 2026)', /id="rg-view-paid" autocomplete="off" checked/.test(regBody) && /id="rg-view-free" autocomplete="off">/.test(regBody) && regBody.indexOf('id="rg-view-paid"') < regBody.indexOf('id="rg-view-free"'));
+check('the paid passes come before the free form in the page', regBody.indexOf('class="rg-paid"') > 0 && regBody.indexOf('class="rg-paid"') < regBody.indexOf('class="rg-free"'));
 check('the free form says entry by slot in the organiser\'s softer words, once', (regBody.match(/entry by time slot on 20 and 21 Nov, as available, confirmed by email/g) || []).length === 1);
 check('the chart still says the whole sentence on entry', regBody.includes('Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none.'));
 {

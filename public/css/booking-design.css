@@ -88,7 +88,7 @@
     .rg-switch input:checked + label { color: #fff; }
     .rg-switch input:checked + label span { color: #D5D9F5; }
     .rg-glider { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 12px; background: var(--ps-dark); box-shadow: 0 4px 12px rgba(20, 26, 94, 0.28); }
-    #rg-view-paid:checked ~ .rg-glider { transform: translateX(100%); }
+    #rg-view-free:checked ~ .rg-glider { transform: translateX(100%); }
     .rg-switch input:focus-visible ~ .rg-glider { outline: 3px solid rgba(255, 107, 0, 0.6); outline-offset: 2px; }
     .rg-page:has(#rg-view-paid:checked) .rg-free { display: none; }
     .rg-page:has(#rg-view-free:checked) .rg-paid { display: none; }

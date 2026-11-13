@@ -57,6 +57,8 @@ const smallTargets = (p, scope) => p.evaluate((sc) => [...document.querySelector
   return e.getBoundingClientRect().height < 43.5 && !e.closest('.bk-unsure');
 }).map((e) => (e.id || e.tagName) + ':' + Math.round(e.getBoundingClientRect().height)), scope);
 const fillFree = async (p, email, mobile) => {
+  // Paid passes come first (13 Nov 2026): on a phone the free form is one tap away.
+  if (!(await shown(p, '#rf-name')) && await shown(p, '.rg-switch')) { await p.tap('.rg-switch label[for="rg-view-free"]'); await p.waitForTimeout(400); }
   await p.fill('#rf-name', 'Asha Rao');
   await p.fill('#rf-email', email);
   await p.fill('#rf-phone', mobile);
@@ -94,6 +96,8 @@ const fillFree = async (p, email, mobile) => {
     'Get Paid Pass', '🎟️ Delegate Pass', '🛠️ Premium Delegate', '⭐ VIP Pass', '🎓 Academic Pass',
     // On a pass card, the price and "+ GST" are now two parts.
     '+ GST',
+    // 13 Nov 2026, the organiser: stop promoting the free pass. The hero line leads with the Delegate Pass.
+    'Take a free Visitor Pass for the exhibition floor, or a Delegate Pass for every session, the networking lunch, the networking app and guaranteed entry on both days.',
   ]);
   // 12 Nov 2026: workshops come with the Student Pass too, so these two sentences name it.
   const meantRegRe = [/Included in the Premium Delegate and VIP passes\./, /A workshop comes only with Premium Delegate and VIP/, /Conference \+ student zone, with a student or faculty ID/, /^Exhibition floor and product demos$/, /five passes for the price of four/i, /^Ask for a group rate$/, /Delegation discounts/, /The Academic Pass needs a valid student or faculty ID/];
@@ -144,16 +148,14 @@ const fillFree = async (p, email, mobile) => {
   let p = await open(phone, '/register');
   check('phone: the title reads whole, the only h1, big and in the heading font', (await p.getAttribute('h1', 'aria-label')) === 'Register for Bharat AI Innovation 2026' && (await p.locator('h1').innerText()).replace(/\s+/g, ' ').trim() === 'Register for Bharat AI Innovation 2026' && (await p.locator('h1').count()) === 1 && await p.evaluate(() => { const s = getComputedStyle(document.querySelector('.ps-w--big > span')); return parseFloat(s.fontSize) >= 56 && /Bricolage/.test(s.fontFamily); }));
   check('phone: says prices went up', /PRICES WENT UP ON 6 NOV/.test(await p.locator('.ps-tag').innerText()));
-  check('phone: the first box is on the first screen, with room to see it', (await box(p, '#rf-name')).bottom < 780, JSON.stringify(await box(p, '#rf-name')));
+  check('phone: the paid passes start on the first screen', (await box(p, '.rg-offer')).top < 700, JSON.stringify(await box(p, '.rg-offer')));
   check('phone: Log In and the site\'s menu', (await box(p, '.ps-login')).right <= 390 && (await p.locator('.ps-nav a').count()) === 14 && (await p.locator('.ps-nav a[aria-current="page"]').innerText()) === 'Passes');
-  check('phone: free is chosen, the paid passes wait behind the switch', await shown(p, '.rg-switch') && await shown(p, '#rf-name') && !(await shown(p, '.rg-tier')));
+  check('phone: paid is chosen, the free form waits behind the switch', await shown(p, '.rg-switch') && await shown(p, '.rg-tier') && !(await shown(p, '#rf-name')));
   check('phone: the switch says the difference in two words each', /Free Visitor Pass\s*Entry by time slot/.test(await p.locator('.rg-switch label[for="rg-view-free"]').innerText()) && /Paid pass\s*Guaranteed entry/.test(await p.locator('.rg-switch label[for="rg-view-paid"]').innerText()));
   const glider = () => p.evaluate(() => { const g = document.querySelector('.rg-glider').getBoundingClientRect(); const c = document.querySelector('.rg-switch').getBoundingClientRect(); return (g.left + g.width / 2 - c.left) / c.width; });
-  check('phone: the glider sits on the free side', (await glider()) < 0.5, await glider());
-  await p.tap('.rg-switch label[for="rg-view-paid"]');
-  await p.waitForTimeout(900);
-  check('phone: tapping Paid slides the glider across', (await glider()) > 0.5, await glider());
-  check('phone: and swaps the form for the paid passes', !(await shown(p, '#rf-name')) && await shown(p, '.rg-tier') && (await p.locator('.rg-tier').count()) === 5);
+  check('phone: the glider sits on the paid side, which comes first', (await glider()) < 0.5 && await p.evaluate(() => document.querySelector('.rg-switch label').htmlFor === 'rg-view-paid'), await glider());
+  await p.waitForTimeout(600);
+  check('phone: all five paid passes are there', (await p.locator('.rg-tier').count()) === 5);
   check('phone: every row has settled, nothing left half faded', await p.evaluate(() => [...document.querySelectorAll('.rg-tiers li')].every((l) => getComputedStyle(l).opacity === '1')));
   for (const [hash, pass, was, is] of [['delegate', 'Delegate Pass', '₹4,999', '₹8,999'], ['premium', 'Premium Delegate Pass', '₹9,999', '₹14,999'], ['vip', 'VIP Pass', '₹19,999', '₹24,999'], ['academic', 'Academic Pass', '₹999', '₹3,999']]) {
     const row = p.locator(`.rg-tier[href="#${hash}"]`);
@@ -170,8 +172,9 @@ const fillFree = async (p, email, mobile) => {
     check('phone: the close button closes it, and the page is scrollable again', await p.evaluate(() => document.getElementById('reg-paid-pass-modal').classList.contains('hidden') && document.body.style.overflow === ''));
   }
   await p.tap('.rg-switch label[for="rg-view-free"]');
-  await p.waitForTimeout(300);
-  check('phone: tapping Free brings the form back', await shown(p, '#rf-name') && !(await shown(p, '.rg-tier')));
+  await p.waitForTimeout(900);
+  check('phone: tapping Free slides the glider across', (await glider()) > 0.5, await glider());
+  check('phone: and swaps the paid passes for the form', await shown(p, '#rf-name') && !(await shown(p, '.rg-tier')));
 
   // The badge
   check('phone: the form wears the badge\'s slot and says how long it takes', await shown(p, '.rg-badge .ps-slot') && (await p.textContent('#rg-who')) === 'Register in 30 seconds');
@@ -249,6 +252,11 @@ const fillFree = async (p, email, mobile) => {
   await p.tap('.rg-sheet-x');
   await p.waitForTimeout(200);
   check('phone: closing it leaves them among the paid passes, which is what they came for', await shown(p, '.rg-tier') && !(await shown(p, '#rf-name')));
+  await p.close();
+
+  // A free-pass link opens on the free form
+  p = await open(phone, '/register?source=home-hero-free');
+  check('phone: a link that asked for the free pass opens on the free form', await shown(p, '#rf-name') && !(await shown(p, '.rg-tier')));
   await p.close();
 
   // A real free registration
@@ -402,7 +410,7 @@ const fillFree = async (p, email, mobile) => {
     check('320px, ' + url + ': nothing widens the page, frame by frame', (await widestFor(p, 2500)) <= 320, 'wider');
     check('320px, ' + url + ': the title fits', await p.evaluate(() => [...document.querySelectorAll('h1 .ps-w')].every((w) => w.getBoundingClientRect().right <= innerWidth + 0.5)));
     if (url === '/register') {
-      check('320px, /register: the first box is on the first screen', (await box(p, '#rf-name')).bottom < 640, JSON.stringify(await box(p, '#rf-name')));
+      check('320px, /register: the paid passes start on the first screen', (await box(p, '.rg-offer')).top < 600, JSON.stringify(await box(p, '.rg-offer')));
       await p.tap('.rg-switch label[for="rg-view-paid"]');
       await p.waitForTimeout(400);
       check('320px, /register: a paid row fits, nothing is cut off', await p.evaluate(() => [...document.querySelectorAll('.rg-tier')].every((t) => t.scrollWidth <= t.clientWidth + 2 && t.getBoundingClientRect().right <= innerWidth) && document.querySelector('.rg-offer').scrollWidth <= document.querySelector('.rg-offer').clientWidth));
@@ -422,9 +430,9 @@ const fillFree = async (p, email, mobile) => {
   // ======== a laptop ========
   const laptop = await newCtx(browser, LAPTOP);
   p = await open(laptop, '/register');
-  const col = await p.evaluate(() => { const a = document.querySelector('.rg-card').getBoundingClientRect(), b = document.querySelector('.rg-offer').getBoundingClientRect(); return { aRight: a.right, bLeft: b.left, sameTop: Math.abs(a.top - b.top) < 2, top: a.top }; });
-  check('laptop: the free form and the paid passes side by side, level', col.aRight < col.bLeft && col.sameTop, JSON.stringify(col));
-  check('laptop: the form comes up the screen, the first box in view', (await box(p, '#rf-name')).bottom < 800 && col.top < 400, JSON.stringify(col));
+  const col = await p.evaluate(() => { const a = document.querySelector('.rg-offer').getBoundingClientRect(), b = document.querySelector('.rg-card').getBoundingClientRect(); return { aRight: a.right, bLeft: b.left, sameTop: Math.abs(a.top - b.top) < 2, top: a.top }; });
+  check('laptop: the paid passes first, the free form beside them, level', col.aRight < col.bLeft && col.sameTop, JSON.stringify(col));
+  check('laptop: the paid passes come up the screen, the Delegate Pass in view', (await box(p, '.rg-tier')).bottom < 800 && col.top < 400, JSON.stringify(col));
   check('laptop: no switch: both are there', !(await shown(p, '.rg-switch')) && await shown(p, '#rf-name') && await shown(p, '.rg-tier'));
   check('laptop: the menu is one row and the line rests on Passes', await p.evaluate(() => { const l = document.querySelector('.ps-light'), a = document.querySelector('.ps-nav [aria-current]'); const r = l.getBoundingClientRect(), s = a.getBoundingClientRect(); return Math.abs(r.left - s.left) < 2 && Math.abs(r.width - s.width) < 2; }));
   await p.hover('.ps-nav a[href="/contact"]');
@@ -486,9 +494,12 @@ const fillFree = async (p, email, mobile) => {
     check('animations off, ' + url + ': nothing moves', a.moving.length === 0, a.moving.join());
     check('animations off, ' + url + ': the page reads in full, nothing split up', !a.split && !a.beam && !a.light && a.h1.length > 10, JSON.stringify(a));
     if (url === '/register') {
+      await p.tap('.rg-switch label[for="rg-view-free"]');
+      await p.waitForTimeout(80);
+      const freeUp = await shown(p, '#rf-name') && !(await shown(p, '.rg-tier'));
       await p.tap('.rg-switch label[for="rg-view-paid"]');
       await p.waitForTimeout(80);
-      check('animations off, /register: the switch still works', !(await shown(p, '#rf-name')) && await shown(p, '.rg-tier') && await p.evaluate(() => [...document.querySelectorAll('.rg-tiers li')].every((l) => getComputedStyle(l).opacity === '1')));
+      check('animations off, /register: the switch still works', freeUp && !(await shown(p, '#rf-name')) && await shown(p, '.rg-tier') && await p.evaluate(() => [...document.querySelectorAll('.rg-tiers li')].every((l) => getComputedStyle(l).opacity === '1')));
       await p.tap('.rg-tier[href="#vip"]');
       await p.waitForTimeout(80);
       check('animations off, /register: and the paid form opens at once', (await p.inputValue('#rpp-pass-type')) === 'VIP Pass' && await shown(p, '#rpp-submit-btn'));
@@ -527,9 +538,9 @@ const fillFree = async (p, email, mobile) => {
   const noJs = await newCtx(browser, { ...PHONE, javaScriptEnabled: false });
   p = await noJs.newPage();
   await p.goto(BASE + '/register', { waitUntil: 'load' });
-  check('no script, /register: the form and the prices are there to read', await p.locator('#rf-name').isVisible() && /₹8,999/.test(await p.locator('.rg-offer').evaluate((e) => e.textContent)));
-  await p.locator('.rg-switch label[for="rg-view-paid"]').click();
-  check('no script, /register: the switch needs no script', await p.locator('.rg-tier').first().isVisible() && !(await p.locator('#rf-name').isVisible()));
+  check('no script, /register: the paid passes and their prices are there to read', await p.locator('.rg-tier').first().isVisible() && /₹8,999/.test(await p.locator('.rg-offer').evaluate((e) => e.textContent)));
+  await p.locator('.rg-switch label[for="rg-view-free"]').click();
+  check('no script, /register: the switch needs no script', await p.locator('#rf-name').isVisible() && !(await p.locator('.rg-tier').first().isVisible()));
   await p.close();
   p = await noJs.newPage();
   await p.goto(BASE + '/inquiry', { waitUntil: 'load' });
