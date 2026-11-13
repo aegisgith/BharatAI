@@ -18,7 +18,7 @@
     { "name": "Shri Bhanudas Palwe (IAS)", "role": "Commissioner of Fisheries", "org": "Government of Maharashtra", "photo": "images/speaker-bhanudas-palwe-sq.webp", "logo": "images/logo-maharashtra.webp" },
     { "name": "Shri Srinivas Kancharla", "role": "Program Specialist", "org": "Office of the Principal Scientific Adviser to the Government of India", "photo": "images/talks/srinivas-kancharla.webp", "logo": "images/logo-psa.webp" },
     { "name": "Dr. Vishal Deo", "role": "Scientist-C", "org": "ICMR-NIRDH", "logo": "images/org-logos/icmr.webp" },
-    { "name": "Cmde Dr. Jadumani Jena (retd.)", "role": "Advisor", "org": "Bharat AI Innovation, Exhibition & Conference", "logo": "images/logo-nav.webp" },
+    { "name": "Cmde Dr. Jadumani Jena (retd.)", "role": "Director", "org": "Bharat AI Innovation, Exhibition & Conference", "logo": "images/logo-nav.webp" },
 
     { "name": "Mr. Bhupesh Daheria", "role": "CEO; Trustee, Aegis Knowledge Trust", "org": "Aegis School of Data Science & AI", "photo": "images/speaker-bhupesh-daheria-panel.webp", "logo": "images/logo-aegis.webp" },
     { "name": "Dr. Abhijit Gangopadhyay", "role": "Dean", "org": "Aegis School of Data Science & AI", "photo": "images/speaker-abhijit-gangopadhyay.webp", "logo": "images/logo-aegis.webp", "crop": { "left": 0.04, "top": 0.2, "size": 0.42 } },
@@ -48,6 +48,14 @@
     { "name": "Abhay Tewari", "role": "MD & CEO", "org": "Star Union Dai-ichi Life Insurance", "photo": "images/speaker-abhay-tewari-sq.webp" },
     { "name": "Shallu Kaushik", "role": "Chief Digital Officer", "org": "Tata Capital", "photo": "images/speaker-shallu-kaushik-sq.webp" },
     { "name": "Dr. Pawan Chawla", "role": "Senior VP & CISO", "org": "Tata AIA Life Insurance", "photo": "images/speaker-pawan-chawla-sq.webp" },
+    { "name": "Hon’ble Shri Devendra Fadnavis", "role": "Chief Minister", "org": "Government of Maharashtra", "photo": "images/devendra-fadnavis.jpg", "logo": "images/logo-maharashtra.webp" },
+    { "name": "Nilesh Shah", "role": "Managing Director", "org": "Kotak Mahindra Asset Management" },
+    { "name": "Reny Varghese", "role": "COO", "org": "Zynova Shalby Hospitals" },
+    { "name": "Smt. Laghima Tiwari (IAS)", "role": "Project Officer, Integrated Tribal Development Project (ITDP), Taloda", "org": "Government of Maharashtra", "logo": "images/logo-maharashtra.webp" },
+    { "name": "Ms. Anita Ram", "role": "Head, Industry & Innovation Ecosystem Partnership" },
+    { "name": "Dr. Vivek Mohanrao Bhoite", "role": "Subject Matter Specialist, KVK Baramati", "org": "ICAR-ATARI" },
+    { "name": "Parag Dabhade", "role": "Chief Technology Officer, AI and AgriTech Innovation Center (AIAIC)", "org": "Agriculture Department, Government of Maharashtra", "photo": "images/speaker-parag-dabhade-sq.webp", "logo": "images/logo-maharashtra.webp" },
+    { "name": "Dr. Santosh Vyas", "role": "Director, R&D", "org": "Kemin Animal Nutrition & Health" },
     { "name": "Sandeep Kumar", "role": "CIO", "org": "Go Digit Insurance", "photo": "images/speaker-sandeep-kumar-godigit.webp", "logo": "images/org-logos/favicon-godigit.com.png" },
 
     { "name": "Rajat Nigam", "role": "CTO, Head of Technology & Media Operations", "org": "JioStar India", "photo": "images/speaker-rajat-nigam-sq.webp", "logo": "images/org-logos/jiostar.webp" },
@@ -56,7 +64,6 @@
     { "name": "Pramod Prakash", "role": "Chief Technology Officer", "org": "Zee Entertainment Enterprises", "photo": "images/speaker-pramod-prakash-sq.webp", "logo": "images/org-logos/favicon-zee.com.png" },
 
     { "name": "Dr. Saurabh N. Mehta", "role": "Chief Academic Officer & Professor", "org": "Vidyalankar Institute of Technology", "photo": "images/speaker-saurabh-mehta-sq.webp", "logo": "images/org-logos/vit.webp" },
-    { "name": "Utsav Shroff", "role": "Director, India and South Asia Operations", "org": "University of Western Australia", "logo": "images/org-logos/uwa.webp" },
     { "name": "Dr. Lakshmi Mohan", "role": "Pro Vice Chancellor", "org": "ITM Skills University", "photo": "images/speaker-lakshmi-mohan-sq.webp", "logo": "images/org-logos/itm-skills-university.webp" },
     { "name": "Dr. Manpreet Singh Manna", "role": "Founding Executive Director", "org": "GCC School / SLIET", "photo": "images/speaker-manpreet-singh-manna-sq.webp" },
     { "name": "Tarun Anand", "role": "Founder & Chancellor", "org": "Universal AI University", "photo": "images/speaker-tarun-anand-sq.webp", "logo": "images/org-logos/universal-ai-university.webp" },
