@@ -98,6 +98,7 @@ const seed = async (name, email, mobile, over = {}) => {
   {
     const { ctx, page } = await phone();
     await page.goto(BASE + '/register?source=home-hero-free', { waitUntil: 'load' });
+    await page.tap('.rg-kind-row input[value="corporate"] + span');
     await page.fill('#rf-name', 'Asha Rao');
     await page.fill('#rf-email', 'asha@example.com');
     await page.fill('#rf-phone', '9820011111');
@@ -108,8 +109,8 @@ const seed = async (name, email, mobile, over = {}) => {
     await page.click('#rf-more summary');
     await page.fill('#rf-linkedin', 'linkedin.com/in/asha-rao');
     await page.click('#rf-submit');
-    await page.waitForFunction(() => { const s = document.getElementById('reg-success'); return s && !s.classList.contains('hidden'); }, null, { timeout: 15000 }).catch(() => {});
-    check('free form: LinkedIn typed as its hint shows no longer stops it', await page.isVisible('#reg-success'));
+    await page.waitForFunction(() => { const s = document.getElementById('reg-choose'); return s && !s.classList.contains('hidden'); }, null, { timeout: 15000 }).catch(() => {});
+    check('free form: LinkedIn typed as its hint shows no longer stops it', await page.isVisible('#reg-choose'));
     const a = await person('asha@example.com');
     check('and the database has one Asha, on the free pass, with a working link, from the right button', !!a && a.badge_type === 'Visitor Pass' && a.linkedin_url === 'https://linkedin.com/in/asha-rao' && a.registration_source === 'home-hero-free', JSON.stringify(a));
     await ctx.close();
@@ -299,8 +300,7 @@ const seed = async (name, email, mobile, over = {}) => {
   {
     const { ctx, page } = await phone();
     await page.goto(BASE + '/register', { waitUntil: 'load' });
-    await page.tap('.rg-switch label[for="rg-view-free"]');
-    await page.waitForTimeout(400);
+    await page.tap('.rg-kind-row input[value="corporate"] + span');
     await page.fill('#rf-name', 'Asha Again');
     await page.fill('#rf-email', 'asha@example.com');
     await page.fill('#rf-phone', '9820011111');

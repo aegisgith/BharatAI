@@ -116,9 +116,9 @@ for (const [hash, pass, was, is] of [['delegate', 'Delegate Pass', '4,999', '8,9
   check(pass + ': the old price struck through and the new one, + GST', row.includes(`&#8377;${was}</s> &#8377;${is} <small>+ GST</small>`), row.slice(-300));
   check(pass + ': one card in the paid form, at the same price', new RegExp(`value="${pass}" onchange="[^"]*rppApplyPassFields\\(this.value\\)">\\s*<div data-rpp-card>[\\s\\S]*?&#8377;${was.replace(',', ',')}</s> &#8377;${is} <small>\\+ GST</small>`).test(regBody), pass);
 }
-check('the switch has two real radio buttons, paid chosen and first (13 Nov 2026)', /id="rg-view-paid" autocomplete="off" checked/.test(regBody) && /id="rg-view-free" autocomplete="off">/.test(regBody) && regBody.indexOf('id="rg-view-paid"') < regBody.indexOf('id="rg-view-free"'));
-check('the paid passes come before the free form in the page', regBody.indexOf('class="rg-paid"') > 0 && regBody.indexOf('class="rg-paid"') < regBody.indexOf('class="rg-free"'));
-check('the free form says entry by slot in the organiser\'s softer words, once', (regBody.match(/entry by time slot on 20 and 21 Nov, as available, confirmed by email/g) || []).length === 1);
+check('no switch: one form, with "I am a..." first and six answers (13 Nov 2026)', !/rg-switch|rg-view-/.test(regBody) && (regBody.match(/name="rf-kind"/g) || []).length === 6 && regBody.indexOf('id="rf-kind"') > 0 && regBody.indexOf('id="rf-kind"') < regBody.indexOf('id="rf-name"'));
+check('the passes come after the form, on a screen that starts hidden, each row naming its pass', /id="reg-choose" class="hidden"/.test(regBody) && regBody.indexOf('id="reg-choose"') > regBody.indexOf('id="rf-submit"') && (regBody.match(/<li data-pass="/g) || []).length === 6 && regBody.indexOf('id="reg-choose"') < regBody.indexOf('id="reg-success"'));
+check('the form says nothing of a free pass or a waiting list', !/free|waiting list/i.test(regBody.slice(regBody.indexOf('id="reg-intro"'), regBody.indexOf('id="reg-choose"')).replace(/<[^>]+>/g, ' ')));
 check('the chart still says the whole sentence on entry', regBody.includes('Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none.'));
 {
   const cls = () => { const s = new Set(); return { toggle: (c, on) => (on ? s.add(c) : s.delete(c)), contains: (c) => s.has(c) }; };

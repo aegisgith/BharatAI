@@ -8895,6 +8895,81 @@ function emailTypo(email: string): { fixed?: string; reason: string } | null {
   return null
 }
 
+// ===== WHO THEY ARE, AND THE "JUST REGISTERED" LINE (13 Nov 2026) =====
+//
+// /register asks "I am a..." first (0063, attendees.attendee_type), saves the person,
+// and only then offers the passes that fit them. The keys are the stored values; the
+// words are what the public line under the form says about someone.
+const ATTENDEE_TYPES: Record<string, string> = {
+  corporate: 'A business professional',
+  startup: 'A startup founder',
+  student: 'A student',
+  faculty: 'A teacher',
+  government: 'A government officer',
+  media: 'A media professional',
+}
+const sanitizeAttendeeType = (v: unknown): string => {
+  const s = String(v ?? '').trim().toLowerCase()
+  return Object.prototype.hasOwnProperty.call(ATTENDEE_TYPES, s) ? s : ''
+}
+// A city fit to show a stranger: letters only, a sensible length, and not the things
+// people type to get past a required box.
+const CITY_JUNK = ['na', 'n a', 'nil', 'none', 'no', 'test', 'city', 'abc', 'xyz', 'asdf', 'india', 'other']
+const publicCity = (v: unknown): string => {
+  const s = String(v ?? '').replace(/\s+/g, ' ').trim()
+  if (!/^[A-Za-z][A-Za-z .'-]{1,23}$/.test(s)) return ''
+  if (CITY_JUNK.includes(s.toLowerCase().replace(/[.'-]/g, ' ').replace(/\s+/g, ' ').trim())) return ''
+  return s.toLowerCase().replace(/(^|[ .'-])([a-z])/g, (_m, a, b) => a + b.toUpperCase())
+}
+const agoWords = (mins: number): string =>
+  mins < 2 ? 'just now' : mins < 60 ? Math.floor(mins) + ' minutes ago' : mins < 120 ? '1 hour ago' : Math.floor(mins / 60) + ' hours ago'
+// One line about one real sign-up or purchase. Never a name, a company or a job title:
+// the kind of person from the fixed list, else the industry from the form's own list,
+// and the city only when it passes publicCity. null when the row is too old to show.
+function signupLine(r: any, now: number): string | null {
+  const t = Date.parse(String(r.at || '').replace(' ', 'T') + 'Z')
+  if (!isFinite(t)) return null
+  const mins = (now - t) / 60000
+  if (mins < 0 || mins > 24 * 60) return null
+  const who = ATTENDEE_TYPES[sanitizeAttendeeType(r.kind)] || ''
+  const industry = INDUSTRIES.includes(String(r.industry || '')) && r.industry !== 'Other' ? String(r.industry) : ''
+  const city = publicCity(r.city)
+  const did = PAID_TIERS.includes(String(r.pass || '')) ? 'took a ' + r.pass : 'registered'
+  return (who || (industry ? 'Someone in ' + industry : 'Someone')) + (city ? ' from ' + city : '') + ' ' + did + ' ' + agoWords(mins)
+}
+// Public, and cached for a minute. Sign-ups are the people who filled the public form
+// themselves ('register.self' in the audit log): never a campus panel, an import or
+// someone the team added. Purchases are paid orders. No total is given, on purpose
+// (PUBLIC_COUNT_THRESHOLD): at most eight lines, the newest first.
+app.get('/api/events/:id/recent-signups', async (c) => {
+  const eventId = c.req.param('id')
+  const now = Date.now()
+  const signups = (kind: string) => c.env.DB.prepare(
+    `SELECT ${kind} AS kind, a.industry, a.city, x.created_at AS at, '' AS pass
+       FROM admin_audit x JOIN attendees a ON CAST(a.id AS TEXT) = x.entity_id
+      WHERE x.entity = 'attendee' AND x.action = 'register.self' AND x.created_at > datetime('now', '-12 hours') AND a.event_id = ?
+      ORDER BY x.id DESC LIMIT 8`).bind(eventId).all()
+  const bought = (kind: string) => c.env.DB.prepare(
+    `SELECT ${kind} AS kind, a.industry, a.city, o.paid_at AS at, o.pass_type AS pass
+       FROM payment_orders o JOIN attendees a ON a.id = o.attendee_id
+      WHERE o.status = 'paid' AND o.paid_at > datetime('now', '-24 hours') AND a.event_id = ?
+      ORDER BY o.paid_at DESC LIMIT 4`).bind(eventId).all()
+  const rows: any[] = []
+  for (const q of [signups, bought]) {
+    // With the 0063 column, then without it; a missing table simply gives no lines.
+    try { rows.push(...(((await q('a.attendee_type')).results as any[]) || [])) }
+    catch { try { rows.push(...(((await q("''")).results as any[]) || [])) } catch { /* nothing to show */ } }
+  }
+  const lines = rows
+    .map((r) => ({ at: String(r.at || ''), line: signupLine(r, now) }))
+    .filter((r) => r.line)
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+    .slice(0, 8)
+    .map((r) => r.line)
+  c.header('Cache-Control', 'public, max-age=60')
+  return c.json({ lines })
+})
+
 app.post('/api/events/:id/attendees/register', async (c) => {
   const eventId = c.req.param('id')
   const body = await c.req.json()
@@ -8952,6 +9027,9 @@ app.post('/api/events/:id/attendees/register', async (c) => {
   const passType = ALLOWED_PASSES.includes(badge_type) ? badge_type : 'Visitor Pass'
 
   const sourceValue = sanitizeRegistrationSource(registration_source)
+  // "I am a..." on /register (0063). A buyer who came straight to a Student or an
+  // Academic pass has said it already.
+  const typeValue = sanitizeAttendeeType(body.attendee_type) || (passType === 'Student Pass' ? 'student' : passType === 'Academic Pass' ? 'faculty' : '')
 
   // A paid tier chosen at registration is recorded but marked unpaid; payment is
   // confirmed by the payment gateway's answer, never by anything the client says.
@@ -8978,6 +9056,10 @@ app.post('/api/events/:id/attendees/register', async (c) => {
     if (waitlist) {
       try { await c.env.DB.prepare("UPDATE attendees SET entry_status = 'waitlisted' WHERE id = ?").bind(result.meta.last_row_id).run() }
       catch { /* a failed mark leaves an ordinary free pass, never a lost registration */ }
+    }
+    if (typeValue) {
+      try { await c.env.DB.prepare('UPDATE attendees SET attendee_type = ? WHERE id = ?').bind(typeValue, result.meta.last_row_id).run() }
+      catch { /* before 0063: the registration is kept, only this answer is not */ }
     }
     const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(result.meta.last_row_id).first()
     await issueAttendeeSession(c, (attendee as any).id)
@@ -27675,10 +27757,11 @@ function registerPageHTML(opts: { waitlist?: boolean } = {}): string {
   // Free Visitor Passes full for now (0056): the free side of the page says so, in
   // the organiser's words, and a registration joins the waiting list.
   const waitlist = !!opts.waitlist
-  // A paid pass beside the free form. Pressing one opens the paid form on that pass, carrying over
-  // whatever has been typed into the free form. The colours are the badges' on /passes.
+  // A paid pass on the screen after the form (13 Nov 2026: the form comes first and says nothing
+  // of free or paid). Pressing one opens the paid form on that pass, carrying over whatever was
+  // typed into the form. The colours are the badges' on /passes.
   const tier = (hash: string, pass: string, short: string, what: string, tag: string, color: string, lead = false) => `
-          <li><a class="rg-tier${lead ? ' rg-tier--lead' : ''}" style="--c:${color};" href="#${hash}" onclick="return upgradeFromSuccess('${pass}')">
+          <li data-pass="${pass}"><a class="rg-tier${lead ? ' rg-tier--lead' : ''}" style="--c:${color};" href="#${hash}" onclick="return upgradeFromSuccess('${pass}')">
             <span class="rg-tier-top"><b class="rg-tier-name">${short}</b><span class="rg-tier-tag">${tag}</span></span>
             <span class="rg-tier-what">${what}</span>
             <span class="rg-tier-foot"><span class="rg-tier-price">${priceNow(pass)} <small>+ GST</small>${latePriceTag(pass)}</span><span class="rg-tier-go">Get this pass <i class="fas fa-arrow-right" aria-hidden="true"></i></span></span>
@@ -27702,59 +27785,31 @@ ${siteHeaderHTML('/passes')}
 
   <section class="rg-book" id="rg-book" aria-label="Choose your pass and register">
     <div class="ps-wrap">
-      <div class="rg-switch" id="rg-switch" role="radiogroup" aria-label="Which pass do you want?">
-        <input class="rg-sr" type="radio" name="rg-view" id="rg-view-paid" autocomplete="off" checked>
-        <label for="rg-view-paid"><b>Paid pass</b><span>Guaranteed entry</span></label>
-        <input class="rg-sr" type="radio" name="rg-view" id="rg-view-free" autocomplete="off">
-        <label for="rg-view-free"><b>Free Visitor Pass</b><span>${waitlist ? 'Waiting list' : 'Entry by time slot'}</span></label>
-        <i class="rg-glider" aria-hidden="true"></i>
-      </div>
-
-      <div class="rg-grid">
-        <!-- The paid passes -->
-        <div class="rg-paid">
-          <section class="rg-offer" aria-labelledby="rg-offer-title">
-            <h2 id="rg-offer-title">Want Full Conference Access?</h2>
-            <p>Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. A workshop comes with the Student, Premium Delegate and VIP passes: one each, seats first come, first served.</p>
-            <p class="rg-clock"><i class="fas fa-clock" aria-hidden="true"></i><span>${latePricing() ? PRICE_ROSE_TEXT : `Prices rise on ${PRICE_LATE_FROM_TEXT}. Book by ${PRICE_DEADLINE_TEXT} to pay the standard price.`}</span></p>
-            <ul class="rg-tiers">
-              ${tier('delegate', 'Delegate Pass', 'Delegate Pass', 'Full 2-day conference + networking lunch + networking app', 'Most popular', '#0F7B47', true)}
-              ${tier('premium', 'Premium Delegate Pass', 'Premium Delegate', 'Delegate + one workshop (first come, first served)', 'Includes a workshop', '#0B7A75')}
-              ${tier('vip', 'VIP Pass', 'VIP Pass', 'Premium + Bharat AI Leaders’ Evening + VIP lounge + speaker meet &amp; greet', 'All access', '#8A6500')}
-              ${tier('student', 'Student Pass', 'Student Pass', 'Conference + one workshop + student zone, with a student ID', 'Students', '#AD1457')}
-              ${tier('academic', 'Academic Pass', 'Academic Pass', 'Conference + student zone, with a faculty or institution ID', 'Faculty and researchers', '#6A4BE8')}
-            </ul>
-            <a href="#compare" class="rg-compare">Compare every pass, side by side</a>
-          </section>
-
-          <!-- Group Discount -->
-          <section class="rg-group" id="delegation-section" aria-labelledby="rg-group-title">
-            <h3 id="rg-group-title">Group Registration</h3>
-            <p>Bringing a team? ${GROUP_RULE_TEXT}</p>
-            <div class="rg-group-go">
-              <a href="/group" class="rg-ghost">Book for your group</a>
-              <a href="#compare" class="ps-link">Compare passes</a>
-            </div>
-          </section>
-          <p class="rg-swap">Just the exhibition floor? <label for="rg-view-free">Get the free Visitor Pass</label></p>
-        </div>
-
-        <!-- The free pass: second, and the form a free link opens on -->
+      <div class="rg-grid rg-grid--solo">
         <div class="rg-free">
           <div class="rg-card">
             <div id="reg-intro">
               <div class="rg-badge">
                 <i class="ps-slot" aria-hidden="true"></i>
-                <h2>${waitlist ? 'Free Visitor Pass: waiting list' : 'Get Your Free Visitor Pass'}</h2>
-                <span class="rg-who" id="rg-who">${waitlist ? 'Join in 30 seconds' : 'Register in 30 seconds'}</span>
+                <h2>Tell us who you are</h2>
+                <span class="rg-who" id="rg-who">Takes 30 seconds</span>
               </div>
-              ${waitlist
-                ? `<p class="rg-note" id="rg-wait-note"><i class="fas fa-clock" aria-hidden="true"></i>${WAITLIST_TEXT} ${WAITLIST_UPSELL} <a href="#rg-book" class="ps-link" onclick="var v = document.getElementById('rg-view-paid'); if (v) v.checked = true;">See the paid passes</a></p>`
-                : `<p class="rg-note"><i class="fas fa-check-circle" aria-hidden="true"></i>Exhibition floor &amp; product demos, free &middot; entry by time slot on 20 and 21 Nov, as available, confirmed by email</p>`}
             </div>
 
             <div class="rg-card-body">
               <form id="reg-form" onsubmit="submitRegistration(event)" class="rg-form">
+                <fieldset class="rg-kind" id="rf-kind">
+                  <legend>I am a&hellip;</legend>
+                  <div class="rg-kind-row">
+                    <label><input class="rg-sr" type="radio" name="rf-kind" value="corporate" onchange="rfApplyKind()"><span>Corporate</span></label>
+                    <label><input class="rg-sr" type="radio" name="rf-kind" value="startup" onchange="rfApplyKind()"><span>Startup</span></label>
+                    <label><input class="rg-sr" type="radio" name="rf-kind" value="student" onchange="rfApplyKind()"><span>Student</span></label>
+                    <label><input class="rg-sr" type="radio" name="rf-kind" value="faculty" onchange="rfApplyKind()"><span>Teacher / Faculty</span></label>
+                    <label><input class="rg-sr" type="radio" name="rf-kind" value="government" onchange="rfApplyKind()"><span>Government</span></label>
+                    <label><input class="rg-sr" type="radio" name="rf-kind" value="media" onchange="rfApplyKind()"><span>Media</span></label>
+                  </div>
+                  <p class="rg-kind-note hidden" id="rf-kind-note" role="alert">Please choose one, so we can show you the right pass.</p>
+                </fieldset>
                 <div class="rg-field">
                   <label for="rf-name">Full name</label>
                   <input type="text" id="rf-name" autocomplete="name" autocapitalize="words" required placeholder="Your full name">
@@ -27769,12 +27824,12 @@ ${siteHeaderHTML('/passes')}
                     <input type="tel" id="rf-phone" autocomplete="tel" required placeholder="+91 XXXXX XXXXX">
                   </div>
                   <div class="rg-field">
-                    <label for="rf-company">Organization</label>
+                    <label for="rf-company" id="rf-company-label">Organization</label>
                     <input type="text" id="rf-company" autocomplete="organization" required placeholder="Company / Institute">
                   </div>
                 </div>
-                <div class="rg-two">
-                  <div class="rg-field">
+                <div class="rg-two" id="rf-row-title">
+                  <div class="rg-field" id="rf-title-field">
                     <label for="rf-title">Designation / Job title</label>
                     <input type="text" id="rf-title" autocomplete="organization-title" required placeholder="Your designation">
                   </div>
@@ -27824,7 +27879,7 @@ ${siteHeaderHTML('/passes')}
                     </div>
                   </div>
                 </details>
-                <button type="submit" id="rf-submit" class="ps-buy rg-cta">${waitlist ? 'Join the waiting list' : 'Register free'} <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
+                <button type="submit" id="rf-submit" class="ps-buy rg-cta">Continue <i class="fas fa-arrow-right" aria-hidden="true"></i></button>
                 <div id="rf-notice" class="hidden rounded-xl px-4 py-3 text-sm text-red-700 bg-red-50 border border-red-200"></div>
                 <p class="rg-fine">By registering, you agree to receive event updates via email</p>
               </form>
@@ -27887,7 +27942,56 @@ ${siteHeaderHTML('/passes')}
           #reg-success .rs-up-foot { margin: 12px 0 0; font-size: 11.5px; line-height: 1.5; text-align: center; color: #AEB3D6; }
           #reg-success .rs-app { margin: 18px 0 0; text-align: center; }
           #reg-success .rs-app a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; font-size: 14px; font-weight: 700; color: #C2410C; text-decoration: none; }
+          .rg-page .rg-grid.rg-grid--solo { grid-template-columns: minmax(0, 1fr); max-width: 640px; }
+          .rg-kind { min-width: 0; margin: 0; padding: 0; border: 0; }
+          .rg-kind legend { margin: 0 0 8px; padding: 0; font-size: 15px; line-height: 1.3; font-weight: 800; color: #1E2140; }
+          .rg-kind-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+          @media (max-width: 359px) { .rg-kind-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+          .rg-kind-row label { position: relative; display: block; cursor: pointer; }
+          .rg-kind-row span { display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 6px 6px; border: 1.5px solid #D9DCEA; border-radius: 12px; background: #fff; font-size: 14px; line-height: 1.2; font-weight: 700; color: #1E2140; text-align: center; }
+          .rg-kind-row input:checked + span { border-color: #C84F00; background: #FFF1E6; color: #8A3600; box-shadow: inset 0 0 0 1px #C84F00; }
+          .rg-kind-row input:focus-visible + span { outline: 3px solid rgba(255, 107, 0, 0.55); outline-offset: 2px; }
+          .rg-kind-note { margin: 8px 0 0; font-size: 13.5px; line-height: 1.4; font-weight: 700; color: #B42318; }
+          #reg-choose { scroll-margin-top: 96px; }
+          #reg-choose [hidden] { display: none !important; }
+          @media (prefers-reduced-motion: no-preference) { #reg-choose { animation: rsIn .35s ease-out both; } }
+          #reg-choose .rc-head { text-align: center; padding: 2px 0 16px; }
+          #reg-choose .rc-tick { width: 48px; height: 48px; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #0F7B47; background: #E3F5EA; }
+          #reg-choose .rc-hello { margin: 0; font-size: 18px; line-height: 1.3; font-weight: 800; color: #1E2140; }
+          #reg-choose .rc-more { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 18px; margin: 10px 0 0; }
+          #reg-choose .rc-more button, #reg-choose .rc-more a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; border: 0; background: none; font: inherit; font-size: 14.5px; font-weight: 700; color: #1A237E; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+          #reg-choose .rc-later { display: block; width: 100%; min-height: 46px; margin: 2px 0 0; padding: 8px 12px; border: 0; border-radius: 12px; background: none; font: inherit; font-size: 14px; font-weight: 600; color: #5B6178; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+          .rg-live { display: flex; align-items: flex-start; gap: 9px; margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: #F2FAF5; font-size: 13.5px; line-height: 1.4; font-weight: 600; color: #1E5B3A; transition: opacity .3s; }
+          .rg-live.hidden { display: none; }
+          .rg-live--out { opacity: 0; }
+          .rg-live-dot { flex: 0 0 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: #17A35A; box-shadow: 0 0 0 4px rgba(23, 163, 90, 0.18); }
         </style>
+        <div id="reg-choose" class="hidden">
+          <div class="rc-head">
+            <div class="rc-tick"><i class="fas fa-check" aria-hidden="true"></i></div>
+            <p class="rc-hello" id="rc-hello">Your details are saved.</p>
+          </div>
+          <section class="rg-offer" aria-labelledby="rc-title">
+            <h2 id="rc-title">Choose your pass</h2>
+            <p>Every pass here has guaranteed entry on both days, the full conference and the networking app.</p>
+            <p class="rg-clock"><i class="fas fa-clock" aria-hidden="true"></i><span>${latePricing() ? PRICE_ROSE_TEXT : `Prices rise on ${PRICE_LATE_FROM_TEXT}. Book by ${PRICE_DEADLINE_TEXT} to pay the standard price.`}</span></p>
+            <ul class="rg-tiers" id="rc-tiers">
+              <li data-pass="Media" hidden><a class="rg-tier" style="--c:#007A94;" href="/media-pass">
+                <span class="rg-tier-top"><b class="rg-tier-name">Media or Influencer Pass</b><span class="rg-tier-tag">By application</span></span>
+                <span class="rg-tier-what">For working journalists and creators. Tell us where you publish and we reply by email.</span>
+                <span class="rg-tier-foot"><span class="rg-tier-price">No charge</span><span class="rg-tier-go">Apply <i class="fas fa-arrow-right" aria-hidden="true"></i></span></span>
+              </a></li>
+              ${tier('delegate', 'Delegate Pass', 'Delegate Pass', 'Full 2-day conference + networking lunch + networking app', 'Most popular', '#0F7B47', true)}
+              ${tier('premium', 'Premium Delegate Pass', 'Premium Delegate', 'Delegate + one workshop (first come, first served)', 'Includes a workshop', '#0B7A75')}
+              ${tier('vip', 'VIP Pass', 'VIP Pass', 'Premium + Bharat AI Leaders’ Evening + VIP lounge + speaker meet &amp; greet', 'All access', '#8A6500')}
+              ${tier('student', 'Student Pass', 'Student Pass', 'Conference + one workshop + student zone, with a student ID', 'Students', '#AD1457')}
+              ${tier('academic', 'Academic Pass', 'Academic Pass', 'Conference + student zone, with a faculty or institution ID', 'Faculty and researchers', '#6A4BE8')}
+            </ul>
+            <a href="#compare" class="rg-compare">Compare every pass, side by side</a>
+          </section>
+          <p class="rc-more"><button type="button" id="rc-all" onclick="rcShowAll()">See all passes</button><a href="/group">Bringing a team? Book for your group</a></p>
+          <button type="button" class="rc-later" id="rc-later" onclick="rcLater()">Not now. Keep me on the waiting list</button>
+        </div>
         <div id="reg-success" class="hidden">
           <div class="rs-head">
             <div class="rs-tick"><i class="fas fa-check"></i></div>
@@ -27971,19 +28075,9 @@ ${siteHeaderHTML('/passes')}
               <div id="reg-signin-note" class="rg-signin">
                 <p>Already registered? <a href="/app" class="ps-link">Sign in on the networking app</a></p>
               </div>
+              <p class="rg-live hidden" id="rg-live"><i class="rg-live-dot" aria-hidden="true"></i><span id="rg-live-text"></span></p>
             </div>
           </div>
-
-          <!-- What the free pass gives -->
-          <div class="rg-visitor">
-            <h3>Visitor Pass: free</h3>
-            <ul class="rg-ticks">
-              <li><i class="fas fa-check" aria-hidden="true"></i>Exhibition floor access</li>
-              <li><i class="fas fa-check" aria-hidden="true"></i>Product &amp; startup demos</li>
-              <li><i class="fas fa-check" aria-hidden="true"></i>Exhibition day activities</li>
-            </ul>
-          </div>
-          <p class="rg-swap">Want guaranteed entry? <label for="rg-view-paid">See the paid passes</label></p>
         </div>
       </div>
     </div>
@@ -27994,7 +28088,7 @@ ${siteHeaderHTML('/passes')}
     <section class="ps-compare" id="compare">
       <div class="ps-wrap">
         <h2 class="ps-h2">Compare passes</h2>
-        <p class="ps-lead">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none. Workshops come only with Premium Delegate and VIP.</p>
+        <p class="ps-lead">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. ${waitlist ? 'Free Visitor Passes are full for now: a new registration joins the waiting list.' : 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none.'} Workshops come only with Premium Delegate and VIP.</p>
         ${passComparisonHTML()}
         <div class="rg-compare-go">
           <button type="button" class="ps-buy" onclick="openRegisterPaidPassModal(document.getElementById('rpp-pass-type').value || 'Delegate Pass')">Get a paid pass</button>
@@ -28013,7 +28107,7 @@ ${siteHeaderHTML('/passes')}
     <div class="ps-wrap">
       <h2 class="ps-end-title" id="ps-end-title">See you at WTC Mumbai</h2>
       <a class="ps-buy" href="#delegate" onclick="return upgradeFromSuccess('Delegate Pass')">Get a Delegate Pass, ${priceNow('Delegate Pass')} + GST</a>
-      <p>Only the exhibition floor? <a href="#rg-book" class="ps-link" onclick="var v = document.getElementById('rg-view-free'); if (v) v.checked = true;">Free Visitor Pass</a>: ${waitlist ? 'full for now, a new registration joins the waiting list' : 'entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email'}. Already registered? <a href="/app" class="ps-link">Open the app</a>.</p>
+      <p>${waitlist ? 'Free Visitor Passes are full. Not ready to pay? <a href="#rg-book" class="ps-link">Fill in the form</a> and you join the waiting list.' : 'Only the exhibition floor? <a href="#rg-book" class="ps-link">Fill in the form</a> for a free Visitor Pass: entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email.'} Already registered? <a href="/app" class="ps-link">Open the app</a>.</p>
     </div>
   </section>
 </main>
@@ -28062,11 +28156,89 @@ function withHttps(v) {
 }
 
 // The button's own words, put back after a refusal (they differ when free passes are full).
-var rfIdleHTML = '${waitlist ? 'Join the waiting list' : 'Register free'} <i class="fas fa-arrow-right" aria-hidden="true"></i>';
+var rfIdleHTML = 'Continue <i class="fas fa-arrow-right" aria-hidden="true"></i>';
+// "I am a..." (13 Nov 2026): asked first. A student has a college and no job title, and the
+// industry is filled in where the answer already says it.
+var rfAutoIndustry = '';
+function rfKind() {
+  var r = document.querySelector('input[name="rf-kind"]:checked');
+  return r ? r.value : '';
+}
+function rfApplyKind() {
+  var k = rfKind(), student = k === 'student', campus = student || k === 'faculty';
+  var lab = document.getElementById('rf-company-label'), co = document.getElementById('rf-company');
+  var row = document.getElementById('rf-row-title'), tf = document.getElementById('rf-title-field'), t = document.getElementById('rf-title');
+  if (lab) lab.textContent = campus ? 'College or institute' : 'Organization';
+  if (co) co.placeholder = campus ? 'Your college or university' : 'Company / Institute';
+  if (row && tf && t) {
+    tf.style.display = student ? 'none' : '';
+    t.required = !student;
+    row.classList.toggle('rg-one', student);
+  }
+  var fits = { student: 'Education & Academia', faculty: 'Education & Academia', government: 'Government & Public Sector', startup: 'Startup / Early stage', media: 'Media & Entertainment' };
+  var ind = document.getElementById('rf-industry');
+  if (ind && (!ind.value || ind.value === rfAutoIndustry)) { ind.value = fits[k] || ''; rfAutoIndustry = ind.value; }
+  var note = document.getElementById('rf-kind-note');
+  if (note) note.classList.add('hidden');
+}
+
+// The screen after the form: the passes that fit who they said they are, the best fit first.
+var RC_PASSES = {
+  corporate: ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'],
+  startup: ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'],
+  government: ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass'],
+  student: ['Student Pass', 'Delegate Pass'],
+  faculty: ['Academic Pass', 'Delegate Pass', 'Premium Delegate Pass'],
+  media: ['Media', 'Delegate Pass', 'Premium Delegate Pass']
+};
+function rcSetUp(kind, person) {
+  var list = document.getElementById('rc-tiers');
+  var want = RC_PASSES[kind] || RC_PASSES.corporate;
+  var rows = Array.prototype.slice.call(list.children), byPass = {};
+  rows.forEach(function (li) {
+    byPass[li.getAttribute('data-pass')] = li;
+    li.hidden = true;
+    li.querySelector('.rg-tier').classList.remove('rg-tier--lead');
+  });
+  want.forEach(function (p, i) {
+    var li = byPass[p];
+    if (!li) return;
+    li.hidden = false;
+    list.appendChild(li);
+    if (i === 0) li.querySelector('.rg-tier').classList.add('rg-tier--lead');
+  });
+  rows.forEach(function (li) { if (li.hidden) list.appendChild(li); });
+  var first = String((person && person.name) || '').trim().split(' ')[0];
+  document.getElementById('rc-hello').textContent = (first ? 'Thanks, ' + first + '. ' : '') + 'Your details are saved.';
+  document.getElementById('rc-later').textContent = person && person.entry_status === 'waitlisted'
+    ? 'Not now. Keep me on the waiting list' : 'Not now. Continue with a free Visitor Pass';
+}
+function rcShowAll() {
+  Array.prototype.slice.call(document.getElementById('rc-tiers').children).forEach(function (li) {
+    if (li.getAttribute('data-pass') !== 'Media') li.hidden = false;
+  });
+  document.getElementById('rc-all').hidden = true;
+}
+// "Not now": on to the screen a registration always ended on (the waiting list's words,
+// what to do next, and the passes once more).
+function rcLater() {
+  document.getElementById('reg-choose').classList.add('hidden');
+  var success = document.getElementById('reg-success');
+  success.classList.remove('hidden');
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  success.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+}
+
 async function submitRegistration(e) {
   e.preventDefault();
+  const kind = rfKind();
+  if (!kind) {
+    document.getElementById('rf-kind-note').classList.remove('hidden');
+    document.getElementById('rf-kind').scrollIntoView({ block: 'center' });
+    return;
+  }
   const btn = document.getElementById('rf-submit');
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Registering...';
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Saving...';
   btn.disabled = true;
 
   try {
@@ -28078,7 +28250,8 @@ async function submitRegistration(e) {
         email: document.getElementById('rf-email').value.trim(),
         mobile: document.getElementById('rf-phone').value.trim(),
         company: document.getElementById('rf-company').value.trim(),
-        job_title: document.getElementById('rf-title').value.trim(),
+        job_title: document.getElementById('rf-title').value.trim() || (kind === 'student' ? 'Student' : ''),
+        attendee_type: kind,
         city: document.getElementById('rf-city').value.trim(),
         industry: document.getElementById('rf-industry').value,
         linkedin_url: withHttps(document.getElementById('rf-linkedin').value),
@@ -28119,7 +28292,10 @@ async function submitRegistration(e) {
     document.getElementById('reg-intro').classList.add('hidden');
     document.getElementById('reg-signin-note').classList.add('hidden');
     const success = document.getElementById('reg-success');
-    success.classList.remove('hidden');
+    const choose = document.getElementById('reg-choose');
+    // Saved already: whatever goes wrong in ordering the list, the screen still comes up.
+    try { rcSetUp(kind, data); } catch (err) {}
+    choose.classList.remove('hidden');
     const refId = 'BHAI-2026-' + String(data.id).padStart(5, '0');
     document.getElementById('rs-name').textContent = 'Welcome, ' + data.name;
     document.getElementById('rs-ref').textContent = refId;
@@ -28150,8 +28326,8 @@ async function submitRegistration(e) {
     // landed on the sign-in form).
     try { localStorage.setItem('agba_user', JSON.stringify(data)); } catch (err) {}
     const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    success.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
-    showToast('Registration successful!', 'success');
+    choose.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
+    showToast('Saved. Now choose your pass.', 'success');
   } catch(err) {
     showToast('Network error. Please try again.', 'error');
     btn.innerHTML = rfIdleHTML;
@@ -28467,25 +28643,26 @@ document.addEventListener('DOMContentLoaded', function () {
   show();
 });
 
-// Paid passes come first (13 Nov 2026). A link that asked for the free pass
-// (?source=home-hero-free, passes-visitor, delhi-page-free ...) opens on the free form.
+// "A startup founder from Pune registered 12 minutes ago": real sign-ups from the server, one
+// at a time. No names. Nothing shows when there is nothing recent.
 (function () {
-  try {
-    var asked = (new URLSearchParams(location.search).get('source') || '').toLowerCase();
-    if (asked.indexOf('free') !== -1 || asked.indexOf('visitor') !== -1) {
-      var v = document.getElementById('rg-view-free');
-      if (v) v.checked = true;
-    }
-  } catch (err) { /* the paid passes stay first */ }
+  var box = document.getElementById('rg-live'), out = document.getElementById('rg-live-text');
+  if (!box || !out || !window.fetch) return;
+  fetch('/api/events/1/recent-signups').then(function (r) { return r.json(); }).then(function (j) {
+    var lines = (j && j.lines) || [];
+    if (!lines.length) return;
+    var i = 0;
+    out.textContent = lines[0];
+    box.classList.remove('hidden');
+    var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (still || lines.length < 2) return;
+    setInterval(function () {
+      i = (i + 1) % lines.length;
+      box.classList.add('rg-live--out');
+      setTimeout(function () { out.textContent = lines[i]; box.classList.remove('rg-live--out'); }, 300);
+    }, 4500);
+  }).catch(function () {});
 })();
-
-// Swapping free and paid on a phone from far down the page: back up to the top of what was chosen.
-document.querySelectorAll('input[name="rg-view"]').forEach(function (r) {
-  r.addEventListener('change', function () {
-    var top = document.getElementById('rg-switch');
-    if (top && top.getBoundingClientRect().top < 0) top.scrollIntoView({ block: 'start' });
-  });
-});
 </script>
 
 <!-- ===== PAID PASS MODAL (Register Page) ===== -->
@@ -43802,7 +43979,7 @@ function adminPageScript(): string {
     }
     function attSearchHit(a, s) {
       if (s.phone && attSearchDigits(a.mobile).indexOf(s.phone) >= 0) return true;
-      var hay = [a.name, a.email, a.mobile, a.company, a.job_title, a.city, a.country, a.industry, a.badge_type, attPassLabel(a), '#' + a.id].join(' ').toLowerCase()
+      var hay = [a.name, a.email, a.mobile, a.company, a.job_title, a.city, a.country, a.industry, a.attendee_type, a.badge_type, attPassLabel(a), '#' + a.id].join(' ').toLowerCase()
         + ' ' + attSearchSquash(a.name) + ' ' + attSearchSquash(a.company);
       return s.words.every(function (w) { return hay.indexOf(w) >= 0; });
     }
@@ -44916,6 +45093,7 @@ function adminPageScript(): string {
         '<div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4 pb-4 border-b border-white/10">' +
           field('Organisation', a.company) + field('Designation', a.job_title) + field('Mobile', a.mobile) +
           field('City', a.city) + field('Industry', a.industry) + field('Source', a.registration_source) +
+          (a.attendee_type ? field('Registered as', a.attendee_type) : '') +
         '</div>' +
         '<div class="grid grid-cols-1 md:grid-cols-2 gap-5">' +
           '<div><h4 class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2">Journey</h4>' + steps + '</div>' +

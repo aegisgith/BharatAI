@@ -543,6 +543,7 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
     const { ctx, page } = await phone();
     await page.goto(BASE + '/register', { waitUntil: 'domcontentloaded' });
     await sleep(800);
+    await page.click('.rg-kind-row input[value="corporate"] + span');
     await page.fill('#rf-name', 'Ravi Upsell');
     await page.fill('#rf-email', 'ravi.upsell@example.com');
     await page.fill('#rf-phone', '9820099999');
@@ -560,12 +561,12 @@ const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isM
       for (const el of document.querySelectorAll('h1, h1 ~ p, #reg-intro')) text += ' ' + (el.offsetParent ? el.innerText : '');
       return { text: text.replace(/\s+/g, ' '), firstBox: Math.round(document.getElementById('rf-name').getBoundingClientRect().top + window.scrollY), form: !!form };
     });
-    check('the free form is not opened with a warning: entry by slot is said once, plainly, and the first box is on the first screen', !/not guaranteed|or none/i.test(above.text) && /entry by time slot on 20 and 21 Nov, as available, confirmed by email/.test(above.text) && above.firstBox < 844, JSON.stringify(above));
+    check('the form is not opened with a warning and says nothing of a free pass; the first box is on the first screen', !/not guaranteed|or none|free|waiting list/i.test(above.text) && above.firstBox < 844, JSON.stringify(above));
     await page.evaluate(() => { const f = document.getElementById('reg-form'); f.requestSubmit ? f.requestSubmit() : f.submit(); });
-    await page.waitForFunction(() => { const s = document.getElementById('reg-success'); return s && !s.classList.contains('hidden'); }, null, { timeout: 15000 }).catch(() => {});
-    check('a free registration reaches the success screen', await page.isVisible('#reg-success'));
+    await page.waitForFunction(() => { const s = document.getElementById('reg-choose'); return s && !s.classList.contains('hidden'); }, null, { timeout: 15000 }).catch(() => {});
+    check('a registration is saved and reaches the pass choice', await page.isVisible('#reg-choose'));
     check('with a LinkedIn address typed the way the hint shows it, saved as a working link', ((Object.values((await getState()).attendees).find(x => x.email === 'ravi.upsell@example.com') || {}).linkedin_url) === 'https://linkedin.com/in/ravi-upsell', JSON.stringify(Object.values((await getState()).attendees).find(x => x.email === 'ravi.upsell@example.com') || {}));
-    await page.click('#reg-success a:has-text("Upgrade to Delegate")');
+    await page.click('#rc-tiers .rg-tier[href="#delegate"]');
     await sleep(800);
     const f = await page.evaluate(() => ({ open: !document.getElementById('reg-paid-pass-modal').classList.contains('hidden'), pass: document.getElementById('rpp-pass-type').value, name: document.getElementById('rpp-name').value, email: document.getElementById('rpp-email').value, phone: document.getElementById('rpp-phone').value, company: document.getElementById('rpp-company').value, title: document.getElementById('rpp-designation').value, city: document.getElementById('rpp-city').value, industry: document.getElementById('rpp-industry').value }));
     check('"Upgrade to Delegate" on the success screen opens the paid form on Delegate', f.open && f.pass === 'Delegate Pass', JSON.stringify(f));

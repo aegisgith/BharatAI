@@ -65,16 +65,16 @@ check('sanitiser: a blank slot is nothing', W.row(104).entry_slot === null);
 // ---- 5. the words on the two pages ----
 await W.setSwitch(false);
 let reg = (await W.hit('GET', '/register')).text, passes = (await W.hit('GET', '/passes')).text;
-check('/register off: the ordinary words', reg.includes('Register free') && reg.includes('Get Your Free Visitor Pass') && reg.includes('Entry by time slot') && !reg.includes('id="rg-wait-note"') && !reg.includes('Join the waiting list'));
+check('/register off: one form for everyone, the foot offers the free pass', reg.includes('Tell us who you are') && reg.includes('Continue <i') && reg.includes('for a free Visitor Pass: entry not guaranteed') && !reg.includes('id="rg-wait-note"') && !reg.includes('Join the waiting list'));
 check('/passes off: the slot rule', passes.includes('Entry on a free Visitor Pass is not guaranteed') && !passes.includes('full for now'));
 await W.setSwitch(true);
 reg = (await W.hit('GET', '/register')).text; passes = (await W.hit('GET', '/passes')).text;
 check('/register on: the organiser words', reg.includes(WAITLIST_TEXT) && reg.includes(WAITLIST_UPSELL));
-check('/register on: the button, the heading, the switch label', reg.includes('Join the waiting list') && reg.includes('Free Visitor Pass: waiting list') && reg.includes('<span>Waiting list</span>') && reg.includes('See the paid passes'));
-check('/register on: the button is put back from its own words after a refusal', reg.includes("var rfIdleHTML = 'Join the waiting list <i") && !reg.includes("btn.innerHTML = 'Register free"));
+check('/register on: the same form, nothing of free or waiting above the button (13 Nov 2026)', reg.includes('Tell us who you are') && reg.includes('Continue <i') && !reg.includes('<h2>Free Visitor Pass: waiting list</h2>') && !reg.includes('id="rg-wait-note"') && !reg.includes('See the paid passes'));
+check('/register on: the button is put back in its own words after a refusal', reg.includes("var rfIdleHTML = 'Continue <i") && !reg.includes("btn.innerHTML = 'Register free"));
 check('/register on: the success screen knows the mark', reg.includes("data.entry_status === 'waitlisted'") && reg.includes('id="rs-chip-pass"') && reg.includes('id="rs-up-title"'));
 check('/passes on: full for now in the lead, the question and the foot', passes.split('Free Visitor Passes are full for now').length - 1 >= 2 && passes.includes('full for now, a new registration joins the waiting list'));
-check('/register on: the foot too', reg.includes('full for now, a new registration joins the waiting list'));
+check('/register on: the foot says full, and that the form joins the waiting list', reg.includes('Free Visitor Passes are full. Not ready to pay?') && reg.includes('and you join the waiting list.'));
 
 // ---- 6. the admin page's own functions ----
 const adminJs = (await W.hit('GET', '/admin.js', undefined, ADMIN)).text;
@@ -139,7 +139,7 @@ check('pre-0056: the switch is ignored', (await P.hit('GET', '/api/payments/conf
 check('pre-0056: Admin says not ready', (await P.admin('GET', '/api/admin/waitlist')).json.ready === false);
 const r = await P.register({ email: 'old@gmail.com', mobile: '+91 98200 30001' });
 check('pre-0056: a registration still works, unmarked', r.status === 201 && r.json.entry_status === undefined, r.json);
-check('pre-0056: /register keeps the ordinary words', (await P.hit('GET', '/register')).text.includes('Register free'));
+check('pre-0056: /register is the same form', (await P.hit('GET', '/register')).text.includes('Tell us who you are'));
 check('pre-0056: the decision route says why', (await P.admin('POST', '/api/admin/attendees/waitlist', { ids: [r.json.id], decision: 'confirmed' })).status === 503);
 
 done();

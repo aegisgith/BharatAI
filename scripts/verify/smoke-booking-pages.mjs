@@ -22,17 +22,17 @@ const scriptOf = (html, needle) => {
   return hit[0];
 };
 
-function openPage(html, needle, { search = '', fetchTo = toWorker } = {}) {
+function openPage(html, needle, { search = '', fetchTo = toWorker, kind = 'corporate' } = {}) {
   const els = {};
   const classes = (start = []) => { const s = new Set(start); return { add: (c) => s.add(c), remove: (c) => s.delete(c), contains: (c) => s.has(c), toggle: (c, on) => (on ? s.add(c) : s.delete(c)) }; };
   const make = () => ({ value: '', textContent: '', innerHTML: '', disabled: false, required: true, checked: false, open: false, style: { setProperty() {} }, classList: classes(), listeners: {}, addEventListener(t, f) { this.listeners[t] = f; }, scrollIntoView() { this.scrolled = true; }, getBoundingClientRect() { return { top: 900 }; }, appendChild() {}, remove() {}, setAttribute() {}, getAttribute() { return null; }, reset() { this.wasReset = true; } });
   const get = (id) => (els[id] = els[id] || make());
-  for (const id of ['iq-notice', 'iq-success', 'iq-price-summary', 'rf-notice', 'reg-success', 'reg-paid-pass-modal']) els[id] = Object.assign(make(), { classList: classes(['hidden']) });
+  for (const id of ['iq-notice', 'iq-success', 'iq-price-summary', 'rf-notice', 'rf-kind-note', 'reg-choose', 'reg-success', 'reg-paid-pass-modal']) els[id] = Object.assign(make(), { classList: classes(['hidden']) });
   const ready = [];
   const store = () => { const m = {}; return { getItem: (k) => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); } }; };
   const said = [];
   const sandbox = {
-    document: { getElementById: get, querySelectorAll: () => [], querySelector: () => null, createElement: () => make(), body: make(), addEventListener: (t, f) => { if (t === 'DOMContentLoaded') ready.push(f); } },
+    document: { getElementById: get, querySelectorAll: () => [], querySelector: (sel) => (/rf-kind/.test(String(sel)) && kind ? { value: kind } : null), createElement: () => make(), body: make(), addEventListener: (t, f) => { if (t === 'DOMContentLoaded') ready.push(f); } },
     location: { search, hash: '', pathname: '/x' }, history: { replaceState() {} },
     sessionStorage: store(), localStorage: store(), URLSearchParams, JSON, Object, Number, String, Date, Promise, Event: class {},
     setTimeout: () => 0, clearTimeout: () => {}, console, alert: (m) => said.push(m),
@@ -142,7 +142,9 @@ const row = (email) => q('SELECT * FROM attendees WHERE email = ?', email)[0];
   check('the free form, with the folded boxes never opened: one Visitor Pass', a && a.badge_type === 'Visitor Pass' && a.event_id === 1 && a.main_event === 1, JSON.stringify(a));
   check('with what was typed, and the folded boxes empty', a.name === 'Asha Rao' && a.mobile === '9820022222' && a.company === 'Rao Labs' && a.job_title === 'Founder' && a.city === 'Pune' && a.industry === 'Software & SaaS' && !a.linkedin_url && !a.interests, JSON.stringify(a));
   check('the button that brought them is kept', a.registration_source === 'passes-visitor', a.registration_source);
-  check('the success screen shows, the form and the words above it go', !p.get('reg-success').classList.contains('hidden') && p.get('reg-form').classList.contains('hidden') && p.get('reg-intro').classList.contains('hidden') && p.get('reg-signin-note').classList.contains('hidden'));
+  check('the pass choice shows first, the form and the words above it go', !p.get('reg-choose').classList.contains('hidden') && p.get('reg-success').classList.contains('hidden') && p.get('reg-form').classList.contains('hidden') && p.get('reg-intro').classList.contains('hidden') && p.get('reg-signin-note').classList.contains('hidden'));
+  p.sandbox.rcLater();
+  check('Not now: the screen a registration ends on', !p.get('reg-success').classList.contains('hidden') && p.get('reg-choose').classList.contains('hidden'));
   check('with the name and the reference', p.get('rs-name').textContent === 'Welcome, Asha Rao' && p.get('rs-ref').textContent === 'BHAI-2026-' + String(a.id).padStart(5, '0'), p.get('rs-ref').textContent);
   check('and the app will know them', /asha@example.com/.test(p.sandbox.localStorage.getItem('agba_user') || ''));
 }
@@ -159,7 +161,7 @@ const row = (email) => q('SELECT * FROM attendees WHERE email = ?', email)[0];
   fill(p, { ...FREE, 'rf-phone': '9820044444' });
   await p.sandbox.submitRegistration({ preventDefault() {} });
   await p.settle();
-  check('the same email again: a lasting notice with a way to sign in, and the button back in its new words', !p.get('rf-notice').classList.contains('hidden') && /app#login/.test(p.get('rf-notice').innerHTML) && /Register free/.test(p.get('rf-submit').innerHTML) && p.get('rf-submit').disabled === false, p.get('rf-notice').innerHTML);
+  check('the same email again: a lasting notice with a way to sign in, and the button back in its new words', !p.get('rf-notice').classList.contains('hidden') && /app#login/.test(p.get('rf-notice').innerHTML) && /Continue/.test(p.get('rf-submit').innerHTML) && p.get('rf-submit').disabled === false, p.get('rf-notice').innerHTML);
   check('and nothing added', q("SELECT COUNT(*) AS n FROM attendees WHERE email = 'asha@example.com'")[0].n === 1);
 }
 {
@@ -167,7 +169,15 @@ const row = (email) => q('SELECT * FROM attendees WHERE email = ?', email)[0];
   fill(p, { ...FREE, 'rf-email': 'off@example.com' });
   await p.sandbox.submitRegistration({ preventDefault() {} });
   await p.settle();
-  check('no signal: the button comes back in the new words', /Register free/.test(p.get('rf-submit').innerHTML) && p.get('rf-submit').disabled === false);
+  check('no signal: the button comes back in the new words', /Continue/.test(p.get('rf-submit').innerHTML) && p.get('rf-submit').disabled === false);
+}
+
+{
+  const p = openPage(registerHtml, 'submitRegistration', { kind: '' });
+  fill(p, { ...FREE, 'rf-email': 'nokind@example.com', 'rf-phone': '9820055556' });
+  await p.sandbox.submitRegistration({ preventDefault() {} });
+  await p.settle();
+  check('"I am a..." unanswered: asked for it, and nothing is sent', !p.get('rf-kind-note').classList.contains('hidden') && !row('nokind@example.com') && p.get('reg-choose').classList.contains('hidden'));
 }
 
 // ======== /register: the paid form's checks, in its new markup ========

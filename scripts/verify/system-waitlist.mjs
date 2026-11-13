@@ -23,7 +23,7 @@ check('Meera, before: a pass', await meeraPass() === 200);
 const sw = await W.admin('PUT', '/api/admin/settings', { free_pass_waitlist: '1' });
 const st = await W.admin('GET', '/api/admin/waitlist');
 check('the organiser throws the switch: Settings shows it on, nobody waiting yet', sw.status === 200 && st.json.ready && st.json.on && st.json.total === 0, st.json);
-check('the public pages say so', (await W.hit('GET', '/register')).text.includes('Join the waiting list') && (await W.hit('GET', '/passes')).text.includes('Free Visitor Passes are full for now') && (await W.hit('GET', '/api/payments/config')).json.free_pass_waitlist === true);
+check('the public pages say so', (await W.hit('GET', '/register')).text.includes('Free Visitor Passes are full. Not ready to pay?') && (await W.hit('GET', '/passes')).text.includes('Free Visitor Passes are full for now') && (await W.hit('GET', '/api/payments/config')).json.free_pass_waitlist === true);
 check('Meera, after the switch: still a pass', await meeraPass() === 200);
 
 // Asha registers from /register.
@@ -67,6 +67,6 @@ await W.admin('PUT', '/api/admin/settings', { free_pass_waitlist: '0' });
 const ravi = await W.register({ name: 'Ravi Menon', email: 'ravi@gmail.com', mobile: '+91 98200 15152' });
 await settle();
 check('switch off: Ravi registers as before, with the welcome', ravi.status === 201 && !ravi.json.entry_status && W.mailTo('ravi@gmail.com').some(m => /You are registered/.test(m.Content.Subject)));
-check('switch off: the pages are back to the slot rule', (await W.hit('GET', '/register')).text.includes('Register free') && !(await W.hit('GET', '/passes')).text.includes('full for now'));
+check('switch off: the pages are back to the slot rule', (await W.hit('GET', '/register')).text.includes('for a free Visitor Pass: entry not guaranteed') && !(await W.hit('GET', '/passes')).text.includes('full for now'));
 
 done();

@@ -35,16 +35,17 @@ const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate P
 
   // /register on a phone.
   await page.goto(BASE + '/register', { waitUntil: 'load' });
-  // Paid passes come first (13 Nov 2026): the free form is one tap away.
-  await page.tap('.rg-switch label[for="rg-view-free"]');
-  await page.waitForTimeout(400);
+  // 13 Nov 2026: one form for everyone. It says nothing of free or waiting; the person is
+  // saved, offered the passes, and reads the waiting-list words only after "Not now".
   const text = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
-  check('/register: the heading and the words', text.includes('Free Visitor Pass: waiting list') && text.includes(WAITLIST_TEXT) && text.includes(WAITLIST_UPSELL), text.slice(0, 300));
-  check('/register: the button in its own words', (await page.locator('#rf-submit').innerText()).trim().startsWith('Join the waiting list'));
-  check('/register: the choice says Waiting list', text.includes('Waiting list'));
+  const card = (await page.locator('.rg-card').innerText()).replace(/\s+/g, ' ');
+  check('/register: the form asks who they are and says nothing of free or waiting', (await page.locator('.rg-kind-row label').count()) === 6 && !/free|waiting list/i.test(card), card.slice(0, 300));
+  check('/register: the button moves them on', (await page.locator('#rf-submit').innerText()).trim().startsWith('Continue'));
+  check('/register: the foot says free passes are full', text.includes('Free Visitor Passes are full. Not ready to pay?'));
   check('/register: nothing wider than the phone', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
 
   // A real registration.
+  await page.tap('.rg-kind-row input[value="corporate"] + span');
   await page.fill('#rf-name', 'Asha Rao');
   await page.fill('#rf-email', 'asha.rao@gmail.com');
   await page.fill('#rf-phone', '+91 98200 15151');
@@ -53,6 +54,10 @@ const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate P
   await page.fill('#rf-city', 'Pune');
   await page.selectOption('#rf-industry', 'Software & SaaS');
   await page.click('#rf-submit');
+  await page.waitForSelector('#reg-choose:not(.hidden)', { timeout: 20000 });
+  const offered = await page.evaluate(() => ({ passes: [...document.querySelectorAll('#rc-tiers > li')].filter((l) => !l.hidden).map((l) => l.getAttribute('data-pass')).join(), later: document.getElementById('rc-later').textContent, success: !document.getElementById('reg-success').classList.contains('hidden') }));
+  check('saved, then the passes: Delegate first, and the last choice is the waiting list', offered.passes === 'Delegate Pass,Premium Delegate Pass,VIP Pass' && offered.later === 'Not now. Keep me on the waiting list' && !offered.success, JSON.stringify(offered));
+  await page.tap('#rc-later');
   await page.waitForSelector('#reg-success:not(.hidden)', { timeout: 20000 });
   const name = (await page.locator('#rs-name').innerText()).trim();
   const chip = (await page.locator('#rs-chip-pass').innerText()).trim();
