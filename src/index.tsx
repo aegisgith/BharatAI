@@ -27955,9 +27955,7 @@ ${siteHeaderHTML('/passes')}
           #reg-choose { scroll-margin-top: 96px; }
           #reg-choose [hidden] { display: none !important; }
           @media (prefers-reduced-motion: no-preference) { #reg-choose { animation: rsIn .35s ease-out both; } }
-          #reg-choose .rc-head { text-align: center; padding: 2px 0 16px; }
-          #reg-choose .rc-tick { width: 48px; height: 48px; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; color: #0F7B47; background: #E3F5EA; }
-          #reg-choose .rc-hello { margin: 0; font-size: 18px; line-height: 1.3; font-weight: 800; color: #1E2140; }
+          #reg-choose .rg-offer > .rc-step { margin: 0 4px 6px; font-size: 13px; line-height: 1.3; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #FFD58A; }
           #reg-choose .rc-more { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 0 18px; margin: 10px 0 0; }
           #reg-choose .rc-more button, #reg-choose .rc-more a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; border: 0; background: none; font: inherit; font-size: 14.5px; font-weight: 700; color: #1A237E; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
           #reg-choose .rc-later { display: block; width: 100%; min-height: 46px; margin: 2px 0 0; padding: 8px 12px; border: 0; border-radius: 12px; background: none; font: inherit; font-size: 14px; font-weight: 600; color: #5B6178; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
@@ -27967,12 +27965,9 @@ ${siteHeaderHTML('/passes')}
           .rg-live-dot { flex: 0 0 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: #17A35A; box-shadow: 0 0 0 4px rgba(23, 163, 90, 0.18); }
         </style>
         <div id="reg-choose" class="hidden">
-          <div class="rc-head">
-            <div class="rc-tick"><i class="fas fa-check" aria-hidden="true"></i></div>
-            <p class="rc-hello" id="rc-hello">Your details are saved.</p>
-          </div>
           <section class="rg-offer" aria-labelledby="rc-title">
-            <h2 id="rc-title">Choose your pass</h2>
+            <p class="rc-step">Step 2 of 2</p>
+            <h2 id="rc-title">Now select your pass type</h2>
             <p>Every pass here has guaranteed entry on both days, the full conference and the networking app.</p>
             <p class="rg-clock"><i class="fas fa-clock" aria-hidden="true"></i><span>${latePricing() ? PRICE_ROSE_TEXT : `Prices rise on ${PRICE_LATE_FROM_TEXT}. Book by ${PRICE_DEADLINE_TEXT} to pay the standard price.`}</span></p>
             <ul class="rg-tiers" id="rc-tiers">
@@ -28208,8 +28203,6 @@ function rcSetUp(kind, person) {
     if (i === 0) li.querySelector('.rg-tier').classList.add('rg-tier--lead');
   });
   rows.forEach(function (li) { if (li.hidden) list.appendChild(li); });
-  var first = String((person && person.name) || '').trim().split(' ')[0];
-  document.getElementById('rc-hello').textContent = (first ? 'Thanks, ' + first + '. ' : '') + 'Your details are saved.';
   document.getElementById('rc-later').textContent = person && person.entry_status === 'waitlisted'
     ? 'Not now. Keep me on the waiting list' : 'Not now. Continue with a free Visitor Pass';
 }
@@ -28327,7 +28320,6 @@ async function submitRegistration(e) {
     try { localStorage.setItem('agba_user', JSON.stringify(data)); } catch (err) {}
     const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     choose.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
-    showToast('Saved. Now choose your pass.', 'success');
   } catch(err) {
     showToast('Network error. Please try again.', 'error');
     btn.innerHTML = rfIdleHTML;
