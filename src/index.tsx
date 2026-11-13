@@ -174,6 +174,7 @@ async function sendAdminEmail(c: any, to: string, subject: string, html: string,
   // Campaign-style mail (opts.unsubscribe !== false) carries the unsubscribe
   // footer and header; a reply to somebody's own request may pass false.
   const unsub = opts.unsubscribe === false ? '' : await unsubscribeUrl(c, to)
+  html = await withAppOnPhoneFor(c, html, to) // THE APP ON THE PHONE, below emailBrandHeader
   const body = unsub ? html.replace(/<\/body>\s*<\/html>\s*$/i, UNSUB_FOOTER(unsub) + '</body></html>') : html
   const finalHtml = unsub && body === html ? html + UNSUB_FOOTER(unsub) : body
   try {
@@ -1392,7 +1393,7 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
       body: JSON.stringify({
         Recipients: { To: [attendee.email] },
         Content: {
-          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
+          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: await withAppOnPhoneFor(c, html, attendee.email) }],
           From: `${fromName} <${fromEmail}>`,
           Subject: opts.receipt ? 'Payment received: your ' + attendee.badge_type + ' is confirmed' : 'You are registered - Bharat AI Innovation 2026'
         },
@@ -1476,7 +1477,7 @@ async function sendWaitlistEmail(c: any, attendee: any) {
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
         Recipients: { To: [attendee.email] },
-        Content: { Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: mail.html }], From: `${fromName} <${fromEmail}>`, Subject: mail.subject },
+        Content: { Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: await withAppOnPhoneFor(c, mail.html, attendee.email) }], From: `${fromName} <${fromEmail}>`, Subject: mail.subject },
         Options: { TrackClicks: false, TrackOpens: false },
       }),
     })
@@ -1878,7 +1879,8 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
     </table>
   </td></tr></table></body></html>`
 
-  if (opts.preview) return { ok: true, html }
+  const outHtml = await withAppOnPhoneFor(c, html, attendee.email)
+  if (opts.preview) return { ok: true, html: outHtml }
 
   try {
     const resp = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
@@ -1887,7 +1889,7 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
       body: JSON.stringify({
         Recipients: { To: [attendee.email] },
         Content: {
-          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
+          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: outHtml }],
           From: `${fromName} <${fromEmail}>`,
           Subject: `You are registered: AI and Employability at ${panel.hostShort}, ${panel.dateLabel.replace(/^[A-Za-z]+, /, '')}`
         },
@@ -1955,6 +1957,74 @@ function emailBrandHeader(title: string, subtitle: string): string {
       ${title ? `<h1 style="color:#ffffff;margin:16px 0 0;font-size:19px;font-weight:bold;font-family:Arial,Helvetica,sans-serif;">${title}</h1>` : ''}
       ${subtitle ? `<p style="color:rgba(255,255,255,0.82);margin:6px 0 0;font-size:13px;font-family:Arial,Helvetica,sans-serif;">${subtitle}</p>` : ''}
     </div>`
+}
+
+// ==================== THE APP ON THE PHONE (13 Nov 2026) ====================
+// The organiser: nudge everyone to save the app on their phone, and say so in every
+// outgoing email. withAppOnPhoneFor() puts one short block above the unsubscribe line
+// of each email to a person, sent and previewed alike, until Day 2 is over.
+// sendAdminEmail does it for everything sent through it (the marketplace, conference
+// and speaker-brief routes too); each sender that calls Elastic Email itself does it
+// on its own Content line. Left out: mail to the team (our own domains, the
+// notification addresses in Settings, the Organiser pass holders); the Delhi 2027
+// edition, whose passes are not in this app; and the after-event mail (survey,
+// exhibitor results, thank you), which noAppOnPhone() marks. "Show me how" opens
+// /app?action=save-app: the steps for the phone it is opened on (openAppOnPhoneSteps).
+const APP_ON_PHONE_END_MS = Date.parse('2026-11-21T18:30:00Z') // midnight in India after Day 2
+const APP_ON_PHONE_MARK = 'data-app-on-phone'
+const APP_ON_PHONE_TEAM_DOMAINS = ['bharataiinnovation.com', 'bellaward.com']
+
+function appOnPhoneEmailHTML(): string {
+  const font = 'font-family:Arial,Helvetica,sans-serif;'
+  const p = (html: string, extra = '') => `<p style="margin:0 0 8px;font-size:13px;line-height:1.55;color:#333333;${font}${extra}">${html}</p>`
+  return `<table role="presentation" ${APP_ON_PHONE_MARK}="1" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+  <tr><td align="center" style="padding:6px 12px 22px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;border-collapse:separate;background:#FFF8F0;border:1px solid #F3CDA6;border-radius:12px;">
+      <tr><td style="padding:18px 20px;text-align:left;">
+        <p style="margin:0 0 6px;font-size:16px;line-height:1.35;font-weight:bold;color:#1E2140;${font}">&#128241; Save the Bharat AI app on your phone</p>
+        ${p('Coming on 20 or 21 Nov? With the app on your phone, your pass, the schedule and your meetings open with one tap. No searching through emails at the gate.', 'font-size:14px;color:#444444;margin-bottom:12px;')}
+        ${p('<strong>Android:</strong> open <a href="https://bharataiinnovation.com/app" style="color:#C84F00;">bharataiinnovation.com/app</a> in Chrome, tap the three dots &#8942;, then <strong>Add to Home screen</strong> or <strong>Install app</strong>.')}
+        ${p('<strong>iPhone:</strong> open it in Safari, tap Share, then <strong>Add to Home Screen</strong>. Open the new icon and sign in once with the 6-digit code we email you.', 'margin-bottom:14px;')}
+        <a href="https://bharataiinnovation.com/app?action=save-app" style="display:inline-block;padding:12px 22px;background:#C84F00;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;${font}">Show me how</a>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>`
+}
+
+// Before the last </body>, or at the end of a fragment.
+function beforeBodyEnd(html: string, piece: string): string {
+  const s = String(html ?? '')
+  const i = s.toLowerCase().lastIndexOf('</body>')
+  return i < 0 ? s + piece : s.slice(0, i) + piece + s.slice(i)
+}
+// An email that must not carry the block (Delhi 2027, after the event).
+function noAppOnPhone(html: string): string {
+  const s = String(html ?? '')
+  return s.includes(APP_ON_PHONE_MARK) ? s : beforeBodyEnd(s, `<!-- ${APP_ON_PHONE_MARK}="off" -->`)
+}
+function withAppOnPhone(html: string, now = Date.now()): string {
+  const s = String(html ?? '')
+  if (!s || now >= APP_ON_PHONE_END_MS || s.includes(APP_ON_PHONE_MARK)) return s
+  return beforeBodyEnd(s, appOnPhoneEmailHTML())
+}
+// The addresses that are the team's: the notification addresses in Settings and
+// everyone on the Organiser pass. Their mail from here is work mail.
+async function appOnPhoneTeam(c: any): Promise<Set<string>> {
+  const out = new Set<string>()
+  for (const k of ['inquiry_notify_email', 'marketplace_notify_email', 'sender_email']) {
+    String((await settingValue(c, k).catch(() => '')) || '').split(/[,;\s]+/).forEach((e) => { if (e.includes('@')) out.add(e.trim().toLowerCase()) })
+  }
+  try { for (const m of await organiserTeam(c.env.DB)) if (m.email) out.add(String(m.email).trim().toLowerCase()) } catch { /* no team list: the domains still hold */ }
+  return out
+}
+async function withAppOnPhoneFor(c: any, html: string, to: string): Promise<string> {
+  const s = String(html ?? '')
+  if (!s || Date.now() >= APP_ON_PHONE_END_MS || s.includes(APP_ON_PHONE_MARK)) return s
+  const email = String(to || '').trim().toLowerCase()
+  if (APP_ON_PHONE_TEAM_DOMAINS.includes(email.split('@')[1] || '')) return s
+  if (email && (await appOnPhoneTeam(c).catch(() => new Set<string>())).has(email)) return s
+  return withAppOnPhone(s)
 }
 
 // ==================== NETWORKING NOTIFICATIONS ====================
@@ -3779,7 +3849,7 @@ app.get('/api/admin/offers/preview', async (c) => {
   const a = first?.id ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(first.id).first() as any
     : { name: first?.name || 'Sample Person', event_id: 1, badge_type: audience === 'exhibitors' ? 'Exhibitor' : 'Delegate Pass' }
   const mail = await offerMail(c, audience, a, String(first?.email || 'sample@example.com'), true)
-  return c.json({ to: first?.email || '', count: rows.length, subject: mail.subject, html: mail.html })
+  return c.json({ to: first?.email || '', count: rows.length, subject: mail.subject, html: await withAppOnPhoneFor(c, mail.html, String(first?.email || '')) })
 })
 
 // /showcase-slot: the offer, then the form for someone the link or a session names,
@@ -4831,7 +4901,7 @@ async function remindToPay(c: any, b: any) {
   if (!r) return c.json({ skipped: 'This person is no longer waiting to pay.' })
   if (b.preview) {
     const mail = await payReminderMail(c, r, true)
-    return c.json({ to: r.email, subject: mail.subject, html: mail.html })
+    return c.json({ to: r.email, subject: mail.subject, html: await withAppOnPhoneFor(c, mail.html, r.email) })
   }
   if (r.why_not) return c.json({ skipped: 'Not sent: ' + r.why_not + '.' })
   if (r.reminded_at && !b.again) return c.json({ skipped: 'Not sent: reminded already.' })
@@ -5089,7 +5159,7 @@ app.get('/api/admin/help-stats', async (c) => {
   // counted once, apart, as `scanners`.
   const steps = await q(
     `SELECT action, COUNT(DISTINCT entity_id) AS people, MIN(created_at) AS first FROM admin_audit x
-      WHERE entity = 'attendee' AND (action LIKE 'card.%' OR action LIKE 'pass.%' OR action LIKE 'app.boot_%'
+      WHERE entity = 'attendee' AND (action LIKE 'card.%' OR action LIKE 'pass.%' OR action LIKE 'app.boot_%' OR action LIKE 'home.%'
          OR action = 'login.link_refused' OR action LIKE 'help.sent.%' OR action LIKE 'help.error.%') AND ${NOT_SCAN_SQL('x')}
       GROUP BY action`)
   const made = await q(
@@ -5160,7 +5230,7 @@ app.get('/api/admin/help-mail/preview', async (c) => {
   if (!r) r = { id: 0, event_id: 1, email: 'attendee@example.com', name: 'Asha Rao', badge_type: 'Visitor Pass', payment_status: '' }
   const detail = topic === 'app' && !r.social_card_downloaded_at ? JSON.stringify({ action: 'social-card' }) : null
   const mail = await helpMail(c, { ...r, topic, detail }, true)
-  return c.json({ to: r.email, subject: mail.subject, html: mail.html })
+  return c.json({ to: r.email, subject: mail.subject, html: await withAppOnPhoneFor(c, mail.html, r.email) })
 })
 
 // By hand, to one person, whether or not one went before.
@@ -5484,7 +5554,7 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
       body: JSON.stringify({
         Recipients: copyTo.length ? { To: [v.buyer_email], BCC: copyTo } : { To: [v.buyer_email] },
         Content: {
-          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }],
+          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: delhiInvoice ? html : await withAppOnPhoneFor(c, html, v.buyer_email) }],
           From: `${fromName} <${fromEmail}>`,
           ReplyTo: fromEmail,
           Subject: receipt
@@ -9682,7 +9752,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
     const payload = {
       Recipients: { To: [normalizedEmail] },
       Content: {
-        Body: [{ ContentType: "HTML", Content: emailHtml, Charset: "utf-8" }],
+        Body: [{ ContentType: "HTML", Content: Number(eventId) === DELHI_EVENT_ID ? emailHtml : await withAppOnPhoneFor(c, emailHtml, normalizedEmail), Charset: "utf-8" }],
         From: `${fromName} <${fromEmail}>`,
         Subject: payName ? 'Sign in to pay for your ' + payName : 'Sign In to Bharat AI Innovation 2026'
       },
@@ -9747,8 +9817,11 @@ app.post('/api/attendees/:id/track-social-card', async (c) => {
  * (blocked: payment pending, not coming). One admin_audit row per step, as
  * card.<step> / pass.<step>; the same step with the same reason within ten
  * minutes is one row, so a person tapping twice is counted once. */
-const TRACK_STEP_KINDS = new Set(['card', 'pass'])
+const TRACK_STEP_KINDS = new Set(['card', 'pass', 'home'])
 const TRACK_STEPS = new Set(['open', 'photo_asked', 'photo_cancel', 'photo_fail', 'fail', 'blocked'])
+// The app saved on the phone (13 Nov 2026): saw the card, pressed Save, the phone
+// said it was added (Android only), closed the card, opened from the icon.
+const HOME_STEPS = new Set(['shown', 'tap', 'added', 'dismiss', 'opened'])
 const stepText = (v: any, max = 80) => String(v ?? '').replace(/[^\w .,:;'()\/?=&-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
 
 // One row per person, action and detail in any window of `minutes` (anyDetail: per
@@ -9772,7 +9845,7 @@ app.post('/api/attendees/:id/track-step', async (c) => {
   if (isScannerRequest(c)) return c.json({ ok: true, counted: false })
   const b = await c.req.json().catch(() => ({})) as any
   const kind = String(b.kind || ''), step = String(b.step || '')
-  if (!TRACK_STEP_KINDS.has(kind) || !TRACK_STEPS.has(step) || !Number.isInteger(Number(id))) return c.json({ ok: false }, 400)
+  if (!TRACK_STEP_KINDS.has(kind) || !(kind === 'home' ? HOME_STEPS : TRACK_STEPS).has(step) || !Number.isInteger(Number(id))) return c.json({ ok: false }, 400)
   // 160: the refusal messages run past 80, and Admin showed "a photo of yo".
   const reason = stepText(b.reason, 160)
   await auditOnceWithin(c, kind + '.' + step, Number(id), reason ? { reason } : null, 10)
@@ -9822,7 +9895,7 @@ function browserOf(ua: string): string {
  * five an hour from one address and 200 an hour in all, so the count of people
  * stuck survives and the table cannot be filled from outside. */
 const BOOT_ACTIONS: Record<string, string> = { fail: 'app.boot_fail', slow: 'app.boot_slow', ok: 'app.boot_ok', scan: 'app.boot_scan' }
-const LINK_ACTIONS = new Set(['social-card', 'download-pass', 'complete-profile', 'goals', 'pay', 'workshop', 'main-event-yes', 'main-event-no'])
+const LINK_ACTIONS = new Set(['social-card', 'download-pass', 'complete-profile', 'goals', 'pay', 'workshop', 'main-event-yes', 'main-event-no', 'save-app'])
 app.post('/api/app-boot', async (c) => {
   c.header('Cache-Control', 'no-store')
   const b = await c.req.json().catch(() => ({})) as any
@@ -14117,7 +14190,7 @@ async function sendPanelReminderEmail(c: any, attendee: any, panel: CampusPanel,
       </td></tr>
     </table>
   </td></tr></table></body></html>`
-  if (opts.preview) return { ok: true, html }
+  if (opts.preview) return { ok: true, html: await withAppOnPhoneFor(c, html, attendee.email) }
   const subject = `Are you coming? ${panel.titleShort}, ${panel.dateLabel.replace(/^[A-Za-z]+, /, '').replace(/ \d{4}$/, '')} at ${panel.hostShort}`
   const sent = await sendAdminEmail(c, attendee.email, subject, html, { unsubscribe: false })
   return sent.ok ? { ok: true } : { ok: false, error: (sent as any).error }
@@ -16175,7 +16248,7 @@ async function sendReportsEmail(c: any, person: any, opts: { tokenSubject: strin
       </td></tr>
     </table>
   </td></tr></table></body></html>`
-  if (opts.preview) return { ok: true, html }
+  if (opts.preview) return { ok: true, html: await withAppOnPhoneFor(c, html, person.email) }
   const sent = await sendAdminEmail(c, person.email, 'Your AI and Employability insights reports (Campus Series)', html)
   return sent.ok ? { ok: true } : { ok: false, error: (sent as any).error }
 }
@@ -17219,7 +17292,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
         Recipients: { To: [attendee.email] },
         Content: {
           Body: [
-            { ContentType: "HTML", Content: mail.html.replace(/<\/body>/i, UNSUB_FOOTER(unsub) + '</body>'), Charset: "utf-8" }
+            { ContentType: "HTML", Content: (await withAppOnPhoneFor(c, mail.html, attendee.email)).replace(/<\/body>/i, UNSUB_FOOTER(unsub) + '</body>'), Charset: "utf-8" }
           ],
           From: `${fromName} <${fromEmail}>`,
           Headers: { 'List-Unsubscribe': `<${unsub}>` },
@@ -17425,7 +17498,7 @@ app.get('/api/admin/notify-preview', async (c) => {
     audience, counts, kind: notifyKind(sample), open_run: openRun,
     sample: { id: sample.id, name: sample.name, email: sample.email, badge_type: sample.badge_type || 'Visitor Pass' },
     subject: mail.subject,
-    html: mail.html.replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, sample.email)) + '</body>'),
+    html: (await withAppOnPhoneFor(c, mail.html, sample.email)).replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, sample.email)) + '</body>'),
   })
 })
 
@@ -17758,7 +17831,7 @@ app.get('/api/admin/netmail-preview', async (c) => {
     sample: { id: sample.id, name: sample.name, email: sample.email, badge_type: sample.badge_type || 'Visitor Pass' },
     subject: mail.subject,
     subjects: { A: netMailSubject(sample, 'A'), B: netMailSubject(sample, 'B') },
-    html: mail.html.replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, sample.email)) + '</body>'),
+    html: (await withAppOnPhoneFor(c, mail.html, sample.email)).replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, sample.email)) + '</body>'),
   })
 })
 
@@ -18268,7 +18341,7 @@ async function sendProfileReminder(c: any, attendee: any): Promise<SendOutcome> 
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
         Recipients: { To: [attendee.email] },
-        Content: { Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: html }], From: `${fromName} <${fromEmail}>`, Subject: subject },
+        Content: { Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: await withAppOnPhoneFor(c, html, attendee.email) }], From: `${fromName} <${fromEmail}>`, Subject: subject },
         Options: { TrackClicks: false, TrackOpens: false },
       }),
     })
@@ -18544,7 +18617,7 @@ app.get('/api/admin/attendees/:id/profile-reminder-preview', async (c) => {
   const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
   if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
   const html = await profileReminderEmailHTML(c, attendee, '#preview-link-not-live')
-  return c.html(html)
+  return c.html(await withAppOnPhoneFor(c, html, attendee.email))
 })
 
 // Admin: send the profile reminder to ONE attendee. Called per recipient by the
@@ -19234,7 +19307,7 @@ app.get('/api/admin/innovation-talks/auto/preview', async (c) => {
   const d = due[0], t = d.talk, toSpeaker = d.contact.source !== 'booth'
   const link = await talkDetailsLink(c, Number(t.id))
   return c.json({ to: d.contact.email, speaker: t.speaker_name || '', company: t.company || '', waiting: due.length,
-    subject: italkRequestSubject(t, toSpeaker, link), html: italkRequestEmailHTML(t, d.gaps, '', toSpeaker, link) })
+    subject: italkRequestSubject(t, toSpeaker, link), html: await withAppOnPhoneFor(c, italkRequestEmailHTML(t, d.gaps, '', toSpeaker, link), d.contact.email) })
 })
 app.post('/api/admin/innovation-talks/auto', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
@@ -20238,7 +20311,7 @@ app.get('/api/admin/campaigns/upgrade-preview', async (c) => {
     ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(rows[0].id).first() as any
     : { name: 'Sample Person', email: 'sample@example.com', event_id: 1 }
   const mail = await upgradeOfferMail(c, a || { name: 'Sample Person', email: '' }, UPGRADE_OFFERS[key], true)
-  return c.json({ to: (a && a.email) || '', subject: mail.subject, html: mail.html })
+  return c.json({ to: (a && a.email) || '', subject: mail.subject, html: await withAppOnPhoneFor(c, mail.html, (a && a.email) || '') })
 })
 
 // ==================== BULK EMAIL CAMPAIGNS ====================
@@ -22879,7 +22952,7 @@ app.post('/api/booth-application', async (c) => {
     ).bind('%"to":' + JSON.stringify(f.email) + '%').first().catch(() => null) as any
     if (Number(earlier?.n || 0) > 0) return
     const sent = await sendAdminEmail(c, f.email, `We have your booth application (${ref}) - ${ev.name}`,
-      boothApplicantHtml(ev, { id, name: f.name, booth: boothWords, company: f.company, product: f.product }), { unsubscribe: false })
+      eventKey === 'delhi' ? noAppOnPhone(boothApplicantHtml(ev, { id, name: f.name, booth: boothWords, company: f.company, product: f.product })) : boothApplicantHtml(ev, { id, name: f.name, booth: boothWords, company: f.company, product: f.product }), { unsubscribe: false })
     await audit(c, sent.ok ? 'booth.apply.mailed' : 'booth.apply.mail_failed', 'inquiry', id, sent.ok ? { to: f.email } : { to: f.email, error: sent.error }, { actor: 'automatic', kind: 'system' })
   })().catch(() => { /* the application is saved; a failed email must not surface */ })
   let scheduled = false
@@ -23279,7 +23352,7 @@ async function sendDelhiPaymentEmails(c: any, a: any, order: any, trackingId: st
         <p style="margin:18px 0 0;font-size:12.5px;line-height:1.6;color:#777;">This pass is for Delhi only. Bharat AI Innovation 2026 in Mumbai (20&ndash;21 November 2026) is a separate event. Questions? Write to <a href="mailto:info@bharataiinnovation.com" style="color:#555;">info@bharataiinnovation.com</a>.</p>
       </div>
     </div></body></html>`
-    await sendAdminEmail(c, a.email, 'Payment received: your ' + order.pass_type + ' for Bharat AI Innovation Delhi 2027', html, { unsubscribe: false })
+    await sendAdminEmail(c, a.email, 'Payment received: your ' + order.pass_type + ' for Bharat AI Innovation Delhi 2027', noAppOnPhone(html), { unsubscribe: false })
 
     const team = (await settingValue(c, 'inquiry_notify_email')) || 'info@bharataiinnovation.com'
     const teamHtml = `<div style="font-family:Arial,sans-serif;max-width:560px;">
@@ -23453,7 +23526,7 @@ app.post('/api/delhi/visa-letter', async (c) => {
   const work = (async () => {
     await notifyTeamOfInquiry(c, { id, inquiry_type: VISA_LETTER_TYPE, name, email, phone: mobile, organization: company, subject, message })
     await sendAdminEmail(c, email, 'We have your visa letter request: Bharat AI Innovation Delhi 2027 (' + ref + ')',
-      visaLetterApplicantHtml({ ref, name, nationality, country, company, role: roleWords }), { unsubscribe: false })
+      noAppOnPhone(visaLetterApplicantHtml({ ref, name, nationality, country, company, role: roleWords })), { unsubscribe: false })
   })().catch((e: any) => console.error('visa letter emails failed', id, e?.message))
   let scheduled = false
   try { c.executionCtx.waitUntil(work); scheduled = true } catch { /* no ctx */ }
@@ -23608,7 +23681,7 @@ app.post('/api/admin/attendees/:id/send-feedback', async (c) => {
     if (done) return c.json({ skipped: true, reason: 'Already answered the survey' })
   } catch (e: any) { if (!feedbackTableMissing(e)) throw e }
   const mail = await feedbackMail(c, a)
-  const sent = await sendAdminEmail(c, String(a.email).trim(), mail.subject, mail.html)
+  const sent = await sendAdminEmail(c, String(a.email).trim(), mail.subject, noAppOnPhone(mail.html))
   if (!sent.ok) return c.json({ error: sent.error }, 502)
   return c.json({ success: true })
 })
@@ -23623,7 +23696,7 @@ app.post('/api/admin/feedback/test', async (c) => {
   const to = String(body.to || '').trim()
   if (!validEmailSyntax(to)) return c.json({ error: 'Type the email address to send the test to.' }, 400)
   const mail = await feedbackMail(c, { id: 0, name: 'Asha Rao' }, true)
-  const sent = await sendAdminEmail(c, to, '[Test] ' + mail.subject, mail.html, { unsubscribe: false })
+  const sent = await sendAdminEmail(c, to, '[Test] ' + mail.subject, noAppOnPhone(mail.html), { unsubscribe: false })
   if (!sent.ok) return c.json({ error: sent.error }, 502)
   await audit(c, 'feedback.test_sent', 'feedback', null, { to })
   return c.json({ success: true })
@@ -23782,7 +23855,7 @@ app.post('/api/admin/exhibitor-results/:id/send', async (c) => {
   if (r.sent_count && body.again !== true) return c.json({ error: 'Already sent on ' + r.sent_at + '. Choose "Send again" to send it once more.', already: true, sent_at: r.sent_at }, 409)
   if (!validEmailSyntax(r.email)) return c.json({ error: 'This exhibitor has no booth contact email. Add one under Exhibitors first.' }, 400)
   const mail = await exhibitorResultsMail(c, r)
-  const sent = await sendAdminEmail(c, r.email, mail.subject, mail.html, { unsubscribe: false })
+  const sent = await sendAdminEmail(c, r.email, mail.subject, noAppOnPhone(mail.html), { unsubscribe: false })
   if (!sent.ok) return c.json({ error: sent.error }, 502)
   await audit(c, 'exhibitor_results.sent', 'exhibitor', r.id, { to: r.email, scanned: r.scanned, meetings: r.meetings, visits: r.visits, again: body.again === true })
   return c.json({ success: true, sent_at: istStamp(new Date().toISOString()) })
@@ -24292,7 +24365,7 @@ app.get('/api/admin/inquiries/ack-preview', async (c) => {
   const { routing } = await inquirySettings(c)
   const owner = routing[type] || ''
   const row = { id: 573, inquiry_type: type, name: 'Asha Rao', email: 'asha@example.com' }
-  return c.json({ subject: 'We have your enquiry (BHAI-INQ-00573) - Bharat AI Innovation 2026', html: inquiryAckHtml(row, owner) })
+  return c.json({ subject: 'We have your enquiry (BHAI-INQ-00573) - Bharat AI Innovation 2026', html: await withAppOnPhoneFor(c, inquiryAckHtml(row, owner), row.email) })
 })
 
 // Admin: Update inquiry status/notes
@@ -29534,6 +29607,25 @@ function mainPageHTML(): string {
           </div>
         </div>
 
+        <!-- Save the app on the phone: under the pass, for someone signed in on a phone who is not already in the home-screen app. Drawn by renderAppOnPhoneCard(). -->
+        <div class="hidden signed-in-only" id="app-phone-wrap">
+          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="app-phone-card">
+            <div class="glass ap-card rounded-2xl p-5 border border-primary-500/25 flex items-start gap-4">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
+                <i class="fas fa-mobile-alt text-xl text-primary-400"></i>
+              </div>
+              <div class="ap-card-body flex-1 min-w-0">
+                <div class="flex items-start justify-between gap-2">
+                  <h3 class="font-bold text-sm mb-0.5" style="padding-top:2px;">Save this app on your phone</h3>
+                  <button type="button" onclick="closeAppOnPhoneCard()" aria-label="Close" class="shrink-0 text-gray-400" style="min-width:44px;min-height:44px;margin:-12px -12px 0 0;font-size:24px;line-height:1;background:none;border:0;">&times;</button>
+                </div>
+                <p class="text-xs text-gray-400 mb-3" id="apc-note">Your pass opens with one tap at the gate on 20 and 21 Nov. No searching through emails.</p>
+                <button type="button" id="apc-btn" onclick="saveAppOnPhone()" class="px-4 mb-1 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-mobile-alt mr-1.5"></i>Save the app</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- The people worth meeting, on the screen you land on.
              renderMatchRail() has scored and explained matches since networking
              shipped, but it only ever drew into the Networking tab, so nobody saw
@@ -31949,6 +32041,7 @@ function mainPageScript(): string {
         +   item('fa-camera', 'Change my photo', '', 'changeMyPhoto()')
         +   item('fa-id-badge', 'My pass', 'Keep it on your phone', 'closeAccountMenu(); generateDelegatePass();')
         +   item('fa-share-alt', 'Share my badge', 'Post it on LinkedIn or WhatsApp', 'closeAccountMenu(); openSocialCard();')
+        +   (appOnPhoneOffered() ? item('fa-mobile-alt', 'Save the app on my phone', 'Your pass one tap away', 'closeAccountMenu(); saveAppOnPhone();') : '')
         +   item('fa-chart-pie', 'My connections and meetings', '', 'closeAccountMenu(); switchTab(&quot;myprofile&quot;);')
         + '</div>'
         + '<div class="py-2" style="border-top:1px solid #E4E7F4;">'
@@ -32208,6 +32301,13 @@ function mainPageScript(): string {
       const signinParam = urlParams.get('signin');
       pendingAction = urlParams.get('action'); // Store action before URL cleanup
       pendingPayPass = urlParams.get('pass');
+      // "Show me how" at the foot of every email: the steps, signed in or not. The
+      // action leaves the address, so an icon saved from this page opens plain /app.
+      if (pendingAction === 'save-app') {
+        pendingAction = null;
+        try { const q2 = new URLSearchParams(window.location.search); q2.delete('action'); const qs = q2.toString(); history.replaceState(history.state, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash); } catch (e) {}
+        if (!appIsStandalone()) setTimeout(function () { openAppOnPhoneSteps(); }, 900);
+      }
       // The upgrade email's button carries ue=<id>.<signature>: one click, counted
       // here once the page runs, whether or not its sign-in link is still good.
       const ueParam = (urlParams.get('ue') || '').split('.');
@@ -33228,6 +33328,7 @@ function mainPageScript(): string {
      * pass will not issue until payment lands, and saying "ready" to someone whose
      * payment is still pending sends them to a button that refuses them. */
     function renderPassAndCardCta(early) {
+      renderAppOnPhoneCard();
       const el = document.getElementById('pass-card-cta');
       if (!el) return;
       if (!currentUser) { el.classList.add('hidden'); return; }
@@ -33300,6 +33401,155 @@ function mainPageScript(): string {
         (price ? ', &#8377;' + inr(price) + ' + GST' : '') + (s.few_left ? ', only ' + Number(s.few_left) + ' left' : '') +
         '. <a href="/showcase-slot" class="font-semibold underline" style="color:#FF8C38;">Book a slot</a>';
       el.classList.remove('hidden');
+    }
+
+    // ==================== SAVE THE APP ON THE PHONE ====================
+    // A card under the pass, a line in the account menu, and the steps in a sheet,
+    // which "Show me how" at the foot of every email opens (?action=save-app).
+    // Android gets the browser's own install box where it offers one. An iPhone has
+    // none, so it gets the taps, and is told to sign in once inside the new icon:
+    // on an iPhone the home-screen app keeps its own sign-in, apart from Safari.
+    var appInstallEvt = null, appPhoneSavedOnce = false;
+    window.addEventListener('beforeinstallprompt', function (ev) { ev.preventDefault(); appInstallEvt = ev; });
+    window.addEventListener('appinstalled', function () { appPhoneSaved(); });
+    function appPhoneEnd() { return Date.parse('2026-11-21T18:30:00Z'); }
+    function appPhoneReshow() { return Date.parse('2026-11-17T18:30:00Z'); }
+    function appIsStandalone() {
+      try { return !!((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true); } catch (e) { return false; }
+    }
+    function appPhoneKind() {
+      var ua = navigator.userAgent || '';
+      if (/LinkedInApp|Instagram|FBAN|FBAV|FB_IAB|WhatsApp|Snapchat|GSA[/]|; wv[)]/.test(ua)) return 'inapp';
+      if (/iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1)) return 'ios';
+      if (/Android/.test(ua)) return 'android';
+      return 'other';
+    }
+    function appPhoneStore(k, v) {
+      try { if (v === undefined) return localStorage.getItem(k) || ''; localStorage.setItem(k, v); } catch (e) {}
+      return '';
+    }
+    function appOnPhoneOffered() { return isTouchPhone() && !appIsStandalone() && Date.now() < appPhoneEnd(); }
+    function renderAppOnPhoneCard() {
+      var el = document.getElementById('app-phone-card');
+      if (!el) return;
+      if (currentUser && appIsStandalone() && !appPhoneStore('bhai_app_opened')) {
+        appPhoneStore('bhai_app_opened', '1');
+        appPhoneStore('bhai_app_hide', 'done');
+        trackStep('home', 'opened');
+      }
+      var hide = appPhoneStore('bhai_app_hide');
+      var show = !!currentUser && appOnPhoneOffered() && hide !== 'done' && !(hide === 'later' && Date.now() < appPhoneReshow());
+      el.classList.toggle('hidden', !show);
+      if (!show) return;
+      var note = document.getElementById('apc-note');
+      if (note) note.textContent = appPhoneKind() === 'ios'
+        ? 'Your pass opens with one tap at the gate on 20 and 21 Nov. Two taps in Safari, then sign in once inside the new icon.'
+        : 'Your pass opens with one tap at the gate on 20 and 21 Nov. No searching through emails.';
+      if (!appPhoneStore('bhai_app_seen')) { appPhoneStore('bhai_app_seen', '1'); trackStep('home', 'shown'); }
+    }
+    function closeAppOnPhoneCard() {
+      var later = Date.now() < appPhoneReshow();
+      appPhoneStore('bhai_app_hide', later ? 'later' : 'done');
+      var el = document.getElementById('app-phone-card');
+      if (el) el.classList.add('hidden');
+      trackStep('home', 'dismiss');
+      showToast('Hidden' + (later ? ' for now' : '') + '. Save the app on my phone is still in your account menu.', 'info');
+    }
+    function appPhoneSaved() {
+      if (appPhoneSavedOnce) return;
+      appPhoneSavedOnce = true;
+      appPhoneStore('bhai_app_hide', 'done');
+      var el = document.getElementById('app-phone-card');
+      if (el) el.classList.add('hidden');
+      closeAppOnPhoneSteps();
+      trackStep('home', 'added');
+      showToast('Saved. Open Bharat AI from your home screen.', 'success');
+    }
+    async function saveAppOnPhone() {
+      trackStep('home', 'tap');
+      var ev = appInstallEvt;
+      if (ev) {
+        appInstallEvt = null;
+        try {
+          await ev.prompt();
+          var choice = await ev.userChoice;
+          if (choice && choice.outcome === 'accepted') appPhoneSaved();
+          return;
+        } catch (e) {}
+      }
+      openAppOnPhoneSteps();
+    }
+    function appPhoneStepsKey(e) { if (e.key === 'Escape') closeAppOnPhoneSteps(); }
+    function closeAppOnPhoneSteps() {
+      var o = document.getElementById('app-phone-steps');
+      if (o) o.remove();
+      document.removeEventListener('keydown', appPhoneStepsKey);
+    }
+    function appPhoneStepList(steps) {
+      return '<ol style="list-style:none;margin:0 0 6px;padding:0;">' + steps.map(function (s, i) {
+        return '<li style="display:flex;gap:12px;align-items:flex-start;margin:0 0 14px;">'
+          + '<span style="flex:0 0 28px;width:28px;height:28px;border-radius:50%;background:#C84F00;color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;">' + (i + 1) + '</span>'
+          + '<span style="flex:1;min-width:0;font-size:15px;line-height:1.5;color:#1E2140;padding-top:3px;">' + s + '</span></li>';
+      }).join('') + '</ol>';
+    }
+    function openAppOnPhoneSteps() {
+      closeAppOnPhoneSteps();
+      var kind = appPhoneKind(), phone = isTouchPhone();
+      var ios = appPhoneStepList([
+        'In <strong>Safari</strong>, tap <strong>Share</strong>: the square with an arrow pointing up.',
+        'Tap <strong>Add to Home Screen</strong> (scroll down the list if you do not see it), then <strong>Add</strong>.',
+        'Open the new <strong>Bharat AI</strong> icon and sign in once: type your email, then the 6-digit code we email you. On an iPhone the icon keeps its own sign-in, apart from Safari.'
+      ]);
+      var android = appPhoneStepList([
+        'In <strong>Chrome</strong>, tap the three dots <strong>&#8942;</strong> at the top right. Opened this from an email? Tap <strong>Open in Chrome</strong> first.',
+        'Tap <strong>Add to Home screen</strong> or <strong>Install app</strong>, then <strong>Install</strong>.',
+        'Open <strong>Bharat AI</strong> from your home screen. You stay signed in.'
+      ]);
+      var h = function (t) { return '<p style="margin:4px 0 10px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#6B7090;">' + t + '</p>'; };
+      var para = function (t) { return '<p style="margin:0 0 14px;font-size:15px;line-height:1.5;color:#1E2140;">' + t + '</p>'; };
+      var body;
+      if (kind === 'inapp') {
+        body = para('This page is open inside another app. Only <strong>Chrome</strong> (Android) or <strong>Safari</strong> (iPhone) can save it: tap the three dots or the share button at the top, then <strong>Open in browser</strong>, and follow the steps there.')
+          + '<button type="button" id="aps-copy" style="width:100%;min-height:50px;margin:0 0 12px;border:1px solid #C84F00;border-radius:12px;background:#fff;color:#C84F00;font-size:15px;font-weight:700;">Copy the link</button>';
+      } else if (kind === 'ios' && phone) {
+        body = ios;
+      } else if (kind === 'android' && phone) {
+        body = (appInstallEvt ? '<button type="button" id="aps-now" style="width:100%;min-height:50px;margin:0 0 16px;border:0;border-radius:12px;background:#15803D;color:#fff;font-size:16px;font-weight:700;">Save it now</button>' + h('Or by hand') : '') + android;
+      } else {
+        body = para(phone ? 'Follow the steps for your phone.' : 'Open <strong>bharataiinnovation.com/app</strong> on your phone, then:') + h('Android') + android + h('iPhone') + ios;
+      }
+      var o = document.createElement('div');
+      o.id = 'app-phone-steps';
+      o.setAttribute('role', 'dialog');
+      o.setAttribute('aria-modal', 'true');
+      o.setAttribute('aria-labelledby', 'aps-title');
+      o.style.cssText = 'position:fixed;inset:0;z-index:96;background:rgba(10,12,27,0.55);display:flex;align-items:flex-end;justify-content:center;';
+      o.innerHTML = '<div style="width:100%;max-width:520px;max-height:92vh;overflow-y:auto;background:#fff;border-radius:18px 18px 0 0;padding:16px 18px 22px;box-shadow:0 -8px 30px rgba(0,0,0,0.25);">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 0 8px;">'
+        + '<strong id="aps-title" style="font-size:18px;line-height:1.3;color:#1E2140;">Save Bharat AI on your phone</strong>'
+        + '<button type="button" id="aps-close" aria-label="Close" style="flex:0 0 auto;background:none;border:0;color:#6B7090;font-size:30px;line-height:1;min-width:44px;min-height:44px;">&times;</button></div>'
+        + '<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#4A4F6A;">Your pass, the schedule and your meetings then open with one tap, like any other app.</p>'
+        + body
+        + '<button type="button" id="aps-done" style="width:100%;min-height:50px;border:0;border-radius:12px;background:#C84F00;color:#fff;font-size:16px;font-weight:700;">Done</button>'
+        + '</div>';
+      document.body.appendChild(o);
+      o.addEventListener('click', function (e) { if (e.target === o) closeAppOnPhoneSteps(); });
+      document.getElementById('aps-close').onclick = closeAppOnPhoneSteps;
+      document.getElementById('aps-done').onclick = closeAppOnPhoneSteps;
+      var now = document.getElementById('aps-now');
+      if (now) now.onclick = function () { closeAppOnPhoneSteps(); saveAppOnPhone(); };
+      var cp = document.getElementById('aps-copy');
+      if (cp) cp.onclick = appPhoneCopyLink;
+      document.addEventListener('keydown', appPhoneStepsKey);
+      try { document.getElementById('aps-close').focus({ preventScroll: true }); } catch (e) {}
+    }
+    function appPhoneCopyLink() {
+      var link = location.origin + '/app';
+      var done = function () { showToast('Link copied. Paste it into Chrome or Safari.', 'success'); };
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(link).then(done, function () { showToast(link, 'info'); }); return; }
+      } catch (e) {}
+      showToast(link, 'info');
     }
 
     function renderRoleHome() {
@@ -39393,6 +39643,7 @@ function mainPageScript(): string {
      *                             where the heck it is"): under the welcome and
      *                             the goal card it sat below the first screen of
      *                             a phone.
+     *      then the app on the phone (the card under the pass, 13 Nov 2026)
      *   2. who you are          - the welcome panel, name and pass
      *   3. what you could buy   - the upgrade card, for Visitor Pass holders
      *   4. who to meet          - the matches
@@ -39400,7 +39651,7 @@ function mainPageScript(): string {
      *   6. how to get business  - the plan
      *   7. everything else      - RSVP and the rest, unchanged */
     function orderDashboard() {
-      const ids = ['pass-card-cta', 'role-home', 'goal-card', 'home-quick-actions', 'dash-match-rail',
+      const ids = ['pass-card-cta', 'app-phone-wrap', 'role-home', 'goal-card', 'home-quick-actions', 'dash-match-rail',
                    'profile-complete-card', 'event-plan-card', 'rsvp-card-container'];
       const first = document.getElementById(ids[0]);
       if (!first || !first.parentNode) return;
@@ -42416,6 +42667,13 @@ function adminPageScript(): string {
           (browsers ? '<p class="text-[11px] text-gray-500 pt-1">Browsers: ' + browsers + '</p>' : '') +
         '</div></div>' +
         '<div>' + h4('What stopped people') + (reasons ? '<ul class="space-y-1 text-xs">' + reasons + '</ul>' : '<p class="text-xs text-gray-500">Nothing yet.</p>') + '</div></div>' +
+        '<div class="mb-5">' + h4('The app saved on the phone') + '<div class="space-y-1.5">' +
+          row('Saw the card', by['home.shown'] || 0, 0, 'Signed in on a phone and not yet in the home-screen app. Counted once per phone.') +
+          row('Pressed Save the app', by['home.tap'] || 0, by['home.shown'] || 0, 'On the card or in the account menu.') +
+          row('Added it (Android)', by['home.added'] || 0, by['home.shown'] || 0, 'The phone said it was added. An iPhone never says so: those show up on the next line.') +
+          row('Opened from the icon', by['home.opened'] || 0, 0, 'Signed in inside the home-screen app at least once, Android or iPhone.') +
+          row('Closed the card', by['home.dismiss'] || 0, by['home.shown'] || 0, 'It comes back once on 18 Nov for anyone who closed it before then.') +
+        '</div></div>' +
         '<div class="pt-4 border-t border-white/10">' +
           '<div class="flex flex-wrap items-start justify-between gap-3 mb-3"><div><h4 class="text-sm font-semibold text-white">The steps by email</h4>' +
           '<p class="text-[11px] text-gray-500">Goes by itself ' + (h.quiet_minutes || 10) + ' minutes after somebody is stuck, once per kind, if nothing since says they made it. ' +

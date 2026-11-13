@@ -40,6 +40,8 @@ const SUITES = [
   { name: 'server: account-ready email by itself 5 minutes after registering (or paying), once, the skips, the switch, before the networking email', args: ['smoke-notify-auto.mjs'] },
   { name: 'server: networking app email (one subject, body by pass, the phone of people /networking may name, preview, run order, skips, marks, counts), on real SQLite', args: ['smoke-netmail.mjs'] },
   { name: 'server: help email to people stuck on the way in, the badge or the pass (steps counted, startup report, dead links, the clock, by hand, /app.js caching)', args: ['smoke-help.mjs'] },
+  // Save the app on the phone (13 Nov 2026): the block in every email, the card's counts.
+  { name: 'server: "Save the app on your phone" in every email to a person, sent and previewed (above the unsubscribe line), none to the team, Delhi 2027 or after the event, none after Day 2; the card counted (home.*) and on the Overview card', args: ['smoke-app-on-phone.mjs'] },
   { name: 'server: sign-in token rules (expiry, uses, two live links, a stale one, codes and attempts, a new code retires codes only, a new email link retires nothing)', args: ['unit-login-tokens.mjs'] },
   { name: "server: every email's sign-in link keeps working end to end (welcome, account-ready at 5 min, networking at 10, the help steps, the code), on real SQLite", args: ['system-email-links.mjs'] },
   { name: 'server: campus panel "Are you coming?"', args: ['smoke-panel-answers.mjs'] },
@@ -105,6 +107,7 @@ const SUITES = [
   { name: 'browser: phone journey and admin Campus panels block', args: ['phone-test.cjs'], harness: 'phone-harness.mjs', port: 8772, portEnv: true },
   { name: 'browser: stuck on the way in (startup check, refresh, steps, slow), a dead link, and the badge and pass steps counted', args: ['browser-help.cjs'], harness: 'phone-harness.mjs', port: 8778, portEnv: true },
   { name: "browser: a phone opens each email's sign-in button, oldest first after newer emails went out, on the real worker and real SQLite; a dead link opens the sign-in box", args: ['browser-login-links.cjs'], harness: 'login-harness.mjs', port: 8780, portEnv: true },
+  { name: 'browser: save the app on the phone (the card under the pass on Android, the install box or the steps, closing it until 18 Nov, the account menu; an iPhone from "Show me how" signed out; the saved app; inside LinkedIn; a laptop)', args: ['browser-app-on-phone.cjs'], harness: 'login-harness.mjs', port: 9786, portEnv: true },
   { name: 'browser: the admin Overview board (who holds which pass, money from passes, waiting on you, days to go) on the real worker and real SQLite, desktop and phone', args: ['browser-board.cjs'], harness: 'board-harness.mjs', port: 8782, portEnv: true },
   { name: 'browser: the admin Attendees search (typing a whole name with the cursor kept, any word order, mobiles, best first, nothing found, keys) on the real worker and real SQLite', args: ['browser-admin-search.cjs'], harness: 'board-harness.mjs', port: 8798, portEnv: true },
   { name: 'browser: a pass set by hand (the question on all four Admin screens, cancelling, the amount, then the person on a phone)', args: ['browser-pass-answer.cjs'], harness: 'login-harness.mjs', port: 8794, portEnv: true },
