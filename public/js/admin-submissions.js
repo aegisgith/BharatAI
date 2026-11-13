@@ -62,10 +62,28 @@
     return /^submissions\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(k) && k.indexOf('..') < 0 ? '/api/uploads/' + k : '';
   }
   function isPicture(f) { return /^image\/(png|jpeg|webp|svg\+xml)$/.test(String(f && f.mime || '')); }
+  // A suggestion the team said "No" to is never offered again for that email; the one they said
+  // "Yes" to comes first. type: exhibitor | talk | speaker.
+  var LIST_OF = { exhibitor: 'exhibitors', talk: 'talks', speaker: 'speakers' };
+  function rejectedIds(row, type) {
+    var r = (row && row.matches && row.matches.rejected) || {};
+    return Array.isArray(r[type]) ? r[type].map(Number) : [];
+  }
+  function chosenId(row, type) {
+    var c = (row && row.matches && row.matches.chosen) || {};
+    return c[type] != null && c[type] !== '' ? Number(c[type]) : null;
+  }
+  function liveSuggestions(row, type) {
+    var list = (((row && row.matches) || {})[LIST_OF[type]] || []).slice();
+    var rej = rejectedIds(row, type), ch = chosenId(row, type);
+    list = list.filter(function (x) { return rej.indexOf(Number(x.id)) < 0; });
+    if (ch != null) list.sort(function (a, b) { return (Number(b.id) === ch ? 1 : 0) - (Number(a.id) === ch ? 1 : 0); });
+    return list;
+  }
   // What the picker starts on for one file: "logo:12", "talk:7", "speaker:3" or "".
   function defaultChoice(file, row) {
-    var m = (row && row.matches) || {};
-    var ex = (m.exhibitors || [])[0], tk = (m.talks || [])[0], sp = (m.speakers || [])[0];
+    if (file && file.rejected) return '';
+    var ex = liveSuggestions(row, 'exhibitor')[0], tk = liveSuggestions(row, 'talk')[0], sp = liveSuggestions(row, 'speaker')[0];
     var use = String(file && file.use || '');
     var kind = String(row && row.kind || '');
     var mime = String(file && file.mime || '');
@@ -128,6 +146,7 @@
       return top.concat(rest);
     };
     var ids = function (list) { return (list || []).map(function (x) { return x.id; }); };
+    m = { exhibitors: liveSuggestions(row, 'exhibitor'), talks: liveSuggestions(row, 'talk'), speakers: liveSuggestions(row, 'speaker') };
     var pdf = file.mime === 'application/pdf';
     var svg = file.mime === 'image/svg+xml';
     var h = '<option value="">Choose what this is…</option>';
@@ -154,6 +173,16 @@
       : '<span>' + (f.mime === 'application/pdf' ? 'PDF' : 'FILE') + '</span>';
     var dims = f.w && f.h ? ' · ' + f.w + ' × ' + f.h : '';
     var key = row.id + ':' + i;
+    var live = row.status !== 'dismissed';
+    if (f.rejected) {
+      // Rejected: kept small and crossed out, with the way back.
+      return { key: key, choice: '', html: '<div class="sb-file sb-file-off" data-file="' + i + '" data-rejected="1">' +
+        '<span class="sb-thumb sb-thumb-sm">' + thumb + '</span>' +
+        '<div><div class="sb-fname"><s>' + esc(f.filename) + '</s></div>' +
+        '<div class="sb-note">Rejected' + (f.rejected.everywhere ? ' everywhere' : '') + (f.rejected.by ? ' by ' + esc(f.rejected.by) : '') + '</div>' +
+        (live ? '<div class="sb-row"><button class="sb-btn sb-btn-quiet" data-act="file-undo" data-id="' + row.id + '" data-file="' + i + '">Undo</button></div>' : '') +
+        '</div></div>' };
+    }
     var choice = Object.prototype.hasOwnProperty.call(S.pick, key) ? S.pick[key] : defaultChoice(f, row);
     var used = usesOfFile(row, i);
     var h = '<div class="sb-file" data-file="' + i + '">' +
@@ -164,12 +193,17 @@
       h += '<div class="sb-row sb-done" style="margin-top:6px"><span>✓ ' + esc(u.text) + '</span>' +
         '<button class="sb-btn sb-btn-quiet" data-act="undo" data-id="' + row.id + '" data-index="' + u.index + '">Undo</button></div>';
     });
-    if (row.status !== 'dismissed') {
+    if (live) {
+      // Reject: this email only. Reject everywhere: this picture in every email, and never again.
+      var rejectBtns = used.length ? '' :
+        '<button class="sb-btn sb-btn-quiet sb-btn-no" data-act="file-reject" data-id="' + row.id + '" data-file="' + i + '" title="Not this file">✕ Reject</button>' +
+        (isPicture(f) ? '<button class="sb-btn sb-btn-quiet" data-act="file-reject-all" data-id="' + row.id + '" data-file="' + i + '" title="This picture in every email, and never filed again (a signature, our own logo)">Reject everywhere</button>' : '');
       if (f.mime === 'application/pdf') {
-        h += '<div class="sb-note" style="margin-top:6px">A PDF cannot be shown in the app. Open it and save the logo as a PNG, or keep it for the website.</div>';
+        h += '<div class="sb-note" style="margin-top:6px">A PDF cannot be shown in the app. Open it and save the logo as a PNG, or keep it for the website.</div>' +
+          (rejectBtns ? '<div class="sb-row" style="margin-top:6px">' + rejectBtns + '</div>' : '');
       } else {
         h += '<div class="sb-use"><select data-pick="' + esc(key) + '" aria-label="What this file is">' + optionList(row, f) + '</select>' +
-          '<div class="sb-row"><button class="sb-btn sb-btn-go" data-act="apply" data-id="' + row.id + '" data-file="' + i + '">' + (used.length ? 'Use it here too' : 'Use it') + '</button></div></div>';
+          '<div class="sb-row"><button class="sb-btn sb-btn-go" data-act="apply" data-id="' + row.id + '" data-file="' + i + '">' + (used.length ? 'Use it here too' : 'Use it') + '</button>' + rejectBtns + '</div></div>';
       }
     }
     h += '</div></div>';
@@ -177,10 +211,14 @@
   }
   function peopleHtml(row) {
     var people = (row.matches && row.matches.people) || [];
-    if (!people.length || row.status === 'dismissed') return '';
+    if (row.status === 'dismissed') return '';
+    if (!people.length) {
+      // Nobody read out of this email: a way to read it again with today's rules.
+      return /@/.test(String(row.body || '')) ? '<div class="sb-team sb-team-empty"><span class="sb-note">No names were found in this email.</span> ' +
+        '<button class="sb-link" data-act="reread" data-id="' + row.id + '">Read the names again</button></div>' : '';
+    }
     var done = (row.applied || []).filter(function (e) { return e.what === 'team' && !e.undone; });
-    var m = row.matches || {};
-    var exFirst = (m.exhibitors || []).map(function (x) { return x.id; });
+    var exFirst = liveSuggestions(row, 'exhibitor').map(function (x) { return x.id; });
     var exs = S.targets.exhibitors.slice().sort(function (a, b) {
       var ai = exFirst.indexOf(a.id), bi = exFirst.indexOf(b.id);
       if (ai >= 0 || bi >= 0) return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
@@ -192,16 +230,24 @@
       h += '<div class="sb-done sb-people-note">✓ ' + esc(usedWords(e)) + ': ' + esc((e.people || []).map(function (p) { return p.name; }).join(', ')) +
         (e.skipped && e.skipped.length ? ' <span class="sb-note">(' + esc(e.skipped.join('; ')) + ')</span>' : '') + '</div>';
     });
-    h += '<div class="sb-people-note">People named in this email. Check each line, untick anyone who should not be added.</div>' +
-      '<div class="sb-people-wrap"><table class="sb-people"><thead><tr><th></th><th>First name</th><th>Last name</th><th>Designation</th><th>Email</th><th>Mobile</th></tr></thead><tbody>';
+    h += '<div class="sb-people-note">People named in this email. Check each line; ✕ leaves a person out for good, the tick only for this time.</div>' +
+      '<div class="sb-row sb-people-tools"><button class="sb-link" data-act="tick-all" data-id="' + row.id + '">Tick all</button>' +
+      '<button class="sb-link" data-act="tick-none" data-id="' + row.id + '">Untick all</button>' +
+      '<button class="sb-link" data-act="reread" data-id="' + row.id + '">Read the names again</button></div>' +
+      '<div class="sb-people-wrap"><table class="sb-people"><thead><tr><th></th><th>First name</th><th>Last name</th><th>Designation</th><th>Email</th><th>Mobile</th><th></th></tr></thead><tbody>';
     people.forEach(function (p, i) {
-      h += '<tr data-person="' + i + '">' +
-        '<td><input type="checkbox" data-p="on" checked aria-label="Add this person"></td>' +
-        '<td><input data-p="first_name" value="' + esc(p.first_name) + '" aria-label="First name"></td>' +
-        '<td><input data-p="last_name" value="' + esc(p.last_name) + '" aria-label="Last name"></td>' +
-        '<td><input data-p="designation" value="' + esc(p.designation) + '" aria-label="Designation"></td>' +
-        '<td><input data-p="email" type="email" value="' + esc(p.email) + '" aria-label="Email"></td>' +
-        '<td><input data-p="mobile" value="' + esc(p.mobile) + '" aria-label="Mobile"></td></tr>';
+      var off = !!p.rejected;
+      var dis = off ? ' disabled' : '';
+      h += '<tr data-person="' + i + '"' + (off ? ' data-off="1"' : '') + '>' +
+        '<td><input type="checkbox" data-p="on"' + (off ? '' : ' checked') + dis + ' aria-label="Add this person"></td>' +
+        '<td><input data-p="first_name" value="' + esc(p.first_name) + '"' + dis + ' aria-label="First name"></td>' +
+        '<td><input data-p="last_name" value="' + esc(p.last_name) + '"' + dis + ' aria-label="Last name"></td>' +
+        '<td><input data-p="designation" value="' + esc(p.designation) + '"' + dis + ' aria-label="Designation"></td>' +
+        '<td><input data-p="email" type="email" value="' + esc(p.email) + '"' + dis + ' aria-label="Email"></td>' +
+        '<td><input data-p="mobile" value="' + esc(p.mobile) + '"' + dis + ' aria-label="Mobile"></td>' +
+        '<td>' + (off
+          ? '<button class="sb-link" data-act="person" data-do="undo" data-id="' + row.id + '" data-index="' + i + '">Undo</button>'
+          : '<button class="sb-mini sb-mini-no" data-act="person" data-do="reject" data-id="' + row.id + '" data-index="' + i + '" title="Not a person to add" aria-label="Leave this person out">✕</button>') + '</td></tr>';
     });
     h += '</tbody></table></div>' +
       '<div class="sb-use"><select data-team-pick="' + row.id + '" aria-label="Which exhibitor they belong to"><option value="">Choose the exhibitor…</option>' +
@@ -216,13 +262,28 @@
     var picks = [];
     var filesHtml = files.map(function (f, i) { var r = fileHtml(row, f, i); picks.push(r); return r.html; }).join('');
     var matchHtml = '';
-    var line = function (label, list) {
-      if (!list || !list.length) return;
-      matchHtml += '<div class="sb-match">' + label + ': ' + list.slice(0, 3).map(function (x) {
-        return '<b>' + esc(matchLine(x)) + '</b> <span class="' + (x.sure ? 'sb-sure' : 'sb-maybe') + '">' + esc(x.sure ? '✓ ' + x.how : 'likely, ' + x.how) + '</span>';
-      }).join(' · ') + '</div>';
+    var live = row.status !== 'dismissed';
+    // Each suggestion with Yes (the one to use) and No (never offered again for this email).
+    var line = function (label, type) {
+      var list = m[LIST_OF[type]] || [];
+      if (!list.length) return;
+      var rej = rejectedIds(row, type), ch = chosenId(row, type);
+      var btn = function (cls, what, x, text, title) {
+        return '<button class="' + cls + '" data-act="match" data-do="' + what + '" data-type="' + type + '" data-target="' + Number(x.id) + '" data-id="' + row.id + '" title="' + title + '">' + text + '</button>';
+      };
+      matchHtml += '<div class="sb-match"><span class="sb-mlabel">' + label + ':</span> ' + list.slice(0, 4).map(function (x) {
+        var id = Number(x.id);
+        if (rej.indexOf(id) >= 0) {
+          return '<span class="sb-chip" data-off="1"><s>' + esc(matchLine(x)) + '</s> <span class="sb-note">not this</span>' + (live ? ' ' + btn('sb-link', 'clear', x, 'Undo', 'Offer it again') : '') + '</span>';
+        }
+        if (ch === id) {
+          return '<span class="sb-chip" data-on="1"><b>' + esc(matchLine(x)) + '</b> <span class="sb-sure">✓ chosen</span>' + (live ? ' ' + btn('sb-link', 'clear', x, 'Undo', 'Not chosen any more') : '') + '</span>';
+        }
+        return '<span class="sb-chip"><b>' + esc(matchLine(x)) + '</b> <span class="' + (x.sure ? 'sb-sure' : 'sb-maybe') + '">' + esc(x.sure ? '✓ ' + x.how : 'likely, ' + x.how) + '</span>' +
+          (live ? ' ' + btn('sb-mini sb-mini-yes', 'choose', x, '✓ Yes', 'This is the right one') + btn('sb-mini sb-mini-no', 'reject', x, '✕ No', 'Not this one') : '') + '</span>';
+      }).join(' ') + '</div>';
     };
-    line('Exhibitor', m.exhibitors); line('Talk', m.talks); line('Speaker', m.speakers);
+    line('Exhibitor', 'exhibitor'); line('Talk', 'talk'); line('Speaker', 'speaker');
     if (!matchHtml) matchHtml = '<div class="sb-match sb-maybe">The sender is not on any list yet. Choose who this is for.</div>';
     var body = snippet(row.body);
     var open = !!S.open[row.id];
@@ -363,6 +424,26 @@
         res = await api().post('/api/admin/inbox-submissions/' + id + '/dismiss', {});
       } else if (kind === 'reopen') {
         res = await api().post('/api/admin/inbox-submissions/' + id + '/reopen', {});
+      } else if (kind === 'file-reject' || kind === 'file-undo') {
+        res = await api().post('/api/admin/inbox-submissions/' + id + '/files/' + extra.file, { rejected: kind === 'file-reject' });
+        say(kind === 'file-reject' ? 'Rejected.' : 'Back.');
+      } else if (kind === 'file-reject-all') {
+        if (!w.confirm('Reject this picture in every email, and never file it again?')) return;
+        res = await api().post('/api/admin/inbox-submissions/ignore-picture', { id: Number(id), file: extra.file });
+        say('Rejected in ' + res.emails + ' email' + (res.emails === 1 ? '' : 's') + (res.set_aside ? '; ' + res.set_aside + ' left with nothing set aside' : '') + '.');
+        await load();
+        recount();
+        return;
+      } else if (kind === 'match') {
+        res = await api().post('/api/admin/inbox-submissions/' + id + '/match', { type: extra.type, target_id: extra.target, action: extra.do });
+        // The pickers start again from the new choice.
+        Object.keys(S.pick).forEach(function (k) { if (k.indexOf(id + ':') === 0) delete S.pick[k]; });
+        delete S.teamPick[id];
+      } else if (kind === 'person') {
+        res = await api().post('/api/admin/inbox-submissions/' + id + '/people/' + extra.index, { rejected: extra.do === 'reject' });
+      } else if (kind === 'reread') {
+        res = await api().post('/api/admin/inbox-submissions/' + id + '/reread', {});
+        say(res.people ? res.people + ' name' + (res.people === 1 ? '' : 's') + ' found.' : 'No names found in this email.', !res.people);
       }
       if (res && res.row) {
         if (kind === 'dismiss' || kind === 'reopen') { S.rows = S.rows.filter(function (r) { return r.id !== res.row.id; }); }
@@ -384,7 +465,15 @@
     if (a === 'more') { S.open[id] = !S.open[id]; draw(); return; }
     if (a === 'apply') { act('apply', id, { file: parseInt(t.getAttribute('data-file'), 10) }); return; }
     if (a === 'undo') { act('undo', id, { index: parseInt(t.getAttribute('data-index'), 10) }); return; }
-    if (a === 'team' || a === 'dismiss' || a === 'reopen') { act(a, id); return; }
+    if (a === 'team' || a === 'dismiss' || a === 'reopen' || a === 'reread') { act(a, id); return; }
+    if (a === 'file-reject' || a === 'file-undo' || a === 'file-reject-all') { act(a, id, { file: parseInt(t.getAttribute('data-file'), 10) }); return; }
+    if (a === 'match') { act('match', id, { type: t.getAttribute('data-type'), target: parseInt(t.getAttribute('data-target'), 10), do: t.getAttribute('data-do') }); return; }
+    if (a === 'person') { act('person', id, { index: parseInt(t.getAttribute('data-index'), 10), do: t.getAttribute('data-do') }); return; }
+    if (a === 'tick-all' || a === 'tick-none') {
+      var box = S.el.querySelector('[data-team="' + id + '"]');
+      if (box) box.querySelectorAll('input[data-p="on"]:not([disabled])').forEach(function (c) { c.checked = a === 'tick-all'; });
+      return;
+    }
   }
   async function onChange(ev) {
     var t = ev.target;
@@ -415,6 +504,7 @@
   w.SubDesk = {
     mount: mount,
     _t: { esc: esc, fmtSize: fmtSize, fmtWhen: fmtWhen, safeLink: safeLink, fileUrl: fileUrl, isPicture: isPicture, defaultChoice: defaultChoice,
-      applyBody: applyBody, usesOfFile: usesOfFile, usedWords: usedWords, matchLine: matchLine, tabCount: tabCount }
+      applyBody: applyBody, usesOfFile: usesOfFile, usedWords: usedWords, matchLine: matchLine, tabCount: tabCount,
+      liveSuggestions: liveSuggestions, rejectedIds: rejectedIds, chosenId: chosenId }
   };
 })(window);

@@ -38,6 +38,17 @@ check('a PDF is never chosen; an SVG is only ever a logo', T.defaultChoice({ use
   && T.defaultChoice({ use: 'photo', mime: 'image/svg+xml' }, row({ kind: 'photo', matches: M({ exhibitors: [acme], talks: [talk] }) })) === 'logo:7');
 check('an "other" email with a file of no clear use chooses nothing', T.defaultChoice({ use: '', mime: 'image/png' }, row({ kind: 'other', matches: M({ exhibitors: [acme], talks: [talk] }) })) === '');
 
+// ---- choosing and rejecting suggestions (13 Nov 2026) ----
+const ex2 = { id: 8, name: 'Ai Vie Insights', sure: false, how: 'same company email' };
+const ex3 = { id: 9, name: 'Cloud Crane', sure: false, how: 'named in the email' };
+const both = (o) => row({ matches: M({ exhibitors: [ex2, ex3], talks: [talk], ...o }) });
+check('suggestions: as they came when nobody has chosen', T.liveSuggestions(both(), 'exhibitor').map((x) => x.id).join() === '8,9');
+check('suggestions: "No" takes one out for good', T.liveSuggestions(both({ rejected: { exhibitor: [8] } }), 'exhibitor').map((x) => x.id).join() === '9' && T.defaultChoice({ use: 'logo', mime: 'image/png' }, both({ rejected: { exhibitor: [8] } })) === 'logo:9');
+check('suggestions: "Yes" puts the chosen one first, and the picker starts on it', T.liveSuggestions(both({ chosen: { exhibitor: 9 } }), 'exhibitor')[0].id === 9 && T.defaultChoice({ use: 'logo', mime: 'image/png' }, both({ chosen: { exhibitor: 9 } })) === 'logo:9');
+check('suggestions: every one rejected leaves nothing chosen', T.defaultChoice({ use: 'logo', mime: 'image/png' }, both({ rejected: { exhibitor: [8, 9] } })) === '');
+check('suggestions: ids as text from the server are the same ids', T.chosenId(both({ chosen: { talk: '3' } }), 'talk') === 3 && T.rejectedIds(both({ rejected: { talk: ['3'] } }), 'talk')[0] === 3 && T.chosenId(row(), 'talk') === null);
+check('a rejected file is never offered', T.defaultChoice({ use: 'logo', mime: 'image/png', rejected: { by: 'Priya' } }, both()) === '');
+
 // ---- what is sent for a choice ----
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 check('choice: a logo', same(T.applyBody('logo:7', 0), { what: 'logo', exhibitor_id: 7, file: 0 }));

@@ -20822,6 +20822,26 @@ function subSenderKey(email: any): string {
   const e = String(email || '').toLowerCase().trim()
   return subDomain(e) || e
 }
+// Pictures the team rejected everywhere: never filed again (app_settings, a JSON list of hashes).
+const SUB_IGNORED_KEY = 'inbox_submissions_ignored_pictures'
+async function subIgnored(c: any): Promise<string[]> {
+  try {
+    const r = await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(SUB_IGNORED_KEY).first() as any
+    const v = JSON.parse(String(r?.value || '[]'))
+    return Array.isArray(v) ? v.map((x: any) => String(x)).filter((x: string) => /^[0-9a-f]{64}$/.test(x)) : []
+  } catch { return [] }
+}
+async function subSetIgnored(c: any, list: string[]) {
+  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(SUB_IGNORED_KEY, JSON.stringify(list.slice(-500))).run()
+}
+const subActor = (c: any) => String(c.req.header('X-Admin-Actor') || '').slice(0, 80) || 'admin'
+// What is still there to use in an email: files not rejected, people not left out.
+function subUsable(row: any): { files: number; people: number } {
+  return {
+    files: (row.attachments || []).filter((x: any) => x && !x.rejected).length,
+    people: ((row.matches && row.matches.people) || []).filter((p: any) => p && !p.rejected).length,
+  }
+}
 async function subOwnDomains(c: any): Promise<Set<string>> {
   let list = SUB_OWN_DOMAINS_DEFAULT
   try {
@@ -20872,39 +20892,146 @@ function subMentionsPerson(text: string, name: string): boolean {
 // 98200 12345", numbered or bulleted, commas or tabs (a table pasted from a sheet). A
 // line that is only a name is a sentence more often than a person, so it needs a
 // designation, an email or a mobile beside it. The admin edits the list before it is used.
+// The columns a pasted table names in its heading row.
+const SUB_HEAD_FIELDS: [string, RegExp][] = [
+  ['serial', /^((sr|sl|s|serial)\.?\s*(no|num|number)\.?|no\.?|#|s\.?\s*n\.?)$/i],
+  ['first', /^first\s*name$/i],
+  ['last', /^(last\s*name|surname|family\s*name)$/i],
+  ['name', /^((full\s*)?names?|name of (the )?(person|participant|delegate|attendee|member)|participants?|delegates?|attendees?|members?|person|representative)$/i],
+  ['designation', /^(designation|title|job\s*title|role|position|post)$/i],
+  ['email', /^(e-?mail(\s*(id|address))?|mail\s*id|email\s*id)$/i],
+  ['mobile', /^((mobile|phone|contact|cell|whatsapp)(\s*(no|number))?\.?|mob\.?(\s*no\.?)?|contact\s*details)$/i],
+  ['other', /^(organi[sz]ation|company(\s*name)?|pass(\s*type)?|category|department|city|remarks?|linked\s*in.*|gender|booth(\s*no\.?)?)$/i],
+]
+function subHeadField(cell: string): string {
+  const t = String(cell || '').trim().replace(/[:*]+$/, '').trim()
+  for (const [k, re] of SUB_HEAD_FIELDS) if (re.test(t)) return k
+  return ''
+}
+const SUB_CELL_SPLIT = /\t+|\s*\|\s*|\s{2,}/
+const SUB_SERIAL_RE = /^\d{1,3}[.)]?$/
+// Words that are a column heading or a greeting, never a person's name.
+const SUB_NOT_NAME_WORDS = /^(sr|sl|no|s|serial|full|first|last|name|names|designation|title|role|email|e-mail|mail|id|phone|mobile|contact|number|organization|organisation|company|details|please|kindly|find|attached|attaching|regards|thanks|thank|dear|hi|hello|hey|team|members|list|following|below|our|the|here|sharing|we|i|this|these|your|for|with|from|to|at|on|in|as|and|also|can|could|would|will|looking|hope|greetings|good|note|ps|sir|madam|mam)$/i
+function subNameParts(name: string): { first: string; last: string } | null {
+  const clean = String(name || '').replace(SUB_HONORIFIC_RE, '').replace(/\s+/g, ' ').trim()
+  const words = clean.split(' ')
+  if (words.length < 2 || words.length > 4) return null
+  if (!words.every(w => /^[A-Za-z][A-Za-z.'-]*$/.test(w))) return null
+  if (SUB_NOT_NAME_WORDS.test(words[0].replace(/\.$/, ''))) return null
+  if (words.every(w => SUB_NOT_NAME_WORDS.test(w.replace(/\.$/, '')))) return null
+  return { first: words[0], last: words.slice(1).join(' ') }
+}
+const subTitleCase = (w: string) => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w
+// A row of a table whose heading row is known: the address and the phone by what they look
+// like, the other cells in the heading's order.
+function subRowByHeader(cells: string[], header: string[], line: string): SubPerson | null {
+  const email = (line.match(SUB_EMAIL_RE) || [''])[0].toLowerCase()
+  const mobM = line.replace(SUB_EMAIL_RE, ' ').match(SUB_MOBILE_RE)
+  const mobile = mobM ? mobM[1].replace(/[\s-]/g, '') : ''
+  const words = cells.filter(x => !SUB_SERIAL_RE.test(x) && !SUB_EMAIL_RE.test(x) && !SUB_MOBILE_RE.test(x) && !/^[+\d\s()./-]{7,}$/.test(x))
+  const fields = header.filter(k => k !== 'serial' && k !== 'email' && k !== 'mobile')
+  const val: Record<string, string> = {}
+  if (words.length === fields.length) fields.forEach((k, i) => { if (k && !val[k]) val[k] = words[i] })
+  let parts = val.first && val.last ? { first: val.first.trim(), last: val.last.trim() } : subNameParts(val.name || '')
+  if (!parts) {
+    // The cells did not line up with the heading: the first cell that is a name, and the next.
+    const at = words.findIndex(x => !!subNameParts(x))
+    if (at < 0) return null
+    parts = subNameParts(words[at])
+    val.designation = val.designation || (words[at + 1] && !subHeadField(words[at + 1]) ? words[at + 1] : '')
+  }
+  if (!parts) return null
+  return { first_name: parts.first, last_name: parts.last, designation: String(val.designation || '').slice(0, 80), email, mobile, line: line.trim().slice(0, 200) }
+}
+// A list run together on one line ("Nahida Shaikh nahida@x.com 9172977137 Javed Shaikh ..."):
+// each address with the name just before it and the phone next to it.
+function subPeopleAroundEmails(text: string): SubPerson[] {
+  const re = new RegExp(SUB_EMAIL_RE.source, 'g')
+  const hits = [...text.matchAll(re)]
+  const out: SubPerson[] = []
+  let from = 0
+  for (let k = 0; k < hits.length; k++) {
+    const h = hits[k]
+    const start = h.index || 0
+    const end = start + h[0].length
+    const nextStart = k + 1 < hits.length ? (hits[k + 1].index || text.length) : text.length
+    let before = text.slice(from, start)
+    const after = text.slice(end, nextStart)
+    // A phone written before the address belongs to this person; otherwise the first one after
+    // it, if it comes before the next name.
+    let mobile = ''
+    const mb = before.match(new RegExp(SUB_MOBILE_RE.source + '\\s*[-,:|]*\\s*$'))
+    if (mb) { mobile = mb[1].replace(/[\s-]/g, ''); before = before.slice(0, before.length - mb[0].length) }
+    let used = 0
+    if (!mobile) {
+      const ma = after.match(SUB_MOBILE_RE)
+      if (ma && !/[A-Za-z]{2,}/.test(after.slice(0, ma.index || 0))) { mobile = ma[1].replace(/[\s-]/g, ''); used = (ma.index || 0) + ma[0].length }
+    }
+    before = before.replace(SUB_MOBILE_RE, ' ')
+    const nm = before.match(/((?:(?:Dr|Mr|Mrs|Ms|Prof|Shri|Smt)\.?\s+)?[A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){1,3})[\s,:|(-]*$/)
+    let parts = nm ? subNameParts(nm[1]) : null
+    if (!parts) {
+      // No name written: the address's own words, when they are two ("nahida.shaikh").
+      const local = h[0].split('@')[0].split(/[._-]+/).filter(w => /^[a-z]{2,}$/i.test(w))
+      if (local.length >= 2 && local.length <= 3) parts = { first: subTitleCase(local[0]), last: local.slice(1).map(subTitleCase).join(' ') }
+    }
+    from = end + used
+    if (!parts) continue
+    out.push({ first_name: parts.first, last_name: parts.last, designation: '', email: h[0].toLowerCase(), mobile, line: (nm ? nm[1] + ' ' : '') + h[0] })
+  }
+  return out
+}
+// One line that is one person: "Priya Nair - Marketing Head - priya@x.in - 98200 12345",
+// numbered or bulleted, commas, bars or tabs.
+function subLinePerson(raw: string): SubPerson | null {
+  const bulleted = /^\s*(?:[-*•▪·]|\d{1,3}[.)]|\(\d{1,3}\))\s+/.test(raw)
+  const tabbed = raw.trim().includes('\t')
+  const line = raw.replace(/^\s*(?:[-*•▪·]|\d{1,3}[.)]|\(\d{1,3}\)|\d{1,3}(?=\t|\s{2,}))\s*/, '').trim()
+  if (!line || line.length > 200) return null
+  const email = (line.match(SUB_EMAIL_RE) || [''])[0].toLowerCase()
+  const mobM = line.replace(SUB_EMAIL_RE, ' ').match(SUB_MOBILE_RE)
+  const mobile = mobM ? mobM[1].replace(/[\s-]/g, '') : ''
+  let rest = line.replace(SUB_EMAIL_RE, ' ')
+  if (mobM) rest = rest.replace(mobM[0], ' ')
+  rest = rest.replace(/\b(name|email|e-mail|mail id|mail|mobile no|mobile|mob|phone|contact no|contact|designation|title|role)\s*[:.]\s*/gi, ' ')
+  // A hyphen separates only with a space beside it, so Anne-Marie stays one name.
+  const parts = rest.split(/\s*(?:[|,;:\t]|\s[-–—]\s*|[-–—]\s|\s{2,}|\(|\))\s*/).map(p => p.trim()).filter(Boolean)
+  if (!parts.length) return null
+  const name = subNameParts(parts[0])
+  if (!name) return null
+  // Every other cell a column heading: this is the heading row, not a person.
+  if (parts.length >= 2 && parts.slice(1).every(p => !!subHeadField(p))) return null
+  // With an email or a mobile beside it, a name is a person. Without, only in a numbered or
+  // bulleted list or a table, written as a name is, with a designation.
+  if (!email && !mobile) {
+    if (!(bulleted || tabbed) || parts.length < 2 || !(name.first + ' ' + name.last).split(' ').every(w => /^[A-Z]/.test(w))) return null
+  }
+  return { first_name: name.first, last_name: name.last, designation: parts.slice(1).join(', ').replace(/\s{2,}/g, ' ').slice(0, 80), email, mobile, line: raw.trim().slice(0, 200) }
+}
 function subPeople(text: string): SubPerson[] {
   const body = subBeforeSignoff(subOwnWords(text))
   const out: SubPerson[] = []
   const seen = new Set<string>()
-  const NOT_A_NAME = /^(please|kindly|find|attached|attaching|regards|thanks|thank|dear|hi|hello|hey|team|members|list|names|name|following|below|our|the|here|sharing|we|i|this|these|your|for|with|from|to|at|on|in|as|and|also|can|could|would|will|looking|hope|greetings|good|note|ps)$/i
-  for (const raw of body.split('\n')) {
-    const bulleted = /^\s*(?:[-*•▪·]|\d{1,2}[.)]|\(\d{1,2}\))\s+/.test(raw)
-    const tabbed = raw.trim().includes('\t')
-    const line = raw.replace(/^\s*(?:[-*•▪·]|\d{1,2}[.)]|\(\d{1,2}\))\s*/, '').trim()
-    if (!line || line.length > 200) continue
-    const email = (line.match(SUB_EMAIL_RE) || [''])[0].toLowerCase()
-    const mobM = line.replace(SUB_EMAIL_RE, ' ').match(SUB_MOBILE_RE)
-    const mobile = mobM ? mobM[1].replace(/[\s-]/g, '') : ''
-    let rest = line.replace(SUB_EMAIL_RE, ' ')
-    if (mobM) rest = rest.replace(mobM[0], ' ')
-    rest = rest.replace(/\b(name|email|e-mail|mail id|mail|mobile no|mobile|mob|phone|contact no|contact|designation|title|role)\s*[:.]\s*/gi, ' ')
-    // A hyphen separates only with a space beside it, so Anne-Marie stays one name.
-    const parts = rest.split(/\s*(?:[|,;:\t]|\s[-–—]\s*|[-–—]\s|\s{2,}|\(|\))\s*/).map(p => p.trim()).filter(Boolean)
-    if (!parts.length) continue
-    const name = parts[0].replace(SUB_HONORIFIC_RE, '').trim()
-    const words = name.split(/\s+/)
-    if (words.length < 2 || words.length > 4 || !words.every(w => /^[A-Za-z][A-Za-z.'-]*$/.test(w)) || NOT_A_NAME.test(words[0])) continue
-    // With an email or a mobile beside it, a name is a person. Without, only in a
-    // numbered or bulleted list or a table, written as a name is, with a designation.
-    if (!email && !mobile) {
-      if (!(bulleted || tabbed) || parts.length < 2 || !words.every(w => /^[A-Z]/.test(w))) continue
-    }
-    const designation = parts.slice(1).join(', ').replace(/\s{2,}/g, ' ').slice(0, 80)
-    const key = email || name.toLowerCase()
-    if (seen.has(key)) continue
+  const add = (p: SubPerson | null) => {
+    if (!p || out.length >= 30) return
+    const key = p.email || (p.first_name + ' ' + p.last_name).toLowerCase()
+    if (seen.has(key)) return
     seen.add(key)
-    out.push({ first_name: words[0], last_name: words.slice(1).join(' '), designation, email, mobile, line: raw.trim().slice(0, 200) })
-    if (out.length >= 30) break
+    out.push(p)
+  }
+  let header: string[] | null = null
+  for (const raw of body.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    const cells = line.split(SUB_CELL_SPLIT).map(x => x.trim()).filter(Boolean)
+    const fields = cells.map(subHeadField)
+    const named = fields.filter(Boolean).length
+    // A heading row: two or more cells that are column names (and nothing else), no address.
+    if (cells.length >= 2 && named >= 2 && named >= cells.length - 1 && !SUB_EMAIL_RE.test(line)) { header = fields; continue }
+    // Two or more addresses on one line: a list run together.
+    if ((line.match(new RegExp(SUB_EMAIL_RE.source, 'g')) || []).length >= 2) { for (const p of subPeopleAroundEmails(line)) add(p); continue }
+    if (header && cells.length >= 2) { const p = subRowByHeader(cells, header, line); if (p) { add(p); continue } }
+    add(subLinePerson(raw))
   }
   return out
 }
@@ -21053,6 +21180,7 @@ async function subApply(c: any, sub: any, a: any, by: string): Promise<{ ok: tru
   const what = String(a?.what || '')
   const who = by === 'automatic' ? { actor: 'automatic', kind: 'system' } : undefined
   const pick = (() => { const i = parseInt(String(a?.file), 10); return Number.isInteger(i) && files[i] ? { i, f: files[i] } : null })()
+  if (pick && (pick.f as any).rejected) return { error: 'That file was rejected. Press Undo on it first.', status: 400 }
   if (what === 'logo') {
     if (!pick) return { error: 'Choose which file is the logo.', status: 400 }
     if (pick.f.mime === 'application/pdf') return { error: 'The app cannot show a PDF as a logo. Save it as a PNG first; the website generator can take the PDF.', status: 400 }
@@ -21202,6 +21330,7 @@ app.post('/api/external/inbox-submissions', async (c) => {
   } catch { /* nothing earlier to compare with */ }
   // A picture another company has sent too is a signature, or our own logo quoted back in a
   // reply (13 Nov 2026: one 248x94 logo came from 17 companies): it belongs to nobody here.
+  for (const h of await subIgnored(c)) seen.add(h)
   const me = subSenderKey(fromEmail)
   for (const d of decoded) {
     if (seen.has(d.hash)) continue
@@ -21251,6 +21380,7 @@ async function subTidy(c: any, by: string): Promise<{ looked: number; set_aside:
   catch { return null }
   const rows = all.map(subParse)
   const own = await subOwnDomains(c)
+  const ignored = new Set(await subIgnored(c))
   const senders = new Map<string, Set<string>>()
   for (const r of rows) for (const f of r.attachments) if (f?.hash) {
     if (!senders.has(f.hash)) senders.set(f.hash, new Set())
@@ -21270,8 +21400,8 @@ async function subTidy(c: any, by: string): Promise<{ looked: number; set_aside:
       const twin = rows.find(o => o.id < r.id && o.from_email === r.from_email && o.subject === r.subject && o.received_at >= lo && o.received_at <= hi)
       if (twin) why = 'the same email in another mailbox, #' + twin.id
     }
-    const keep = r.attachments.filter((f: SubFile) => !(f?.hash && (senders.get(f.hash)?.size || 0) >= 2))
-    const people = Array.isArray(r.matches?.people) ? r.matches.people : []
+    const keep = r.attachments.filter((f: SubFile) => !(f?.hash && ((senders.get(f.hash)?.size || 0) >= 2 || ignored.has(f.hash))))
+    const people = subPeople(r.body)
     if (!why && !keep.length && !people.length && r.attachments.length) why = 'only a picture other companies sent too'
     if (why) {
       await c.env.DB.prepare("UPDATE inbox_submissions SET status = 'dismissed', decided_by = ?, decided_at = ? WHERE id = ? AND status = 'new'").bind(`${by} (${why})`, now, r.id).run()
@@ -21425,6 +21555,142 @@ app.post('/api/admin/inbox-submissions/tidy', async (c) => {
   const r = await subTidy(c, SUB_TIDY_BY)
   if (!r) return c.json({ error: SUB_NOT_YET, not_yet: true }, 503)
   return c.json({ ok: true, ...r, by })
+})
+
+// One file: rejected (it stays on the email, crossed out, and can never be used), or back.
+app.post('/api/admin/inbox-submissions/:id/files/:idx', async (c) => {
+  const sub = await subRow(c, c.req.param('id')).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  if (sub.status === 'dismissed') return c.json({ error: 'Bring it back first.' }, 409)
+  const i = parseInt(c.req.param('idx'), 10)
+  const files = sub.attachments as any[]
+  if (!Number.isInteger(i) || !files[i]) return c.json({ error: 'That file is not there.' }, 404)
+  const b = await c.req.json().catch(() => ({})) as any
+  const by = subActor(c)
+  if (b.rejected) {
+    if (sub.applied.some((e: any) => !e.undone && e.file === i)) return c.json({ error: 'This file is in use. Undo that first.' }, 409)
+    files[i] = { ...files[i], rejected: { by, at: new Date().toISOString() } }
+  } else {
+    const was = files[i].rejected
+    const { rejected, ...rest } = files[i]
+    files[i] = rest
+    // Undone on one email: a picture rejected everywhere may arrive again.
+    if (was && was.everywhere && rest.hash) await subSetIgnored(c, (await subIgnored(c)).filter(h => h !== rest.hash))
+  }
+  await c.env.DB.prepare('UPDATE inbox_submissions SET attachments = ?, decided_by = ?, decided_at = ? WHERE id = ?').bind(JSON.stringify(files), by, new Date().toISOString(), sub.id).run()
+  await audit(c, 'submission.file', 'submission', sub.id, { file: files[i].filename, rejected: !!b.rejected })
+  return c.json({ ok: true, row: await subRow(c, sub.id) })
+})
+
+// A picture rejected everywhere: crossed out in every email that has it (unless it is in use
+// there), an email left with nothing set aside, and never filed again.
+app.post('/api/admin/inbox-submissions/ignore-picture', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const sub = await subRow(c, b.id).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  const i = parseInt(String(b.file), 10)
+  const pic = Number.isInteger(i) ? (sub.attachments as any[])[i] : null
+  if (!pic || !/^[0-9a-f]{64}$/.test(String(pic.hash || ''))) return c.json({ error: 'That file is not there.' }, 404)
+  const by = subActor(c)
+  const now = new Date().toISOString()
+  const list = await subIgnored(c)
+  if (!list.includes(pic.hash)) { list.push(pic.hash); await subSetIgnored(c, list) }
+  const rows = (((await c.env.DB.prepare("SELECT * FROM inbox_submissions WHERE status IN ('new', 'applied') AND attachments LIKE ?").bind('%"hash":"' + pic.hash + '"%').all()).results || []) as any[]).map(subParse)
+  let changed = 0, setAside = 0
+  for (const r of rows) {
+    let touched = false
+    r.attachments = (r.attachments as any[]).map((x: any, k: number) => {
+      if (!x || x.hash !== pic.hash || x.rejected) return x
+      if (r.applied.some((e: any) => !e.undone && e.file === k)) return x
+      touched = true
+      return { ...x, rejected: { by, at: now, everywhere: true } }
+    })
+    if (!touched) continue
+    changed++
+    const left = subUsable(r)
+    if (r.status === 'new' && !r.applied.length && !left.files && !left.people) {
+      await c.env.DB.prepare("UPDATE inbox_submissions SET attachments = ?, status = 'dismissed', decided_by = ?, decided_at = ? WHERE id = ?").bind(JSON.stringify(r.attachments), `${by} (only a picture rejected everywhere)`, now, r.id).run()
+      setAside++
+    } else {
+      await c.env.DB.prepare('UPDATE inbox_submissions SET attachments = ?, decided_by = ?, decided_at = ? WHERE id = ?').bind(JSON.stringify(r.attachments), by, now, r.id).run()
+    }
+  }
+  await audit(c, 'submission.ignore_picture', 'submission', sub.id, { file: pic.filename, emails: changed, set_aside: setAside })
+  return c.json({ ok: true, emails: changed, set_aside: setAside, row: await subRow(c, sub.id) })
+})
+
+// A suggested exhibitor, talk or speaker: chosen (the one the pickers start on), rejected
+// (never offered for this email again), or back to as it was.
+const SUB_MATCH_TYPES: Record<string, string> = { exhibitor: 'exhibitors', talk: 'talks', speaker: 'speakers' }
+app.post('/api/admin/inbox-submissions/:id/match', async (c) => {
+  const sub = await subRow(c, c.req.param('id')).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  if (sub.status === 'dismissed') return c.json({ error: 'Bring it back first.' }, 409)
+  const b = await c.req.json().catch(() => ({})) as any
+  const type = String(b.type || '')
+  const key = SUB_MATCH_TYPES[type]
+  const id = parseInt(String(b.target_id), 10)
+  const action = String(b.action || '')
+  if (!key || !id || !['choose', 'reject', 'clear'].includes(action)) return c.json({ error: 'That is not something this screen can do.' }, 400)
+  const by = subActor(c)
+  const m = sub.matches || {}
+  m[key] = Array.isArray(m[key]) ? m[key] : []
+  m.chosen = m.chosen && typeof m.chosen === 'object' ? m.chosen : {}
+  m.rejected = m.rejected && typeof m.rejected === 'object' ? m.rejected : {}
+  let rej: number[] = (Array.isArray(m.rejected[type]) ? m.rejected[type] : []).map(Number)
+  if (action === 'choose') {
+    if (!m[key].some((x: any) => Number(x.id) === id)) {
+      // Chosen from the full list: it joins the suggestions, first.
+      const world = await subWorld(c, Number(sub.event_id) || 1)
+      const found = type === 'exhibitor' ? world.exhibitors.find(x => x.id === id) : type === 'talk' ? world.talks.find(x => x.id === id) : world.speakers.find(x => x.id === id)
+      if (!found) return c.json({ error: 'That one is not on the list.' }, 404)
+      const name = type === 'exhibitor' ? found.company_name : type === 'talk' ? found.speaker_name : found.name
+      const detail = type === 'exhibitor' ? '' : type === 'talk' ? (found.company || '') : (found.organisation || '')
+      m[key].unshift({ id, name, detail, how: 'chosen by ' + by, sure: true })
+    }
+    m.chosen[type] = id
+    rej = rej.filter(x => x !== id)
+  } else if (action === 'reject') {
+    if (!rej.includes(id)) rej.push(id)
+    if (Number(m.chosen[type]) === id) delete m.chosen[type]
+  } else {
+    rej = rej.filter(x => x !== id)
+    if (Number(m.chosen[type]) === id) delete m.chosen[type]
+  }
+  m.rejected[type] = rej
+  await c.env.DB.prepare('UPDATE inbox_submissions SET matches = ?, decided_by = ?, decided_at = ? WHERE id = ?').bind(JSON.stringify(m), by, new Date().toISOString(), sub.id).run()
+  await audit(c, 'submission.match', 'submission', sub.id, { type, id, action })
+  return c.json({ ok: true, row: await subRow(c, sub.id) })
+})
+
+// One person read out of the email: left out (never added, kept crossed out) or back.
+app.post('/api/admin/inbox-submissions/:id/people/:idx', async (c) => {
+  const sub = await subRow(c, c.req.param('id')).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  if (sub.status === 'dismissed') return c.json({ error: 'Bring it back first.' }, 409)
+  const i = parseInt(c.req.param('idx'), 10)
+  const people = (sub.matches && Array.isArray(sub.matches.people)) ? sub.matches.people : []
+  if (!Number.isInteger(i) || !people[i]) return c.json({ error: 'That person is not there.' }, 404)
+  const b = await c.req.json().catch(() => ({})) as any
+  if (b.rejected) people[i] = { ...people[i], rejected: true }
+  else { const { rejected, ...rest } = people[i]; people[i] = rest }
+  const by = subActor(c)
+  await c.env.DB.prepare('UPDATE inbox_submissions SET matches = ?, decided_by = ?, decided_at = ? WHERE id = ?').bind(JSON.stringify({ ...sub.matches, people }), by, new Date().toISOString(), sub.id).run()
+  await audit(c, 'submission.person', 'submission', sub.id, { person: [people[i].first_name, people[i].last_name].join(' ').trim(), rejected: !!b.rejected })
+  return c.json({ ok: true, row: await subRow(c, sub.id) })
+})
+
+// "Read the names again": the people of one email read once more with today's rules (an email a
+// person already touched is left alone by the tidy). Who was left out is forgotten.
+app.post('/api/admin/inbox-submissions/:id/reread', async (c) => {
+  const sub = await subRow(c, c.req.param('id')).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  if (sub.status === 'dismissed') return c.json({ error: 'Bring it back first.' }, 409)
+  const people = subPeople(sub.body)
+  const by = subActor(c)
+  await c.env.DB.prepare('UPDATE inbox_submissions SET matches = ?, decided_by = ?, decided_at = ? WHERE id = ?').bind(JSON.stringify({ ...sub.matches, people }), by, new Date().toISOString(), sub.id).run()
+  await audit(c, 'submission.reread', 'submission', sub.id, { people: people.length })
+  return c.json({ ok: true, people: people.length, row: await subRow(c, sub.id) })
 })
 
 // ==================== INQUIRY DESK ====================
@@ -50878,7 +51144,7 @@ function adminPageScript(): string {
     // Submissions (logos, photos and team lists that clients emailed) live in
     // /js/admin-submissions.js (one global, SubDesk) with their own stylesheet, both
     // loaded the first time the section opens. Bump the version on any change to either.
-    var SUB_DESK_VERSION = '20261112a';
+    var SUB_DESK_VERSION = '20261113a';
     var subDeskAssets = null;
     function subDeskLoadAssets() {
       if (window.SubDesk) return Promise.resolve();

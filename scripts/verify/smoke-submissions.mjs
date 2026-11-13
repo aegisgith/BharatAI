@@ -345,6 +345,98 @@ let teamId;
   check('everyday words: a one-word company is still found by its name', (await push({ source_id: 'img-3', from_email: 'x@agency-two.com', subject: 'Zenith logo', text: 'For Zenith, the logo.', attachments: [file('z.png', png(700, 210, 128), 'image/png')] })).json && sub(rows("SELECT id FROM inbox_submissions WHERE source_id = 'img-3'")[0].id).matches.exhibitors.some((e) => e.id === ids.zenith));
 }
 
+// ======== 13 Nov 2026: names read from real emails ========
+{
+  const ppl = (id) => sub(id).matches.people.map((p) => [p.first_name, p.last_name, p.designation, p.email, p.mobile].join('|'));
+  // NoBroker / ConvoZen: a sheet pasted as an HTML table, a serial-number column, a heading row.
+  const nb = '<p>Hi Tushar,</p><p>Please find below the details of our team for the event :</p><table><tr><td></td><td>Sr. No.</td><td>Full Name</td><td>Designation</td><td>Phone Number</td><td>Email ID</td><td>Organization</td></tr>'
+    + '<tr><td>1</td><td>Pawan Sharma</td><td>Senior Director</td><td>+91 96197 72434</td><td>pawan@convozen.example</td><td>ConvoZen AI</td></tr>'
+    + '<tr><td>2</td><td>Kunjal Mehta</td><td>Associate Director, Customer Success</td><td>+91 91375 04913</td><td>kunjal.mehta@convozen.example</td><td>ConvoZen AI</td></tr></table><p>Regards,<br>Kushal</p>';
+  let r = await push({ source_id: 'nb-1', from_email: 'kushal@convozen.example', subject: 'Re: Invitation to Participate | Bharat AI', text: nb });
+  check('table: the heading row is not a person, and the numbered rows are', r.status === 201 && JSON.stringify(ppl(r.json.id)) === JSON.stringify(['Pawan|Sharma|Senior Director|pawan@convozen.example|9619772434', 'Kunjal|Mehta|Associate Director, Customer Success|kunjal.mehta@convozen.example|9137504913']), ppl(r.json?.id));
+  // The same sheet as plain text with tabs, and with a "First name / Last name" heading.
+  r = await push({ source_id: 'nb-2', from_email: 'kushal@convozen.example', subject: 'Team (plain)', text: 'Team below\nS.No\tFirst Name\tLast Name\tDesignation\tEmail\tMobile\n1\tRiya\tKapoor\tCTO\triya@convozen.example\t9820011223\n2\tAmit\tDas\tLead\tamit@convozen.example\t9820044556' });
+  check('table: first and last name columns', JSON.stringify(ppl(r.json.id)) === JSON.stringify(['Riya|Kapoor|CTO|riya@convozen.example|9820011223', 'Amit|Das|Lead|amit@convozen.example|9820044556']), ppl(r.json?.id));
+  // ArySoft: the list arrived run together on one line.
+  r = await push({ source_id: 'ary-1', from_email: 'magdalini@arysoft.example', subject: 'List of confirmed attendees for exhibition', text: 'Hi Tushar, As discussed, below is the list of confirmed attendees for the event. Nahida Shaikh Nahida.shaikh@arysoft.example 9172977137 Javed Shaikh Javed.shaikh@arysoft.example 9619803433 Hitesh Satam hitesh.satam@arysoft.example 9822011111' });
+  check('run together: each address with the name before it and the phone after it', r.json.kind === 'team' && JSON.stringify(ppl(r.json.id)) === JSON.stringify(['Nahida|Shaikh||nahida.shaikh@arysoft.example|9172977137', 'Javed|Shaikh||javed.shaikh@arysoft.example|9619803433', 'Hitesh|Satam||hitesh.satam@arysoft.example|9822011111']), [r.json?.kind, ppl(r.json?.id)]);
+  r = await push({ source_id: 'ary-2', from_email: 'magdalini@arysoft.example', subject: 'Phones first', text: 'Our team: Pawan Rao 9820012345 pawan.rao@arysoft.example, Meena Iyer 9820067890 meena.iyer@arysoft.example' });
+  check('run together: a phone written before the address belongs to that person', JSON.stringify(ppl(r.json.id)) === JSON.stringify(['Pawan|Rao||pawan.rao@arysoft.example|9820012345', 'Meena|Iyer||meena.iyer@arysoft.example|9820067890']), ppl(r.json?.id));
+  r = await push({ source_id: 'ary-3', from_email: 'magdalini@arysoft.example', subject: 'Addresses only', text: 'Please add to our team: nahida.shaikh@arysoft.example, javed.shaikh@arysoft.example' });
+  check('run together: with no name written, the address\'s own two words', JSON.stringify(ppl(r.json.id).map((x) => x.split('|').slice(0, 2).join(' '))) === JSON.stringify(['Nahida Shaikh', 'Javed Shaikh']), ppl(r.json?.id));
+  r = await push({ source_id: 'hd-1', from_email: 'kushal@convozen.example', subject: 'Heading only', text: 'Sr. No.  Full Name  Designation  Phone Number  Email ID  Organization' });
+  check('a heading row on its own is nobody', r.json.status === 'ignored' || (r.status === 201 && sub(r.json.id).matches.people.length === 0), r.text);
+}
+
+// ======== 13 Nov 2026: choosing and rejecting ========
+{
+  const base = await push({ source_id: 'sel-1', subject: 'Logo and team', text: 'Our logo attached. Team:\n1. Om Prakash - Lead - om@acmerobotics.in\n2. Sara Ali - Analyst - sara@acmerobotics.in', attachments: [file('acme-logo-sel.png', png(1100, 330, 140), 'image/png'), file('acme-banner-sel.png', png(1500, 300, 141), 'image/png')] });
+  const id = base.json.id;
+  let r = await admin(`/api/admin/inbox-submissions/${id}/files/0`, { method: 'POST', body: { rejected: true } });
+  check('reject a file: kept, crossed out, with who', r.status === 200 && r.json.row.attachments[0].rejected?.by === 'Priya' && r.json.row.attachments.length === 2, r.text);
+  r = await admin(`/api/admin/inbox-submissions/${id}/apply`, { method: 'POST', body: { what: 'logo', exhibitor_id: ids.acme, file: 0 } });
+  check('a rejected file cannot be used', r.status === 400 && /rejected/.test(r.json.error), r.text);
+  r = await admin(`/api/admin/inbox-submissions/${id}/files/0`, { method: 'POST', body: { rejected: false } });
+  check('undo the reject: the file is back to use', r.status === 200 && !r.json.row.attachments[0].rejected);
+  await admin(`/api/admin/inbox-submissions/${id}/apply`, { method: 'POST', body: { what: 'logo', exhibitor_id: ids.acme, file: 1 } });
+  r = await admin(`/api/admin/inbox-submissions/${id}/files/1`, { method: 'POST', body: { rejected: true } });
+  check('a file in use cannot be rejected', r.status === 409 && /in use/.test(r.json.error), r.text);
+  check('reject: an unknown file and an unknown email', (await admin(`/api/admin/inbox-submissions/${id}/files/9`, { method: 'POST', body: { rejected: true } })).status === 404 && (await admin('/api/admin/inbox-submissions/999999/files/0', { method: 'POST', body: { rejected: true } })).status === 404);
+  check('reject: for Admin only', (await W.call(`/api/admin/inbox-submissions/${id}/files/0`, { method: 'POST', body: { rejected: true } })).status === 401);
+
+  // A suggestion: Yes, No, Undo; and one chosen from the full list.
+  r = await admin(`/api/admin/inbox-submissions/${id}/match`, { method: 'POST', body: { type: 'exhibitor', target_id: ids.acme, action: 'reject' } });
+  check('No: the suggestion is set aside for this email', r.status === 200 && r.json.row.matches.rejected.exhibitor.includes(ids.acme), r.text);
+  r = await admin(`/api/admin/inbox-submissions/${id}/match`, { method: 'POST', body: { type: 'exhibitor', target_id: ids.zenith, action: 'choose' } });
+  const m1 = r.json.row.matches;
+  check('Yes from the full list: it joins the suggestions first, chosen, saying by whom', r.status === 200 && m1.chosen.exhibitor === ids.zenith && m1.exhibitors[0].id === ids.zenith && m1.exhibitors[0].how === 'chosen by Priya' && m1.exhibitors[0].sure === true, m1);
+  r = await admin(`/api/admin/inbox-submissions/${id}/match`, { method: 'POST', body: { type: 'exhibitor', target_id: ids.acme, action: 'choose' } });
+  check('Yes on a rejected one: chosen, and no longer rejected', r.json.row.matches.chosen.exhibitor === ids.acme && !r.json.row.matches.rejected.exhibitor.includes(ids.acme));
+  r = await admin(`/api/admin/inbox-submissions/${id}/match`, { method: 'POST', body: { type: 'exhibitor', target_id: ids.acme, action: 'clear' } });
+  check('Undo: neither chosen nor rejected', r.json.row.matches.chosen.exhibitor === undefined && !r.json.row.matches.rejected.exhibitor.includes(ids.acme));
+  check('match: a kind, an action or an id this screen does not know is refused', (await admin(`/api/admin/inbox-submissions/${id}/match`, { method: 'POST', body: { type: 'sponsor', target_id: 1, action: 'choose' } })).status === 400
+    && (await admin(`/api/admin/inbox-submissions/${id}/match`, { method: 'POST', body: { type: 'talk', target_id: 1, action: 'delete' } })).status === 400
+    && (await admin(`/api/admin/inbox-submissions/${id}/match`, { method: 'POST', body: { type: 'talk', target_id: 999999, action: 'choose' } })).status === 404);
+
+  // People: leave one out, and back.
+  r = await admin(`/api/admin/inbox-submissions/${id}/people/1`, { method: 'POST', body: { rejected: true } });
+  check('a person left out stays on the list, marked', r.status === 200 && r.json.row.matches.people[1].rejected === true && r.json.row.matches.people.length === 2, r.text);
+  r = await admin(`/api/admin/inbox-submissions/${id}/people/1`, { method: 'POST', body: { rejected: false } });
+  check('and back', !r.json.row.matches.people[1].rejected);
+  check('people: an unknown person', (await admin(`/api/admin/inbox-submissions/${id}/people/7`, { method: 'POST', body: { rejected: true } })).status === 404);
+
+  // Read again: a touched email whose names were read wrong.
+  const bad = W.insert('inbox_submissions', { event_id: 1, source: 'aimailpilot', source_id: 'reread-1', status: 'new', applied: '[]', from_email: 'kushal@convozen.example', subject: 'Old parse', received_at: '2026-11-13T04:00:00.000Z', kind: 'team', attachments: '[]',
+    body: 'Sr. No.\tFull Name\tDesignation\tEmail ID\n1\tPawan Sharma\tSenior Director\tpawan@convozen.example', decided_by: 'Priya',
+    matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [{ first_name: 'Sr.', last_name: 'No.', designation: 'Full Name', email: '', mobile: '', line: '' }] }) });
+  r = await admin(`/api/admin/inbox-submissions/${bad}/reread`, { method: 'POST', body: {} });
+  check('Read the names again: today\'s rules, on an email a person touched', r.status === 200 && r.json.people === 1 && r.json.row.matches.people[0].first_name === 'Pawan', r.text);
+
+  // Reject everywhere: in every waiting email, and never filed again.
+  const shared = png(400, 120, 142);
+  const e1 = W.insert('inbox_submissions', { event_id: 1, source: 'aimailpilot', source_id: 'ev-1', status: 'new', applied: '[]', from_email: 'a@ev-one.example', subject: 'Only that picture', received_at: '2026-11-13T04:10:00.000Z', kind: 'logo', body: '', matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [] }),
+    attachments: JSON.stringify([{ key: 'submissions/x/1-a.png', filename: 'a.png', mime: 'image/png', size: 900, w: 400, h: 120, use: 'logo', hash: 'f'.repeat(64) }]) });
+  const e2 = W.insert('inbox_submissions', { event_id: 1, source: 'aimailpilot', source_id: 'ev-2', status: 'new', applied: '[]', from_email: 'b@ev-two.example', subject: 'That picture and a real one', received_at: '2026-11-13T04:20:00.000Z', kind: 'logo', body: '', matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [] }),
+    attachments: JSON.stringify([{ key: 'submissions/x/1-b.png', filename: 'b.png', mime: 'image/png', size: 900, w: 400, h: 120, use: 'logo', hash: 'f'.repeat(64) }, { key: 'submissions/x/2-c.png', filename: 'c.png', mime: 'image/png', size: 900, w: 800, h: 200, use: 'logo', hash: 'e'.repeat(64) }]) });
+  r = await admin('/api/admin/inbox-submissions/ignore-picture', { method: 'POST', body: { id: e1, file: 0 } });
+  check('reject everywhere: crossed out in both emails, the one left with nothing set aside', r.status === 200 && r.json.emails === 2 && r.json.set_aside === 1 && sub(e1).status === 'dismissed' && /rejected everywhere/.test(sub(e1).decided_by)
+    && sub(e2).status === 'new' && sub(e2).attachments[0].rejected?.everywhere === true && !sub(e2).attachments[1].rejected, r.text);
+  check('reject everywhere: remembered in Settings', JSON.parse(rows("SELECT value FROM app_settings WHERE key = 'inbox_submissions_ignored_pictures'")[0].value).includes('f'.repeat(64)));
+  // The same picture arriving again (a real file whose hash we then put on the list).
+  const again = png(640, 200, 143);
+  r = await push({ source_id: 'ev-3', from_email: 'c@ev-three.example', subject: 'Logo', text: 'logo', attachments: [file('again.png', again, 'image/png')] });
+  const h = sub(r.json.id).attachments[0].hash;
+  await admin('/api/admin/inbox-submissions/ignore-picture', { method: 'POST', body: { id: r.json.id, file: 0 } });
+  r = await push({ source_id: 'ev-4', from_email: 'd@ev-four.example', subject: 'Logo again', text: 'logo', attachments: [file('again.png', again, 'image/png')] });
+  check('reject everywhere: the same picture arriving later is not filed', r.status === 200 && r.json.status === 'ignored', r.text);
+  r = await admin(`/api/admin/inbox-submissions/${e2}/files/0`, { method: 'POST', body: { rejected: false } });
+  check('undo on one email: the picture may arrive again', !JSON.parse(rows("SELECT value FROM app_settings WHERE key = 'inbox_submissions_ignored_pictures'")[0].value).includes('f'.repeat(64)) && JSON.parse(rows("SELECT value FROM app_settings WHERE key = 'inbox_submissions_ignored_pictures'")[0].value).includes(h));
+  check('a set-aside email cannot be changed until it is brought back', (await admin(`/api/admin/inbox-submissions/${e1}/files/0`, { method: 'POST', body: { rejected: false } })).status === 409);
+  // The tidy never undoes a person's choices.
+  await admin('/api/admin/inbox-submissions/tidy', { method: 'POST' });
+  check('the tidy leaves an email a person chose on alone', sub(id).matches.people.length === 2 && sub(id).decided_by === 'Priya');
+}
+
 // ======== the tidy: what was already waiting gets the same rules ========
 {
   const old = (o) => W.insert('inbox_submissions', { event_id: 1, source: 'aimailpilot', status: 'new', applied: '[]', matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [] }), body: '', ...o });

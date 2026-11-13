@@ -108,6 +108,25 @@ const signIn = () => { if (window.top !== window) return; sessionStorage.setItem
     await svgPage.close();
     check('vector logo: shown as a picture in the card, the script inert', (await page.evaluate(() => window.__subXss)) === undefined && await vec.locator('.sb-thumb img').evaluate((img) => img.complete && img.naturalWidth > 0));
 
+    // ---- choosing and rejecting (13 Nov 2026) ----
+    await vec.locator('[data-act="match"][data-do="reject"][data-type="exhibitor"]').first().click();
+    check('No on a suggestion: crossed out, and the picker no longer starts on it', await until(async () => (await vec.locator('.sb-chip[data-off="1"]').count()) >= 1 && (await vec.locator('select[data-pick]').inputValue()) !== 'logo:' + acme.id), await vec.locator('.sb-match').first().innerText());
+    await vec.locator('.sb-chip[data-off="1"] [data-do="clear"]').first().click();
+    check('Undo: offered again, and the picker starts on it again', await until(async () => (await vec.locator('.sb-chip[data-off="1"]').count()) === 0 && (await vec.locator('select[data-pick]').inputValue()) === 'logo:' + acme.id));
+    await vec.locator('[data-act="match"][data-do="choose"][data-type="talk"]').first().click();
+    check('Yes on a suggestion: marked chosen', await until(async () => /✓ chosen/.test(await vec.locator('.sb-chip[data-on="1"]').first().innerText())));
+    await vec.locator('[data-act="file-reject"]').click();
+    check('Reject a file: kept small and crossed out, with no Use it', await until(async () => (await vec.locator('.sb-file[data-rejected="1"]').count()) === 1 && (await vec.locator('[data-act="apply"]').count()) === 0));
+    await vec.locator('[data-act="file-undo"]').click();
+    check('Undo: the file is back to use', await until(async () => (await vec.locator('[data-act="apply"]').count()) === 1));
+    await team.locator('[data-act="person"][data-do="reject"]').first().click();
+    check('✕ on a person: crossed out, unticked and locked', await until(async () => (await team.locator('tr[data-person="0"]').getAttribute('data-off')) === '1' && !(await team.locator('tr[data-person="0"] [data-p="on"]').isChecked()) && await team.locator('tr[data-person="0"] [data-p="first_name"]').isDisabled()));
+    await team.locator('tr[data-person="0"] [data-do="undo"]').click();
+    check('Undo: the person is back', await until(async () => (await team.locator('tr[data-person="0"]').getAttribute('data-off')) === null));
+    await team.locator('[data-act="tick-none"]').click();
+    check('Untick all, then Tick all', (await team.locator('[data-p="on"]:checked').count()) === 0 && await (async () => { await team.locator('[data-act="tick-all"]').click(); return (await team.locator('[data-p="on"]:checked').count()) === 3; })());
+    check('every choice is saved on the server, by Priya', await until(async () => { const r = await (await fetch(BASE + '/api/admin/inbox-submissions?status=all', { headers: { Authorization: 'Bearer iq-admin' } })).json(); const v = r.rows.find((x) => x.subject === 'Logo in vector'); return v && v.matches.chosen && v.matches.chosen.talk && v.decided_by === 'Priya'; }));
+
     // ---- set aside, bring back ----
     await evil.locator('[data-act="dismiss"]').click();
     check('Set aside: the card leaves Waiting', await until(async () => (await evil.count()) === 0));
