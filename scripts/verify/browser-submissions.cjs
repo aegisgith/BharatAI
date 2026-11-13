@@ -48,6 +48,8 @@ const signIn = () => { if (window.top !== window) return; sessionStorage.setItem
     const logo = card('h-logo');
     check('logo card: called a Logo, from whom, when in India', /LOGO/i.test(await logo.locator('.sb-kind').innerText()) && /Ravi Kumar/.test(await logo.locator('.sb-who').innerText()) && /12 Nov, 8:30 am/.test(await logo.locator('.sb-when').innerText()), await logo.locator('.sb-who').innerText());
     check('logo card: says the sender is the booth contact, for certain', /Acme Robotics Pvt Ltd/.test(await logo.locator('.sb-match').first().innerText()) && /the booth contact/.test(await logo.locator('.sb-sure').first().innerText()));
+    // Pictures load as they come into view (loading="lazy"): the oldest card is lowest.
+    await logo.scrollIntoViewIfNeeded();
     check('logo card: the picture draws', await until(() => logo.locator('.sb-thumb img').evaluate((img) => img.complete && img.naturalWidth === 300)));
     check('logo card: the size and name of the file', /Acme logo\.png/.test(await logo.locator('.sb-fname').innerText()) && /300 × 100/.test(await logo.locator('.sb-fmeta').innerText()));
     check('logo card: Acme is already chosen, as a logo', (await logo.locator('select[data-pick]').inputValue()) === 'logo:' + acme.id);
@@ -153,6 +155,106 @@ const signIn = () => { if (window.top !== window) return; sessionStorage.setItem
     await p2.goto(BASE + '/admin#submissions', { waitUntil: 'domcontentloaded' });
     check('/admin#submissions opens the screen directly', await until(async () => (await p2.locator('.sbd .sb-card').count()) === 2, 30000));
     await p2.close();
+
+    // ---- whose desk, search, a name for the website, upload (13 Nov 2026) ----
+    // Waiting holds the vector logo and the stranger, both sent to puja@aegis.edu.in. Priya (the
+    // operator) is not on the team; Puja Shah and Tushar Kale are.
+    const evilId = first.subs.find((s) => s.source_id === 'h-evil').id;
+    const evil2 = card('h-evil'), vec2 = card('h-svg');
+    const chips = async () => (await page.locator('.sb-who-chip').allInnerTexts()).join('|').replace(/\s+/g, '');
+    check('owner: each card says whose it is and why: the mailbox is named after Puja', (await evil2.locator('select[data-owner]').inputValue()) === 'Puja Shah' && /it came to puja@aegis\.edu\.in/.test(await evil2.locator('.sb-owner').innerText()), await evil2.locator('.sb-owner').innerText().catch(() => 'no owner line'));
+    check('whose: Everyone’s, Puja Shah, Nobody’s, with counts; Priya (not on the team) is asked who they are', (await chips()) === 'Everyone’s2|PujaShah2|Nobody’s0' && (await page.locator('.sb-who-hint select[data-me] option').count()) === 3, await chips());
+    await evil2.locator('select[data-owner]').selectOption('Tushar Kale');
+    check('owner: changed for one email, saved with who changed it', await until(async () => { const o = (await db()).owners.find((x) => x.key === 'owner:submission:' + evilId); return !!o && JSON.parse(o.value).name === 'Tushar Kale' && JSON.parse(o.value).by === 'Priya'; })
+      && await until(async () => /chosen for this email/.test(await evil2.locator('.sb-owner').innerText())));
+    await page.locator('.sb-who-chip[data-who="Tushar Kale"]').click();
+    check('whose: Tushar Kale’s shows only that one email', await until(async () => (await page.locator('.sb-card').count()) === 1 && (await page.locator('.sb-card').getAttribute('data-row')) === String(evilId)));
+    await page.locator('.sb-who-chip[data-who=""]').click();
+    check('whose: Everyone’s shows both again', await until(async () => (await page.locator('.sb-card').count()) === 2));
+    const puja = await browser.newContext({ viewport: { width: 1440, height: 950 } });
+    await puja.addInitScript(() => { if (window.top !== window) return; sessionStorage.setItem('tc_admin_token', 'iq-admin'); localStorage.setItem('tc_admin', '1'); localStorage.setItem('tc_admin_operator', 'Puja'); });
+    const pp = await puja.newPage();
+    pp.on('pageerror', (e) => errors.push('puja: ' + e.message));
+    await pp.goto(BASE + '/admin#submissions', { waitUntil: 'domcontentloaded' });
+    check('Puja opens Admin: her own emails first (Mine), not Tushar’s', await until(async () => (await pp.locator('.sb-who-chip[aria-pressed="true"]').innerText().catch(() => '')).replace(/\s+/g, '') === 'Mine1' && (await pp.locator('.sb-card').count()) === 1, 30000)
+      && (await pp.locator('.sb-card').getAttribute('data-row')) !== String(evilId) && (await pp.locator('.sb-who-hint').count()) === 0);
+    await puja.close();
+    // Someone who never typed a name: one choice says who they are.
+    const anon = await browser.newContext({ viewport: { width: 1440, height: 950 } });
+    await anon.addInitScript(() => { if (window.top !== window) return; sessionStorage.setItem('tc_admin_token', 'iq-admin'); localStorage.setItem('tc_admin', '1'); });
+    const ap = await anon.newPage();
+    ap.on('pageerror', (e) => errors.push('anon: ' + e.message));
+    await ap.goto(BASE + '/admin#submissions', { waitUntil: 'domcontentloaded' });
+    await until(async () => (await ap.locator('select[data-me]').count()) === 1, 30000);
+    await ap.locator('select[data-me]').selectOption('Tushar Kale');
+    check('Who are you? Tushar Kale: Mine shows Tushar’s one email, and Admin records changes as Tushar Kale', await until(async () => (await ap.locator('.sb-who-chip[aria-pressed="true"]').innerText()).replace(/\s+/g, '') === 'Mine1' && (await ap.locator('.sb-card').count()) === 1)
+      && (await ap.evaluate(() => localStorage.getItem('tc_admin_operator'))) === 'Tushar Kale' && (await ap.locator('select[data-me]').count()) === 0);
+    await anon.close();
+    await evil2.locator('select[data-owner]').selectOption('Puja Shah');
+    check('owner: back to the mailbox’s owner, the choice is removed', await until(async () => !(await db()).owners.some((x) => x.key === 'owner:submission:' + evilId)) && await until(async () => /it came to puja@aegis\.edu\.in/.test(await evil2.locator('.sb-owner').innerText())));
+    await page.locator('.sb-boxes summary').click();
+    check('mailboxes: puja@aegis.edu.in is worked out as Puja Shah', /Automatic: Puja Shah/.test(await page.locator('select[data-mailbox="puja@aegis.edu.in"] option:checked').innerText()));
+    await page.locator('select[data-mailbox="puja@aegis.edu.in"]').selectOption('Tushar Kale');
+    check('mailboxes: given to Tushar Kale, every email to it follows', await until(async () => { const m = (await db()).owners.find((x) => x.key === 'inbox_submissions_mailboxes'); return !!m && JSON.parse(m.value)['puja@aegis.edu.in'] === 'Tushar Kale'; })
+      && await until(async () => (await chips()) === 'Everyone’s2|TusharKale2|Nobody’s0'), await chips());
+    await page.locator('select[data-mailbox="puja@aegis.edu.in"]').selectOption('auto');
+    check('mailboxes: back to automatic', await until(async () => JSON.parse((await db()).owners.find((x) => x.key === 'inbox_submissions_mailboxes').value)['puja@aegis.edu.in'] === undefined) && await until(async () => (await chips()) === 'Everyone’s2|PujaShah2|Nobody’s0'));
+    check('mailboxes: the panel stays open while it is being used', await page.locator('.sb-boxes').evaluate((d) => d.open));
+    await page.locator('.sb-boxes summary').click();
+    await page.locator('.sb-who-chip[data-who="Puja Shah"]').click();
+    await page.locator('.sb-who-chip[data-who=""]').click();
+    check('mailboxes: closed, it stays closed when the screen is drawn again', await until(async () => (await page.locator('.sb-card').count()) === 2) && !(await page.locator('.sb-boxes').evaluate((d) => d.open)));
+
+    const vs = vec2.locator('input[data-find]');
+    await vs.fill('zen');
+    check('search: typing shows the exhibitor, and says it changes the app', await until(async () => /Logo of Zenith Data Labs/.test(await vec2.locator('.sb-hits').innerText())) && /shows in the app/.test(await vec2.locator('.sb-hit').first().innerText()));
+    check('search: a vector file is offered as a logo only', !/Photo/.test(await vec2.locator('.sb-hits').innerText()));
+    await vs.press('Enter');
+    const zen = first.exhibitors.find((e) => /Zenith/.test(e.company_name));
+    check('search: Enter takes the first; the picker shows it and Use it is next', await until(async () => (await vec2.locator('select[data-pick]').inputValue()) === 'logo:' + zen.id) && (await page.evaluate(() => document.activeElement && document.activeElement.getAttribute('data-act'))) === 'apply');
+    await vec2.locator('input[data-find]').fill('aws');
+    check('search: a panellist’s company that is not an exhibitor, for the website', await until(async () => /Logo of AWS/.test(await vec2.locator('.sb-hits').innerText()) && /not an exhibitor: named for the website/.test(await vec2.locator('.sb-hits').innerText())));
+    await vec2.locator('input[data-find]').fill('Zeta Robotics');
+    check('search: nobody by that name, so it can be named (as a logo only, it is a vector)', await until(async () => /Nobody called “Zeta Robotics” on our lists/.test(await vec2.locator('.sb-hits').innerText())) && (await vec2.locator('.sb-btn-own').count()) === 1);
+    const exBefore = JSON.stringify((await db()).exhibitors);
+    await vec2.locator('.sb-btn-own').click();
+    check('name it: the picker says the name, for the website', await until(async () => (await vec2.locator('select[data-pick]').inputValue()) === 'tag:logo:Zeta Robotics') && /Logo of Zeta Robotics/.test(await vec2.locator('select[data-pick] option:checked').innerText()));
+    await vec2.locator('[data-act="apply"]').click();
+    check('name it: Use it keeps the name for the website; nothing in the app changes', await until(async () => /Named: logo of Zeta Robotics, for the website, by Priya/.test(await vec2.locator('.sb-done').innerText().catch(() => ''))) && JSON.stringify((await db()).exhibitors) === exBefore);
+    await vec2.locator('[data-act="undo"]').click();
+    check('name it: Undo takes the name back', await until(async () => (await vec2.getAttribute('data-status')) === 'new'));
+    await vec2.locator('input[data-find]').fill('q');
+    check('search: one letter is not a name to keep', await until(async () => /Type at least two letters/.test(await vec2.locator('.sb-hits').innerText())) && (await vec2.locator('.sb-btn-own').count()) === 0);
+    await vec2.locator('input[data-find]').fill('');
+    await evil2.locator('input[data-find]').fill('Escape me');
+    await evil2.locator('input[data-find]').press('Escape');
+    check('search: Escape clears the box and what it found', (await evil2.locator('input[data-find]').inputValue()) === '' && (await evil2.locator('.sb-hit, .sb-own').count()) === 0);
+
+    await page.click('[data-tab="applied"]');
+    const team2 = card('h-team');
+    await until(async () => (await team2.count()) === 1);
+    await team2.locator('tr[data-person]').nth(0).locator('[data-p="on"]').uncheck();
+    await team2.locator('tr[data-person]').nth(1).locator('[data-p="designation"]').fill('Chief of Sales');
+    await team2.locator('input[data-find^="team:"]').fill('zen');
+    await team2.locator('.sb-hit').first().click();
+    check('team search: the exhibitor chosen from what was typed', await until(async () => (await team2.locator('select[data-team-pick]').inputValue()) === String(zen.id)));
+    const kept = async () => !(await team2.locator('tr[data-person]').nth(0).locator('[data-p="on"]').isChecked()) && (await team2.locator('tr[data-person]').nth(1).locator('[data-p="designation"]').inputValue()) === 'Chief of Sales';
+    check('team search: a person unticked and a designation corrected before it are kept', await kept());
+    await page.locator('.sb-who-chip[data-who=""]').click();
+    check('team list: what was unticked and corrected survives the screen being drawn again', await until(kept));
+    check('the people table’s headings stay in the table (Admin’s sticky headings do not reach it)', (await team2.locator('.sb-people th').first().evaluate((el) => getComputedStyle(el).position)) === 'static');
+    await page.click('[data-tab="new"]');
+    await until(async () => (await page.locator('.sb-card').count()) === 2);
+
+    const evil3 = card('h-evil');
+    const imgDir = require('path').join(__dirname, '../../public/images');
+    const webpName = require('fs').readdirSync(imgDir).find((n) => /\.webp$/.test(n));
+    await evil3.locator('input[data-upload]').setInputFiles({ name: 'better-logo.webp', mimeType: 'image/webp', buffer: require('fs').readFileSync(require('path').join(imgDir, webpName)) });
+    check('upload: the file joins the card, marked as Priya’s, its own search box ready', await until(async () => (await evil3.locator('.sb-file').count()) === 2 && /Uploaded by Priya/.test(await evil3.locator('.sb-file').nth(1).innerText()))
+      && /:1$/.test(await page.evaluate(() => (document.activeElement && document.activeElement.getAttribute('data-find')) || '')));
+    check('upload: kept on the server with the email', await until(async () => { const a = JSON.parse((await db()).subs.find((x) => x.source_id === 'h-evil').attachments); return a.length === 2 && !!a[1].uploaded && a[1].uploaded.by === 'Priya' && a[1].mime === 'image/webp'; }));
+    await evil3.locator('input[data-upload]').setInputFiles({ name: 'not-a-picture.png', mimeType: 'image/png', buffer: Buffer.from('this is not a picture '.repeat(20)) });
+    check('upload: a file that is not a picture is refused in words', await until(async () => /Upload a PNG, JPEG, WebP or SVG picture, or a PDF/.test(await evil3.locator('[data-err]').innerText())));
     check('no script error on the laptop', errors.length === 0, errors);
 
     // ---- a phone ----

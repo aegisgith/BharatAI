@@ -77,4 +77,67 @@ check('done: a row with nothing done lists nothing', T.usesOfFile(row(), 0).leng
 check('a match reads as name and company', T.matchLine({ name: 'Dr. Asha Rao', detail: 'Acme Robotics' }) === 'Dr. Asha Rao (Acme Robotics)' && T.matchLine({ name: 'Acme Robotics', detail: '' }) === 'Acme Robotics' && T.matchLine(null) === '');
 check('tab counts: missing is nought', T.tabCount({ new: 4 }, 'new') === 4 && T.tabCount({ new: 4 }, 'applied') === 0 && T.tabCount(null, 'new') === 0);
 
+// ---- 13 Nov 2026: search, a name for the website, the schedule, whose desk ----
+const TG = {
+  exhibitors: [{ id: 7, name: 'Acme Robotics Pvt Ltd', has: false }, { id: 8, name: 'Zenith Data Labs', has: true }, { id: 12, name: 'No Broker Technologies', has: false }],
+  talks: [{ id: 3, name: 'Dr. Asha Rao', company: 'Acme Robotics Pvt Ltd', has: false }],
+  speakers: [{ id: 9, name: 'Neha Kapoor', organisation: 'Bank of the North', has: true }],
+  people: [{ name: 'Mahalakshmi AV', org: 'AWS' }, { name: 'Vishal Rally', org: 'Tata Tele Business Services' }],
+  orgs: ['AWS', 'Tata Tele Business Services', 'Bank of the North'],
+};
+const pngF = { use: 'logo', mime: 'image/png' }, photoF = { use: 'photo', mime: 'image/jpeg' }, svgF = { use: 'logo', mime: 'image/svg+xml' }, pdfF = { use: '', mime: 'application/pdf' };
+const hitsFor = (q, f, r = row()) => T.findHits(q, r, f, TG);
+check('fold: case, accents, dots and titles do not matter', T.fold('Dr. Ásha  RAO') === 'asha rao' && T.fold("Hon’ble Shri Devendra Fadnavis") === 'devendra fadnavis' && T.fold(null) === '');
+check('fit: the name exactly, its start, every word, with the company, run together, not at all',
+  T.fitScore('zenith data labs', 'Zenith Data Labs') === 100 && T.fitScore('zen', 'Zenith Data Labs') === 80 && T.fitScore('labs zenith', 'Zenith Data Labs') === 60
+  && T.fitScore('asha acme', 'Dr. Asha Rao', 'Acme Robotics') === 30 && T.fitScore('nobroker', 'No Broker Technologies') === 50 && T.fitScore('xyz', 'Zenith Data Labs') === 0 && T.fitScore('', 'Zenith') === 0);
+let hh = hitsFor('acme', pngF);
+check('search: a logo finds the exhibitor first (it changes the app), and the talk too', hh.hits[0].value === 'logo:7' && hh.hits[0].app === true && hh.hits.some((x) => x.value === 'talk:3'), hh);
+hh = hitsFor('aws', pngF);
+check('search: a company that is not an exhibitor is offered as a name for the website', hh.hits.some((x) => x.value === 'tag:logo:AWS' && !x.app) && hh.hits.some((x) => x.value === 'tag:photo:Mahalakshmi AV (AWS)'), hh);
+check('search: in a photo, the person on the schedule is found by name', hitsFor('maha', photoF).hits[0].value === 'tag:photo:Mahalakshmi AV (AWS)', hitsFor('maha', photoF));
+hh = hitsFor('neha', svgF);
+check('search: a vector file is never offered as a photo', !hh.hits.some((x) => /^(talk|speaker|tag:photo):/.test(x.value)), hh);
+hh = hitsFor('zenith', pdfF);
+check('search: a PDF is named for the website, never put in the app', hh.hits.length > 0 && hh.hits.every((x) => !x.app && /^tag:logo:/.test(x.value)), hh);
+check('search: a name typed exactly is marked, so "name it yourself" is not offered for it again', hitsFor('zenith data labs', pngF).exact === true && hitsFor('aws', pngF).exact === true && hitsFor('zen', pngF).exact === false && hitsFor('aw', pngF).exact === false);
+const many = { ...TG, orgs: Array.from({ length: 20 }, (_, i) => 'Alpha ' + i) };
+check('search: eight shown at most, the rest counted', T.findHits('alpha', row(), pngF, many).hits.length === 8 && T.findHits('alpha', row(), pngF, many).more === 12);
+check('search: the email\'s own suggestion comes first among equals', T.findHits('technologies', row({ matches: M({ exhibitors: [{ id: 12, name: 'No Broker Technologies', how: 'x' }] }) }), pngF, { ...TG, exhibitors: [{ id: 30, name: 'Alpha Technologies' }, { id: 12, name: 'No Broker Technologies' }] }).hits[0].value === 'logo:12');
+check('search: nothing typed finds nothing', hitsFor('', pngF).hits.length === 0 && hitsFor('   ', pngF).hits.length === 0);
+check('team search: exhibitors only', T.teamHits('zen', row(), TG).hits[0].value === '8' && T.teamHits('asha', row(), TG).hits.length === 0 && T.teamHits('aws', row(), TG).hits.length === 0);
+check('a name chosen: read back and cleaned; nothing is not a name', same(T.tagOf('tag:logo:  AWS  '), { as: 'logo', name: 'AWS' }) && same(T.tagOf('tag:photo:Mahalakshmi AV (AWS)'), { as: 'photo', name: 'Mahalakshmi AV (AWS)' })
+  && T.tagOf('tag:logo: ') === null && T.tagOf('tag:video:x y') === null && T.tagOf('logo:7') === null && T.tagOf('tag:logo:a<script>b').name === 'a script b' && T.tagOf(null) === null);
+check('choice: a name for the website', same(T.applyBody('tag:logo:Tata Tele Business Services', 2), { what: 'tag', as: 'logo', name: 'Tata Tele Business Services', file: 2 }) && T.applyBody('tag:logo:', 0) === null);
+check('done: a name, in words', T.usedWords({ what: 'tag', as: 'photo', target: 'Mahalakshmi AV (AWS)', by: 'Priya' }) === 'Named: photo of Mahalakshmi AV (AWS), for the website, by Priya'
+  && T.usedWords({ what: 'tag', as: 'logo', target: 'AWS', by: 'automatic' }) === 'Named: logo of AWS, for the website, automatically');
+const mala = row({ from_name: '"A V, Mahalakshmi"' });
+check('schedule: "A V, Mahalakshmi" is Mahalakshmi AV; nobody else is anybody', T.schedFor(mala, TG)?.name === 'Mahalakshmi AV' && T.schedFor(row({ from_name: 'Vishal Rally' }), TG)?.org === 'Tata Tele Business Services'
+  && T.schedFor(row({ from_name: 'Someone Else' }), TG) === null && T.schedFor(row({ from_name: '' }), TG) === null && T.schedFor(row({ from_name: 'AV' }), TG) === null);
+check('AI read a company we know', T.aiOrg({ ai: { reads: 'aws' } }, TG) === 'AWS' && T.aiOrg({ ai: { reads: 'Tata Tele Business Services.' } }, TG) === 'Tata Tele Business Services'
+  && T.aiOrg({ ai: { reads: 'eurys' } }, TG) === '' && T.aiOrg({ ai: { failed: true, reads: 'AWS' } }, TG) === '' && T.aiOrg({}, TG) === '');
+check('picker: a panellist\'s logo starts on their company, their photo on them', T.defaultChoice(pngF, mala, { sched: T.schedFor(mala, TG) }) === 'tag:logo:AWS'
+  && T.defaultChoice(photoF, row({ kind: 'photo' }), { sched: T.schedFor(mala, TG) }) === 'tag:photo:Mahalakshmi AV (AWS)');
+check('picker: an exhibitor suggestion still comes before the schedule and the AI', T.defaultChoice(pngF, row({ matches: M({ exhibitors: [acme] }) }), { sched: { name: 'X Y', org: 'AWS' }, org: 'AWS' }) === 'logo:7');
+check('picker: a company the AI read', T.defaultChoice(pngF, row(), { org: 'AWS' }) === 'tag:logo:AWS' && T.defaultChoice(pngF, row()) === '');
+check('words: an email\'s entities become the characters', T.plain('&#39;Bharat AI&#39; &lt;a@b.in&gt;') === "'Bharat AI' <a@b.in>" && T.plain('&amp;&#x41;&quot;') === '&A"' && T.plain('&#0; &bogus;') === '&#0; &bogus;' && T.plain(null) === '');
+check('words: decoded, then escaped: never markup', T.esc(T.plain('&lt;img src=x onerror=alert(1)&gt;')) === '&lt;img src=x onerror=alert(1)&gt;');
+check('sender: Outlook\'s quotes dropped', T.senderName({ from_name: '"Vijayan, Sunita"' }) === 'Vijayan, Sunita' && T.senderName({}) === '' && T.senderName(null) === '');
+const teamNames = ['Anita Ram', 'Anita Rao', 'Puja Shah', 'Tushar Kale'];
+check('me: the name on the team in any case, or a first name only one of them has', T.meOf('puja shah', teamNames) === 'Puja Shah' && T.meOf('Tushar', teamNames) === 'Tushar Kale'
+  && T.meOf('Anita', teamNames) === null && T.meOf('', teamNames) === null && T.meOf('Priya', teamNames) === null && T.meOf('Puja', []) === null);
+const ro = (name) => row({ owner: { name } });
+check('views: everyone\'s, nobody\'s, one person\'s', T.whoMatches(ro(''), '') && T.whoMatches(ro('Puja Shah'), '') && T.whoMatches(ro(''), '-') && !T.whoMatches(ro('Puja Shah'), '-')
+  && T.whoMatches(ro('Puja Shah'), 'puja shah') && !T.whoMatches(ro('Tushar Kale'), 'Puja Shah') && T.whoMatches(row(), '-'));
+check('owner: why, in words', T.ownerHow({ name: 'Puja Shah', how: 'named', mailbox: 'puja@aegis.edu.in' }) === 'it came to puja@aegis.edu.in' && T.ownerHow({ name: 'Tushar Kale', how: 'set' }) === 'chosen for this email'
+  && T.ownerHow({ name: '', how: '', mailbox: 'register@x.in' }) === 'nobody has register@x.in yet' && T.ownerHow({ name: '', how: 'shared', mailbox: 'register@x.in' }) === 'register@x.in is shared' && T.ownerHow({}) === 'not sent to a team mailbox');
+const keynote = { ...TG, people: [{ name: 'Devendra Fadnavis', org: '', role: 'Chief Minister of Maharashtra' }] };
+const kh = T.findHits('fadnavis', row(), photoF, keynote).hits[0];
+check('search: a keynote\'s title is shown with them, never kept in the name for the website', kh.value === 'tag:photo:Devendra Fadnavis' && kh.text === 'Photo of Devendra Fadnavis, Chief Minister of Maharashtra', kh);
+check('picker: a keynote speaker\'s logo never starts on their job title', T.defaultChoice(pngF, row(), { sched: { name: 'Shri Praveen Pardeshi', org: '', role: 'CEO, MITRA' } }) === '');
+check('picker: a panellist whose company exhibits starts on that exhibitor\'s logo', T.defaultChoice(pngF, row(), { sched: { name: 'A B', org: 'Acme Robotics' }, schedEx: 7 }) === 'logo:7');
+check('an exhibitor by its name, without Pvt Ltd', T.exhibitorNamed('Acme Robotics', TG) === 7 && T.exhibitorNamed('acme robotics private limited', TG) === 7 && T.exhibitorNamed('AWS', TG) === 0 && T.exhibitorNamed('', TG) === 0);
+check('schedule: a name with a rank and a title in brackets is still the sender', T.schedFor(row({ from_name: 'Dr. Jadumani Jena' }), { people: [{ name: 'Cmde Dr. Jadumani Jena (retd.)', org: '', role: 'Former Commodore' }] })?.name === 'Cmde Dr. Jadumani Jena (retd.)');
+check('a photo: a person in it, or called one; never a PDF or a vector', T.looksLikePhoto(photoF) && T.looksLikePhoto({ use: 'logo', mime: 'image/png', ai: { person: true } }) && !T.looksLikePhoto(pngF) && !T.looksLikePhoto({ use: 'photo', mime: 'image/svg+xml' }) && !T.looksLikePhoto(null));
+
 done();

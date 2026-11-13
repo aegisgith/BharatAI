@@ -6,6 +6,7 @@
 // the "without asking" switches, the export for the website script, the sender list
 // AImailPilot listens for, an SVG that cannot run as a page, and before 0055 / 0052.
 // Run after `npm run build`:  node scripts/verify/smoke-submissions.mjs
+import { readFileSync } from 'node:fs';
 import { makeWorld, check, done, png, jpeg, svg, file, SECRET } from './submissions-world.mjs';
 
 const ORIGIN = 'https://bharataiinnovation.com';
@@ -534,6 +535,181 @@ let teamId;
     matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [] }), attachments: JSON.stringify([{ key: 'submissions/old/1-acme.png', filename: 'acme2.png', mime: 'image/png', size: bytes.length, w: 700, h: 250, use: 'logo', hash: 'b'.repeat(64), ai: { person: false, reads: 'Dreamtime', ours: false, at: 'x' } }]) });
   await A.admin('/api/admin/inbox-submissions/tidy', { method: 'POST' });
   check('AI tidy: a picture the first model read is read again by the better one', A.sub(oldRead).attachments[0].ai.reads === 'ACME ROBOTICS' && A.sub(oldRead).attachments[0].ai.v === 2, A.sub(oldRead).attachments[0].ai);
+}
+
+// ======== 13 Nov 2026: a name for the website, the schedule's people, whose desk, uploads ========
+{
+  const T = makeWorld();
+  const tRows = T.rows;
+  const same = (x, y) => JSON.stringify(x) === JSON.stringify(y);
+  // The organising team: Organiser pass holders. Puja's pass carries a personal address; a
+  // mailbox is named after her. Two Anitas fit anita.r@ as well as each other.
+  for (const [name, email] of [['Puja Shah', 'puja.shah@gmail.com'], ['Tushar Kale', 'tushar@bellaward.com'], ['Anita Ram', 'anita.ram@gmail.com'], ['Anita Rao', 'anita.rao@gmail.com'], ['Mark Fernandes', 'mark.f@gmail.com']]) T.insert('attendees', { event_id: 1, name, email, badge_type: 'Organiser' });
+  // A speaker whose name carries a service in brackets, and a speaker who dropped out (0054: a draft session).
+  T.db.exec(readFileSync(new URL('../../migrations/0054_conference_manager.sql', import.meta.url), 'utf8'));
+  T.insert('speakers', { event_id: 1, slug: 'virendra-singh', name: 'Shri Virendra Singh (IAS)', organisation: 'Government of Maharashtra', is_published: 1, sort_order: 9 });
+  T.insert('sessions', { event_id: 1, title: 'Address', session_type: 'keynote', start_time: '2026-11-20 09:30', end_time: '2026-11-20 09:40', speaker_name: 'Shri Virendra Singh (IAS)', speaker_title: 'Secretary' });
+  T.insert('sessions', { event_id: 1, title: 'Defence AI', session_type: 'talk', start_time: '2026-11-20 15:00', end_time: '2026-11-20 15:10', speaker_name: 'Cmde Dr. Jadumani Jena (retd.)', speaker_title: 'Former Commodore, Indian Navy' });
+  const dropped = T.insert('sessions', { event_id: 1, title: 'Keynote 2', session_type: 'keynote', start_time: '2026-11-20 16:00', end_time: '2026-11-20 16:20', speaker_name: 'Dr. Shrikant Patil', speaker_title: 'CEO' });
+  T.insert('session_admin', { session_id: dropped, status: 'draft' });
+  T.insert('attendees', { event_id: 1, name: 'Visitor Person', email: 'v@visitor.example', badge_type: 'Visitor' });
+  // The conference schedule as scripts/gen-schedule.mjs writes it into sessions.
+  T.insert('sessions', { event_id: 1, title: 'Enterprise AI', session_type: 'panel', start_time: '2026-11-20 11:00', end_time: '2026-11-20 12:00', speaker_name: 'Mahalakshmi AV (AWS), Dr. Asha Rao (Acme Robotics Pvt Ltd), Sudhir Kumar Rai (Trellix), Mr. Bhupesh Daheria (Moderator)' });
+  T.insert('sessions', { event_id: 1, title: 'Keynote', session_type: 'keynote', start_time: '2026-11-20 10:00', end_time: '2026-11-20 10:20', speaker_name: 'Devendra Fadnavis', speaker_title: 'Chief Minister of Maharashtra' });
+  T.insert('sessions', { event_id: 1, title: 'Lunch', session_type: 'break', start_time: '2026-11-20 13:00', end_time: '2026-11-20 14:00' });
+  const tAudits = (id, action) => tRows("SELECT * FROM admin_audit WHERE entity = 'submission' AND entity_id = ? AND action = ? ORDER BY id", [String(id), action]);
+  const setting = (key) => tRows('SELECT value FROM app_settings WHERE key = ?', [key])[0]?.value;
+
+  // ---- an email's words ----
+  let r = await T.push({ source_id: 'n-1', from_email: 'viswl@amazon.com', from_name: '"A V, Mahalakshmi"', subject: 'RE: Invitation for Panel Speaker',
+    text: 'Thank you Puja.\nFrom: &#39;Bharat AI Innovation&#39; &lt;bharatai@aegis.edu.in&gt; &amp; team', attachments: [file('image001.png', png(300, 120, 31), 'image/png')] });
+  const id1 = r.json?.id;
+  const n1 = T.sub(id1);
+  check('words: entities in a plain-text email are decoded at the door', r.status === 201 && /'Bharat AI Innovation' <bharatai@aegis\.edu\.in> & team/.test(n1.body), n1?.body);
+  check('words: the quotes Outlook puts round a name are dropped', n1.from_name === 'A V, Mahalakshmi', n1.from_name);
+
+  // ---- the lists the screen searches ----
+  let L = (await T.admin('/api/admin/inbox-submissions')).json;
+  const people = L.targets.people, orgs = L.targets.orgs;
+  check('schedule: a panellist with their company; a keynote\'s title is a role, never a company', people.some((p) => p.name === 'Mahalakshmi AV' && p.org === 'AWS' && p.role === '') && people.some((p) => p.name === 'Devendra Fadnavis' && p.org === '' && p.role === 'Chief Minister of Maharashtra'), people);
+  check('schedule: a moderator has the role Moderator and no company; a break is nobody', people.some((p) => p.name === 'Mr. Bhupesh Daheria' && p.org === '' && p.role === 'Moderator') && !people.some((p) => /lunch/i.test(p.name)), people);
+  check('schedule: someone who has a talk already is not listed twice', !people.some((p) => /Asha Rao/.test(p.name)), people);
+  check('schedule: "(IAS)" is part of a confirmed speaker\'s name, so they are not listed twice', !people.some((p) => /Virendra Singh/.test(p.name)), people);
+  check('schedule: "(retd.)" stays with the name; the title is the role', people.some((p) => p.name === 'Cmde Dr. Jadumani Jena (retd.)' && p.org === '' && p.role === 'Former Commodore, Indian Navy'), people);
+  check('schedule: a dropped (draft) session is not on it', !people.some((p) => /Shrikant Patil/.test(p.name)), people);
+  check('companies: the schedule\'s and the speakers\', never an exhibitor\'s, a role or a service', orgs.includes('AWS') && orgs.includes('Trellix') && orgs.includes('Bank of the North') && !orgs.some((o) => /Acme|Zenith|Moderator|^IAS$|retd|Secretary|Chief Minister|CEO/i.test(o)), orgs);
+
+  // ---- a name for the website ----
+  const tag = (id, body) => T.admin(`/api/admin/inbox-submissions/${id}/apply`, { method: 'POST', body: { what: 'tag', file: 0, ...body } });
+  r = await tag(id1, { as: 'logo', name: '   ' });
+  check('name: nothing typed is refused in words', r.status === 400 && /Type the company name first/.test(r.json?.error), r.text);
+  check('name: only a logo or a photo, of a file that is there', (await tag(id1, { as: 'sticker', name: 'AWS' })).status === 400 && (await tag(id1, { as: 'logo', name: 'AWS', file: 7 })).status === 400);
+  const exBefore = JSON.stringify(tRows('SELECT id, logo_url FROM exhibitors ORDER BY id')) + JSON.stringify(tRows('SELECT id, speaker_photo_url FROM innovation_talks')) + JSON.stringify(tRows('SELECT id, photo_url FROM speakers'));
+  r = await tag(id1, { as: 'logo', name: '  AWS <b>\u0007 ' });
+  const e1 = r.json?.entry;
+  check('name: a logo named, cleaned of markup and control characters', r.status === 200 && e1.what === 'tag' && e1.as === 'logo' && e1.target === 'AWS b' && e1.file === 0 && /^https:\/\/bharataiinnovation\.com\/api\/uploads\/submissions\//.test(e1.url) && e1.by === 'Priya', r.json);
+  check('name: nothing in the app changed', JSON.stringify(tRows('SELECT id, logo_url FROM exhibitors ORDER BY id')) + JSON.stringify(tRows('SELECT id, speaker_photo_url FROM innovation_talks')) + JSON.stringify(tRows('SELECT id, photo_url FROM speakers')) === exBefore);
+  check('name: the email is Used, and the audit log says so', T.sub(id1).status === 'applied' && tAudits(id1, 'submission.apply').some((a) => /"what":"tag"/.test(a.detail || a.details || JSON.stringify(a))), tAudits(id1, 'submission.apply'));
+  r = await T.admin(`/api/admin/inbox-submissions/${id1}/apply`, { method: 'POST', body: { what: 'tag', as: 'photo', name: 'Mahalakshmi AV (AWS)', file: 0 } });
+  let ex = (await T.admin('/api/admin/inbox-submissions/export')).json.files;
+  check('export: each name says logo or photo, with the file\'s address', ex.some((f) => f.what === 'tag' && f.as === 'logo' && f.target === 'AWS b') && ex.some((f) => f.what === 'tag' && f.as === 'photo' && f.target === 'Mahalakshmi AV (AWS)' && /\/api\/uploads\/submissions\//.test(f.url)), ex);
+  r = await T.admin(`/api/admin/inbox-submissions/${id1}/undo`, { method: 'POST', body: { index: 0 } });
+  await T.admin(`/api/admin/inbox-submissions/${id1}/undo`, { method: 'POST', body: { index: 1 } });
+  check('name: Undo takes it back, and the email waits again', r.status === 200 && T.sub(id1).status === 'new' && T.sub(id1).applied.every((e) => e.undone), r.text);
+  ex = (await T.admin('/api/admin/inbox-submissions/export')).json.files;
+  check('export: an undone name is not exported', !ex.some((f) => f.what === 'tag'), ex);
+  r = await T.push({ source_id: 'n-2', from_email: 'design@trellix.com', subject: 'Our logo', text: 'Our logo attached.', attachments: [file('trellix.svg', svg(), 'image/svg+xml')] });
+  const id2 = r.json?.id;
+  r = await tag(id2, { as: 'photo', name: 'Sudhir Kumar Rai' });
+  check('name: a vector file is never a photo', r.status === 400 && /JPEG, PNG or WebP/.test(r.json?.error), r.text);
+
+  // ---- whose desk ----
+  const pushTo = async (sid, to, seed) => (await T.push({ source_id: sid, to_email: to, from_email: sid + '@client' + seed + '.example', subject: 'Logo ' + sid, text: 'Our logo.', attachments: [file(sid + '.png', png(400, 150, seed), 'image/png')] })).json.id;
+  const id3 = await pushTo('n-3', 'tushar@bellaward.com', 33);
+  const id4 = await pushTo('n-4', 'register@bharataiinnovation.com', 34);
+  const id5 = await pushTo('n-5', 'anita.r@aegis.edu.in', 35);
+  const id6 = await pushTo('n-6', 'Puja <puja@aegis.edu.in>, someone@client.example', 36);
+  const id7 = await pushTo('n-7', 'someone@gmail.com', 37);
+  const idK = await pushTo('n-10', 'kale_tushar@bellaward.com', 39);
+  const idA = await pushTo('n-11', 'anita.k@aegis.edu.in', 40);
+  const idM = await pushTo('n-12', 'marketing@bharataiinnovation.com', 41);
+  const idF = await pushTo('n-13', 'markf@bellaward.com', 42);
+  L = (await T.admin('/api/admin/inbox-submissions')).json;
+  const own = (id) => L.rows.find((x) => x.id === id)?.owner || {};
+  check('owner: the mailbox named after Puja is Puja\'s, though her pass has another address', own(id1).name === 'Puja Shah' && own(id1).how === 'named' && own(id1).mailbox === 'puja@aegis.edu.in', own(id1));
+  check('owner: Tushar\'s own address is Tushar\'s', own(id3).name === 'Tushar Kale' && own(id3).how === 'email', own(id3));
+  check('owner: a shared mailbox nobody is named after is nobody\'s', own(id4).name === '' && own(id4).mailbox === 'register@bharataiinnovation.com', own(id4));
+  check('owner: two of the team who fit equally is nobody (a person chooses)', own(id5).name === '' && own(id5).mailbox === 'anita.r@aegis.edu.in', own(id5));
+  check('owner: the team mailbox is found among several addresses', own(id6).name === 'Puja Shah' && own(id6).mailbox === 'puja@aegis.edu.in', own(id6));
+  check('owner: an address not on our domains is no team mailbox', own(id7).name === '' && own(id7).mailbox === '', own(id7));
+  check('owner: last name first, with an underscore (kale_tushar@) is still Tushar Kale', own(idK).name === 'Tushar Kale' && own(idK).how === 'named', own(idK));
+  check('owner: an initial that fits neither Anita (anita.k@) is nobody', own(idA).name === '', own(idA));
+  check('owner: a role mailbox that merely starts with a first name (marketing@ and Mark) is nobody', own(idM).name === '', own(idM));
+  check('owner: a first name run into the surname\'s initial (markf@) is Mark Fernandes', own(idF).name === 'Mark Fernandes' && own(idF).how === 'named', own(idF));
+  check('team: the Organiser pass holders only', same(L.desks.team, ['Anita Ram', 'Anita Rao', 'Mark Fernandes', 'Puja Shah', 'Tushar Kale']), L.desks.team);
+  const box = (email) => L.desks.mailboxes.find((b) => b.email === email) || {};
+  check('mailboxes: each team mailbox with whose it is and how many wait', box('puja@aegis.edu.in').auto === 'Puja Shah' && box('puja@aegis.edu.in').waiting === 3 && box('register@bharataiinnovation.com').owner === '' && box('register@bharataiinnovation.com').given === null && !L.desks.mailboxes.some((b) => /gmail/.test(b.email)), L.desks.mailboxes);
+  const owner = (id, name) => T.admin(`/api/admin/inbox-submissions/${id}/owner`, { method: 'POST', body: { name } });
+  r = await owner(id4, 'tushar kale');
+  check('owner: chosen for one email (any case), kept with who chose it', r.status === 200 && r.json.row.owner.name === 'Tushar Kale' && r.json.row.owner.how === 'set' && JSON.parse(setting('owner:submission:' + id4)).by === 'Priya', r.text);
+  r = await owner(id4, 'Someone Else');
+  L = (await T.admin('/api/admin/inbox-submissions')).json;
+  check('owner: someone not on the team is refused, and the owner stays as it was', r.status === 400 && own(id4).name === 'Tushar Kale' && JSON.parse(setting('owner:submission:' + id4)).name === 'Tushar Kale', [r.text, own(id4)]);
+  r = await owner(id1, '');
+  check('owner: nobody, chosen for one email', r.status === 200 && r.json.row.owner.name === '' && r.json.row.owner.how === 'set' && JSON.parse(setting('owner:submission:' + id1)).name === '', r.text);
+  r = await owner(id1, 'Puja Shah');
+  check('owner: choosing the mailbox\'s own owner again removes the choice', r.status === 200 && r.json.row.owner.how === 'named' && setting('owner:submission:' + id1) === undefined, r.text);
+  check('owner: each change is in the audit log', tAudits(id4, 'submission.owner').length === 1 && tAudits(id1, 'submission.owner').length === 2);
+  const mbox = (email, name) => T.admin('/api/admin/inbox-submissions/mailboxes', { method: 'PUT', body: { email, name } });
+  const id8 = await pushTo('n-8', 'register@bharataiinnovation.com', 38);
+  r = await mbox('register@bharataiinnovation.com', 'Anita Ram');
+  L = (await T.admin('/api/admin/inbox-submissions')).json;
+  check('mailbox: given to Anita Ram, its emails follow; one chosen for Tushar stays his', r.status === 200 && own(id8).name === 'Anita Ram' && own(id8).how === 'mailbox' && own(id4).name === 'Tushar Kale' && box('register@bharataiinnovation.com').given === 'Anita Ram', [own(id8), own(id4)]);
+  await mbox('anita.r@aegis.edu.in', 'Anita Rao');
+  await mbox('register@bharataiinnovation.com', '');
+  L = (await T.admin('/api/admin/inbox-submissions')).json;
+  check('mailbox: the two Anitas told apart by hand; a shared mailbox is nobody\'s', own(id5).name === 'Anita Rao' && own(id8).name === '' && own(id8).how === 'shared', [own(id5), own(id8)]);
+  await mbox('register@bharataiinnovation.com', null);
+  L = (await T.admin('/api/admin/inbox-submissions')).json;
+  check('mailbox: back to automatic', own(id8).how === '' && !Object.prototype.hasOwnProperty.call(JSON.parse(setting('inbox_submissions_mailboxes')), 'register@bharataiinnovation.com'), JSON.parse(setting('inbox_submissions_mailboxes')));
+  check('mailbox: only our own domains, only the team', (await mbox('someone@gmail.com', 'Puja Shah')).status === 400 && (await mbox('puja@aegis.edu.in', 'Nobody Known')).status === 400 && (await mbox('x@aegis.edu.in, y@gmail.com', 'Puja Shah')).status === 400);
+
+  // ---- a file a team member uploads ----
+  const up = (id, body) => T.admin(`/api/admin/inbox-submissions/${id}/upload`, { method: 'POST', body });
+  const s3 = T.sub(id3);
+  const better = png(500, 200, 44, 900);
+  r = await up(id3, { filename: 'better logo.PNG', data: Buffer.from(better).toString('base64') });
+  const after3 = T.sub(id3), nf = after3.attachments[r.json?.file];
+  check('upload: the file joins the email, marked as theirs, sized, in the email\'s folder', r.status === 200 && after3.attachments.length === s3.attachments.length + 1 && nf.uploaded?.by === 'Priya' && nf.mime === 'image/png' && nf.w === 500 && nf.h === 200
+    && nf.filename === 'better logo.png' && nf.key.split('/').slice(0, 2).join('/') === s3.attachments[0].key.split('/').slice(0, 2).join('/') && T.bucket.has(nf.key), [r.text, nf]);
+  check('upload: a person decided, so the tidy leaves the email alone; in the audit log', after3.decided_by === 'Priya' && tAudits(id3, 'submission.upload').length === 1);
+  check('upload: the same file twice is refused', (await up(id3, { filename: 'again.png', data: Buffer.from(better).toString('base64') })).status === 409);
+  r = await up(id3, { filename: 'fake.png', data: Buffer.from('not a picture at all '.repeat(30)).toString('base64') });
+  check('upload: a file that is not a picture or a PDF is refused in words, whatever its name', r.status === 400 && /PNG, JPEG, WebP or SVG picture, or a PDF/.test(r.json?.error), r.text);
+  check('upload: nothing sent is refused', (await up(id3, { filename: 'x.png', data: '' })).status === 400);
+  r = await up(id3, { filename: 'shot.jpg', data: 'data:image/jpeg;base64,' + Buffer.from(jpeg(800, 1000, 45, 900)).toString('base64') });
+  check('upload: a data URL is taken too; a portrait JPEG', r.status === 200 && T.sub(id3).attachments[r.json.file].mime === 'image/jpeg', r.text);
+  r = await up(id3, { filename: 'mark', data: Buffer.from(svg()).toString('base64') });
+  const sv = T.sub(id3).attachments[r.json?.file];
+  check('upload: a vector file is a logo, named .svg', r.status === 200 && sv.mime === 'image/svg+xml' && sv.use === 'logo' && sv.filename === 'mark.svg', sv);
+  const page = await T.call('/api/uploads/' + sv.key);
+  check('upload: the uploaded file is served from its address', page.status === 200, page.status);
+  r = await up(id3, { filename: 'logo.pdf', data: Buffer.from('%PDF-1.4\n' + ' '.repeat(300)).toString('base64') });
+  check('upload: a PDF is taken', r.status === 200 && T.sub(id3).attachments[r.json.file].mime === 'application/pdf', r.text);
+  r = await up(id3, { filename: 'huge.png', data: Buffer.from(new Uint8Array(8 * 1024 * 1024 + 10)).toString('base64') });
+  check('upload: larger than 8 MB is refused in words', r.status === 413 && /larger than 8 MB/.test(r.json?.error), r.status);
+  r = await T.admin(`/api/admin/inbox-submissions/${id3}/apply`, { method: 'POST', body: { what: 'logo', exhibitor_id: T.ids.acme, file: s3.attachments.length } });
+  check('upload: the uploaded file is used like any other', r.status === 200 && tRows('SELECT logo_url FROM exhibitors WHERE id = ?', [T.ids.acme])[0].logo_url.endsWith('/api/uploads/' + nf.key), r.text);
+  await T.admin(`/api/admin/inbox-submissions/${id7}/dismiss`, { method: 'POST' });
+  check('upload: not to an email set aside', (await up(id7, { filename: 'b.png', data: Buffer.from(png(300, 100, 46)).toString('base64') })).status === 409);
+  const noFiles = (await T.push({ source_id: 'n-9', subject: 'Team', text: '1. Zed Person - Lead - zed@acmerobotics.in' })).json.id;
+  r = await up(noFiles, { filename: 'team.png', data: Buffer.from(png(300, 100, 47)).toString('base64') });
+  check('upload: an email that came with no file gets a folder of its own', r.status === 200 && /^submissions\/\d{8}-upload-\d+\/up[a-z0-9]+-team\.png$/.test(T.sub(noFiles).attachments[0].key), T.sub(noFiles).attachments);
+  // A clean logo a team member uploaded to an agency's email is not a file the agency sent: when
+  // the exhibitor then emails the same file, it is filed, and the tidy leaves it there.
+  const clean = png(640, 220, 49, 900);
+  const agency = (await T.push({ source_id: 'n-14', from_email: 'pr@agencyxyz.example', subject: 'Acme logo', text: 'Logo for Acme.', attachments: [file('blurred.png', png(320, 110, 50), 'image/png')] })).json.id;
+  await up(agency, { filename: 'acme-clean.png', data: Buffer.from(clean).toString('base64') });
+  r = await T.push({ source_id: 'n-15', from_email: 'ravi@acmerobotics.in', subject: 'Our logo', text: 'Our logo attached.', attachments: [file('acme.png', clean, 'image/png')] });
+  check('upload: the same file from the exhibitor afterwards is still filed', r.status === 201 && r.json.status === 'stored' && T.sub(r.json.id).attachments.length === 1, r.text);
+  const exhibitorMail = r.json.id;
+  await T.call('/api/external/submission-senders', { headers: { Authorization: 'Bearer ' + SECRET } });
+  check('upload: the tidy does not take it for a signature two companies sent', T.sub(exhibitorMail).attachments.length === 1 && T.sub(exhibitorMail).status === 'new', T.sub(exhibitorMail));
+  // Designers' vector files: Corel puts a comment after the DOCTYPE, Illustrator entities inside it.
+  const corel = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<!-- Creator: CorelDRAW X8 -->\n<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><rect width="400" height="120" fill="#123"/>' + ' '.repeat(120) + '</svg>';
+  const illustrator = '<?xml version="1.0" encoding="utf-8"?>\n<!-- Generator: Adobe Illustrator 27.0 -->\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd" [\n\t<!ENTITY ns_extend "http://ns.adobe.com/Extensibility/1.0/">\n\t<!ENTITY ns_ai "http://ns.adobe.com/AdobeIllustrator/10.0/">\n]>\n<svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="300" height="90"><circle r="40" cx="50" cy="45"/>' + ' '.repeat(120) + '</svg>';
+  r = await up(noFiles, { filename: 'corel.svg', data: Buffer.from(corel).toString('base64') });
+  const r2 = await up(noFiles, { filename: 'ai.svg', data: Buffer.from(illustrator).toString('base64') });
+  check('upload: CorelDRAW and Illustrator vector files are taken', r.status === 200 && r2.status === 200, [r.text, r2.text]);
+  const t0 = Date.now();
+  r = await up(noFiles, { filename: 'odd.svg', data: Buffer.from('<!---->'.repeat(4000) + '<html></html>').toString('base64') });
+  check('upload: a file made of thousands of comments is refused at once, not after a long think', r.status === 400 && Date.now() - t0 < 2000, [r.status, Date.now() - t0]);
+
+  // ---- only Admin may do any of it ----
+  const anon = async (path, method, body) => (await T.call(path, { method, body })).status;
+  check('owner, mailboxes and upload need the admin password', await anon(`/api/admin/inbox-submissions/${id3}/owner`, 'POST', { name: 'Puja Shah' }) === 401
+    && await anon('/api/admin/inbox-submissions/mailboxes', 'PUT', { email: 'puja@aegis.edu.in', name: 'Tushar Kale' }) === 401
+    && await anon(`/api/admin/inbox-submissions/${id3}/upload`, 'POST', { filename: 'a.png', data: Buffer.from(png(300, 100, 48)).toString('base64') }) === 401);
 }
 
 // ======== a database without 0052 or 0050 ========

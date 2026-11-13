@@ -21125,6 +21125,11 @@ type SubMatch = { id: number; name: string; detail: string; how: string; sure: b
 type SubWorld = { exhibitors: any[]; booths: any[]; team: any[]; talks: any[]; speakers: any[] }
 
 // Plain words out of an email: tags stripped when it came as HTML, lines kept.
+function subEntities(s: string): string {
+  return String(s || '').replace(/&#(\d{1,7});/g, (m, d) => { const n = Number(d); return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m })
+    .replace(/&#x([0-9a-f]{1,6});/gi, (m, h) => { const n = parseInt(h, 16); return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m })
+    .replace(/&(nbsp|lt|gt|quot|apos|amp);/g, (m, k) => ({ nbsp: ' ', lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' } as any)[k])
+}
 function subText(raw: any, max = 20000): string {
   let s = String(raw == null ? '' : raw)
   if (/<(p|div|br|td|span|a|body|html|table)\b[^>]*>/i.test(s)) {
@@ -21132,6 +21137,8 @@ function subText(raw: any, max = 20000): string {
       .replace(/<\/(p|div|tr|li|h[1-6]|table)>/gi, '\n').replace(/<br\s*\/?>/gi, '\n').replace(/<\/t[dh]>/gi, '\t').replace(/<[^>]+>/g, ' ')
       .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
   }
+  // A plain-text email can still carry entities (AImailPilot's text of an HTML email: &#39;, &lt;).
+  s = subEntities(s)
   s = s.replace(/\r\n?/g, '\n').split('\n').map(l => l.replace(/[ \t]+$/, '')).join('\n').replace(/\n{3,}/g, '\n\n').trim()
   return s.length > max ? s.slice(0, max) : s
 }
@@ -21204,6 +21211,52 @@ function subSiteDomain(url: any): string {
 }
 function subNorm(s: any): string { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim() }
 function subCompanyKeys(name: string): string[] { return subNorm(name).split(' ').filter(w => w.length >= 3 && !SUB_GENERIC_WORDS.has(w)) }
+// A company compared without the words every company's legal name carries.
+function subOrgKey(name: any): string { return subNorm(name).replace(/\b(pvt|private|ltd|limited|inc|llp|llc|corp|corporation|company|the)\b/g, ' ').replace(/\s+/g, ' ').trim() }
+// A bracket that is a service or a title belongs to the name ("Shri Virendra Singh (IAS)",
+// "Cmde Dr. Jadumani Jena (retd.)"), as splitSpeakerLine in routes/conference.ts reads it;
+// Moderator, Host and Chair are roles, never a company.
+const SUB_TITLE_BRACKET = '(ias|ifs|ips|irs|irts|phd|retd\\.?|retired)'
+const SUB_TITLE_RE = new RegExp('^' + SUB_TITLE_BRACKET + '$', 'i')
+const SUB_TITLE_TAIL_RE = new RegExp('\\s*\\(' + SUB_TITLE_BRACKET + '\\)\\s*$', 'i')
+const SUB_ROLE_RE = /^(moderator|host|chair|chairperson|anchor|emcee)$/i
+// A person compared without a title in brackets, so the speakers table's "Shri Virendra Singh (IAS)"
+// and the schedule's are one person.
+function subBareKey(name: any): string { return subPersonKey(String(name || '').replace(SUB_TITLE_TAIL_RE, '')) }
+// The people on the conference schedule, from the app's sessions table (written by
+// scripts/gen-schedule.mjs): a panel's speaker_name is "Name (Company), Name (Moderator)", a
+// keynote's or talk's one name with the role in speaker_title. org is only ever a company in
+// brackets; role is the speaker_title or Moderator. They are not in the speakers table, so a
+// photo or a logo of theirs can only be named, for the website. Dropped (draft) sessions are
+// left out by the caller.
+function subSchedulePeople(rows: any[]): { people: { name: string; org: string; role: string }[]; orgs: string[] } {
+  const people = new Map<string, { name: string; org: string; role: string }>()
+  const orgs = new Map<string, string>()
+  const one = (v: any) => String(v || '').replace(/\s+/g, ' ').trim()
+  for (const r of rows || []) {
+    const raw = String(r?.speaker_name || '').trim()
+    if (!raw) continue
+    const parts = raw.split(/,\s*(?![^()]*\))/)
+    for (const part of parts) {
+      const m = /^(.*?)\s*\(([^()]*)\)\s*$/.exec(part.trim())
+      const inner = m ? one(m[2]) : ''
+      const titled = !!m && SUB_TITLE_RE.test(inner)
+      const name = one(m && !titled ? m[1] : part)
+      const isRole = !!m && !titled && SUB_ROLE_RE.test(inner)
+      const org = m && !titled && !isRole ? inner.slice(0, 120) : ''
+      if (!name || name.length > 80 || !/[a-z]/i.test(name)) continue
+      const role = (isRole ? inner : (!org && parts.length === 1 ? one(r?.speaker_title) : '')).slice(0, 120)
+      const k = subBareKey(name)
+      if (!k) continue
+      const had = people.get(k)
+      if (!had) people.set(k, { name, org, role })
+      else { if (!had.org && org) had.org = org; if (!had.role && role) had.role = role }
+      const ok = org ? subOrgKey(org) : ''
+      if (ok && !orgs.has(ok)) orgs.set(ok, org)
+    }
+  }
+  return { people: [...people.values()], orgs: [...orgs.values()] }
+}
 function subPersonKey(name: string): string { return subNorm(String(name || '').replace(/\b(dr|mr|mrs|ms|prof|shri|smt)\.?\s+/gi, ' ')) }
 // Is this company named in these words? The whole name, or enough of its own words
 // (the first of them always), so "our Acme logo" finds Acme Robotics and "global" alone
@@ -21707,6 +21760,22 @@ async function subApply(c: any, sub: any, a: any, by: string): Promise<{ ok: tru
     await audit(c, 'submission.apply', 'submission', sub.id, { what, exhibitor_id: ex.id, company_name: ex.company_name, added: added.map(x => x.name), skipped }, who)
     return { ok: true, entry: { what, target: ex.company_name, exhibitor_id: ex.id, people: added, skipped, at: now, by } }
   }
+  // Named by hand: a logo or a photo of someone who is not an exhibitor, a talk or a speaker in
+  // the app (a panellist, a speaker's company, someone on no list yet). Nothing in the app
+  // changes; the name stays with the file, and scripts/pull-submissions.mjs takes it to the website.
+  if (what === 'tag') {
+    if (!pick) return { error: 'Choose which file you are naming.', status: 400 }
+    const as = a.as === 'photo' ? 'photo' : a.as === 'logo' ? 'logo' : ''
+    if (!as) return { error: 'Say whether it is a logo or a photo.', status: 400 }
+    if (as === 'photo' && (pick.f.mime === 'application/pdf' || pick.f.mime === 'image/svg+xml')) return { error: 'A photo has to be a JPEG, PNG or WebP.', status: 400 }
+    const name = String(a.name ?? '').replace(/[\u0000-\u001f\u007f<>]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)
+    if (name.length < 2 || !/[\p{L}\p{N}]/u.test(name)) return { error: as === 'photo' ? 'Type who is in the photo first.' : 'Type the company name first.', status: 400 }
+    let origin = 'https://bharataiinnovation.com'
+    try { origin = new URL(c.req.url).origin } catch { /* the default host */ }
+    const url = origin + '/api/uploads/' + pick.f.key
+    await audit(c, 'submission.apply', 'submission', sub.id, { what, as, name, file: pick.f.filename }, who)
+    return { ok: true, entry: { what, as, target: name, file: pick.i, filename: pick.f.filename, url, at: now, by } }
+  }
   return { error: 'That is not something this screen can do.', status: 400 }
 }
 // On arrival, when the switch for its kind is on and nothing is in doubt: the sender is
@@ -21786,7 +21855,8 @@ app.post('/api/external/inbox-submissions', async (c) => {
     decoded.push({ bytes, filename, mime, hash })
   }
   const body = subText(b.text || b.body || '')
-  const fromName = String(b.from_name || '').slice(0, 120)
+  // Outlook sends "Vijayan, Sunita" with its quotes.
+  const fromName = subEntities(String(b.from_name || '')).replace(/^[\s"']+|[\s"']+$/g, '').slice(0, 120)
   let people = subPeople(body)
   const threadId = String(b.thread_id || '').slice(0, 200)
   // A picture this sender (or this thread) already sent is the signature, or an earlier
@@ -21794,7 +21864,7 @@ app.post('/api/external/inbox-submissions', async (c) => {
   const seen = new Set<string>()
   try {
     const earlier = ((await c.env.DB.prepare("SELECT attachments FROM inbox_submissions WHERE from_email = ? OR (thread_id <> '' AND thread_id = ?) ORDER BY id DESC LIMIT 40").bind(fromEmail, threadId).all()).results || []) as any[]
-    for (const r of earlier) for (const f of subParse(r).attachments) if (f?.hash) seen.add(String(f.hash))
+    for (const r of earlier) for (const f of subParse(r).attachments) if (f?.hash && !f.uploaded) seen.add(String(f.hash))
   } catch { /* nothing earlier to compare with */ }
   // A picture another company has sent too is a signature, or our own logo quoted back in a
   // reply (13 Nov 2026: one 248x94 logo came from 17 companies): it belongs to nobody here.
@@ -21803,8 +21873,9 @@ app.post('/api/external/inbox-submissions', async (c) => {
   for (const d of decoded) {
     if (seen.has(d.hash)) continue
     try {
-      const others = ((await c.env.DB.prepare('SELECT from_email FROM inbox_submissions WHERE attachments LIKE ? LIMIT 50').bind('%"hash":"' + d.hash + '"%').all()).results || []) as any[]
-      if (others.some(o => subSenderKey(o.from_email) !== me)) seen.add(d.hash)
+      const others = ((await c.env.DB.prepare('SELECT from_email, attachments FROM inbox_submissions WHERE attachments LIKE ? LIMIT 50').bind('%"hash":"' + d.hash + '"%').all()).results || []) as any[]
+      // A file a team member uploaded to an email was not sent by that email's sender.
+      if (others.some(o => subSenderKey(o.from_email) !== me && subParse(o).attachments.some((x: any) => x && x.hash === d.hash && !x.uploaded))) seen.add(d.hash)
     } catch { /* nothing to compare with */ }
   }
   const fresh = decoded.filter(d => !seen.has(d.hash))
@@ -21857,7 +21928,7 @@ async function subTidy(c: any, by: string): Promise<{ looked: number; set_aside:
   const own = await subOwnDomains(c)
   const ignored = new Set(await subIgnored(c))
   const senders = new Map<string, Set<string>>()
-  for (const r of rows) for (const f of r.attachments) if (f?.hash) {
+  for (const r of rows) for (const f of r.attachments) if (f?.hash && !f.uploaded) {
     if (!senders.has(f.hash)) senders.set(f.hash, new Set())
     senders.get(f.hash)!.add(subSenderKey(r.from_email))
   }
@@ -21928,6 +21999,118 @@ app.get('/api/external/submission-senders', async (c) => {
   return c.json({ ok: true, emails: [...emails], domains: [...domains], keywords: ['bharat ai', 'bharatai'] })
 })
 
+// ---- whose desk an email is on (13 Nov 2026) ----
+// The organiser: each of the team works the emails that came to their own mailbox, checks them
+// against the email, and uses them. Whose an email is, the first that applies:
+//   set      a person chose the owner of this one email       app_settings owner:submission:<id>
+//   mailbox  the mailbox was given to someone in Admin          app_settings ${SUB_MAILBOXES_KEY}
+//   email    the mailbox is a team member's own address         (the address on their Organiser pass)
+//   named    the mailbox is named after one team member         ayesha.a@ is Ayesha A..., tushar@ is Tushar
+// Only our own domains are a team mailbox. The team is everyone holding the Organiser pass
+// (organiserTeam, src/lib/team.ts). Rows in app_settings, the way speaker and session owners are
+// kept, so no migration.
+const SUB_MAILBOXES_KEY = 'inbox_submissions_mailboxes'
+type SubTeam = { id: number; name: string; email: string }[]
+type SubDesks = { team: SubTeam; own: Set<string>; boxes: Record<string, string>; chosen: Map<number, { name: string; by: string; at: string }> }
+const subCleanName = (v: any) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 80)
+const subTeamNamed = (team: SubTeam, name: any) => { const n = subCleanName(name).toLowerCase(); return (n && team.find(m => m.name.toLowerCase() === n)) || null }
+// The team mailbox an email came to: the first of its addresses on our own domains.
+function subMailboxOf(to: any, own: Set<string>): string {
+  for (const m of String(to || '').toLowerCase().match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g) || []) if (subIsOwn(m, own)) return m
+  return ''
+}
+// The one team member a mailbox is named after (production, 13 Nov 2026: ayesha.a@, kadam.raj@,
+// aswin.k@, tushar_waghmode@). Two who fit as well as each other is nobody: a person chooses.
+function subMailboxNamed(mailbox: string, team: SubTeam): string {
+  const local = String(mailbox || '').split('@')[0].toLowerCase()
+  const tokens = local.split(/[._+\-0-9]+/).filter(Boolean)
+  const flat = tokens.join('')
+  let best = 0, who: string[] = []
+  for (const m of team) {
+    const w = subPersonKey(m.name).split(' ').filter(Boolean)
+    if (!w.length) continue
+    const first = w[0], last = w.length > 1 ? w[w.length - 1] : ''
+    let score = 0
+    if (last && tokens.includes(first) && tokens.some(t => t !== first && (t === last || last.startsWith(t)))) score = 4
+    else if (last && (flat === first + last || flat === first[0] + last || flat === first + last[0])) score = 4
+    // The first name, and nothing after it that contradicts the surname (anita.k@ is not Anita Ram).
+    else if (tokens[0] === first && tokens.slice(1).every(t => !last || last.startsWith(t) || t.startsWith(last))) score = 3
+    // Run together: the first name and then the surname or its start (ayeshaa@), never a bare prefix (marketing@).
+    else if (first.length >= 4 && flat.startsWith(first) && (flat === first || (!!last && last.startsWith(flat.slice(first.length))))) score = 2
+    if (!score) continue
+    if (score > best) { best = score; who = [m.name] } else if (score === best) who.push(m.name)
+  }
+  return who.length === 1 ? who[0] : ''
+}
+async function subMailboxMap(c: any): Promise<Record<string, string>> {
+  try {
+    const r = await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(SUB_MAILBOXES_KEY).first() as any
+    const o = JSON.parse(String(r?.value || '{}'))
+    const out: Record<string, string> = {}
+    if (o && typeof o === 'object' && !Array.isArray(o)) for (const k of Object.keys(o)) if (typeof o[k] === 'string') out[k.toLowerCase()] = subCleanName(o[k])
+    return out
+  } catch { return {} }
+}
+async function subOwnerChoices(c: any): Promise<Map<number, { name: string; by: string; at: string }>> {
+  const out = new Map<number, { name: string; by: string; at: string }>()
+  try {
+    const rows = ((await c.env.DB.prepare("SELECT key, value FROM app_settings WHERE key LIKE 'owner:submission:%'").all()).results || []) as any[]
+    for (const r of rows) {
+      const id = parseInt(String(r.key).slice('owner:submission:'.length), 10)
+      try { const o = JSON.parse(String(r.value || '')); if (id > 0 && o && typeof o.name === 'string') out.set(id, { name: subCleanName(o.name), by: String(o.by || ''), at: String(o.at || '') }) } catch { /* a broken row is nobody's choice */ }
+    }
+  } catch { /* no app_settings: nobody chose */ }
+  return out
+}
+async function subDesks(c: any, eventId: number): Promise<SubDesks> {
+  return { team: await organiserTeam(c.env.DB, eventId), own: await subOwnDomains(c), boxes: await subMailboxMap(c), chosen: await subOwnerChoices(c) }
+}
+// Whose a mailbox is, before any choice for one email. A mailbox given to "" is shared: nobody's.
+function subMailboxOwner(mailbox: string, d: SubDesks): { name: string; how: string } {
+  if (!mailbox) return { name: '', how: '' }
+  if (Object.prototype.hasOwnProperty.call(d.boxes, mailbox)) {
+    const given = d.boxes[mailbox]
+    if (!given) return { name: '', how: 'shared' }
+    const m = subTeamNamed(d.team, given)
+    if (m) return { name: m.name, how: 'mailbox' }
+  }
+  const mine = d.team.find(m => m.email === mailbox)
+  if (mine) return { name: mine.name, how: 'email' }
+  const named = subMailboxNamed(mailbox, d.team)
+  return named ? { name: named, how: 'named' } : { name: '', how: '' }
+}
+function subOwnerOf(row: any, d: SubDesks): { name: string; how: string; mailbox: string } {
+  const mailbox = subMailboxOf(row?.to_email, d.own)
+  const ch = d.chosen.get(Number(row?.id))
+  if (ch) return { name: ch.name, how: 'set', mailbox }
+  return { ...subMailboxOwner(mailbox, d), mailbox }
+}
+// What a file is, from its first bytes, never from its name or what the browser said.
+function subSniff(b: Uint8Array): string {
+  if (b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png'
+  if (b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
+  if (b.length > 12 && String.fromCharCode(b[0], b[1], b[2], b[3]) === 'RIFF' && String.fromCharCode(b[8], b[9], b[10], b[11]) === 'WEBP') return 'image/webp'
+  if (b.length > 4 && String.fromCharCode(b[0], b[1], b[2], b[3]) === '%PDF') return 'application/pdf'
+  let head = ''
+  try { head = new TextDecoder().decode(b.subarray(0, 32768)).replace(/^\uFEFF/, '') } catch { return '' }
+  // Past the prolog one piece at a time (a pattern here could backtrack for ever): <?xml ?>,
+  // comments and a DOCTYPE, with Illustrator's [ <!ENTITY ...> ] inside it, in any order.
+  for (let i = 0; i < 64; i++) {
+    head = head.trimStart()
+    let end = -1
+    if (head.startsWith('<?')) { const e = head.indexOf('?>'); end = e < 0 ? -1 : e + 2 }
+    else if (head.startsWith('<!--')) { const e = head.indexOf('-->', 4); end = e < 0 ? -1 : e + 3 }
+    else if (/^<!DOCTYPE/i.test(head)) {
+      const gt = head.indexOf('>'), sb = head.indexOf('[')
+      if (sb >= 0 && (gt < 0 || sb < gt)) { const close = head.indexOf(']', sb); const g2 = close < 0 ? -1 : head.indexOf('>', close); end = g2 < 0 ? -1 : g2 + 1 }
+      else end = gt < 0 ? -1 : gt + 1
+    } else break
+    if (end < 0) return ''
+    head = head.slice(end)
+  }
+  return /^<svg[\s>]/i.test(head) ? 'image/svg+xml' : ''
+}
+
 // The screen's one read: the rows for a status, the counts, the switches, and the lists
 // the pickers choose from.
 app.get('/api/admin/inbox-submissions', async (c) => {
@@ -21940,12 +22123,53 @@ app.get('/api/admin/inbox-submissions', async (c) => {
     const rows = ((await q.all()).results || []) as any[]
     const counts = ((await c.env.DB.prepare('SELECT status, COUNT(*) AS n FROM inbox_submissions WHERE event_id = ? GROUP BY status').bind(eventId).all()).results || []) as any[]
     const world = await subWorld(c, eventId)
+    // Searched by the screen as well: the people on the conference schedule who are not a talk or
+    // a speaker already, and the companies (the schedule's, speakers', talks') that are not exhibitors.
+    // A dropped (draft, 0054) session is not on the schedule. Asked directly, not through the
+    // conference module's minute-long memory of a missing table; without 0054, every session.
+    let sessionRows: any[] = []
+    const sessionSql = "SELECT speaker_name, speaker_title FROM sessions WHERE event_id = ? AND speaker_name IS NOT NULL AND speaker_name <> ''"
+    try { sessionRows = (((await c.env.DB.prepare(sessionSql + " AND id NOT IN (SELECT session_id FROM session_admin WHERE status = 'draft')").bind(eventId).all()) || {}).results || []) as any[] }
+    catch { try { sessionRows = (((await c.env.DB.prepare(sessionSql).bind(eventId).all()) || {}).results || []) as any[] } catch { /* no schedule yet */ } }
+    const sched = subSchedulePeople(sessionRows)
+    const desks = await subDesks(c, eventId)
+    // Every team mailbox mail has come to, with whose it is and how many are waiting in it.
+    const boxes = new Map<string, { email: string; waiting: number; total: number }>()
+    try {
+      const tos = ((await c.env.DB.prepare("SELECT to_email, status, COUNT(*) AS n FROM inbox_submissions WHERE event_id = ? AND to_email <> '' GROUP BY to_email, status").bind(eventId).all()).results || []) as any[]
+      for (const t of tos) {
+        const mb = subMailboxOf(t.to_email, desks.own)
+        if (!mb) continue
+        const b = boxes.get(mb) || { email: mb, waiting: 0, total: 0 }
+        b.total += Number(t.n) || 0
+        if (t.status === 'new') b.waiting += Number(t.n) || 0
+        boxes.set(mb, b)
+      }
+    } catch { /* no mailboxes yet */ }
+    for (const mb of Object.keys(desks.boxes)) if (!boxes.has(mb)) boxes.set(mb, { email: mb, waiting: 0, total: 0 })
+    const knownPeople = new Set([...world.talks.map(t => subBareKey(t.speaker_name)), ...world.speakers.map(x => subBareKey(x.name))])
+    const knownOrgs = new Set(world.exhibitors.map(e => subOrgKey(e.company_name)))
+    const orgs = new Map<string, string>()
+    for (const o of [...sched.orgs, ...world.speakers.map(x => String(x.organisation || '')), ...world.talks.map(t => String(t.company || ''))]) {
+      const name = o.replace(/\s+/g, ' ').trim().slice(0, 120), k = subOrgKey(name)
+      if (k && !knownOrgs.has(k) && !orgs.has(k)) orgs.set(k, name)
+    }
     return c.json({
-      ok: true, rows: rows.map(subParse), counts: Object.fromEntries(counts.map(r => [r.status, Number(r.n)])), settings: { auto: await subAutoSettings(c) },
+      ok: true, rows: rows.map(r => { const p = subParse(r); return { ...p, owner: subOwnerOf(p, desks) } }), counts: Object.fromEntries(counts.map(r => [r.status, Number(r.n)])), settings: { auto: await subAutoSettings(c) },
+      desks: {
+        team: desks.team.map(m => m.name),
+        mailboxes: [...boxes.values()].sort((a, b) => b.waiting - a.waiting || b.total - a.total || a.email.localeCompare(b.email)).map(b => {
+          const auto = subMailboxOwner(b.email, { ...desks, boxes: {} })
+          const given = Object.prototype.hasOwnProperty.call(desks.boxes, b.email) ? desks.boxes[b.email] : null
+          return { ...b, auto: auto.name, given, owner: subMailboxOwner(b.email, desks).name }
+        }),
+      },
       targets: {
         exhibitors: world.exhibitors.map(e => ({ id: e.id, name: e.company_name, has: !!e.logo_url })),
         talks: world.talks.map(t => ({ id: t.id, name: t.speaker_name, company: t.company || '', has: !!t.speaker_photo_url })),
         speakers: world.speakers.map(s => ({ id: s.id, name: s.name, organisation: s.organisation || '', has: !!s.photo_url })),
+        people: sched.people.filter(p => !knownPeople.has(subBareKey(p.name))),
+        orgs: [...orgs.values()],
       },
     })
   } catch (e: any) {
@@ -21975,7 +22199,7 @@ app.get('/api/admin/inbox-submissions/export', async (c) => {
     for (const r of rows.map(subParse)) for (const e of r.applied) {
       if (e.undone || !e.url) continue
       if (since && String(e.at || '') < since) continue
-      out.push({ submission_id: r.id, from_email: r.from_email, subject: r.subject, received_at: r.received_at, what: e.what, target: e.target, exhibitor_id: e.exhibitor_id || null, talk_id: e.talk_id || null, speaker_id: e.speaker_id || null, url: e.url, filename: e.filename, at: e.at, by: e.by })
+      out.push({ submission_id: r.id, from_email: r.from_email, subject: r.subject, received_at: r.received_at, what: e.what, as: e.as || null, target: e.target, exhibitor_id: e.exhibitor_id || null, talk_id: e.talk_id || null, speaker_id: e.speaker_id || null, url: e.url, filename: e.filename, at: e.at, by: e.by })
     }
     return c.json({ ok: true, files: out })
   } catch (e: any) {
@@ -22007,6 +22231,7 @@ app.post('/api/admin/inbox-submissions/:id/undo', async (c) => {
   if (e.what === 'logo') await c.env.DB.prepare('UPDATE exhibitors SET logo_url = ? WHERE id = ? AND logo_url = ?').bind(e.prev || null, e.exhibitor_id, e.url).run()
   else if (e.what === 'talk_photo') await c.env.DB.prepare('UPDATE innovation_talks SET speaker_photo_url = ? WHERE id = ? AND speaker_photo_url = ?').bind(e.prev || '', e.talk_id, e.url).run()
   else if (e.what === 'speaker_photo') await c.env.DB.prepare('UPDATE speakers SET photo_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND photo_url = ?').bind(e.prev || null, e.speaker_id, e.url).run()
+  else if (e.what === 'tag') { /* a name only: nothing in the app to put back */ }
   else return c.json({ error: 'That cannot be undone here.' }, 400)
   const applied = sub.applied.map((x: any, k: number) => (k === i ? { ...x, undone: new Date().toISOString(), undone_by: by } : x))
   await subSaveApplied(c, sub, applied, by)
@@ -22028,6 +22253,83 @@ app.post('/api/admin/inbox-submissions/:id/reopen', async (c) => {
   const by = String(c.req.header('X-Admin-Actor') || '').slice(0, 80) || 'admin'
   await c.env.DB.prepare("UPDATE inbox_submissions SET status = ?, decided_by = ?, decided_at = ? WHERE id = ?").bind(sub.applied.some((e: any) => !e.undone) ? 'applied' : 'new', by, new Date().toISOString(), sub.id).run()
   return c.json({ ok: true, row: await subRow(c, sub.id) })
+})
+// One email's owner: someone on the team, or nobody (name ''). Choosing the mailbox's own owner
+// again removes the choice, so the email follows its mailbox once more.
+app.post('/api/admin/inbox-submissions/:id/owner', async (c) => {
+  const sub = await subRow(c, c.req.param('id')).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  const b = await c.req.json().catch(() => ({})) as any
+  const d = await subDesks(c, Number(sub.event_id) || 1)
+  const name = subCleanName(b?.name)
+  const member = name ? subTeamNamed(d.team, name) : null
+  if (name && !member) return c.json({ error: 'Choose someone on the team (the Organiser pass holders).' }, 400)
+  const target = member ? member.name : ''
+  const by = subActor(c)
+  const key = 'owner:submission:' + sub.id
+  if (target === subMailboxOwner(subMailboxOf(sub.to_email, d.own), d).name) await c.env.DB.prepare('DELETE FROM app_settings WHERE key = ?').bind(key).run()
+  else await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(key, JSON.stringify({ name: target, by, at: new Date().toISOString() })).run()
+  await audit(c, 'submission.owner', 'submission', sub.id, { owner: target || 'nobody', mailbox: subMailboxOf(sub.to_email, d.own) })
+  d.chosen = await subOwnerChoices(c)
+  const row = await subRow(c, sub.id)
+  return c.json({ ok: true, row: { ...row, owner: subOwnerOf(row, d) } })
+})
+// A team mailbox given to someone (name), made shared (name ''), or back to automatic (name null).
+app.put('/api/admin/inbox-submissions/mailboxes', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const own = await subOwnDomains(c)
+  const mailbox = subMailboxOf(b?.email, own)
+  if (!mailbox || mailbox !== String(b?.email || '').trim().toLowerCase()) return c.json({ error: 'Only a mailbox on our own domains can be given to someone.' }, 400)
+  const boxes = await subMailboxMap(c)
+  let owner = ''
+  if (b?.name === null || b?.name === undefined || b?.name === 'auto') delete boxes[mailbox]
+  else {
+    const name = subCleanName(b.name)
+    const member = name ? subTeamNamed(await organiserTeam(c.env.DB, parseInt(String(b?.event_id || '1'), 10) || 1), name) : null
+    if (name && !member) return c.json({ error: 'Choose someone on the team (the Organiser pass holders).' }, 400)
+    owner = member ? member.name : ''
+    boxes[mailbox] = owner
+  }
+  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at").bind(SUB_MAILBOXES_KEY, JSON.stringify(boxes)).run()
+  await audit(c, 'submission.mailbox', 'settings', SUB_MAILBOXES_KEY, { mailbox, owner: b?.name === null || b?.name === undefined || b?.name === 'auto' ? 'automatic' : owner || 'shared' })
+  return c.json({ ok: true, mailbox, owner })
+})
+// A file a team member supplies when the emailed one will not do (a blurred logo, a photo in a
+// PDF, a link the client sent instead): it joins the email's files, marked as theirs, and is
+// used like any other. Checked by its bytes; at most 8 MB.
+app.post('/api/admin/inbox-submissions/:id/upload', async (c) => {
+  const sub = await subRow(c, c.req.param('id')).catch(() => null)
+  if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
+  if (sub.status === 'dismissed') return c.json({ error: 'Bring it back first.' }, 409)
+  if (!c.env.UPLOADS) return c.json({ error: 'File storage is not set up on this server.' }, 503)
+  const b = await c.req.json().catch(() => ({})) as any
+  const data = String(b?.data || '').replace(/^data:[^,]*,/, '')
+  if (!data) return c.json({ error: 'Choose a file first.' }, 400)
+  if (data.length > Math.ceil(SUB_MAX_FILE / 3) * 4 + 8) return c.json({ error: 'That file is larger than 8 MB. Make it smaller first.' }, 413)
+  let bytes: Uint8Array
+  try { const bin = atob(data); bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) } catch { return c.json({ error: 'That file could not be read. Try again.' }, 400) }
+  if (bytes.length > SUB_MAX_FILE) return c.json({ error: 'That file is larger than 8 MB. Make it smaller first.' }, 413)
+  const mime = bytes.length >= 100 ? subSniff(bytes) : ''
+  if (!mime) return c.json({ error: 'Upload a PNG, JPEG, WebP or SVG picture, or a PDF.' }, 400)
+  const files = (Array.isArray(sub.attachments) ? sub.attachments : []) as any[]
+  if (files.length >= 24) return c.json({ error: 'This email has too many files already. Reject the ones not needed first.' }, 400)
+  const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))).map(x => x.toString(16).padStart(2, '0')).join('')
+  if (files.some(x => x && x.hash === hash && !x.rejected)) return c.json({ error: 'That file is on this email already.' }, 409)
+  const name0 = String(b?.filename || 'upload').replace(/[^A-Za-z0-9._ ()-]+/g, '_').replace(/\.{2,}/g, '.').replace(/^[._ ]+/, '').trim().slice(0, 120) || 'upload'
+  const filename = name0.replace(/\.[A-Za-z0-9]+$/, '') + '.' + SUB_EXT[mime]
+  const used = files.map(x => String(x?.key || '')).find(k => /^submissions\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(k))
+  const folder = used ? used.split('/').slice(0, 2).join('/') : 'submissions/' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-upload-' + sub.id
+  const safe = filename.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/\.{2,}/g, '.').replace(/^[-.]+|-+$/g, '') || ('file.' + SUB_EXT[mime])
+  const key = folder + '/up' + Date.now().toString(36) + '-' + safe
+  await c.env.UPLOADS.put(key, bytes, { httpMetadata: { contentType: mime, cacheControl: 'public, max-age=31536000' } })
+  const { w, h } = subImageSize(bytes, mime)
+  const by = subActor(c)
+  const as = b?.as === 'photo' || b?.as === 'logo' ? b.as : ''
+  const use = mime === 'image/svg+xml' ? 'logo' : as || subFileUse(filename, mime, w, h)
+  files.push({ key, filename, mime, size: bytes.length, w, h, use, hash, uploaded: { by, at: new Date().toISOString() } })
+  await c.env.DB.prepare('UPDATE inbox_submissions SET attachments = ?, decided_by = ?, decided_at = ? WHERE id = ?').bind(JSON.stringify(files), by, new Date().toISOString(), sub.id).run()
+  await audit(c, 'submission.upload', 'submission', sub.id, { file: filename, mime, size: bytes.length })
+  return c.json({ ok: true, file: files.length - 1, row: await subRow(c, sub.id) })
 })
 app.post('/api/admin/inbox-submissions/tidy', async (c) => {
   const by = String(c.req.header('X-Admin-Actor') || '').slice(0, 80) || 'admin'
@@ -22165,7 +22467,7 @@ app.post('/api/admin/inbox-submissions/:id/reread', async (c) => {
   const sub = await subRow(c, c.req.param('id')).catch(() => null)
   if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
   if (sub.status === 'dismissed') return c.json({ error: 'Bring it back first.' }, 409)
-  let people = subPeople(sub.body)
+  let people = subPeople(subEntities(sub.body))
   let extra: any = {}
   if (!people.length) { const found = await subAiPeople(c, sub.body, sub.from_email).catch(() => null); if (found !== null) { people = found; extra = { ai_tried: true, ai_people: found } } }
   const by = subActor(c)
@@ -51974,7 +52276,7 @@ function adminPageScript(): string {
     // Submissions (logos, photos and team lists that clients emailed) live in
     // /js/admin-submissions.js (one global, SubDesk) with their own stylesheet, both
     // loaded the first time the section opens. Bump the version on any change to either.
-    var SUB_DESK_VERSION = '20261113c';
+    var SUB_DESK_VERSION = '20261113d';
     var subDeskAssets = null;
     function subDeskLoadAssets() {
       if (window.SubDesk) return Promise.resolve();

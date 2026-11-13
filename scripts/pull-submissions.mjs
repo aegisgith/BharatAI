@@ -37,11 +37,16 @@ if ((OUT + sep).toLowerCase().startsWith((REPO + sep).toLowerCase())) fail('Choo
 
 // A name a person can read and Windows can keep.
 const safeName = (s) => String(s || 'unnamed').replace(/[<>:"/\\|?*\x00-\x1f]+/g, ' ').replace(/\s+/g, ' ').replace(/[. ]+$/, '').trim().slice(0, 80) || 'unnamed';
-const FOLDER = { logo: 'logos', talk_photo: 'talk-photos', speaker_photo: 'speaker-photos' };
+// A file NAMED in Admin (13 Nov 2026: a panellist's photo, a speaker's company logo, anyone not
+// in the app) comes as what 'tag' with as 'logo' or 'photo'; it gets its own folder.
+const kindOf = (f) => (f.what === 'tag' ? 'named_' + (f.as === 'photo' ? 'photo' : 'logo') : f.what);
+const FOLDER = { logo: 'logos', talk_photo: 'talk-photos', speaker_photo: 'speaker-photos', named_logo: 'named-logos', named_photo: 'named-photos' };
 const NEXT = {
   logo: 'Logo wall (home, /exhibition, llms.txt): put the file in the logo source folder under the name its EXHIBITORS entry uses in scripts/gen-exhibitor-logos.mjs, then  node scripts/gen-exhibitor-logos.mjs "<folder>"',
   talk_photo: 'Innovation Talk cards (/exhibition, /conference): set "photo" for that speaker in scripts/data/innovation-talks.json to the file name, then  node scripts/gen-innovation-talks.mjs "<folder>"',
   speaker_photo: 'Confirmed speaker grids (home, /conference): make the 400px square  public/images/speaker-<slug>-sq.webp  and re-run  python scripts/gen-site-photo-fingerprints.py',
+  named_logo: 'Named by hand (not an exhibitor in the app). A company on the conference schedule: save it under public/images/, set "logo" for its people in scripts/data/schedule-people.json, then  node scripts/gen-schedule.mjs. A new exhibitor: add them to EXHIBITORS in scripts/gen-exhibitor-logos.mjs first.',
+  named_photo: 'Named by hand (not a talk or a speaker in the app). Someone on the conference schedule: save it under public/images/, set "photo" for them in scripts/data/schedule-people.json, then  node scripts/gen-schedule.mjs. Anyone else: keep it for whoever asked.',
 };
 
 const res = await fetch(BASE + '/api/admin/inbox-submissions/export' + (SINCE ? '?since=' + encodeURIComponent(SINCE) : ''), { headers: { Authorization: 'Bearer ' + SECRET } });
@@ -54,12 +59,13 @@ if (!files.length) { console.log('Nothing in use' + (SINCE ? ' since ' + SINCE :
 const saved = [];
 const taken = new Set();
 for (const f of files) {
-  const folder = FOLDER[f.what];
+  const kind = kindOf(f);
+  const folder = FOLDER[kind];
   if (!folder) continue;
   // Only this site's own uploads are fetched, whatever the list says.
   const path = String(f.url || '').replace(/^https?:\/\/[^/]+/, '');
   if (!/^\/api\/uploads\/submissions\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(path) || path.includes('..')) { console.warn('skipped (not a submissions file): ' + f.url); continue; }
-  const ext = (String(f.filename || path).toLowerCase().match(/\.(png|jpe?g|webp|svg)$/) || ['', 'png'])[1].replace('jpeg', 'jpg');
+  const ext = (String(f.filename || path).toLowerCase().match(/\.(png|jpe?g|webp|svg|pdf)$/) || ['', 'png'])[1].replace('jpeg', 'jpg');
   let name = safeName(f.target), n = 1;
   while (taken.has((folder + '/' + name + '.' + ext).toLowerCase())) name = safeName(f.target) + ' (' + (++n) + ')';
   taken.add((folder + '/' + name + '.' + ext).toLowerCase());
@@ -69,14 +75,14 @@ for (const f of files) {
   mkdirSync(dir, { recursive: true });
   const dest = join(dir, name + '.' + ext);
   writeFileSync(dest, Buffer.from(await r.arrayBuffer()));
-  saved.push({ ...f, saved_as: dest });
+  saved.push({ ...f, kind, saved_as: dest });
 }
 if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true });
 writeFileSync(join(OUT, 'submissions.json'), JSON.stringify(saved, null, 2));
 
 console.log('\nSaved ' + saved.length + ' file' + (saved.length === 1 ? '' : 's') + ' to ' + OUT + '\n');
 for (const what of Object.keys(FOLDER)) {
-  const mine = saved.filter((s) => s.what === what);
+  const mine = saved.filter((s) => s.kind === what);
   if (!mine.length) continue;
   console.log(FOLDER[what] + ' (' + mine.length + ')');
   for (const s of mine) console.log('  ' + s.target + '   <- ' + s.from_email + ', used ' + String(s.at || '').slice(0, 10) + ' by ' + s.by);

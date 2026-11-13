@@ -15,6 +15,11 @@ import { makeWorld, file, svg } from './submissions-world.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const W = makeWorld();
+// The organising team (Organiser pass holders; Puja's mailbox is named after her) and one panel
+// on the conference schedule (13 Nov 2026).
+W.insert('attendees', { event_id: 1, name: 'Puja Shah', email: 'puja.shah@gmail.com', badge_type: 'Organiser' });
+W.insert('attendees', { event_id: 1, name: 'Tushar Kale', email: 'tushar@bellaward.com', badge_type: 'Organiser' });
+W.insert('sessions', { event_id: 1, title: 'Enterprise AI', session_type: 'panel', start_time: '2026-11-20 11:00', end_time: '2026-11-20 12:00', speaker_name: 'Mahalakshmi AV (AWS), Sudhir Kumar Rai (Trellix), Mr. Bhupesh Daheria (Moderator)' });
 
 // A real PNG of one colour, w by h.
 const chunk = (type, data) => {
@@ -49,7 +54,8 @@ http.createServer(async (req, res) => {
       exhibitors: W.rows('SELECT id, company_name, logo_url FROM exhibitors ORDER BY id'),
       talks: W.rows('SELECT id, speaker_name, speaker_photo_url FROM innovation_talks ORDER BY id'),
       team: W.rows('SELECT first_name, last_name, email, added_by, pass, pass_note FROM exhibitor_team ORDER BY id'),
-      subs: W.rows('SELECT id, source_id, status, kind FROM inbox_submissions ORDER BY id'),
+      subs: W.rows('SELECT id, source_id, status, kind, attachments FROM inbox_submissions ORDER BY id'),
+      owners: W.rows("SELECT key, value FROM app_settings WHERE key LIKE 'owner:submission:%' OR key = 'inbox_submissions_mailboxes' ORDER BY key"),
       settings: W.rows("SELECT value FROM app_settings WHERE key = 'inbox_submissions_auto'"),
     };
     res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(out)); return;

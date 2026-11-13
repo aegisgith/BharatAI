@@ -39,15 +39,15 @@
 .sb-tab[aria-selected="true"] { background: var(--sb-card); color: var(--sb-ink); box-shadow: 0 1px 2px rgba(16, 24, 40, .08); }
 .sb-tab b { font-size: 11.5px; font-weight: 700; color: var(--sb-muted); background: var(--sb-line-2); padding: 1px 7px; border-radius: 999px; font-variant-numeric: tabular-nums; }
 .sb-tab[aria-selected="true"] b { background: var(--sb-accent-soft); color: var(--sb-accent-ink); }
-.sb-tab:focus-visible, .sb-btn:focus-visible, .sb-more:focus-visible, .sb-auto summary:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 2px; }
+.sb-tab:focus-visible, .sb-btn:focus-visible, .sb-more:focus-visible, .sb-auto summary:focus-visible, .sb-boxes summary:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 2px; }
 
 /* ---- use without asking ---- */
-.sb-auto { border: 1px solid var(--sb-line); background: var(--sb-card); border-radius: 12px; padding: 10px 14px; margin-bottom: 16px; font-size: 13.5px; }
-.sb-auto summary { cursor: pointer; color: var(--sb-ink-2); font-weight: 600; list-style: none; display: flex; align-items: center; gap: 8px; }
-.sb-auto summary::-webkit-details-marker { display: none; }
-.sb-auto summary::after { content: "Change"; margin-left: auto; font-weight: 600; font-size: 12.5px; color: var(--sb-blue-ink); }
-.sb-auto[open] summary::after { content: "Close"; }
-.sb-auto[open] summary { margin-bottom: 8px; }
+.sb-auto, .sb-boxes { border: 1px solid var(--sb-line); background: var(--sb-card); border-radius: 12px; padding: 10px 14px; margin-bottom: 16px; font-size: 13.5px; }
+.sb-auto summary, .sb-boxes summary { cursor: pointer; color: var(--sb-ink-2); font-weight: 600; list-style: none; display: flex; align-items: center; gap: 8px; }
+.sb-auto summary::-webkit-details-marker, .sb-boxes summary::-webkit-details-marker { display: none; }
+.sb-auto summary::after, .sb-boxes summary::after { content: "Change"; margin-left: auto; font-weight: 600; font-size: 12.5px; color: var(--sb-blue-ink); }
+.sb-auto[open] summary::after, .sb-boxes[open] summary::after { content: "Close"; }
+.sb-auto[open] summary, .sb-boxes[open] summary { margin-bottom: 8px; }
 .sb-auto label { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; cursor: pointer; font-weight: 600; }
 .sb-auto input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--sb-accent); }
 .sb-auto small { display: block; color: var(--sb-muted); font-weight: 400; font-size: 12.5px; }
@@ -141,6 +141,44 @@
 .sb-err { color: var(--sb-bad); font-size: 13px; font-weight: 600; }
 .sb-note { color: var(--sb-muted); font-size: 12.5px; font-weight: 400; }
 
+/* ---- search, owners, upload (13 Nov 2026) ---- */
+/* Admin makes every th stick to the top of the page; in this table it floated over the title. */
+.sbd th { position: static; z-index: auto; background: transparent; }
+.sb-people td:nth-child(5) { min-width: 210px; }
+.sb-find { display: grid; gap: 6px; min-width: 0; }
+.sb-find input[type="search"] { width: 100%; min-width: 0; background: #fff; color: var(--sb-ink); border: 1px solid #cfd4e2; border-radius: 8px; padding: 7px 10px; font-size: 13px; min-height: 36px; }
+.sb-find input[type="search"]:focus { outline: 2px solid var(--sb-accent); outline-offset: 1px; }
+.sb-hits:empty { display: none; }
+.sb-hits { display: grid; gap: 2px; border: 1px solid var(--sb-line); border-radius: 8px; background: var(--sb-card); padding: 4px; max-height: 320px; overflow-y: auto; }
+.sb-hit { display: block; width: 100%; text-align: left; background: transparent; border: 0; border-radius: 6px; padding: 7px 9px; cursor: pointer; color: var(--sb-ink); font-size: 13px; font-weight: 600; line-height: 1.3; min-height: 38px; word-break: break-word; }
+.sb-hit small { display: block; color: var(--sb-muted); font-size: 11.5px; font-weight: 400; margin-top: 1px; }
+.sb-hit[data-app="1"] small { color: var(--sb-good); }
+.sb-hit:hover, .sb-hit:focus-visible { background: var(--sb-accent-soft); outline: none; }
+.sb-none { padding: 6px 9px; color: var(--sb-muted); font-size: 12.5px; }
+.sb-own { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; border-top: 1px solid var(--sb-line-2); padding: 7px 5px 3px; }
+.sb-own .sb-note { flex-basis: 100%; }
+.sb-btn-own { min-height: 32px; padding: 4px 10px; font-size: 12.5px; white-space: normal; text-align: left; max-width: 100%; word-break: break-word; }
+.sb-owner { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; font-size: 12.5px; }
+.sb-owner label { display: inline-flex; align-items: center; gap: 6px; color: var(--sb-ink-2); font-weight: 600; }
+.sb-owner select, .sb-box select, .sb-who-hint select { background: #fff; color: var(--sb-ink); border: 1px solid #cfd4e2; border-radius: 7px; padding: 4px 8px; font-size: 12.5px; min-height: 32px; max-width: 100%; }
+.sb-owner select:focus, .sb-box select:focus, .sb-who-hint select:focus { outline: 2px solid var(--sb-accent); outline-offset: 1px; }
+.sb-upload-row { display: flex; justify-content: flex-end; }
+.sb-upload { position: relative; display: inline-flex; align-items: center; cursor: pointer; color: var(--sb-blue-ink); font-size: 12.5px; font-weight: 600; border-radius: 8px; padding: 6px 8px; min-height: 36px; }
+.sb-upload:hover { background: var(--sb-blue-soft); }
+.sb-upload input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.sb-upload:focus-within { outline: 2px solid var(--sb-accent); outline-offset: 1px; }
+.sb-whos { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.sb-who-chip { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--sb-line); background: var(--sb-card); color: var(--sb-ink-2); border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; cursor: pointer; min-height: 34px; }
+.sb-who-chip b { font-size: 11.5px; color: var(--sb-muted); font-variant-numeric: tabular-nums; }
+.sb-who-chip[aria-pressed="true"] { border-color: var(--sb-accent); background: var(--sb-accent-soft); color: var(--sb-accent-ink); }
+.sb-who-chip:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 2px; }
+.sb-who-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: -2px 0 12px; font-size: 13px; }
+.sb-who-hint label { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--sb-ink-2); }
+.sb-whos + .sb-card, .sb-whos + .sb-empty { margin-top: 8px; }
+.sb-box-list { display: grid; gap: 6px; margin-top: 8px; }
+.sb-boxes label.sb-box { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 6px 0; border-top: 1px solid var(--sb-line-2); font-weight: 400; cursor: default; }
+.sb-box-mail { word-break: break-all; color: var(--sb-ink); }
+.sb-box-mail b { color: var(--sb-warm); font-weight: 600; font-size: 12px; margin-left: 4px; }
 @media (max-width: 760px) {
   .sb-card { grid-template-columns: minmax(0, 1fr); padding: 14px; }
   .sb-file { grid-template-columns: 84px minmax(0, 1fr); }
