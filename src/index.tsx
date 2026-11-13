@@ -21046,7 +21046,7 @@ const SUB_MOBILE_RE = /(?:\+?91[\s-]?)?0?([6-9]\d{4}[\s-]?\d{5})(?!\d)/
 const SUB_HONORIFIC_RE = /^(dr|mr|mrs|ms|miss|prof|shri|smt|er|ca|adv)\.?\s+/i
 
 type SubPerson = { first_name: string; last_name: string; designation: string; email: string; mobile: string; line: string }
-type SubAi = { person: boolean | null; reads: string; ours: boolean; match?: number; failed?: boolean; at: string }
+type SubAi = { person: boolean | null; reads: string; ours: boolean; match?: number; failed?: boolean; at: string; v?: number; model?: string }
 type SubFile = { key: string; filename: string; mime: string; size: number; w: number; h: number; use: string; hash: string; ai?: SubAi }
 type SubMatch = { id: number; name: string; detail: string; how: string; sure: boolean }
 type SubWorld = { exhibitors: any[]; booths: any[]; team: any[]; talks: any[]; speakers: any[] }
@@ -21388,7 +21388,30 @@ async function subWorld(c: any, eventId: number): Promise<SubWorld> {
 // Who an email is from and for. Sure: the sender's address is on file as the booth
 // contact, someone on the team, or the speaker. Likely: the same company email, or the
 // company or person named in the words. The admin sees the reason beside each guess.
+const SUB_AI_VISION_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct'
 const SUB_AI_READ_MODEL = '@cf/llava-hf/llava-1.5-7b-hf'
+const SUB_AI_V = 2
+const SUB_AI_READ_PROMPT = 'What company or brand name is written in this image? Answer with the name only, exactly as it is written, or NONE if no name is written.'
+function subB64(bytes: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+// The words in a picture: Llama 4 Scout first, llava if it fails. null when neither answered.
+async function subAiRead(c: any, bytes: Uint8Array, mime: string, image: number[]): Promise<{ text: string; model: string } | null> {
+  try {
+    const out: any = await subAiWait(c.env.AI.run(SUB_AI_VISION_MODEL, { max_tokens: 40, messages: [{ role: 'user', content: [
+      { type: 'text', text: SUB_AI_READ_PROMPT },
+      { type: 'image_url', image_url: { url: 'data:' + mime + ';base64,' + subB64(bytes) } },
+    ] }] }), 20000)
+    const t = String(out?.response ?? out?.result?.response ?? '')
+    if (t.trim()) return { text: t, model: SUB_AI_VISION_MODEL }
+  } catch { /* the fallback below */ }
+  try {
+    const out: any = await subAiWait(c.env.AI.run(SUB_AI_READ_MODEL, { image, prompt: SUB_AI_READ_PROMPT, max_tokens: 40 }), 15000)
+    return { text: String(out?.description ?? out?.response ?? ''), model: SUB_AI_READ_MODEL }
+  } catch { return null }
+}
 const SUB_AI_TEXT_MODEL = '@cf/meta/llama-3.1-8b-instruct'
 const SUB_AI_MAX_BYTES = 2 * 1024 * 1024
 const SUB_OURS_RE = /\bbharat\s*-?\s*ai\b|bharataiinnovation|भारत\s*एआई/i
@@ -21399,19 +21422,18 @@ function subAiWait<T>(p: Promise<T>, ms: number): Promise<T> {
 async function subAiLook(c: any, bytes: Uint8Array, mime: string): Promise<SubAi | null> {
   if (!c.env.AI || !/^image\/(png|jpeg|webp)$/.test(mime) || bytes.length > SUB_AI_MAX_BYTES) return null
   const image = Array.from(bytes)
-  const [person, reads] = await Promise.all([
+  const [person, read] = await Promise.all([
     subAiWait(c.env.AI.run(PERSON_MODEL, { image }), 10000).then((out: any) => {
       const objs: any[] = Array.isArray(out) ? out : (Array.isArray(out?.result) ? out.result : [])
       let score = 0
       for (const o of objs) if (o && o.label === 'person') score = Math.max(score, Number(o.score) || 0)
       return score >= PERSON_MIN_SCORE
     }).catch(() => null),
-    subAiWait(c.env.AI.run(SUB_AI_READ_MODEL, { image, prompt: 'What company or brand name is written in this image? Answer with the name only, or NONE.', max_tokens: 40 }), 15000)
-      .then((out: any) => String(out?.description ?? out?.response ?? '').replace(/\s+/g, ' ').replace(/^["'\s]+|["'.\s]+$/g, '').trim().slice(0, 120))
-      .catch(() => null),
+    subAiRead(c, bytes, mime, image),
   ])
-  const text = reads && !/^none\b/i.test(reads) ? reads : ''
-  return { person, reads: text, ours: SUB_OURS_RE.test(text), failed: person === null && reads === null ? true : undefined, at: new Date().toISOString() }
+  const raw = read ? read.text.replace(/\s+/g, ' ').replace(/^["'\s]+|["'.\s]+$/g, '').trim().slice(0, 120) : ''
+  const text = raw && !/^none\b/i.test(raw) ? raw : ''
+  return { person, reads: text, ours: SUB_OURS_RE.test(text), failed: person === null && read === null ? true : undefined, at: new Date().toISOString(), v: SUB_AI_V, model: read ? read.model : undefined }
 }
 // What the AI saw decides the file's use: a person is a photo; a name and no person is a logo.
 function subAiUse(use: string, ai: SubAi | null | undefined): string {
@@ -21469,7 +21491,7 @@ async function subAiBackfill(c: any, rows: any[], by: string): Promise<{ picture
   if (!c.env.AI || !c.env.UPLOADS) return done
   const open = rows.filter(r => r.status === 'new' && !r.applied.length && (!r.decided_by || String(r.decided_by).startsWith(by)))
   const jobs: Array<{ r: any; f: any }> = []
-  for (const r of open) for (const f of r.attachments) if (f && !f.ai && !f.rejected && /^image\/(png|jpeg|webp)$/.test(f.mime) && f.size <= SUB_AI_MAX_BYTES) jobs.push({ r, f })
+  for (const r of open) for (const f of r.attachments) if (f && (!f.ai || (!f.ai.failed && (f.ai.v || 1) < SUB_AI_V)) && !f.rejected && /^image\/(png|jpeg|webp)$/.test(f.mime) && f.size <= SUB_AI_MAX_BYTES) jobs.push({ r, f })
   const pick = jobs.slice(0, 6)
   await Promise.all(pick.map(async ({ f }) => {
     try {

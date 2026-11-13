@@ -483,10 +483,16 @@ let teamId;
   A.env.AI = { async run(model, input) {
     calls.push(model);
     if (model === '@cf/facebook/detr-resnet-50') return input.image[100] === 77 ? [{ label: 'person', score: 0.97 }] : [{ label: 'tie', score: 0.4 }];
+    if (model === '@cf/meta/llama-4-scout-17b-16e-instruct') {
+      const url = input.messages[0].content.find((x) => x.type === 'image_url').image_url.url;
+      const sd = Buffer.from(url.split(',')[1], 'base64')[100];
+      if (sd === 81 || sd === 82) throw new Error('model down');
+      return { response: sd === 78 ? 'Bharat AI Innovation' : sd === 79 ? 'ACME ROBOTICS' : 'NONE' };
+    }
     if (model === '@cf/llava-hf/llava-1.5-7b-hf') {
       const sd = input.image[100];
       if (sd === 81) throw new Error('model down');
-      return { description: sd === 78 ? 'Bharat AI Innovation' : sd === 79 ? 'ACME ROBOTICS' : 'NONE' };
+      return { description: sd === 82 ? 'Zenith Data Labs' : 'NONE' };
     }
     if (model === '@cf/meta/llama-3.1-8b-instruct') return { response: 'Here you are: [{"first_name":"Rohan","last_name":"Kulkarni","designation":"Head of AI","email":"rohan@team.example","mobile":"98200 55555"},{"first_name":"Fake","last_name":"Person","designation":"CEO","email":"fake@nowhere.example","mobile":""}]' };
     throw new Error('unknown model ' + model);
@@ -502,11 +508,15 @@ let teamId;
   r = await A.push({ source_id: 'ai-4', from_email: 'z@team.example', subject: 'Registration', text: 'Please register our team member rohan@team.example for Rohan Kulkarni, Head of AI. Mobile 98200 55555.' });
   const s4 = A.sub(r.json.id);
   check('AI: names the rules missed, keeping only what is written in the email (the invented person dropped)', r.status === 201 && s4.matches.people.length === 1 && s4.matches.people[0].first_name === 'Rohan' && s4.matches.people[0].mobile === '9820055555' && s4.matches.people[0].designation === 'Head of AI' && s4.matches.ai_tried === true, s4.matches);
-  const before = calls.filter((m) => m.includes('llama')).length;
+  const before = calls.filter((m) => m.includes('llama-3.1')).length;
   await A.push({ source_id: 'ai-5', from_email: 'z@team.example', subject: 'Team', text: 'Our team:\n1. Asha Iyer - Analyst - asha@team.example\n2. Om Rao - Lead - om@team.example' });
-  check('AI: not asked for names when the rules found them', calls.filter((m) => m.includes('llama')).length === before);
+  check('AI: not asked for names when the rules found them', calls.filter((m) => m.includes('llama-3.1')).length === before);
   r = await A.push({ source_id: 'ai-6', from_email: 'q@agency-ai3.example', subject: 'Logo', text: 'logo', attachments: [file('down.png', png(800, 260, 81), 'image/png')] });
   check('AI: a model that fails changes nothing (the file is filed as the rules see it)', r.status === 201 && A.sub(r.json.id).attachments[0].use === 'logo', A.sub(r.json?.id)?.attachments);
+  check('AI: names are read by Llama 4 Scout', s3.attachments[0].ai.model === '@cf/meta/llama-4-scout-17b-16e-instruct' && s3.attachments[0].ai.v === 2);
+  r = await A.push({ source_id: 'ai-7', from_email: 'q@agency-ai4.example', subject: 'Logo', text: 'logo', attachments: [file('zen.png', png(800, 260, 82), 'image/png')] });
+  const f7 = A.sub(r.json.id).attachments[0];
+  check('AI: when Scout fails, the older model reads instead', f7.ai.reads === 'Zenith Data Labs' && f7.ai.model === '@cf/llava-hf/llava-1.5-7b-hf' && f7.ai.match === A.ids.zenith, f7);
   // What was waiting before the AI step: the tidy catches up, a few at a time.
   const bytes = png(700, 250, 79);
   await A.env.UPLOADS.put('submissions/old/1-acme.png', bytes, { httpMetadata: { contentType: 'image/png' } });
@@ -518,7 +528,12 @@ let teamId;
   check('AI tidy: an older logo is read and matched', r.json.ai_pictures >= 1 && A.sub(oldRow).attachments[0].ai?.match === A.ids.acme && A.sub(oldRow).matches.exhibitors.some((e) => e.id === A.ids.acme), [r.json, A.sub(oldRow).attachments]);
   check('AI tidy: an older email\'s names found, and kept by the next tidy', r.json.ai_names >= 1 && A.sub(oldPeople).matches.people[0]?.first_name === 'Rohan', A.sub(oldPeople).matches);
   await A.admin('/api/admin/inbox-submissions/tidy', { method: 'POST' });
-  check('AI tidy: asked once per email for names, and the names stay', A.sub(oldPeople).matches.people[0]?.first_name === 'Rohan' && calls.filter((m) => m.includes('llama')).length === before + 1);
+  check('AI tidy: asked once per email for names, and the names stay', A.sub(oldPeople).matches.people[0]?.first_name === 'Rohan' && calls.filter((m) => m.includes('llama-3.1')).length === before + 1);
+  // A picture the first model read (no version mark) is read again by Scout.
+  const oldRead = A.insert('inbox_submissions', { event_id: 1, source: 'aimailpilot', source_id: 'ai-old-3', status: 'new', applied: '[]', from_email: 'p@older.example', subject: 'Read before', received_at: '2026-11-13T03:20:00.000Z', kind: 'logo', body: 'logo',
+    matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [] }), attachments: JSON.stringify([{ key: 'submissions/old/1-acme.png', filename: 'acme2.png', mime: 'image/png', size: bytes.length, w: 700, h: 250, use: 'logo', hash: 'b'.repeat(64), ai: { person: false, reads: 'Dreamtime', ours: false, at: 'x' } }]) });
+  await A.admin('/api/admin/inbox-submissions/tidy', { method: 'POST' });
+  check('AI tidy: a picture the first model read is read again by the better one', A.sub(oldRead).attachments[0].ai.reads === 'ACME ROBOTICS' && A.sub(oldRead).attachments[0].ai.v === 2, A.sub(oldRead).attachments[0].ai);
 }
 
 // ======== a database without 0052 or 0050 ========
