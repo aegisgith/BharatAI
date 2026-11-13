@@ -17195,7 +17195,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
         </table>
         <p style="margin:12px 0 14px;font-size:13px;line-height:1.6;color:#1E2140;"><strong>${priceNow('Delegate Pass')} + GST</strong>${late ? ` ${PRICE_ROSE_TEXT}` : ` until ${PRICE_DEADLINE_TEXT}, then ${rsPrice('Delegate Pass', true)} from ${PRICE_LATE_FROM_TEXT}`}.</p>
         ${btn(go('pay', '&pass=delegate'), 'See the Delegate Pass &rarr;', '#0f7b47')}
-        <p style="margin:16px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>Premium Delegate</strong> (${priceNow('Premium Delegate Pass')} + GST) adds one hands-on workshop: <em>Data Science to Agentic AI: A CXO&rsquo;s Guide</em> with Dr. Vinay Kulkarni, <em>From Prototype to Production</em> with Dr. Ashish Tendulkar, <em>Automatic Speech Recognition</em> with Dr. Parijat Shukla, or <em>LLM Fine-Tuning, Hands-On</em> with Virendra Pal. Seats are limited. <a href="${go('pay', '&pass=premium')}" style="color:#0B7A75;font-weight:bold;">Premium</a></p>
+        <p style="margin:16px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>Premium Delegate</strong> (${priceNow('Premium Delegate Pass')} + GST) adds one hands-on workshop: the <em>Workshop by IBM</em>, <em>From Prototype to Production</em> with Dr. Ashish Tendulkar, <em>Automatic Speech Recognition</em> with Dr. Parijat Shukla, or <em>LLM Fine-Tuning, Hands-On</em> with Virendra Pal. Seats are limited. <a href="${go('pay', '&pass=premium')}" style="color:#0B7A75;font-weight:bold;">Premium</a></p>
         <p style="margin:8px 0 0;font-size:12.5px;line-height:1.65;color:#555;"><strong>VIP</strong> (${priceNow('VIP Pass')} + GST) adds the Bharat AI Leaders’ Evening on Day 1, the VIP lounge, priority seating and a speaker meet &amp; greet. <a href="${go('pay', '&pass=vip')}" style="color:#A67C00;font-weight:bold;">VIP</a></p>
         <p style="margin:12px 0 0;font-size:11.5px;color:#999;">Each button signs you in and opens the secure payment page. Your registration stays the same.</p>
       </div>`
@@ -30779,18 +30779,18 @@ function mainPageHTML(): string {
           <!-- Featured Sessions -->
           <h3 class="text-lg font-bold mb-3"><i class="fas fa-star text-amber-400 mr-2"></i>Featured sessions</h3>
           <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8" id="featured-sessions">
-            <a href="/training-workshop#cxo-guide" class="glass rounded-2xl p-6 border border-amber-500/20 hover:border-amber-400/40 transition-all block">
+            <a href="/training-workshop#ibm-workshop" class="glass rounded-2xl p-6 border border-amber-500/20 hover:border-amber-400/40 transition-all block">
               <div class="flex items-center gap-3 mb-3">
-                <img src="/images/speaker-vinay-kulkarni-sq.webp" alt="Dr. Vinay Kulkarni" width="56" height="56" loading="lazy" class="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shrink-0">
+                <img src="/images/logo-ibm.webp" alt="IBM" width="56" height="56" loading="lazy" class="w-14 h-14 rounded-full object-contain bg-white p-2 border-2 border-amber-400 shrink-0">
                 <div>
-                  <div class="font-bold text-sm text-white">Dr. Vinay Kulkarni</div>
-                  <div class="text-[11px] text-gray-400">Adjunct Faculty, IIT Bombay &middot; Director, Aegis School of Data Science &amp; AI</div>
+                  <div class="font-bold text-sm text-white">IBM</div>
+                  <div class="text-[11px] text-gray-400">Instructor to be announced</div>
                 </div>
               </div>
-              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 mb-2">For CXOs</span>
-              <h4 class="font-bold text-base text-white mb-2">Data Science to Agentic AI: A CXO&rsquo;s Guide to Strategic Decision-Making</h4>
-              <p class="text-xs text-gray-400 mb-3">A practical framework for choosing the right business problems and AI use cases, judging pilots, and scaling what works into reliable production systems.</p>
-              <span class="text-xs font-semibold text-amber-300">What it covers <i class="fas fa-arrow-right ml-1"></i></span>
+              <span class="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 mb-2">Workshop &middot; 90 minutes</span>
+              <h4 class="font-bold text-base text-white mb-2">Workshop by IBM</h4>
+              <p class="text-xs text-gray-400 mb-3">Friday 20 November, 11:30 to 13:00, Raman Theatre. The instructor and the topic will be announced soon.</p>
+              <span class="text-xs font-semibold text-amber-300">See the workshops <i class="fas fa-arrow-right ml-1"></i></span>
             </a>
             <a href="/training-workshop#fde-workshop" class="glass rounded-2xl p-6 border border-teal-500/20 hover:border-teal-400/40 transition-all block">
               <div class="flex items-center gap-3 mb-3">
