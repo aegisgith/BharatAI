@@ -6,6 +6,7 @@ import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
+import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
@@ -475,6 +476,19 @@ app.route('/', mp)
 // an admin. It also owns POST/PUT/DELETE /api/admin/sessions.
 configureConference({ sendEmail: sendAdminEmail, audit, changedFields, emailHeader: emailBrandHeader, actor: (c: any) => adminActor(c).actor, syncTalk: italkSyncFromProgramme, issueSpeakerPass })
 app.route('/', conference)
+// Speaker briefs (12 Nov 2026): each speaker's sessions, panel and pass in one email,
+// previewed and sent from Admin -> Conference; routes/speaker-brief.ts, screen
+// public/static/speaker-brief.js. The pass button signs them in at their pass.
+configureSpeakerBrief({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader, issueSpeakerPass,
+  passLink: async (c: any, eventId: number, email: string) => {
+    const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+    let href = appUrl + '?email=' + encodeURIComponent(email) + '&action=download-pass'
+    try {
+      if (await verifiedLoginEnabled(c)) href += '&token=' + (await createLoginToken(c, eventId, email, PROFILE_LINK_TTL_MINUTES, 4)).token
+    } catch { /* the plain link opens the sign-in box on their address */ }
+    return href
+  } })
+app.route('/', speakerBrief)
 // A speaker fills in their own Innovation Talk details (12 Nov 2026): the "a few details
 // we need" email links to /app/my-talk?t=<signed token>, no sign-in; routes/talk-self.ts,
 // page public/static/talk-self.js. It writes only what a speaker sends, never time or hall.
@@ -40085,6 +40099,7 @@ function adminPageHTML(): string {
   </div>
 
   <script src="/static/conference-admin.js?v=20261112c"></script>
+  <script src="/static/speaker-brief.js?v=20261113"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
 </body>
 </html>`
