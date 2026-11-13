@@ -75,7 +75,7 @@ const LAPTOP = { viewport: { width: 1306, height: 760 } };
         };
       });
       const phone = name !== 'laptop';
-      check(name + ': the panel lists eleven people', gov.n === 11, String(gov.n));
+      check(name + ': the panel lists ten people', gov.n === 10, String(gov.n));
       check(name + ': ' + (phone ? 'one person to a line' : 'two people to a line'), gov.cols === (phone ? 1 : 2), String(gov.cols));
       check(name + ': the photo is small and round', Math.abs(gov.photo.w - 48) < 1 && Math.abs(gov.photo.h - 48) < 1 && gov.photo.radius === '50%', JSON.stringify(gov.photo));
       check(name + ': the name never runs under the photo', !gov.overlap);

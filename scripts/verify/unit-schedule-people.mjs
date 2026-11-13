@@ -57,13 +57,13 @@ const hall0 = block.slice(block.indexOf('id="hall-0"'), block.indexOf('id="hall-
 const item = (src, title) => { const i = src.indexOf(title); return i < 0 ? '' : src.slice(src.lastIndexOf('<div', src.lastIndexOf('class="schedule-item', i)), src.indexOf('<span class="schedule-badge', i)); };
 const gov = item(hall0, 'AI for Viksit Bharat');
 const govCards = gov.split('<li class="sch-person">').slice(1);
-check('the Governance panel lists its ten panellists and the moderator', govCards.length === 11, String(govCards.length));
-check('the moderator is marked, once, and comes last', (gov.match(/class="sch-tag">Moderator</g) || []).length === 1 && /sch-tag">Moderator/.test(govCards[10] || ''));
+check('the Governance panel lists its nine panellists and the moderator', govCards.length === 10, String(govCards.length));
+check('the moderator is marked, once, and comes last', (gov.match(/class="sch-tag">Moderator</g) || []).length === 1 && /sch-tag">Moderator/.test(govCards[9] || ''));
 const card = (name) => cards.find((c) => c.includes('>' + name + '<') || c.includes('>' + name + ' <')) || '';
 const kk = card('Shri K.K. Singh');
 check('a government speaker: photo, designation, department, and the Ministry logo', /images\/sched\/k-k-singh\.webp/.test(kk) && /sch-role">Joint Secretary</.test(kk) && /sch-org">Ministry of Electronics &amp; IT \(MeitY\), Government of India</.test(kk) && /images\/sched\/logo-meity\.webp/.test(kk), kk.slice(0, 300));
-const vm = card('Shri Vinamra Mishra');
-check('no logo on file: the organisation is named in words, and no logo is drawn', /sch-org">Ministry of MSME, Government of India</.test(vm) && !/sch-logo/.test(vm), vm.slice(0, 300));
+const vr = card('Vishal Rally');
+check('no logo on file: the organisation is named in words, and no logo is drawn', /sch-org">Tata Tele Business Services</.test(vr) && !/sch-logo/.test(vr), vr.slice(0, 300));
 const ay = card('Shri Akshay Yadava');
 check('a government body with its own logo shows it (UIDAI)', /sch-org">Unique Identification Authority of India \(UIDAI\)</.test(ay) && /images\/sched\/logo-uidai\.webp/.test(ay), ay.slice(0, 300));
 const sa = card('Sarosh Amaria');
@@ -77,7 +77,7 @@ const talk = item(expo, 'Innovation Talk: RedFerns Tech');
 check("an exhibitor's talk: the speaker's photo, title, company and the company's logo from the talks list", /images\/sched\/shashank-kp\.webp/.test(talk) && /sch-role">Chief Technology Officer</.test(talk) && /sch-org">RedFerns Tech</.test(talk) && /logo-redferns-tech\.webp/.test(talk), talk.slice(0, 300));
 check('a break has no people and keeps its plain line', /<h4>Networking Lunch<\/h4><p>The exhibition floor stays open\.<\/p>/.test(hall0));
 const full = block.slice(block.indexOf('id="hall-4"'));
-check('the Full Schedule shows the same people, each row with its hall', /hall-label hl-bhabha">Homi J\. Bhabha Hall<\/span>Panel: Governance\./.test(full) && item(full, 'AI for Viksit Bharat').split('<li class="sch-person">').length === 12);
+check('the Full Schedule shows the same people, each row with its hall', /hall-label hl-bhabha">Homi J\. Bhabha Hall<\/span>Panel: Governance\./.test(full) && item(full, 'AI for Viksit Bharat').split('<li class="sch-person">').length === 11);
 check('the page carries the styles for people, and the phone rules', ['.sch-people {', '.sch-photo {', '.sch-logo {', '.sch-lead {', '--sch-logo: 0.85'].every((s) => page.includes(s)));
 
 // ---- Tracks: every real session by track (12 Nov 2026) ----
