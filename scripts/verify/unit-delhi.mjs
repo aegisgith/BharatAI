@@ -158,7 +158,7 @@ check('all ten boxes, and every one has a picture with words for screen readers'
 check('no two boxes share a picture', new Set(tiles.map((t) => t.match(/src="([^"]+)"/)[1])).size === 10);
 check('the programme comes straight after the hero', html.indexOf('id="programme"') > html.indexOf('class="dl-hero"') && html.indexOf('id="programme"') < html.indexOf('id="venue"'));
 check('the form comes after the programme, the venue and who it is for', html.indexOf('id="updates"') > html.indexOf('id="who"'));
-check('the rest of the Mumbai format is named, without the Startup Pitch (cancelled 13 Nov 2026)', !body.includes('Startup Pitch') && ['CXO AI Leadership Panels', 'Bharat AI Leaders’ Evening', 'Private boardrooms', 'AI Marketplace', 'Bharat AI Connect app'].every((x) => body.includes(x)));
+check('the rest of the format is named, the Startup Pitch included (Delhi keeps it; Mumbai cancelled its own, 13 Nov 2026)', !body.includes('as in Mumbai') && ['CXO AI Leadership Panels', 'Startup Pitch', 'Bharat AI Leaders’ Evening', 'Private boardrooms', 'AI Marketplace', 'Bharat AI Connect app'].every((x) => body.includes(x)));
 check('llms.txt says the paid passes are on sale, with their prices', /\[Delhi 2027\].*Rs 4,999.*delhi-register/.test(read('public/llms.txt')) && !read('public/llms.txt').includes('paid passes and booths open later'));
 check('the passes page is in the sitemap', read('public/sitemap.xml').includes('<loc>https://bharataiinnovation.com/delhi-register</loc>'));
 check('llms.txt says the free pass is open', /\[Delhi 2027\].*free Visitor Pass.*open on the page/.test(read('public/llms.txt')) && !read('public/llms.txt').includes('leave your details on the page to hear first'));
