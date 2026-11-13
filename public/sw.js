@@ -45,7 +45,7 @@
 // 12 Nov 2026 (bhai-v32): main.js?v=20261112b, because the edge had cached the old main.js under ?v=20261112.
 // 12 Nov 2026 (bhai-v33): pass-render.js?v=20261112b: the Organiser pass in black and saffron, and the
 // Student and Influencer passes printed as themselves, not VISITOR PASS.
-const VERSION = 'bhai-v33';
+const VERSION = 'bhai-v34';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 // The badge desk's scanner page, kept so it opens with no internet (12 Nov 2026).
