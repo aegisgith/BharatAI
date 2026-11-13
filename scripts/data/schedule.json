@@ -62,13 +62,14 @@
       "panel": [
         { "name": "Jagbir Singh", "org": "Vodafone Idea" },
         { "name": "Manish Agrawal", "org": "Comviva" },
-        { "name": "Ashutosh Agarwal", "org": "Globe Teleservices" },
+        { "name": "Ashutosh Agrawal", "org": "Globe Teleservices" },
         { "name": "Vishal Rally", "org": "Tata Tele Business Services" }
       ] },
     { "hall": "bhabha", "day": 2, "start": "11:00", "end": "12:00", "type": "panel", "label": "Panel: Enterprise AI", "track": "Enterprise AI", "title": "Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering",
       "panel": [
         { "name": "Dr. Ashish Tendulkar", "org": "Google" },
-        { "name": "Sudhir Kumar Rai", "org": "Trellix" }
+        { "name": "Sudhir Kumar Rai", "org": "Trellix" },
+        { "name": "Mahalakshmi AV", "org": "AWS" }
       ],
       "moderator": { "name": "Mr. Bhupesh Daheria", "org": "Aegis Knowledge Trust" } },
     { "hall": "bhabha", "day": 2, "start": "12:00", "end": "12:30", "type": "keynote", "label": "Keynote", "track": "Government & Public Sector AI", "title": "The AI components of MANTHAN–UTTHAN", "speaker": { "name": "Shri Srinivas Kancharla", "role": "Program Specialist, Office of the Principal Scientific Adviser to the Government of India" } },
