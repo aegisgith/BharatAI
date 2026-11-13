@@ -59,6 +59,7 @@ const SUITES = [
   { name: 'system: the scheduler, one planner across the programme, the Innovation Talks list, the app and passes (a talk placed, a clash made and fixed, a new speaker with a pass, Delhi private, the email by itself)', args: ['system-scheduler.mjs'] },
   { name: 'browser: the scheduler on a laptop (needs attention, free time, find a free slot, a new speaker with email and pass, names in one box, drag and Undo, zoom, day apart from time, Delhi) and the attention list on a phone', args: ['browser-scheduler.cjs'], harness: 'conference-harness.mjs', port: 8871, portEnv: true },
   { name: 'server: booth leads by badge scan (who may scan, the lead screen, ratings and notes, the list for the whole team) and the exhibitor list in the app (real exhibitors only, no internal notes), on real SQLite', args: ['smoke-booth-leads.mjs'] },
+  { name: 'browser: the booth lead scanner on a phone (badge after badge, Hot and an interest saved on tap, no signal kept on the phone and sent later, a colleague’s pass saves nothing)', args: ['browser-booth-leads.mjs'] },
   { name: 'server: the badge desk over two days (one check-in per person per day, check in on scan, undo, a scan made offline, stats by day, the saved list), on real SQLite with the clock moved', args: ['smoke-desk-days.mjs'] },
   { name: 'server: checkout on this site (CCAvenue), the switch, the answer, the queues', args: ['smoke-payments.mjs'] },
   // A paid pass moving up for the difference, at four levels (5 Nov 2026). The

@@ -390,7 +390,7 @@ check('at most five reports a day from one contact', r.status === 429, r.status)
 
 // ---- the pages ----
 r = await hit('GET', '/marketplace/dashboard');
-check('the dashboard has the Team screen, the branding screen and the new script', ['data-section="team"', 'id="team-form"', 'id="team-add-btn"', 'data-section="branding"', 'marketplace-dashboard.js?v=10', 'marketplace.css?v=9', 'data-section="connect"', 'id="connect-team"', 'id="dash-booth"', 'data-section="report"', 'id="report-form"'].every(m => r.text.includes(m)), '');
+check('the dashboard has the Team screen, the branding screen and the new script', ['data-section="team"', 'id="team-form"', 'id="team-add-btn"', 'data-section="branding"', 'marketplace-dashboard.js?v=11', 'marketplace.css?v=9', 'data-section="connect"', 'id="connect-team"', 'id="dash-booth"', 'data-section="report"', 'id="report-form"'].every(m => r.text.includes(m)), '');
 check('the team form asks for every detail the organiser listed', ['team-first', 'team-last', 'team-designation', 'team-company', 'team-email', 'team-mobile', 'team-linkedin', 'team-photo-file', 'team-at-booth', 'team-speaker'].every(id => r.text.includes('id="' + id + '"')), '');
 r = await hit('GET', '/marketplace/admin');
 check('the admin page has Teams & Passes', ['data-section="teams"', 'id="admin-teams"', 'id="team-ask-all"', 'id="team-csv"', 'id="team-deadline"', 'marketplace-admin.js?v=14', 'data-section="reports"', 'id="admin-reports"'].every(m => r.text.includes(m)), '');

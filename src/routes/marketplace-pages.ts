@@ -809,12 +809,16 @@ export function marketplaceDashboardPageHTML(): string {
     <section id="section-leads" class="dash-section hidden">
       <div class="dash-section-header"><h2><i class="fas fa-qrcode mr-2"></i>Leads</h2></div>
       <div class="dash-card">
-        <p class="text-sm" style="line-height:1.6;margin:0 0 12px">At your booth, scan the QR on a visitor&rsquo;s pass to save them as a lead. Anyone on your team can do it: they open the event app, choose Lead Console and tap <strong>Scan a badge</strong>, or simply point their phone camera at the QR. Then mark the lead hot, warm or cold and add a note.</p>
+        <p class="text-sm" style="line-height:1.6;margin:0 0 12px">At your booth, scan the QR on a visitor&rsquo;s pass to save them as a lead. Anyone on your team can do it: they open the event app, choose Lead Console and tap <strong>Scan a badge</strong>, or simply point their phone camera at the QR. Then mark the lead hot, warm or cold, tick what they want and add a note. With weak signal, Scan a badge keeps each scan on the phone and sends it when the signal returns.</p>
         <div class="team-form-actions">
           <a href="/exhibitor/scan" class="mp-btn-primary connect-open"><i class="fas fa-qrcode mr-1"></i> Scan a badge</a>
           <button type="button" id="leads-csv" class="mp-btn-secondary" style="min-height:44px"><i class="fas fa-download mr-1"></i> Download leads (CSV)</button>
         </div>
         <p id="leads-summary" class="team-pass-meter"></p>
+        <div id="leads-tools" class="hidden" style="margin-top:12px">
+          <div id="leads-filters" role="group" aria-label="Show leads" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px"></div>
+          <input id="leads-q" type="search" autocomplete="off" aria-label="Search leads" placeholder="Search by name, organisation or note" style="width:100%;min-height:44px;padding:0 12px;border:1px solid #D6DAEA;border-radius:10px;font:inherit">
+        </div>
       </div>
       <div id="leads-list" class="team-list"></div>
     </section>
@@ -968,7 +972,7 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js?v=10"></script>
+  <script src="/static/marketplace-dashboard.js?v=11"></script>
 </body>
 </html>`
 }

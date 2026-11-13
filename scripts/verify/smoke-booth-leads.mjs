@@ -36,7 +36,12 @@ const D1 = {
   async batch(list) { return list.map(s => ({ results: s._rows(), meta: {} })); },
   async exec(sql) { db.exec(sql); return { count: 1 }; },
 };
-globalThis.fetch = async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+// Every email the worker sends is kept here (the guide checks read them).
+const mails = [];
+globalThis.fetch = async (url, init) => {
+  if (/elasticemail/.test(String(url))) { try { mails.push(JSON.parse(String(init && init.body || '{}'))); } catch {} }
+  return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
 const SESSION = 'smoke-session', ADMIN = 'smoke-admin', MP = 'smoke-mp';
 const env = new Proxy({ ADMIN_SECRET: ADMIN, SESSION_SECRET: SESSION, MP_SESSION_SECRET: MP, DB: D1 }, { get: (t, k) => (k in t ? t[k] : undefined) });
 const ctx = { waitUntil() {}, passThroughOnException() {} };
@@ -158,6 +163,40 @@ check('the rating and the note can be cleared', r.status === 200 && one('SELECT 
 r = await hit('PATCH', '/api/exhibitor/leads/' + vikLead, { rating: 'x' }, mpAs(1));
 check('a bad rating is refused there too', r.status === 400, r.status);
 
+// ---- a colleague's pass, interests (0062) and scans sent late ----
+r = await hit('POST', '/api/exhibitor/leads/scan', { token: pass(11) }, as(10));
+check("a colleague's pass is never a lead: it says so", r.status === 400 && r.json.own === true && !one('SELECT id FROM exhibitor_leads WHERE attendee_id = 11'), r.text);
+r = await hit('POST', '/api/exhibitor/leads/scan', { token: pass(10) }, mpAs(1));
+check("the booth contact in the dashboard scanning a team member's pass: not a lead either", r.status === 400 && r.json.own === true && !one('SELECT id FROM exhibitor_leads WHERE attendee_id = 10'), r.text);
+r = await hit('GET', '/verify/' + pass(11), undefined, as(10));
+check("a colleague's pass QR opens the 'your own team' screen, nothing saved", /your own pass, or a colleague/.test(r.text) && !one('SELECT id FROM exhibitor_leads WHERE attendee_id = 11'), r.text.slice(0, 200));
+r = await hit('POST', '/api/exhibitor/leads/scan', { token: pass(21), tags: ['demo'] }, as(10));
+check('before 0062: interests sent with a scan are ignored, the scan still works', r.status === 200 && Array.isArray(r.json.lead.tags) && r.json.lead.tags.length === 0, r.text);
+r = await hit('GET', '/api/exhibitor/leads', undefined, as(10));
+check('before 0062: no interests are offered', Array.isArray(r.json.tag_options) && r.json.tag_options.length === 0, r.json.tag_options);
+db.exec(readFileSync(new URL('../../migrations/0062_lead_tags.sql', import.meta.url), 'utf8'));
+r = await hit('POST', '/api/exhibitor/leads/scan', { token: pass(21), tags: 'price, DEMO,boiling,demo' }, as(10));
+check('0062: interests are kept, known ones only, once each, in order', r.status === 200 && r.json.lead.tags.join() === 'demo,price' && one('SELECT tags FROM exhibitor_leads WHERE attendee_id = 21').tags === 'demo,price', r.text);
+r = await hit('POST', '/api/exhibitor/leads/scan', { token: pass(21), rating: 'hot' }, as(10));
+check('a rating sent later keeps the interests', r.json.lead.tags.join() === 'demo,price' && r.json.lead.rating === 'hot', r.text);
+const deeLead = one('SELECT id FROM exhibitor_leads WHERE attendee_id = 21').id;
+r = await hit('PATCH', '/api/exhibitor/leads/' + deeLead, { tags: ['partner'] }, mpAs(1));
+check('the dashboard changes the interests; the rating stays', r.status === 200 && r.json.lead.tags.join() === 'partner' && one('SELECT rating FROM exhibitor_leads WHERE id = ?', deeLead).rating === 'hot', r.text);
+r = await hit('GET', '/api/exhibitor/leads', undefined, as(10));
+check('the list carries the interests, their words, and who scanned how many', r.json.tag_options.length === 6 && r.json.tag_options[0].label === 'Wants a demo' && r.json.leads.find(l => l.name === 'Dee Delegate').tags.join() === 'partner' && r.json.summary.tags.partner === 1
+  && r.json.summary.by_scanner.some(s => s.by === 'Tara Team'), JSON.stringify(r.json.summary));
+// A scan kept on the phone for two hours keeps the time it was scanned.
+person(24, 'Late Larry');
+r = await hit('POST', '/api/exhibitor/leads/scan', { token: pass(24), at: Date.now() - 2 * 3600000 }, as(10));
+const ageOf = (id) => Date.now() - Date.parse(String(one('SELECT created_at FROM exhibitor_leads WHERE attendee_id = ?', id).created_at).replace(' ', 'T') + 'Z');
+const lateAge = ageOf(24);
+check('a scan sent late keeps the time it was scanned', r.status === 200 && lateAge > 1.9 * 3600000 && lateAge < 2.1 * 3600000, lateAge);
+person(25, 'Old Olga');
+r = await hit('POST', '/api/exhibitor/leads/scan', { token: pass(25), at: Date.now() - 4 * 86400000 }, as(10));
+check('a time days old is not believed: now is used', r.status === 200 && ageOf(25) < 120000, ageOf(25));
+r = await hit('GET', '/verify/' + pass(21), undefined, as(10));
+check('the lead screen offers the interests, the saved ones pressed', /What do they want\?/.test(r.text) && /data-t="partner"/.test(r.text) && /tags=\["partner"\]/.test(r.text), '');
+
 // ---- the pass QR, by who opens it ----
 r = await hit('GET', '/verify/' + pass(20), undefined, as(10));
 check('a team member opening a pass QR gets the lead screen for their company', r.status === 200 && /Booth lead/.test(r.text) && /Alpha AI/.test(r.text) && /Vik Visitor/.test(r.text) && /Buyer Bank/.test(r.text) && /Scan next badge/.test(r.text), r.text.slice(0, 300));
@@ -168,6 +207,7 @@ r = await hit('GET', '/verify/' + pass(10), undefined, as(10));
 check('their own pass says so', /your own pass/.test(r.text), r.text.slice(0, 200));
 r = await hit('GET', '/verify/' + pass(20));
 check('a stranger still sees nothing personal', /Badge desk staff only/.test(r.text) && !/Vik Visitor/.test(r.text), r.text.slice(0, 200));
+check('a signed-out exhibitor is told how to save the visitor as a lead', /Exhibitor at a booth\?/.test(r.text) && /Open the event app/.test(r.text), '');
 r = await hit('GET', '/verify/' + pass(20), undefined, as(23));
 check('an ordinary attendee still sees nothing personal', /Badge desk staff only/.test(r.text) && !/Vik Visitor/.test(r.text), '');
 r = await hit('GET', '/verify/' + pass(20), undefined, admin);
@@ -184,12 +224,16 @@ check('a hostile name cannot break out of the lead screen', !/<img src=x/.test(r
 r = await hit('GET', '/exhibitor/scan');
 check('the scanner page, signed out: how to sign in, no camera', r.status === 200 && /Open the event app/.test(r.text) && /exhibitor dashboard/.test(r.text) && !/getUserMedia/.test(r.text), r.text.slice(0, 200));
 r = await hit('GET', '/exhibitor/scan', undefined, as(23));
-check('an ordinary attendee gets the same', !/getUserMedia/.test(r.text), '');
+check('an ordinary attendee signed in is told they are on no team, and gets no camera', /not on an exhibitor/.test(r.text) && !/lead-scan\.js/.test(r.text), r.text.slice(0, 300));
 r = await hit('GET', '/exhibitor/scan', undefined, as(10));
-const scanScript = [...r.text.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).join('\n');
-let scanParses = true; try { new Function(scanScript); } catch (e) { scanParses = String(e); }
-check('a team member gets the scanner, both readers, for their company', /Alpha AI/.test(r.text) && /getUserMedia/.test(r.text) && /BarcodeDetector/.test(r.text) && /jsQR\.js/.test(r.text) && scanParses === true, scanParses);
-check('a scanned code can only go to /verify/ on this site', /location\.href='\/verify\/'\+m\[1\]/.test(r.text), '');
+const SCAN_JS = readFileSync(new URL('../../public/js/lead-scan.js', import.meta.url), 'utf8');
+let scanParses = true; try { new Function(SCAN_JS); } catch (e) { scanParses = String(e); }
+check('a team member gets the scanner for their company: the page, both readers, the card', /Alpha AI/.test(r.text) && /\/js\/lead-scan\.js\?v=/.test(r.text) && /jsQR\.js/.test(r.text) && /id="card"/.test(r.text) && /data-ex="1"/.test(r.text)
+  && /getUserMedia/.test(SCAN_JS) && /BarcodeDetector/.test(SCAN_JS) && scanParses === true, scanParses);
+check('a scanned code gives only the token of a /verify/ link; the scanner never leaves the page', SCAN_JS.includes('var VERIFY = /\\/verify\\/([A-Za-z0-9._%-]+)/;') && !/location\.href\s*=/.test(SCAN_JS) && /\/api\/exhibitor\/leads\/scan/.test(SCAN_JS), '');
+check('scans wait on the phone while there is no signal, and go when it returns', /localStorage/.test(SCAN_JS) && /addEventListener\('online', flush\)/.test(SCAN_JS) && /setInterval\(flush/.test(SCAN_JS), '');
+r = await hit('GET', '/exhibitor/scan', undefined, mpAs(1));
+check("the booth contact's scanner links back to the dashboard's leads", /data-ex="1"/.test(r.text) && /marketplace\/dashboard#leads/.test(r.text), '');
 
 // ---- the exhibitor list in the app ----
 r = await hit('GET', '/api/events/1/exhibitors');
@@ -302,13 +346,65 @@ check('the app has the workshop certificate button and loads the partners', /loa
 
 // ---- the pages ----
 r = await hit('GET', '/marketplace/dashboard');
-check('the dashboard has the Leads screen', ['data-section="leads"', 'id="leads-list"', 'id="leads-csv"', 'href="/exhibitor/scan"', 'marketplace-dashboard.js?v=10', 'id="dash-delhi"'].every(m => r.text.includes(m)), '');
+check('the dashboard has the Leads screen', ['data-section="leads"', 'id="leads-list"', 'id="leads-csv"', 'href="/exhibitor/scan"', 'marketplace-dashboard.js?v=11', 'id="dash-delhi"', 'id="leads-filters"', 'id="leads-q"'].every(m => r.text.includes(m)), '');
 r = await hit('GET', '/marketplace/admin');
 check('the admin page has the exhibitor-list switch', ['id="directory-card"', 'marketplace-admin.js?v=14', 'data-section="partners"', 'id="partners-rows"', 'id="delhi-on"', 'id="delhi-ex-cta"', 'id="delhi-save"', 'Shown in the app'].every(m => r.text.includes(m)), '');
 r = await hit('GET', '/app.js');
 check('the app: Scan a badge in the Lead Console, 8-minute talks, no dead floor-plan button', /action === 'leads'|act === 'leads'/.test(r.text) && /8-minute presentations/.test(r.text) && !/10-minute presentations/.test(r.text) && !/showBoothPackages/.test(r.text), '');
 r = await hit('GET', '/app');
 check('the Lead Console has the scan button', /href="\/exhibitor\/scan"/.test(r.text), '');
+
+// ---- Admin → Booth Leads and the lead-scanning guide ----
+db.run("INSERT INTO app_settings (key, value) VALUES ('elastic_email_api_key', 'smoke-key') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+r = await hit('GET', '/api/admin/booth-leads');
+check('booth leads: for admins only', r.status === 401 || r.status === 403, r.status);
+r = await hit('GET', '/api/admin/booth-leads', undefined, admin);
+let alpha = (r.json?.exhibitors || []).find(e => e.id === 1);
+check('booth leads: every real exhibitor with its team and leads, never the leftover row', r.status === 200 && !!alpha && !!r.json.exhibitors.find(e => e.id === 2) && !r.json.exhibitors.some(e => e.id === 3)
+  && alpha.leads === q('SELECT id FROM exhibitor_leads WHERE exhibitor_id = 1').length && alpha.team === 1 && alpha.with_account === 1 && alpha.dashboard === 1 && alpha.today >= 1 && alpha.guide_sent_count === 0 && r.json.tags_ready === true, JSON.stringify(r.json).slice(0, 500));
+// Someone the booking sheet put on the list, with no account yet; the booth now has five passes.
+db.run("INSERT INTO exhibitor_team_settings (exhibitor_id, passes, contact_name, owner_name, owner_email) VALUES (1, 5, 'Sam Spoc', 'Tushar Owner', 'tushar@bharataiinnovation.com')");
+db.run("INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_name, designation, email, added_by) VALUES (1, 1, 'Nina', 'New', 'Sales Lead', 'nina@alpha.test', 'sheet')");
+let m0 = mails.length;
+r = await hit('GET', '/api/admin/booth-leads/1/guide', undefined, admin);
+check('guide preview: the team member and the booth contact, the new person counted, no live sign-in link, nothing sent', r.status === 200 && r.json.recipients.map(x => x.email).sort().join() === 'p10@example.test,spoc@alpha.test' && r.json.exhibitor.no_account_yet === 1
+  && /Collect leads at your booth: Alpha AI/.test(r.json.subject) && !/token=/.test(r.json.html) && /Booth 21/.test(r.json.html) && /Tushar Owner/.test(r.json.html) && mails.length === m0, JSON.stringify(r.json).slice(0, 300));
+r = await hit('POST', '/api/admin/booth-leads/1/guide', {}, admin);
+const nina = one("SELECT id, badge_type FROM attendees WHERE email = 'nina@alpha.test'");
+const sentNow = mails.slice(m0), sentTo = sentNow.map(m => m.Recipients.To[0]).sort();
+check('guide: the team gets its passes first, then each person one email', r.status === 200 && r.json.sent === 3 && !!nina && nina.badge_type === 'Exhibitor' && sentTo.join() === 'nina@alpha.test,p10@example.test,spoc@alpha.test', JSON.stringify(r.json).slice(0, 200) + ' ' + sentTo);
+const htmlOf = (m) => String(m && m.Content && m.Content.Body && m.Content.Body[0].Content || '');
+const ninaMail = sentNow.find(m => m.Recipients.To[0] === 'nina@alpha.test'), spocMail = sentNow.find(m => m.Recipients.To[0] === 'spoc@alpha.test');
+check("guide: a team member's button opens the Lead Console with their email; the booth contact's opens the dashboard leads", /\/app\?email=nina%40alpha\.test&(amp;)?action=leads/.test(htmlOf(ninaMail)) && /Dear <strong>Nina<\/strong>/.test(htmlOf(ninaMail)) && /Open my Lead Console/.test(htmlOf(ninaMail))
+  && /Open my leads/.test(htmlOf(spocMail)) && /Dear <strong>Sam<\/strong>/.test(htmlOf(spocMail)) && sentNow.every(m => /Collect leads at your booth: Alpha AI/.test(m.Content.Subject)), htmlOf(ninaMail).slice(0, 300));
+r = await hit('POST', '/api/admin/booth-leads/1/guide', {}, admin);
+check('guide: sent once; a second press is refused in words', r.status === 409 && r.json.already === true && /Send again/.test(r.json.error), r.text);
+m0 = mails.length;
+r = await hit('POST', '/api/admin/booth-leads/1/guide', { again: true }, admin);
+check('guide: "Send again" sends it again, and both sends are in the audit log', r.status === 200 && mails.length - m0 === 3 && q("SELECT id FROM admin_audit WHERE action = 'booth_leads.guide_sent' AND entity_id = '1'").length === 2 && r.json.exhibitor.guide_sent_count === 2, r.text.slice(0, 300));
+db.run("UPDATE attendees SET unsubscribed_at = datetime('now') WHERE email = 'nina@alpha.test'");
+r = await hit('GET', '/api/admin/booth-leads/1/guide', undefined, admin);
+check('guide: someone who unsubscribed is left out', !r.json.recipients.some(x => x.email === 'nina@alpha.test') && r.json.unsubscribed.join() === 'nina@alpha.test', r.text.slice(0, 300));
+m0 = mails.length;
+r = await hit('POST', '/api/admin/booth-leads/1/guide/test', { to: 'organiser@bharataiinnovation.com' }, admin);
+check('guide: a test copy goes to the address given, marked Test, signing nobody in', r.status === 200 && mails.length - m0 === 1 && /^\[Test\]/.test(mails[mails.length - 1].Content.Subject) && !/token=/.test(htmlOf(mails[mails.length - 1])), r.text);
+r = await hit('POST', '/api/admin/booth-leads/2/guide', {}, as(10));
+check('guide: an exhibitor cannot send it', r.status === 401 || r.status === 403, r.status);
+r = await hit('GET', '/api/admin/booth-leads', undefined, admin);
+alpha = r.json.exhibitors.find(e => e.id === 1);
+check('booth leads: the guide shows as sent, the new person has an account now', alpha.guide_sent_count === 2 && alpha.with_account === 2 && alpha.no_account_yet === 0 && r.json.totals.guide_sent === 1, JSON.stringify(r.json.totals));
+r = await hit('GET', '/admin.js');
+check('admin: the Booth Leads section loads its own screen', /case 'boothleads': loadAdminBoothLeads\(\)/.test(r.text) && /admin-leads\.js\?v=/.test(r.text), r.status);
+const DESK_JS = readFileSync(new URL('../../public/js/admin-leads.js', import.meta.url), 'utf8');
+let deskParses = true; try { new Function(DESK_JS); } catch (e) { deskParses = String(e); }
+check('admin: the Booth Leads screen parses and has one global', deskParses === true && /w\.LeadsDesk = \{/.test(DESK_JS), deskParses);
+
+// ---- the app: the Lead Console and Scan a badge ----
+r = await hit('GET', '/app.js');
+check('the app: Lead Console filters, search, interests and an India-time spreadsheet; Scan a badge on the exhibitor home and for team members on another pass',
+  /function renderExhibitorLeads\(\)/.test(r.text) && /function ecEditLead\(/.test(r.text) && /When \(India time\)/.test(r.text) && /A\('Scan a badge','fa-qrcode'/.test(r.text) && /function roleHomeBoothStrip\(/.test(r.text), '');
+r = await hit('GET', '/app');
+check('the Lead Console has its filters and search', /data-ec-filter="hot"/.test(r.text) && /id="ec-q"/.test(r.text), '');
 
 console.log(fails ? `\n${fails} FAILED` : '\nAll booth lead checks passed');
 process.exit(fails ? 1 : 0);

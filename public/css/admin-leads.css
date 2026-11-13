@@ -1,0 +1,38 @@
+/* Admin, Booth Leads. Everything is under .bld so nothing here reaches another admin section. */
+.bld { --bl-ink: #1e2140; --bl-muted: #5b6178; --bl-line: #e3e6ef; --bl-soft: #f6f7fb; --bl-accent: #c84f00; color: var(--bl-ink); font-size: 14px; line-height: 1.45; display: grid; gap: 14px; }
+.bld *, .bld *::before, .bld *::after { box-sizing: border-box; }
+.bld button, .bld input { font: inherit; }
+.bld-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.bld-card { background: #fff; border: 1px solid var(--bl-line); border-radius: 14px; padding: 18px; }
+.bld-card h2 { margin: 0 0 6px; font-size: 17px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.bld-card h2 i { color: var(--bl-accent); }
+.bld-lead { margin: 0 0 12px; color: var(--bl-muted); max-width: 80ch; }
+.bld-warn { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: #fffaeb; color: #93370d; font-weight: 600; }
+.bld-note { color: var(--bl-muted); font-size: 13px; margin: 0; }
+.bld-sub { color: var(--bl-muted); font-size: 12.5px; }
+.bld-ok { color: #067647; font-weight: 700; }
+.bld-bad { color: #b42318; font-weight: 700; }
+.bld-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 0; }
+.bld-totals div { background: var(--bl-soft); border-radius: 12px; padding: 12px; }
+.bld-totals dt { font-size: 12.5px; color: var(--bl-muted); }
+.bld-totals dd { margin: 2px 0 0; font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.bld-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0 0; }
+.bld-tools input { min-height: 36px; padding: 0 10px; border: 1px solid var(--bl-line); border-radius: 9px; background: #fff; color: var(--bl-ink); min-width: 220px; }
+.bld-chip { min-height: 32px; padding: 0 12px; border: 1px solid var(--bl-line); border-radius: 999px; background: #fff; color: var(--bl-ink); font-weight: 700; font-size: 13px; cursor: pointer; }
+.bld-chip[aria-pressed="true"] { background: var(--bl-accent); border-color: var(--bl-accent); color: #fff; }
+.bld-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid var(--bl-line); border-radius: 9px; background: #fff; color: var(--bl-ink); font-weight: 700; font-size: 13px; cursor: pointer; }
+.bld-btn + .bld-btn { margin-left: 6px; }
+.bld-btn:disabled { opacity: .55; cursor: default; }
+.bld-btn:focus-visible, .bld-chip:focus-visible { outline: 3px solid rgba(200, 79, 0, 0.35); outline-offset: 2px; }
+.bld-primary { min-height: 38px; padding: 0 16px; background: var(--bl-accent); border-color: var(--bl-accent); color: #fff; }
+.bld-wrap { overflow-x: auto; background: #fff; border: 1px solid var(--bl-line); border-radius: 12px; }
+.bld-table { width: 100%; border-collapse: collapse; min-width: 980px; }
+.bld-table th { text-align: left; font-size: 12px; font-weight: 700; color: var(--bl-muted); background: var(--bl-soft); padding: 8px 10px; white-space: nowrap; }
+.bld-table td { padding: 9px 10px; border-top: 1px solid var(--bl-line); vertical-align: top; }
+.bld-n { text-align: right; font-variant-numeric: tabular-nums; }
+.bld-acts { white-space: nowrap; text-align: right; }
+.bld-preview td { background: var(--bl-soft); }
+.bld-frame { width: 100%; height: 640px; border: 1px solid var(--bl-line); border-radius: 10px; background: #fff; }
+.bld-test { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+.bld-test input { min-height: 34px; padding: 0 10px; border: 1px solid var(--bl-line); border-radius: 9px; min-width: 240px; }
+.bld-progress { margin: 10px 0 0; font-weight: 600; }

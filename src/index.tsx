@@ -6710,8 +6710,11 @@ app.get('/verify/:token', async (c) => {
   if (!staff) {
     const actor = await leadActor(c).catch(() => null)
     if (actor && await leadsReady(c)) {
-      const lead = await c.env.DB.prepare('SELECT rating, note FROM exhibitor_leads WHERE exhibitor_id = ? AND attendee_id = ?').bind(actor.exhibitor.id, id).first().catch(() => null) as any
-      return c.html(leadCaptureHTML({ company: actor.exhibitor.company_name, token, own: actor.attendeeId === Number(id), visitor: a, lead, dashboard: actor.attendeeId === null }))
+      const tagsOn = await leadTagsReady(c)
+      const lead = await c.env.DB.prepare(`SELECT rating, note${tagsOn ? ', tags' : ''} FROM exhibitor_leads WHERE exhibitor_id = ? AND attendee_id = ?`).bind(actor.exhibitor.id, id).first().catch(() => null) as any
+      // A colleague's pass, or their own, says so and saves nothing.
+      const own = actor.attendeeId === Number(id) || await onOwnTeam(c, actor.exhibitor.id, id)
+      return c.html(leadCaptureHTML({ company: actor.exhibitor.company_name, token, own, visitor: a, lead, dashboard: actor.attendeeId === null, tags: tagsOn ? LEAD_TAGS : [] }))
     }
   }
   return c.html(verifyPageHTML({ state: 'valid', staff, token, attendee: a, undoable, flagUndoable }))
@@ -7191,7 +7194,9 @@ function verifyPageHTML(o: any): string {
     : !o.staff
     ? `<div class="card"><p class="muted">Badge desk staff only.</p>
          <p class="muted" style="margin-top:6px;">Sign in with your desk account to see the holder's details and check them in. You stay signed in for three days, so you only do this once.</p>
-         <button onclick="signIn()">Staff sign in</button></div>`
+         <button onclick="signIn()">Staff sign in</button>
+         <p class="muted" style="margin-top:18px;"><strong>Exhibitor at a booth?</strong> To save this visitor as your lead, open the event app on this phone, sign in with the email on your exhibitor pass and tap Scan a badge.</p>
+         <button onclick="location.href='/app'" style="background:#243056;">Open the event app</button></div>`
     : `<div class="card">
          ${(photoFlagged && !hasPassPhoto && a.flagged_avatar_url) ? `<img class="photo flagged" src="${esc(a.flagged_avatar_url)}" alt="">
               <p class="nophoto">Flagged by ${esc(a.photo_flagged_by || 'the desk')} ${esc(istStamp(a.photo_flagged_at))} &mdash; did not match</p>` : ''}
@@ -14744,6 +14749,29 @@ async function leadsReady(c: any): Promise<boolean> {
 }
 
 const LEAD_RATINGS = ['hot', 'warm', 'cold']
+// What a visitor wants, ticked at the booth as the badge is scanned (0062, 13 Nov 2026).
+// The keys are stored, comma separated; the words are what the screens show.
+const LEAD_TAGS: [string, string][] = [['demo', 'Wants a demo'], ['price', 'Wants a price'], ['partner', 'Partnership'], ['buying', 'Buying soon'], ['investor', 'Investor'], ['job', 'Looking for a job']]
+const LEAD_TAG_KEYS = LEAD_TAGS.map(t => t[0])
+// Known keys only, once each, in the list's order. Takes an array or a comma list.
+const cleanLeadTags = (v: any): string => {
+  const given = new Set((Array.isArray(v) ? v : String(v ?? '').split(',')).map((s: any) => String(s).trim().toLowerCase()))
+  return LEAD_TAG_KEYS.filter(k => given.has(k)).join(',')
+}
+const leadTagList = (v: any): string[] => { const s = cleanLeadTags(v); return s ? s.split(',') : [] }
+let _leadTagsReady = false
+async function leadTagsReady(c: any): Promise<boolean> {
+  if (_leadTagsReady) return true
+  try { await c.env.DB.prepare('SELECT tags FROM exhibitor_leads LIMIT 0').all(); _leadTagsReady = true } catch { /* before 0062 */ }
+  return _leadTagsReady
+}
+// Someone on the exhibitor's own team, or its linked booth contact: their pass is never
+// a lead. Scanning it says so instead, which is how a team tries the scanner out.
+async function onOwnTeam(c: any, exhibitorId: number, attendeeId: any): Promise<boolean> {
+  const t = await c.env.DB.prepare('SELECT 1 AS hit FROM exhibitor_team WHERE exhibitor_id = ? AND attendee_id = ? LIMIT 1').bind(exhibitorId, attendeeId).first().catch(() => null)
+  if (t) return true
+  return !!(await c.env.DB.prepare('SELECT 1 AS hit FROM exhibitors WHERE id = ? AND attendee_id = ?').bind(exhibitorId, attendeeId).first().catch(() => null))
+}
 // The date in India of a UTC stamp ("2026-11-20 04:10:00" is the 20th, 9:40 am).
 const istDate = (v?: any): string => {
   const raw = v ? String(v).replace(' ', 'T') : ''
@@ -14757,9 +14785,10 @@ const istDate = (v?: any): string => {
 // app's console has always read.
 async function exhibitorLeads(c: any, exhibitorId: number) {
   const who = `a.id AS attendee_id, a.name, a.email, a.company, a.job_title, a.avatar_url, a.linkedin_url, ${publicBadgeSql('a.')} AS badge_type`
+  const tagsOn = await leadTagsReady(c)
   let scans: any[] = []
   if (await leadsReady(c)) {
-    scans = ((await c.env.DB.prepare(`SELECT l.id, l.rating, l.note, l.scanned_by, l.created_at, ${who} FROM exhibitor_leads l JOIN attendees a ON a.id = l.attendee_id WHERE l.exhibitor_id = ?`).bind(exhibitorId).all()).results || []) as any[]
+    scans = ((await c.env.DB.prepare(`SELECT l.id, l.rating, l.note, ${tagsOn ? 'l.tags, ' : ''}l.scanned_by, l.created_at, ${who} FROM exhibitor_leads l JOIN attendees a ON a.id = l.attendee_id WHERE l.exhibitor_id = ?`).bind(exhibitorId).all()).results || []) as any[]
   }
   const visits = ((await c.env.DB.prepare(`SELECT bv.id, bv.interested, bv.notes, bv.visited_at, ${who} FROM booth_visits bv JOIN attendees a ON a.id = bv.attendee_id WHERE bv.exhibitor_id = ?`).bind(exhibitorId).all()).results || []) as any[]
   const visitOf = new Map(visits.map(v => [Number(v.attendee_id), v]))
@@ -14767,18 +14796,25 @@ async function exhibitorLeads(c: any, exhibitorId: number) {
   const leads = scans.map(l => {
     const v = visitOf.get(Number(l.attendee_id))
     visitOf.delete(Number(l.attendee_id))
-    return { id: 's' + l.id, lead_id: Number(l.id), source: 'scan', rating: LEAD_RATINGS.includes(l.rating) ? l.rating : '', note: l.note || '', scanned_by: l.scanned_by || '',
+    return { id: 's' + l.id, lead_id: Number(l.id), source: 'scan', rating: LEAD_RATINGS.includes(l.rating) ? l.rating : '', note: l.note || '', tags: leadTagList(l.tags), scanned_by: l.scanned_by || '',
       visited_at: l.created_at, interested: v ? Number(v.interested) || 0 : 0, notes: v ? (v.notes || '') : '', ...person(l) }
-  }).concat([...visitOf.values()].map(v => ({ id: 'v' + v.id, lead_id: 0, source: 'visit', rating: '', note: '', scanned_by: '',
+  }).concat([...visitOf.values()].map(v => ({ id: 'v' + v.id, lead_id: 0, source: 'visit', rating: '', note: '', tags: [] as string[], scanned_by: '',
     visited_at: v.visited_at, interested: Number(v.interested) || 0, notes: v.notes || '', ...person(v) })))
   leads.sort((a, b) => String(b.visited_at || '').localeCompare(String(a.visited_at || '')))
   const days = new Map<string, number>()
   for (const l of leads) { const d = istDate(l.visited_at); days.set(d, (days.get(d) || 0) + 1) }
   const count = (r: string) => leads.filter(l => l.rating === r).length
+  // Who on the team scanned how many: their name, or the booth contact's email.
+  const scanners = new Map<string, number>()
+  for (const l of scans) { const by = String(l.scanned_by || '').trim() || 'Your team'; scanners.set(by, (scanners.get(by) || 0) + 1) }
   return {
     leads,
     summary: { total: leads.length, scanned: scans.length, interested: leads.filter(l => l.interested).length, hot: count('hot'), warm: count('warm'), cold: count('cold'),
-      by_day: [...days.entries()].sort().map(([day, n]) => ({ day, n })) },
+      by_day: [...days.entries()].sort().map(([day, n]) => ({ day, n })),
+      by_scanner: [...scanners.entries()].sort((a, b) => b[1] - a[1]).map(([by, n]) => ({ by, n })),
+      tags: Object.fromEntries(LEAD_TAG_KEYS.map(k => [k, leads.filter(l => l.tags.includes(k)).length])) },
+    // The tags this database can hold (0062), in the order the screens show them.
+    tag_options: tagsOn ? LEAD_TAGS.map(([key, label]) => ({ key, label })) : [],
   }
 }
 
@@ -14799,32 +14835,44 @@ app.post('/api/exhibitor/leads/scan', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as any
   const visitorId = await verifyPassToken(c, String(body.token || ''))
   if (visitorId === null) return c.json({ error: 'This is not a Bharat AI Innovation pass.' }, 400)
-  if (actor.attendeeId !== null && Number(visitorId) === actor.attendeeId) return c.json({ error: 'That is your own pass. Scan the visitor\u2019s pass.' }, 400)
-  const v = await c.env.DB.prepare(`SELECT id, event_id, name, company, job_title, ${publicBadgeSql()} AS badge_type FROM attendees WHERE id = ?`).bind(visitorId).first() as any
+  if (actor.attendeeId !== null && Number(visitorId) === actor.attendeeId) return c.json({ error: 'That is your own pass. Scan the visitor\u2019s pass.', own: true }, 400)
+  if (await onOwnTeam(c, actor.exhibitor.id, visitorId)) return c.json({ error: 'That pass is someone on your own team, so it is not saved. Scanning works: now scan a visitor\u2019s pass.', own: true }, 400)
+  const v = await c.env.DB.prepare(`SELECT id, event_id, name, company, job_title, avatar_url, ${publicBadgeSql()} AS badge_type FROM attendees WHERE id = ?`).bind(visitorId).first() as any
   if (!v || Number(v.event_id) !== Number(actor.exhibitor.event_id)) return c.json({ error: 'This pass is not for this event.' }, 400)
   const rating = body.rating === undefined ? '' : String(body.rating || '').toLowerCase()
   if (rating && !LEAD_RATINGS.includes(rating)) return c.json({ error: 'Choose hot, warm or cold.' }, 400)
   const note = body.note === undefined ? '' : String(body.note || '').trim().slice(0, 1000)
+  const tagsOn = await leadTagsReady(c)
+  const tags = tagsOn && body.tags !== undefined ? cleanLeadTags(body.tags) : null
+  // A scan kept on the phone while there was no signal arrives later: the moment it was
+  // scanned is kept, when it is within the last day and a half.
+  const atMs = Number(body.at)
+  const scannedAt = Number.isFinite(atMs) && atMs > Date.now() - 36 * 3600000 && atMs < Date.now() + 5 * 60000
+    ? new Date(atMs).toISOString().slice(0, 19).replace('T', ' ') : null
   const before = await c.env.DB.prepare('SELECT id FROM exhibitor_leads WHERE exhibitor_id = ? AND attendee_id = ?').bind(actor.exhibitor.id, visitorId).first() as any
   if (!before) {
     const today = ((await c.env.DB.prepare("SELECT COUNT(*) AS n FROM exhibitor_leads WHERE exhibitor_id = ? AND created_at > datetime('now', '-1 day')").bind(actor.exhibitor.id).first()) as any)?.n || 0
     if (today >= LEAD_SCANS_PER_DAY) return c.json({ error: 'That is a great many scans for one day. Please speak to the organisers.' }, 429)
   }
   // A cleared note is a real edit, so "sent" is told from "absent" by the flags.
-  await c.env.DB.prepare(`INSERT INTO exhibitor_leads (event_id, exhibitor_id, attendee_id, rating, note, scanned_by) VALUES (?, ?, ?, ?, ?, ?)
+  await c.env.DB.prepare(`INSERT INTO exhibitor_leads (event_id, exhibitor_id, attendee_id, rating, note, scanned_by${tagsOn ? ', tags' : ''}, created_at) VALUES (?, ?, ?, ?, ?, ?${tagsOn ? ', ?' : ''}, COALESCE(?, CURRENT_TIMESTAMP))
     ON CONFLICT(exhibitor_id, attendee_id) DO UPDATE SET
       rating = CASE WHEN ? = 1 THEN excluded.rating ELSE exhibitor_leads.rating END,
-      note = CASE WHEN ? = 1 THEN excluded.note ELSE exhibitor_leads.note END,
+      note = CASE WHEN ? = 1 THEN excluded.note ELSE exhibitor_leads.note END,${tagsOn ? `
+      tags = CASE WHEN ? = 1 THEN excluded.tags ELSE exhibitor_leads.tags END,` : ''}
       updated_at = CURRENT_TIMESTAMP`)
-    .bind(actor.exhibitor.event_id, actor.exhibitor.id, visitorId, rating, note, actor.by, body.rating === undefined ? 0 : 1, body.note === undefined ? 0 : 1).run()
+    .bind(actor.exhibitor.event_id, actor.exhibitor.id, visitorId, rating, note, actor.by, ...(tagsOn ? [tags ?? ''] : []), scannedAt,
+      body.rating === undefined ? 0 : 1, body.note === undefined ? 0 : 1, ...(tagsOn ? [tags === null ? 0 : 1] : [])).run()
   if (!before) {
     // The booth's visitor count moves once per person, whichever way they were recorded.
     const visited = await c.env.DB.prepare('SELECT 1 AS hit FROM booth_visits WHERE exhibitor_id = ? AND attendee_id = ?').bind(actor.exhibitor.id, visitorId).first()
     if (!visited) await c.env.DB.prepare('UPDATE exhibitors SET visitor_count = visitor_count + 1 WHERE id = ?').bind(actor.exhibitor.id).run()
   }
-  const lead = await c.env.DB.prepare('SELECT id, rating, note FROM exhibitor_leads WHERE exhibitor_id = ? AND attendee_id = ?').bind(actor.exhibitor.id, visitorId).first() as any
-  return c.json({ success: true, again: !!before, lead: { id: Number(lead.id), rating: lead.rating || '', note: lead.note || '' },
-    visitor: { name: v.name, company: v.company || '', job_title: v.job_title || '', badge_type: v.badge_type || '' } })
+  const lead = await c.env.DB.prepare(`SELECT id, rating, note${tagsOn ? ', tags' : ''} FROM exhibitor_leads WHERE exhibitor_id = ? AND attendee_id = ?`).bind(actor.exhibitor.id, visitorId).first() as any
+  // The photo, as the lead screen shows it: a path on this site or an https address only.
+  const photo = String(v.avatar_url || '').trim()
+  return c.json({ success: true, again: !!before, lead: { id: Number(lead.id), rating: lead.rating || '', note: lead.note || '', tags: leadTagList(lead.tags) },
+    visitor: { name: v.name, company: v.company || '', job_title: v.job_title || '', badge_type: v.badge_type || '', avatar_url: /^(\/|https:\/\/)/.test(photo) && photo.length < 600 ? photo : '' } })
 })
 
 // The same edit from a list, by the lead's own id.
@@ -14833,21 +14881,29 @@ app.patch('/api/exhibitor/leads/:id', async (c) => {
   const actor = await leadActor(c)
   if (!actor) return c.json({ error: 'Sign in as an exhibitor first.' }, 401)
   const id = parseInt(c.req.param('id'), 10) || 0
-  const row = await c.env.DB.prepare('SELECT id, rating, note FROM exhibitor_leads WHERE id = ? AND exhibitor_id = ?').bind(id, actor.exhibitor.id).first() as any
+  const tagsOn = await leadTagsReady(c)
+  const row = await c.env.DB.prepare(`SELECT id, rating, note${tagsOn ? ', tags' : ''} FROM exhibitor_leads WHERE id = ? AND exhibitor_id = ?`).bind(id, actor.exhibitor.id).first() as any
   if (!row) return c.json({ error: 'Lead not found' }, 404)
   const body = (await c.req.json().catch(() => ({}))) as any
   const rating = body.rating === undefined ? String(row.rating || '') : String(body.rating || '').toLowerCase()
   if (rating && !LEAD_RATINGS.includes(rating)) return c.json({ error: 'Choose hot, warm or cold.' }, 400)
   const note = body.note === undefined ? String(row.note || '') : String(body.note || '').trim().slice(0, 1000)
-  await c.env.DB.prepare('UPDATE exhibitor_leads SET rating = ?, note = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(rating, note, id).run()
-  return c.json({ success: true, lead: { id, rating, note } })
+  const tags = !tagsOn ? '' : body.tags === undefined ? cleanLeadTags(row.tags) : cleanLeadTags(body.tags)
+  await c.env.DB.prepare(`UPDATE exhibitor_leads SET rating = ?, note = ?${tagsOn ? ', tags = ?' : ''}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(rating, note, ...(tagsOn ? [tags] : []), id).run()
+  return c.json({ success: true, lead: { id, rating, note, tags: leadTagList(tags) } })
 })
 
-// The scanner in the page, for an exhibitor's team. A code is a link to /verify/<token>
-// on this site; only the token is taken from it, so no code can send the phone elsewhere.
+// The scanner in the page, for an exhibitor's team: one badge after another, a card over
+// the camera, and scans kept on the phone while there is no signal (/js/lead-scan.js). A
+// code is a link to /verify/<token> on this site; only the token is taken from it, so no
+// code can send the phone elsewhere.
+const LEAD_SCAN_VERSION = '20261113a'
 app.get('/exhibitor/scan', async (c) => {
   const actor = await leadActor(c).catch(() => null)
-  return c.html(exhibitorScanHTML({ company: actor ? actor.exhibitor.company_name : '', ready: await leadsReady(c) }))
+  // Signed in to the app but on no exhibitor's team: told so, not "sign in first".
+  const signedIn = !actor && (await verifyAttendeeSession(c).catch(() => null)) !== null
+  return c.html(exhibitorScanHTML({ company: actor ? actor.exhibitor.company_name : '', exhibitorId: actor ? actor.exhibitor.id : 0, ready: await leadsReady(c),
+    signedIn, dashboard: !!actor && actor.attendeeId === null, tags: actor && await leadTagsReady(c) ? LEAD_TAGS : [] }))
 })
 
 const LEAD_PAGE_CSS = `*{box-sizing:border-box}body{margin:0;background:#F6F7FC;color:#1E2140;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;font-size:16px;line-height:1.5}
@@ -14863,21 +14919,36 @@ h2{font-size:19px;margin:0;overflow-wrap:anywhere}.m{font-size:14px;color:#3F456
 textarea{width:100%;min-height:92px;padding:12px;border-radius:12px;border:1px solid #D6DAEA;font:inherit;color:inherit;background:#fff}
 .btn{display:block;width:100%;min-height:52px;margin-top:12px;padding:14px;border:0;border-radius:12px;background:#C84F00;color:#fff;font-size:17px;font-weight:700;text-align:center;text-decoration:none;cursor:pointer}
 .btn.sec{background:#fff;color:#1E2140;border:1px solid #D6DAEA}video{width:100%;border-radius:14px;background:#000;margin-top:12px;min-height:240px}
-.err{color:#991B1B;font-size:14px;min-height:20px;margin:10px 0 0}.hint{font-size:14px;color:#5E6585;margin:14px 0 0}`
-const leadPage = (title: string, body: string, script = '', head = '') => `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+.err{color:#991B1B;font-size:14px;min-height:20px;margin:10px 0 0}.hint{font-size:14px;color:#5E6585;margin:14px 0 0}
+.tags{display:flex;flex-wrap:wrap;gap:8px}.tags button{min-height:44px;padding:8px 14px;border-radius:999px;border:2px solid #D6DAEA;background:#fff;color:#1E2140;font-size:15px;font-weight:600;cursor:pointer}
+.tags button[aria-pressed=true]{border-color:#1A237E;background:#ECEEFB;color:#1A237E}`
+// The scanner page's own rules: the camera with an aiming box, the card that slides up
+// over it after each scan, and the list of this phone's scans.
+const SCAN_PAGE_CSS = `[hidden]{display:none!important}.cam{position:relative;margin-top:12px;border-radius:14px;overflow:hidden;background:#000}.cam video{display:block;margin:0;border-radius:0}
+.aim{position:absolute;left:18%;right:18%;top:16%;bottom:16%;border:3px solid rgba(255,255,255,.92);border-radius:16px;box-shadow:0 0 0 2000px rgba(0,0,0,.22);pointer-events:none}
+.q{margin:12px 0 0;padding:10px 12px;border-radius:10px;background:#FFF4E0;color:#7A4B00;font-size:15px;font-weight:600}.st.warn{background:#FFF4E0;color:#7A4B00}
+h2.sub{font-size:16px;margin:22px 0 8px}.recent{list-style:none;margin:0;padding:0}.recent li{margin:0 0 8px}
+.recent button{display:flex;width:100%;gap:10px;align-items:center;justify-content:space-between;min-height:52px;padding:10px 12px;border:1px solid #E1E4F2;border-radius:12px;background:#fff;color:#1E2140;font:inherit;text-align:left;cursor:pointer}
+.recent .nm{font-weight:600;overflow-wrap:anywhere;min-width:0}.recent .sm{display:block;font-size:13px;color:#5E6585;font-weight:400}
+.recent .tg{flex:none;font-size:13px;font-weight:700;padding:3px 10px;border-radius:999px;background:#ECEEFB;color:#1A237E}.recent .tg.wait{background:#FFF4E0;color:#7A4B00}.recent .tg.bad{background:#FDECEC;color:#991B1B}
+.recent .none{color:#5E6585;font-size:14px}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:20;max-height:88vh;overflow:auto;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -10px 30px rgba(20,24,60,.22);padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+.sheet-in{max-width:460px;margin:0 auto;position:relative}.x{position:absolute;top:-8px;right:-6px;width:44px;height:44px;border:0;background:none;font-size:30px;line-height:1;color:#5E6585;cursor:pointer}.sheet .who{padding-right:40px}`
+const leadTagButtons = (tags: [string, string][]) => tags.map(([k, l]) => `<button type="button" data-t="${leadEsc(k)}" aria-pressed="false">${leadEsc(l)}</button>`).join('')
+const leadPage =(title: string, body: string, script = '', head = '') => `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex"><title>${title} - Bharat AI Innovation 2026</title><style>${LEAD_PAGE_CSS}</style>${head}</head><body><main>${body}</main>${script ? `<script>${script}</script>` : ''}</body></html>`
 const leadEsc = (v: any) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string))
 
 // What a team member sees after scanning a visitor's badge. The scan is saved as the
 // page opens (a POST from the page, never the GET), so a busy booth needs no tap; the
 // rating and the note are extras. No backslash in the script: it is a template string.
-function leadCaptureHTML(o: { company: string; token: string; own: boolean; visitor: any; lead: any; dashboard: boolean }): string {
+function leadCaptureHTML(o: { company: string; token: string; own: boolean; visitor: any; lead: any; dashboard: boolean; tags: [string, string][] }): string {
   const v = o.visitor || {}
   const unpaid = ['pending', 'refunded'].includes(String(v.payment_status || '').trim().toLowerCase()) && PAID_TIERS.includes(String(v.badge_type || ''))
   const badge = unpaid ? 'Visitor Pass' : String(v.badge_type || 'Visitor Pass')
   const photo = String(v.avatar_url || '').trim()
   if (o.own) {
-    return leadPage('Booth lead', `<h1>That is your own pass</h1><p class="co">Scan the QR on a visitor&rsquo;s pass to save them as a lead for ${leadEsc(o.company)}.</p><a class="btn" href="/exhibitor/scan">Scan a visitor&rsquo;s badge</a>`)
+    return leadPage('Booth lead', `<h1>That is your own pass, or a colleague&rsquo;s</h1><p class="co">It belongs to the ${leadEsc(o.company)} team, so it is not saved. Scanning works: scan the QR on a visitor&rsquo;s pass to save them as a lead.</p><a class="btn" href="/exhibitor/scan">Scan a visitor&rsquo;s badge</a>`)
   }
   return leadPage('Booth lead', `<h1>Booth lead</h1><p class="co">For <strong>${leadEsc(o.company)}</strong></p>
     <div class="card">
@@ -14886,78 +14957,230 @@ function leadCaptureHTML(o: { company: string; token: string; own: boolean; visi
       <p class="st" id="st" role="status">Saving this lead&hellip;</p>
       <span class="lab" id="rl">How good is this lead?</span>
       <div class="rate" role="group" aria-labelledby="rl"><button type="button" data-r="hot" aria-pressed="false">Hot</button><button type="button" data-r="warm" aria-pressed="false">Warm</button><button type="button" data-r="cold" aria-pressed="false">Cold</button></div>
+      ${o.tags.length ? `<span class="lab" id="tl">What do they want?</span><div class="tags" role="group" aria-labelledby="tl">${leadTagButtons(o.tags)}</div>` : ''}
       <label class="lab" for="n">Your note</label>
       <textarea id="n" maxlength="1000" placeholder="What they need, and when to call back">${leadEsc(o.lead?.note || '')}</textarea>
       <button type="button" class="btn sec" id="sv">Save note</button>
     </div>
     <a class="btn" href="/exhibitor/scan">Scan next badge</a>
     <a class="btn sec" href="${o.dashboard ? '/marketplace/dashboard#leads' : '/app?action=leads'}">See all leads</a>`,
-  `var T=${JSON.stringify(String(o.token))}, rating=${JSON.stringify(LEAD_RATINGS.includes(o.lead?.rating) ? o.lead.rating : '')}, st=document.getElementById('st');
+  `var T=${JSON.stringify(String(o.token))}, rating=${JSON.stringify(LEAD_RATINGS.includes(o.lead?.rating) ? o.lead.rating : '')}, tags=${JSON.stringify(leadTagList(o.lead?.tags))}, st=document.getElementById('st');
    function say(t,c){ st.textContent=t; st.className='st'+(c?' '+c:''); }
-   function show(){ document.querySelectorAll('[data-r]').forEach(function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-r')===rating?'true':'false'); }); }
+   function show(){
+     document.querySelectorAll('[data-r]').forEach(function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-r')===rating?'true':'false'); });
+     document.querySelectorAll('[data-t]').forEach(function(b){ b.setAttribute('aria-pressed', tags.indexOf(b.getAttribute('data-t'))>=0?'true':'false'); });
+   }
    function send(extra, done){
      var body={token:T}; for(var k in (extra||{})) body[k]=extra[k];
      fetch('/api/exhibitor/leads/scan',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)})
        .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.error||'Could not save. Please try again.'); return j; }); })
-       .then(function(j){ rating=(j.lead&&j.lead.rating)||''; show(); say(done(j),'ok'); })
+       .then(function(j){ rating=(j.lead&&j.lead.rating)||''; if(j.lead&&j.lead.tags) tags=j.lead.tags; show(); say(done(j),'ok'); })
        .catch(function(err){ say(navigator.onLine===false?'No internet. Not saved yet: move to better signal and tap a rating.':(err.message||'Could not save. Please try again.'),'bad'); });
    }
    show();
    send(null, function(j){ return j.again?'Already in your leads. You can update the rating or the note.':'Saved to your leads.'; });
    document.querySelectorAll('[data-r]').forEach(function(b){ b.addEventListener('click', function(){ var r=b.getAttribute('data-r'); send({rating: r===rating?'':r}, function(j){ return j.lead.rating?('Saved as '+j.lead.rating+'.'):'Rating cleared.'; }); }); });
+   document.querySelectorAll('[data-t]').forEach(function(b){ b.addEventListener('click', function(){ var k=b.getAttribute('data-t'), i=tags.indexOf(k); if(i>=0) tags.splice(i,1); else tags.push(k); show(); send({tags: tags.join(',')}, function(){ return 'Saved.'; }); }); });
    document.getElementById('sv').addEventListener('click', function(){ send({note: document.getElementById('n').value}, function(){ return 'Note saved.'; }); });`)
 }
 
-function exhibitorScanHTML(o: { company: string; ready: boolean }): string {
+function exhibitorScanHTML(o: { company: string; exhibitorId: number; ready: boolean; signedIn: boolean; dashboard: boolean; tags: [string, string][] }): string {
+  if (!o.company && o.signedIn) {
+    return leadPage('Scan a badge', `<h1>Scan a visitor&rsquo;s badge</h1><p class="co">You are signed in, but your account is not on an exhibitor&rsquo;s team yet.</p>
+      <div class="card"><p class="m" style="margin:0">Ask your booth contact to add you under <strong>Your Team</strong> in the exhibitor dashboard, with the email you sign in with. Then open this page again.</p><a class="btn sec" href="/app">Back to the event app</a></div>`)
+  }
   if (!o.company) {
     return leadPage('Scan a badge', `<h1>Scan a visitor&rsquo;s badge</h1><p class="co">Sign in first, so the lead is saved for your company.</p>
       <div class="card"><p class="m" style="margin:0 0 4px"><strong>On your company&rsquo;s team?</strong> Open the event app and sign in with the email on your exhibitor pass. Then come back to this page.</p><a class="btn" href="/app">Open the event app</a>
       <p class="m" style="margin:16px 0 4px"><strong>The booth contact?</strong> Sign in to your exhibitor dashboard.</p><a class="btn sec" href="/marketplace?signin=1">Open the exhibitor dashboard</a></div>`)
   }
   if (!o.ready) return leadPage('Scan a badge', `<h1>Scan a visitor&rsquo;s badge</h1><p class="co">Badge scanning is being switched on. Please try again shortly.</p>`)
-  return leadPage('Scan a badge', `<h1>Scan a visitor&rsquo;s badge</h1><p class="co">Leads are saved for <strong>${leadEsc(o.company)}</strong>. Point the camera at the QR on the visitor&rsquo;s pass.</p>
-    <video id="v" playsinline muted autoplay></video>
+  return leadPage('Scan a badge', `<div id="scan" data-ex="${Number(o.exhibitorId) || 0}">
+    <h1>Scan visitors&rsquo; badges</h1>
+    <p class="co">Leads are saved for <strong>${leadEsc(o.company)}</strong>. Point the camera at the QR on the visitor&rsquo;s pass.</p>
+    <div class="cam"><video id="v" playsinline muted autoplay></video><span class="aim" aria-hidden="true"></span></div>
     <p class="err" id="e" role="alert"></p>
-    <button type="button" class="btn" id="cam" style="display:none">Start the camera</button>
+    <button type="button" class="btn" id="cam" hidden>Start the camera</button>
+    <p class="q" id="queue" role="status" hidden></p>
+    <h2 class="sub">Scanned on this phone</h2>
+    <ul class="recent" id="recent"><li class="none">Nobody yet. To try it, scan your own pass or a colleague&rsquo;s: it says so, and nothing is saved.</li></ul>
+    <p class="hint"><strong>Weak signal?</strong> Keep scanning. Each scan is kept on this phone and sent when the signal returns, so keep this page open.</p>
     <p class="hint"><strong>No camera here?</strong> Your phone&rsquo;s own camera app also works: point it at the QR and tap the link it offers.</p>
-    <a class="btn sec" href="/app?action=leads">See all leads</a>`,
-  `var v=document.getElementById('v'), e=document.getElementById('e'), camBtn=document.getElementById('cam'), stopped=false, stream=null;
-   var VERIFY=new RegExp('/verify/([A-Za-z0-9._%-]+)');
-   function found(raw){
-     var m=VERIFY.exec(String(raw||'')); if(!m) return false;
-     stopped=true; try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(err){}
-     location.href='/verify/'+m[1]; return true;
-   }
-   var det=null, useJs=!('BarcodeDetector' in window), cv=null, cx=null;
-   function readJs(){
-     if(typeof jsQR!=='function'||!v.videoWidth) return null;
-     if(!cv){ cv=document.createElement('canvas'); cx=cv.getContext('2d',{willReadFrequently:true}); }
-     var scale=Math.min(1,640/v.videoWidth), w=Math.round(v.videoWidth*scale), h=Math.round(v.videoHeight*scale);
-     if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; }
-     cx.drawImage(v,0,0,w,h);
-     var code=jsQR(cx.getImageData(0,0,w,h).data,w,h,{inversionAttempts:'dontInvert'});
-     return code&&code.data?code.data:null;
-   }
-   async function readNative(){ if(!det) det=new BarcodeDetector({formats:['qr_code']}); var codes=await det.detect(v); return codes&&codes.length?(codes[0].rawValue||''):null; }
-   async function loop(){
-     if(stopped) return;
-     var raw=null;
-     try{ if(!useJs){ try{ raw=await readNative(); }catch(err){ useJs=true; } } if(useJs&&raw===null) raw=readJs(); if(raw&&found(raw)) return; }catch(err){}
-     setTimeout(loop,200);
-   }
-   async function start(){
-     e.textContent=''; camBtn.style.display='none';
-     if(useJs&&typeof jsQR!=='function'){ e.textContent='This browser cannot scan in the page. Use your phone camera app on the QR instead.'; return; }
-     try{ stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}); }
-     catch(err){ e.textContent='The camera is blocked. Allow it for this site, or use your phone camera app on the QR.'; camBtn.style.display='block'; return; }
-     v.srcObject=stream;
-     if(!useJs&&BarcodeDetector.getSupportedFormats){ try{ var fm=await BarcodeDetector.getSupportedFormats(); if(fm.indexOf('qr_code')<0) useJs=true; }catch(err){ useJs=true; } }
-     loop();
-   }
-   camBtn.addEventListener('click', start);
-   start();`,
-  `<script src="/js/vendor/jsQR.js?v=20261029"></script>`)
+    <a class="btn sec" href="${o.dashboard ? '/marketplace/dashboard#leads' : '/app?action=leads'}">See all leads</a>
+  </div>
+  <div class="sheet" id="card" hidden role="dialog" aria-labelledby="cn"><div class="sheet-in">
+    <button type="button" class="x" id="x" aria-label="Close">&times;</button>
+    <div class="who"><div class="ph" id="cph" aria-hidden="true">?</div><div style="min-width:0"><h2 id="cn">Visitor</h2><p class="m" id="ct"></p><span class="pill" id="cp" hidden></span></div></div>
+    <p class="st" id="st" role="status"></p>
+    <div id="edit">
+      <span class="lab" id="rl">How good is this lead?</span>
+      <div class="rate" role="group" aria-labelledby="rl"><button type="button" data-r="hot" aria-pressed="false">Hot</button><button type="button" data-r="warm" aria-pressed="false">Warm</button><button type="button" data-r="cold" aria-pressed="false">Cold</button></div>
+      ${o.tags.length ? `<span class="lab" id="tl">What do they want?</span><div class="tags" role="group" aria-labelledby="tl">${leadTagButtons(o.tags)}</div>` : ''}
+      <label class="lab" for="n">Your note</label>
+      <textarea id="n" maxlength="1000" placeholder="What they need, and when to call back"></textarea>
+    </div>
+    <button type="button" class="btn" id="next">Done: scan the next visitor</button>
+  </div></div>`, '', `<style>${SCAN_PAGE_CSS}</style><script src="/js/vendor/jsQR.js?v=20261029"></script><script src="/js/lead-scan.js?v=${LEAD_SCAN_VERSION}" defer></script>`)
 }
+
+// ── Booth leads, for the organisers (13 Nov 2026) ──
+// Admin → Booth Leads (public/js/admin-leads.js): for each exhibitor, who can scan (the
+// team members with an account, and whether they have signed in; the booth contact's
+// dashboard login), its leads, today's, and the last scan; and the lead-scanning guide,
+// one email per person with their own sign-in button. Sending gives out the team's
+// passes first (settleTeam), as the Teams "Ask" email does, so people imported from the
+// booking sheet have an account to sign in to. Once per exhibitor unless sent again.
+const LEADS_GUIDE_SENT = 'booth_leads.guide_sent'
+// The UTC stamp at which today began in India, for "leads today".
+const istDayStartUtc = (): string => new Date(Date.parse(istDate() + 'T00:00:00+05:30')).toISOString().slice(0, 19).replace('T', ' ')
+
+async function boothLeadRows(c: any, onlyId: number | null = null): Promise<any[]> {
+  const all = async (sql: string, ...b: any[]): Promise<any[]> => { try { return (((await c.env.DB.prepare(sql).bind(...b).all()) as any).results || []) as any[] } catch { return [] } }
+  // Real exhibitors: a confirmed stand or a booking-sheet row, a team, or a dashboard login.
+  const where = `event_id = 1 AND (${DIRECTORY_SHOWN_SQL} OR EXISTS (SELECT 1 FROM exhibitor_team t WHERE t.exhibitor_id = exhibitors.id) OR EXISTS (SELECT 1 FROM mp_companies m WHERE m.exhibitor_id = exhibitors.id AND m.role <> 'admin'))`
+  const ex = onlyId === null
+    ? await all(`SELECT id, company_name, booth_number FROM exhibitors WHERE ${where} ORDER BY company_name COLLATE NOCASE`)
+    : await all(`SELECT id, company_name, booth_number FROM exhibitors WHERE id = ? AND ${where}`, onlyId)
+  if (!ex.length) return []
+  const settings = new Map((await all('SELECT exhibitor_id, owner_name, owner_email FROM exhibitor_team_settings')).map((r: any) => [Number(r.exhibitor_id), r]))
+  const team = await all('SELECT t.exhibitor_id, t.attendee_id, a.last_login_at FROM exhibitor_team t LEFT JOIN attendees a ON a.id = t.attendee_id')
+  const accounts = new Map((await all("SELECT exhibitor_id, COUNT(*) AS n FROM mp_companies WHERE exhibitor_id IS NOT NULL AND role <> 'admin' GROUP BY exhibitor_id")).map((r: any) => [Number(r.exhibitor_id), Number(r.n) || 0]))
+  const leads = new Map((await all(`SELECT exhibitor_id, COUNT(*) AS n, SUM(CASE WHEN rating = 'hot' THEN 1 ELSE 0 END) AS hot, SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS today, MAX(created_at) AS last
+      FROM exhibitor_leads WHERE event_id = 1 GROUP BY exhibitor_id`, istDayStartUtc())).map((r: any) => [Number(r.exhibitor_id), r]))
+  const sent = new Map((await all("SELECT entity_id, MAX(created_at) AS at, COUNT(*) AS n FROM admin_audit WHERE action = ? AND entity = 'exhibitor' GROUP BY entity_id", LEADS_GUIDE_SENT)).map((r: any) => [String(r.entity_id), r]))
+  const teamOf = new Map<number, any[]>()
+  for (const t of team) { const k = Number(t.exhibitor_id); teamOf.set(k, [...(teamOf.get(k) || []), t]) }
+  return ex.map((e: any) => {
+    const id = Number(e.id), t = teamOf.get(id) || [], s: any = settings.get(id) || {}, l: any = leads.get(id) || {}, g: any = sent.get(String(id))
+    const withAccount = t.filter(m => Number(m.attendee_id) > 0)
+    return {
+      id, company: String(e.company_name || ''), booth: String(e.booth_number || ''),
+      owner_name: String(s.owner_name || ''), owner_email: String(s.owner_email || ''),
+      team: t.length, with_account: withAccount.length, signed_in: withAccount.filter(m => m.last_login_at).length, no_account_yet: t.length - withAccount.length,
+      dashboard: accounts.get(id) || 0,
+      leads: Number(l.n) || 0, hot: Number(l.hot) || 0, today: Number(l.today) || 0, last_scan: l.last ? istStamp(l.last) : '',
+      guide_sent_at: g ? istStamp(g.at) : '', guide_sent_count: g ? Number(g.n) || 0 : 0,
+    }
+  })
+}
+
+// Who gets the guide: everyone on the team with an account, and the booth contact's
+// dashboard login, once each. Anyone who unsubscribed from our emails is left out.
+type LeadsGuideTo = { email: string; first: string; kind: 'team' | 'contact'; accountId: number }
+async function leadsGuideRecipients(c: any, exId: number): Promise<{ to: LeadsGuideTo[]; unsubscribed: string[] }> {
+  const rows = async (sql: string, ...b: any[]): Promise<any[]> => (((await c.env.DB.prepare(sql).bind(...b).all().catch(() => ({ results: [] }))) as any).results || []) as any[]
+  const out = new Map<string, LeadsGuideTo>()
+  for (const m of await rows('SELECT first_name, email FROM exhibitor_team WHERE exhibitor_id = ? AND attendee_id IS NOT NULL ORDER BY speaker DESC, id', exId)) {
+    const email = String(m.email || '').trim().toLowerCase()
+    if (validEmailSyntax(email) && !out.has(email)) out.set(email, { email, first: String(m.first_name || '').trim(), kind: 'team', accountId: 0 })
+  }
+  const s = await c.env.DB.prepare('SELECT contact_name FROM exhibitor_team_settings WHERE exhibitor_id = ?').bind(exId).first().catch(() => null) as any
+  const contactFirst = String(s?.contact_name || '').trim().split(/\s+/)[0] || ''
+  for (const a of await rows("SELECT id, email FROM mp_companies WHERE exhibitor_id = ? AND role <> 'admin' ORDER BY id", exId)) {
+    const email = String(a.email || '').trim().toLowerCase()
+    if (validEmailSyntax(email) && !out.has(email)) out.set(email, { email, first: contactFirst, kind: 'contact', accountId: Number(a.id) })
+  }
+  const list = [...out.values()]
+  const unsub = new Set(list.length ? (await rows(`SELECT DISTINCT lower(trim(email)) AS email FROM attendees WHERE unsubscribed_at IS NOT NULL AND lower(trim(email)) IN (${list.map(() => '?').join(', ')})`, ...list.map(r => r.email))).map((r: any) => String(r.email)) : [])
+  return { to: list.filter(r => !unsub.has(r.email)), unsubscribed: list.filter(r => unsub.has(r.email)).map(r => r.email) }
+}
+
+// The guide. preview: no live sign-in link is made for anyone.
+async function leadsGuideMail(c: any, ex: { company: string; booth: string; owner_name: string; owner_email: string }, r: LeadsGuideTo, preview = false): Promise<{ subject: string; html: string }> {
+  const base = await afterSiteBase(c)
+  const appUrl = (await settingValue(c, 'app_url')) || base + '/app'
+  const contact = r.kind === 'contact'
+  let link = contact ? base + '/marketplace/dashboard#leads' : appUrl + '?action=leads'
+  if (!preview && contact && r.accountId) { try { link = await mpSignInLink(c, r.accountId, 'leads') } catch { /* the plain link still opens the dashboard */ } }
+  if (!preview && !contact) {
+    let tokenPart = ''
+    if (await verifiedLoginEnabled(c)) { try { tokenPart = '&token=' + (await createLoginToken(c, 1, r.email, 7 * 24 * 60, 5)).token } catch { /* a link without a token still fills in the email */ } }
+    link = `${appUrl}?email=${encodeURIComponent(r.email)}&action=leads${tokenPart}`
+  }
+  const p = (html: string) => `<p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#444;">${html}</p>`
+  const step = (n: number, html: string) => `<tr><td valign="top" width="38" style="padding:0 12px 12px 0;"><div style="width:26px;height:26px;border-radius:13px;background:#C84F00;color:#ffffff;font-weight:bold;font-size:14px;line-height:26px;text-align:center;">${n}</div></td><td valign="top" style="padding:3px 0 12px;font-size:14px;line-height:1.6;color:#333;">${html}</td></tr>`
+  const help = ex.owner_name && validEmailSyntax(ex.owner_email)
+    ? `For help on the day, contact ${escEmail(ex.owner_name)} from our team at <a href="mailto:${escEmail(ex.owner_email)}" style="color:#C84F00;">${escEmail(ex.owner_email)}</a>, or reply to this email.`
+    : 'For help on the day, reply to this email.'
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
+      ${emailBrandHeader('Collect leads at your booth', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      <div style="padding:26px 20px;">
+        <p style="margin:0 0 6px;font-size:15px;color:#333;">Dear <strong>${escEmail(r.first) || 'team'}</strong>,</p>
+        ${p('Greetings from Bharat AI Innovation!')}
+        ${p(`At ${ex.booth ? 'Booth ' + escEmail(ex.booth) : 'your booth'}, save every visitor as a lead by scanning the QR code on their pass. Their name, designation, organisation and email come to you, with your own note. Everyone on the ${escEmail(ex.company)} team sees the same list.`)}
+        <p style="margin:18px 0 10px;font-size:15px;font-weight:bold;color:#1E2140;">How to do it</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+          ${step(1, `Tap the button below on your phone. It signs you in to ${contact ? 'your exhibitor dashboard' : 'the event app'}.`)}
+          ${step(2, `${contact ? 'Under <strong>Leads</strong>, tap' : 'Tap'} <strong>Scan a badge</strong>, and point the camera at the QR on the visitor&rsquo;s pass.`)}
+          ${step(3, 'Mark the lead Hot, Warm or Cold, tick what they want (a demo, a price, a partnership), and add a note if you like. Then tap Done and scan the next visitor.')}
+        </table>
+        <div style="text-align:center;margin:8px 0 22px;"><a href="${escEmail(link)}" style="display:inline-block;padding:13px 30px;background:#C84F00;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${contact ? 'Open my leads' : 'Open my Lead Console'}</a></div>
+        ${p('<strong>Try it today.</strong> Scan your own pass or a colleague&rsquo;s. The screen says it belongs to your team and saves nothing, so you know it works.')}
+        ${p('<strong>Weak signal in the hall?</strong> Keep scanning. Each scan is kept on your phone and sent when the signal returns. Keep the scan page open.')}
+        ${p('<strong>After the event,</strong> download all your leads as a spreadsheet from the Lead Console or your exhibitor dashboard.')}
+        ${p(help)}
+        <p style="margin:0 0 14px;font-size:12.5px;line-height:1.6;color:#777;">The button signs you in directly, with no password, for 7 days. After that, sign in at ${contact ? 'bharataiinnovation.com/marketplace' : 'bharataiinnovation.com/app'} with this email address.</p>
+        <p style="margin:18px 0 0;font-size:14px;line-height:1.6;color:#333;">Warm regards,<br><strong>Team Bharat AI Innovation</strong></p>
+      </div>
+    </div></body></html>`
+  return { subject: `Collect leads at your booth: ${netPlain(ex.company, 80)} | Bharat AI Innovation 2026`, html }
+}
+
+app.get('/api/admin/booth-leads', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const rows = await boothLeadRows(c)
+  const sum = (k: string) => rows.reduce((n, r) => n + (Number(r[k]) || 0), 0)
+  return c.json({
+    ready: await leadsReady(c), tags_ready: await leadTagsReady(c), exhibitors: rows,
+    totals: { exhibitors: rows.length, can_scan: rows.filter(r => r.signed_in > 0 || r.dashboard > 0).length, leads: sum('leads'), today: sum('today'), hot: sum('hot'), guide_sent: rows.filter(r => r.guide_sent_count > 0).length },
+  })
+})
+// What the guide will say, and to whom. Nothing is sent and no sign-in link is made.
+app.get('/api/admin/booth-leads/:id/guide', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const ex = (await boothLeadRows(c, Number(c.req.param('id')) || 0))[0]
+  if (!ex) return c.json({ error: 'Exhibitor not found' }, 404)
+  const { to, unsubscribed } = await leadsGuideRecipients(c, ex.id)
+  const mail = await leadsGuideMail(c, ex, to[0] || { email: '', first: '', kind: 'team', accountId: 0 }, true)
+  return c.json({ exhibitor: ex, recipients: to.map(r => ({ email: r.email, kind: r.kind })), unsubscribed, subject: mail.subject, html: mail.html })
+})
+// Sends the guide to one exhibitor's people. Once only, unless { again: true }.
+app.post('/api/admin/booth-leads/:id/guide', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const id = Number(c.req.param('id')) || 0
+  const ex = (await boothLeadRows(c, id))[0]
+  if (!ex) return c.json({ error: 'Exhibitor not found' }, 404)
+  if (ex.guide_sent_count && body.again !== true) return c.json({ error: 'Already sent on ' + ex.guide_sent_at + '. Choose "Send again" to send it once more.', already: true }, 409)
+  // Passes for the people on the list first, so each of them has an account to sign in to.
+  const row = await c.env.DB.prepare('SELECT event_id FROM exhibitors WHERE id = ?').bind(id).first().catch(() => null) as any
+  try { await settleTeam(c, { id, event_id: Number(row?.event_id) || 1 }); await syncStageSpeakers(c, id) } catch { /* settled when the team is next opened */ }
+  const { to, unsubscribed } = await leadsGuideRecipients(c, id)
+  if (!to.length) {
+    return c.json({ error: unsubscribed.length ? 'Everyone at this exhibitor has unsubscribed from our emails.' : 'Nobody to send to yet: nobody on the team has an email address, and there is no booth contact login. Add them under Teams & Passes first.' }, 400)
+  }
+  const sent: string[] = [], failed: string[] = []
+  for (const r of to) {
+    const mail = await leadsGuideMail(c, ex, r)
+    const res = await sendAdminEmail(c, r.email, mail.subject, mail.html, { unsubscribe: false })
+    if (res.ok) sent.push(r.email); else failed.push(r.email)
+  }
+  if (!sent.length) return c.json({ error: 'The email service did not accept the messages. Check the email settings, then try again.' }, 502)
+  await audit(c, LEADS_GUIDE_SENT, 'exhibitor', id, { company: ex.company, to: sent, failed, unsubscribed, again: body.again === true })
+  return c.json({ success: true, sent: sent.length, failed: failed.length, unsubscribed: unsubscribed.length, exhibitor: (await boothLeadRows(c, id))[0] || ex })
+})
+// A copy to the organiser's own address, with links that sign nobody in.
+app.post('/api/admin/booth-leads/:id/guide/test', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const to = String(body.to || '').trim().toLowerCase()
+  if (!validEmailSyntax(to)) return c.json({ error: 'Enter the email address to send the test to.' }, 400)
+  const ex = (await boothLeadRows(c, Number(c.req.param('id')) || 0))[0]
+  if (!ex) return c.json({ error: 'Exhibitor not found' }, 404)
+  const mail = await leadsGuideMail(c, ex, { email: to, first: '', kind: body.kind === 'contact' ? 'contact' : 'team', accountId: 0 }, true)
+  const res = await sendAdminEmail(c, to, '[Test] ' + mail.subject, mail.html, { unsubscribe: false })
+  if (!res.ok) return c.json({ error: res.error }, 502)
+  return c.json({ success: true })
+})
 
 // Create or update exhibitor booth for an attendee (self-service)
 app.put('/api/attendees/:id/exhibitor', async (c) => {
@@ -30241,6 +30464,17 @@ function mainPageHTML(): string {
             </div>
           </div>
           <div id="ec-summary" class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6"></div>
+          <div id="ec-tools" class="hidden mb-4">
+            <div class="flex flex-wrap gap-2 mb-3" role="group" aria-label="Show leads">
+              <button type="button" data-ec-filter="all" onclick="ecSetFilter('all')" class="px-3 py-1.5 rounded-full text-xs font-semibold">All</button>
+              <button type="button" data-ec-filter="hot" onclick="ecSetFilter('hot')" class="px-3 py-1.5 rounded-full text-xs font-semibold">Hot</button>
+              <button type="button" data-ec-filter="warm" onclick="ecSetFilter('warm')" class="px-3 py-1.5 rounded-full text-xs font-semibold">Warm</button>
+              <button type="button" data-ec-filter="cold" onclick="ecSetFilter('cold')" class="px-3 py-1.5 rounded-full text-xs font-semibold">Cold</button>
+              <button type="button" data-ec-filter="none" onclick="ecSetFilter('none')" class="px-3 py-1.5 rounded-full text-xs font-semibold">Not rated</button>
+            </div>
+            <input id="ec-q" type="search" autocomplete="off" oninput="ecSearch(this.value)" aria-label="Search leads" placeholder="Search by name, organisation or note" class="w-full px-3 py-2 rounded-lg text-sm">
+            <p id="ec-scanners" class="text-xs text-gray-400 mt-2"></p>
+          </div>
           <div id="ec-leads" class="space-y-3"></div>
         </div>
       </div>
@@ -32943,7 +33177,7 @@ function mainPageScript(): string {
           actions: [A('My sessions','fa-calendar-check',"openSpeakerGreenRoom()"), A('Edit my profile','fa-user-pen',"switchTab('myprofile')"), A('Message attendees','fa-comments',"switchTab('networking')")] };
       } else if (badge.includes('exhibitor') || role.includes('exhibitor') || badge.includes('startup')) {
         p = { label: badge.includes('startup') ? 'Startup' : 'Exhibitor', icon: 'fa-store', tint: '#FF6B00', blurb: 'Manage your booth, capture leads, and connect with buyers & investors.',
-          actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('List on AI Market','fa-robot',"location.href='/marketplace?submit=true'"), A('Find investors','fa-handshake',"switchTab('networking')")] };
+          actions: [A('Scan a badge','fa-qrcode',"location.href='/exhibitor/scan'"), A('Lead console','fa-user-group',"openExhibitorConsole()"), A('List on AI Market','fa-robot',"location.href='/marketplace?submit=true'")] };
       } else if (badge.includes('investor')) {
         p = { label: 'Investor', icon: 'fa-sack-dollar', tint: '#22c55e', blurb: 'Meet founders and enterprise buyers, and book meetings.',
           actions: [A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')"), A('Browse founders','fa-users',"switchTab('networking')"), A('My meetings','fa-calendar',"switchTab('inbox')")] };
@@ -32986,6 +33220,28 @@ function mainPageScript(): string {
               <i class="fas fa-chevron-right text-[10px] text-gray-600 ml-auto"></i>
             </button>\`).join('')}</div>
         </div>\`;
+      roleHomeBoothStrip(p.actions.some(a => a.onclick === 'openExhibitorConsole()'));
+    }
+    // Someone on an exhibitor's team whose pass is not an exhibitor pass (an Exhibition
+    // Speaker, or a Delegate Pass of their own) still scans badges at the booth. Asked
+    // once per visit.
+    let _roleBooth;
+    async function roleHomeBoothStrip(hasConsole) {
+      if (hasConsole || !currentUser) return;
+      if (_roleBooth === undefined) {
+        try { _roleBooth = await api.get(\`/api/attendees/\${currentUser.id}/exhibitor\`); } catch (e) { _roleBooth = null; }
+      }
+      const el = document.getElementById('role-home');
+      const booth = _roleBooth;
+      if (!el || !booth || !booth.id || document.getElementById('role-booth-strip')) return;
+      const box = document.createElement('div');
+      box.id = 'role-booth-strip';
+      box.className = 'glass rounded-2xl p-4 mt-3 flex items-center gap-3 flex-wrap';
+      box.innerHTML = \`<i class="fas fa-store text-lg" style="color:#C84F00"></i>
+        <div class="min-w-0 flex-1"><div class="text-sm font-semibold">\${esc(booth.company_name || 'Your booth')}\${booth.booth_number ? ' · Booth ' + esc(booth.booth_number) : ''}</div><div class="text-xs text-gray-400">You are on this exhibitor&rsquo;s team. Scan visitors&rsquo; badges to save them as leads.</div></div>
+        <a href="/exhibitor/scan" class="px-4 py-2 rounded-xl text-sm font-semibold text-white" style="background:#C84F00;"><i class="fas fa-qrcode mr-1.5"></i>Scan a badge</a>
+        <button type="button" onclick="openExhibitorConsole()" class="px-4 py-2 rounded-xl text-sm font-medium" style="border:1px solid #D6DAEA;">Lead console</button>\`;
+      el.appendChild(box);
     }
 
     function updateArrivalCard() {
@@ -36832,7 +37088,7 @@ function mainPageScript(): string {
     }
 
     // ==================== EXHIBITOR LEAD CONSOLE ====================
-    let _ecLeads = [];
+    let _ecLeads = [], _ecTags = [], _ecFilter = 'all', _ecQuery = '';
     function openExhibitorConsole(fromHistory) {
       // Reveal + activate the console tab (it has no nav entry; entered from
       // the exhibitor role-home action).
@@ -36848,39 +37104,127 @@ function mainPageScript(): string {
       if (!currentUser) return;
       const sum = document.getElementById('ec-summary');
       const list = document.getElementById('ec-leads');
-      if (list) list.innerHTML = '<div class="glass rounded-xl p-4"><div class="shimmer h-16 rounded"></div></div>';
+      if (list && !_ecLeads.length) list.innerHTML = '<div class="glass rounded-xl p-4"><div class="shimmer h-16 rounded"></div></div>';
       try {
         const data = await api.get(\`/api/attendees/\${currentUser.id}/exhibitor/leads\`);
         _ecLeads = data.leads || [];
+        _ecTags = data.tag_options || [];
         document.getElementById('ec-booth-sub').textContent = data.exhibitor ? \`\${data.exhibitor.company_name}\${data.exhibitor.booth_number ? ' · Booth ' + data.exhibitor.booth_number : ''}\` : 'Set up your booth to start capturing leads';
         if (sum) sum.innerHTML = [
           { n: data.summary.total, l: 'Total leads', i: 'fa-users', c: '#FF6B00' },
           { n: data.summary.scanned || 0, l: 'Badges scanned at your booth', i: 'fa-qrcode', c: '#22c55e' },
           { n: data.summary.hot || 0, l: 'Hot leads', i: 'fa-star', c: '#7c3aed' },
         ].map(s => \`<div class="glass rounded-xl p-4"><div class="flex items-center gap-3"><i class="fas \${s.i} text-lg" style="color:\${s.c}"></i><div><div class="text-2xl font-bold" style="font-variant-numeric:tabular-nums;">\${s.n}</div><div class="text-xs text-gray-400">\${s.l}</div></div></div></div>\`).join('');
-        if (list) list.innerHTML = _ecLeads.length ? _ecLeads.map(l => \`
-          <div class="glass rounded-xl p-4 flex items-center gap-4">
-            <img src="\${getAvatarUrl(l.email, l.name, 88, l.avatar_url)}" class="w-11 h-11 rounded-full object-cover shrink-0">
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2 flex-wrap"><span class="font-semibold text-sm truncate">\${esc(l.name)}</span>\${l.rating ? \`<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-600/20 text-primary-300">\${esc(l.rating.charAt(0).toUpperCase() + l.rating.slice(1))}</span>\` : ''}<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/5 text-gray-400">\${l.source === 'scan' ? 'Scanned' : 'Visited in the app'}</span></div>
-              <div class="text-xs text-gray-400 truncate">\${esc(l.job_title || '')}\${l.job_title && l.company ? ' · ' : ''}\${esc(l.company || '')}</div>
-              \${l.note ? \`<div class="text-[11px] text-gray-400 mt-1">Our note: \${esc(l.note)}</div>\` : ''}
-              \${l.notes ? \`<div class="text-[11px] text-gray-500 mt-1 truncate">"\${esc(l.notes)}"</div>\` : ''}
-            </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <a href="mailto:\${esc(l.email)}" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="Email"><i class="fas fa-envelope text-xs"></i></a>
-              \${safeUrl(l.linkedin_url) ? \`<a href="\${safeUrl(l.linkedin_url)}" target="_blank" rel="noopener" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="LinkedIn"><i class="fab fa-linkedin text-xs"></i></a>\` : ''}
-            </div>
-          </div>\`).join('') : '<div class="glass rounded-xl p-10 text-center"><i class="fas fa-user-group text-3xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-400">No leads yet</p><p class="text-xs text-gray-600 mt-1">Tap Scan a badge and point the camera at the QR on a visitor&rsquo;s pass. They show up here with their details.</p></div>';
+        const scanners = (data.summary && data.summary.by_scanner) || [];
+        const sc = document.getElementById('ec-scanners');
+        if (sc) sc.textContent = scanners.length ? 'Scanned by: ' + scanners.map(s => s.by + ' (' + s.n + ')').join(', ') : '';
+        renderExhibitorLeads();
       } catch(e) { if (list) list.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">Could not load leads.</p>'; }
     }
+    // The lead list: filter by rating, search, rate in one tap, note and interests in a sheet.
+    function ecTagLabel(k) { const t = _ecTags.find(x => x.key === k); return t ? t.label : k; }
+    function ecSetFilter(f) { _ecFilter = f; renderExhibitorLeads(); }
+    function ecSearch(v) { _ecQuery = String(v || '').trim().toLowerCase(); renderExhibitorLeads(); }
+    // The server's stamps are UTC ("2026-11-20 04:10:00"); people read India time.
+    function ecWhen(v) {
+      if (!v) return '';
+      const s = String(v);
+      const d = new Date(s.indexOf('T') > 0 ? s : s.replace(' ', 'T') + 'Z');
+      if (isNaN(d.getTime())) return s;
+      return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    }
+    function ecChipStyle(on) { return on ? 'background:#C84F00;color:#fff;border:1px solid #C84F00;' : 'background:#fff;color:#1E2140;border:1px solid #D6DAEA;'; }
+    function renderExhibitorLeads() {
+      const list = document.getElementById('ec-leads');
+      const tools = document.getElementById('ec-tools');
+      if (!list) return;
+      if (tools) tools.classList.toggle('hidden', !_ecLeads.length);
+      const n = { all: _ecLeads.length, hot: 0, warm: 0, cold: 0, none: 0 };
+      _ecLeads.forEach(l => { if (l.rating) n[l.rating] = (n[l.rating] || 0) + 1; else n.none++; });
+      const names = { all: 'All', hot: 'Hot', warm: 'Warm', cold: 'Cold', none: 'Not rated' };
+      document.querySelectorAll('[data-ec-filter]').forEach(b => {
+        const f = b.getAttribute('data-ec-filter');
+        b.textContent = names[f] + ' (' + (n[f] || 0) + ')';
+        b.setAttribute('aria-pressed', f === _ecFilter ? 'true' : 'false');
+        b.style.cssText = ecChipStyle(f === _ecFilter);
+      });
+      if (!_ecLeads.length) {
+        list.innerHTML = '<div class="glass rounded-xl p-10 text-center"><i class="fas fa-user-group text-3xl text-gray-600 mb-3 block"></i><p class="text-sm text-gray-400">No leads yet</p><p class="text-xs text-gray-600 mt-1">Tap Scan a badge and point the camera at the QR on a visitor&rsquo;s pass. They show up here with their details.</p></div>';
+        return;
+      }
+      const shown = _ecLeads.filter(l => {
+        if (_ecFilter === 'none' ? !!l.rating : (_ecFilter !== 'all' && l.rating !== _ecFilter)) return false;
+        return !_ecQuery || [l.name, l.company, l.job_title, l.note, l.notes].join(' ').toLowerCase().indexOf(_ecQuery) >= 0;
+      });
+      if (!shown.length) { list.innerHTML = '<p class="text-sm text-gray-500 text-center py-6">No leads match. Choose All, or clear the search.</p>'; return; }
+      list.innerHTML = shown.map(l => \`
+          <div class="glass rounded-xl p-4">
+            <div class="flex items-center gap-4">
+              <img src="\${getAvatarUrl(l.email, l.name, 88, l.avatar_url)}" alt="" class="w-11 h-11 rounded-full object-cover shrink-0">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 flex-wrap"><span class="font-semibold text-sm truncate">\${esc(l.name)}</span>\${l.rating ? \`<span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary-600/20 text-primary-300">\${esc(l.rating.charAt(0).toUpperCase() + l.rating.slice(1))}</span>\` : ''}<span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-white/5 text-gray-400">\${l.source === 'scan' ? 'Scanned' : 'Visited in the app'}</span></div>
+                <div class="text-xs text-gray-400 truncate">\${esc(l.job_title || '')}\${l.job_title && l.company ? ' · ' : ''}\${esc(l.company || '')}</div>
+                <div class="text-[11px] text-gray-500 mt-0.5">\${esc(ecWhen(l.visited_at))}\${l.scanned_by ? ' · by ' + esc(l.scanned_by) : ''}</div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <a href="mailto:\${esc(l.email)}" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="Email" aria-label="Email \${esc(l.name)}"><i class="fas fa-envelope text-xs"></i></a>
+                \${safeUrl(l.linkedin_url) ? \`<a href="\${safeUrl(l.linkedin_url)}" target="_blank" rel="noopener" class="w-9 h-9 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/10 text-gray-300 transition" title="LinkedIn" aria-label="LinkedIn of \${esc(l.name)}"><i class="fab fa-linkedin text-xs"></i></a>\` : ''}
+              </div>
+            </div>
+            \${(l.tags || []).length ? \`<div class="flex flex-wrap gap-1.5 mt-2">\${l.tags.map(t => \`<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold" style="background:#ECEEFB;color:#1A237E;">\${esc(ecTagLabel(t))}</span>\`).join('')}</div>\` : ''}
+            \${l.note ? \`<div class="text-xs text-gray-400 mt-2">Our note: \${esc(l.note)}</div>\` : ''}
+            \${l.notes ? \`<div class="text-xs text-gray-500 mt-1">Their note: \${esc(l.notes)}</div>\` : ''}
+            \${l.lead_id ? \`<div class="flex flex-wrap gap-2 mt-3">\${['hot', 'warm', 'cold'].map(r => \`<button type="button" onclick="ecRate(\${l.lead_id}, '\${r}')" aria-pressed="\${l.rating === r}" class="px-3 py-1.5 rounded-lg text-xs font-semibold" style="\${ecChipStyle(l.rating === r)}">\${r.charAt(0).toUpperCase() + r.slice(1)}</button>\`).join('')}<button type="button" onclick="ecEditLead(\${l.lead_id})" class="px-3 py-1.5 rounded-lg text-xs font-semibold" style="\${ecChipStyle(false)}"><i class="fas fa-pen mr-1"></i>\${_ecTags.length ? 'Note and interests' : (l.note ? 'Edit note' : 'Add note')}</button></div>\` : ''}
+          </div>\`).join('');
+    }
+    async function ecPatch(id, body) {
+      try {
+        const r = await fetch('/api/exhibitor/leads/' + encodeURIComponent(id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || 'Could not save. Please try again.');
+        const l = _ecLeads.find(x => x.lead_id === Number(id));
+        if (l && j.lead) { l.rating = j.lead.rating || ''; l.note = j.lead.note || ''; if (j.lead.tags) l.tags = j.lead.tags; }
+        renderExhibitorLeads();
+        showToast('Saved', 'success');
+        return true;
+      } catch (e) { showToast(e.message || 'Could not save. Please try again.', 'error'); return false; }
+    }
+    function ecRate(id, r) { const l = _ecLeads.find(x => x.lead_id === Number(id)); ecPatch(id, { rating: l && l.rating === r ? '' : r }); }
+    function ecEditLead(id) {
+      const l = _ecLeads.find(x => x.lead_id === Number(id));
+      if (!l) return;
+      const mc = document.getElementById('modal-container');
+      const mb = document.getElementById('modal-box');
+      mb.innerHTML = \`
+        <div class="p-6">
+          <h3 class="text-lg font-bold">\${esc(l.name)}</h3>
+          <p class="text-xs text-gray-400 mb-4">\${esc([l.job_title, l.company].filter(Boolean).join(' · '))}</p>
+          \${_ecTags.length ? \`<p class="text-sm font-semibold mb-2">What do they want?</p><div class="flex flex-wrap gap-2 mb-4" id="ec-edit-tags">\${_ecTags.map(t => \`<label class="flex items-center gap-2 px-3 py-2 rounded-lg text-sm" style="border:1px solid #D6DAEA;"><input type="checkbox" value="\${esc(t.key)}" \${(l.tags || []).indexOf(t.key) >= 0 ? 'checked' : ''}> \${esc(t.label)}</label>\`).join('')}</div>\` : ''}
+          <label class="text-sm font-semibold mb-2 block" for="ec-edit-note">Your note</label>
+          <textarea id="ec-edit-note" rows="4" maxlength="1000" class="w-full px-3 py-2 rounded-lg text-sm" placeholder="What they need, and when to call back">\${esc(l.note || '')}</textarea>
+          <div class="flex gap-2 mt-4">
+            <button type="button" onclick="ecSaveEdit(\${l.lead_id})" class="flex-1 px-4 py-3 rounded-xl text-sm font-semibold text-white" style="background:#C84F00;">Save</button>
+            <button type="button" onclick="document.getElementById('modal-container').classList.add('hidden')" class="px-4 py-3 rounded-xl text-sm font-medium glass hover:bg-white/10">Cancel</button>
+          </div>
+        </div>\`;
+      mc.classList.remove('hidden');
+    }
+    async function ecSaveEdit(id) {
+      const body = { note: (document.getElementById('ec-edit-note') || {}).value || '' };
+      const box = document.getElementById('ec-edit-tags');
+      if (box) body.tags = Array.from(box.querySelectorAll('input:checked')).map(i => i.value).join(',');
+      if (await ecPatch(id, body)) document.getElementById('modal-container').classList.add('hidden');
+    }
+    // A spreadsheet of every lead. A cell that begins like a formula is quoted so a
+    // spreadsheet does not run it; times are India time.
     function exportLeadsCsv() {
       if (!_ecLeads.length) { showToast('No leads to export yet', 'info'); return; }
-      const rows = [['Name','Email','Company','Job Title','Pass','How','Rating','Our note','Their note','Scanned by','When (UTC)']];
-      _ecLeads.forEach(l => rows.push([l.name, l.email, l.company || '', l.job_title || '', l.badge_type || '', l.source === 'scan' ? 'Badge scanned' : 'Visited in the app', l.rating || '', l.note || '', l.notes || '', l.scanned_by || '', l.visited_at || '']));
-      const csv = rows.map(r => r.map(c => \`"\${String(c).replace(/"/g,'""')}"\`).join(',')).join('\\n');
+      const cell = (v) => { let t = String(v == null ? '' : v); if (/^[=+@-]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"'; };
+      const rows = [['Name', 'Email', 'Company', 'Designation', 'LinkedIn', 'Pass', 'How', 'Rating', 'What they want', 'Our note', 'Their note', 'Scanned by', 'When (India time)']];
+      _ecLeads.forEach(l => rows.push([l.name, l.email, l.company || '', l.job_title || '', l.linkedin_url || '', l.badge_type || '', l.source === 'scan' ? 'Badge scanned' : 'Visited in the app', l.rating || '', (l.tags || []).map(ecTagLabel).join('; '), l.note || '', l.notes || '', l.scanned_by || '', ecWhen(l.visited_at)]));
+      const csv = String.fromCharCode(65279) + rows.map(r => r.map(cell).join(',')).join(String.fromCharCode(13, 10));
       const blob = new Blob([csv], { type: 'text/csv' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'booth-leads.csv'; a.click();
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'booth-leads.csv'; document.body.appendChild(a); a.click(); a.remove();
     }
 
     // ==================== RSVP FUNCTIONS ====================
@@ -40028,6 +40372,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('badge-desk')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="badge-desk" title="Badge Desk">
         <i class="fas fa-qrcode w-5 text-center shrink-0"></i><span class="sidebar-label">Badge Desk</span>
       </button>
+      <button onclick="switchSection('boothleads')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="boothleads" title="Booth Leads: who can scan at each booth, their leads, and the scanning guide">
+        <i class="fas fa-id-card w-5 text-center shrink-0"></i><span class="sidebar-label">Booth Leads</span>
+      </button>
       <button onclick="switchSection('analytics')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="analytics" title="Analytics">
         <i class="fas fa-chart-bar w-5 text-center shrink-0"></i><span class="sidebar-label">Analytics</span>
       </button>
@@ -40116,6 +40463,7 @@ function adminPageHTML(): string {
       <!-- Boardrooms Section -->
       <div id="section-rooms" class="section-content hidden"></div>
       <div id="section-after" class="section-content hidden"></div>
+      <div id="section-boothleads" class="section-content hidden"></div>
       <div id="section-liveqa" class="section-content hidden"></div>
       <div id="section-delhi2027" class="section-content hidden"></div>
       <!-- Settings Section -->
@@ -40673,6 +41021,7 @@ function adminPageScript(): string {
         case 'workshops': loadAdminWorkshops(); break;
         case 'rooms': loadAdminRooms(); break;
         case 'after': loadAdminAfter(); break;
+        case 'boothleads': loadAdminBoothLeads(); break;
         case 'liveqa': loadAdminLiveQa(); break;
         case 'delhi2027': loadAdminDelhi(); break;
         case 'badge-desk': loadBadgeDesk(); break;
@@ -40716,6 +41065,43 @@ function adminPageScript(): string {
         catch (err) { sectionError(host, 'after', { message: err.message }, 'loadAdminAfter()'); return; }
       }
       await window.AfterDesk.mount(host, { api: api, toast: toast, startCampaign: startCampaign, authHeaders: authHeaders });
+    }
+    // Booth Leads: who can scan at each booth, its leads, and the lead-scanning guide, in
+    // /js/admin-leads.js (one global, LeadsDesk) with its own stylesheet, loaded the first
+    // time the section opens. Bump LEADS_DESK_VERSION on any change to either.
+    var LEADS_DESK_VERSION = '20261113a';
+    var leadsDeskAssets = null;
+    function leadsDeskLoadAssets() {
+      if (window.LeadsDesk) return Promise.resolve();
+      if (leadsDeskAssets) return leadsDeskAssets;
+      var css = new Promise(function (resolve) {
+        if (document.querySelector('link[data-leads-desk]')) { resolve(); return; }
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/css/admin-leads.css?v=' + LEADS_DESK_VERSION;
+        l.setAttribute('data-leads-desk', '1');
+        l.onload = function () { resolve(); };
+        l.onerror = function () { resolve(); };
+        document.head.appendChild(l);
+      });
+      var js = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/js/admin-leads.js?v=' + LEADS_DESK_VERSION;
+        s.onload = function () { if (window.LeadsDesk) resolve(); else reject(new Error('The Booth Leads screen did not start.')); };
+        s.onerror = function () { s.remove(); reject(new Error('The Booth Leads screen could not be downloaded. Check the connection and press Try again.')); };
+        document.head.appendChild(s);
+      });
+      leadsDeskAssets = Promise.all([css, js]).catch(function (err) { leadsDeskAssets = null; throw err; });
+      return leadsDeskAssets;
+    }
+    async function loadAdminBoothLeads() {
+      var host = document.getElementById('section-boothleads');
+      if (!window.LeadsDesk) {
+        if (!host.firstChild) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading...</div>';
+        try { await leadsDeskLoadAssets(); }
+        catch (err) { sectionError(host, 'boothleads', { message: err.message }, 'loadAdminBoothLeads()'); return; }
+      }
+      await window.LeadsDesk.mount(host, { api: api, toast: toast });
     }
     // Live Q&A: every session's questions and the moderator links, in /js/admin-qa.js
     // (one global, QaDesk) with its own stylesheet, loaded the first time the section

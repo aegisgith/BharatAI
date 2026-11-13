@@ -582,45 +582,73 @@ const loadLeads = async () => {
   renderBooth()
 }
 const leadDay = (d) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || ''); return m ? `${+m[3]} ${MONTHS[+m[2] - 1]}` : d }
+// What a visitor wants (0062): the server sends the words with the list.
+const leadTagLabel = (k) => { const t = ((leadsInfo && leadsInfo.tag_options) || []).find(x => x.key === k); return t ? t.label : k }
+let leadsFilter = 'all', leadsQuery = '', leadsEditing = ''
+const LEAD_FILTERS = [['all', 'All'], ['hot', 'Hot'], ['warm', 'Warm'], ['cold', 'Cold'], ['none', 'Not rated']]
+const leadsShown = (ls) => ls.filter(l => {
+  if (leadsFilter === 'none' ? !!l.rating : (leadsFilter !== 'all' && l.rating !== leadsFilter)) return false
+  return !leadsQuery || [l.name, l.company, l.job_title, l.note, l.notes].join(' ').toLowerCase().includes(leadsQuery)
+})
 const renderLeads = () => {
-  const s = leadsInfo.summary || {}, ls = leadsInfo.leads || []
+  const s = leadsInfo.summary || {}, ls = leadsInfo.leads || [], tagOpts = leadsInfo.tag_options || []
   const days = (s.by_day || []).map(d => `${leadDay(d.day)}: ${d.n}`).join(' · ')
+  const who = (s.by_scanner || []).map(x => `${x.by} (${x.n})`).join(', ')
   document.getElementById('leads-summary').innerHTML = ls.length
-    ? `<strong>${esc(s.total)}</strong> ${s.total === 1 ? 'lead' : 'leads'} · ${esc(s.scanned || 0)} scanned at your booth · ${esc(s.hot || 0)} hot · ${esc(s.warm || 0)} warm · ${esc(s.cold || 0)} cold${days ? `<br><span class="text-xs text-slate-500">By day: ${esc(days)}</span>` : ''}`
+    ? `<strong>${esc(s.total)}</strong> ${s.total === 1 ? 'lead' : 'leads'} · ${esc(s.scanned || 0)} scanned at your booth · ${esc(s.hot || 0)} hot · ${esc(s.warm || 0)} warm · ${esc(s.cold || 0)} cold${days ? `<br><span class="text-xs text-slate-500">By day: ${esc(days)}</span>` : ''}${who ? `<br><span class="text-xs text-slate-500">Scanned by: ${esc(who)}</span>` : ''}`
     : (leadsInfo.can_scan ? 'No leads yet. They appear here as soon as a badge is scanned.' : 'Badge scanning is being switched on. Leads will appear here.')
+  const tools = document.getElementById('leads-tools'); if (tools) tools.classList.toggle('hidden', !ls.length)
+  const n = { all: ls.length, hot: 0, warm: 0, cold: 0, none: 0 }
+  ls.forEach(l => { if (l.rating) n[l.rating] = (n[l.rating] || 0) + 1; else n.none++ })
+  const filters = document.getElementById('leads-filters')
+  if (filters) filters.innerHTML = LEAD_FILTERS.map(([k, label]) => `<button type="button" class="${leadsFilter === k ? 'mp-btn-primary' : 'mp-btn-secondary'}" aria-pressed="${leadsFilter === k}" data-leads-filter="${k}">${label} (${n[k] || 0})</button>`).join('')
+  const shown = leadsShown(ls)
   const list = document.getElementById('leads-list')
-  list.innerHTML = ls.map(l => `<div class="team-card" style="grid-template-columns:1fr">
+  list.innerHTML = (ls.length && !shown.length) ? '<p class="team-sub" style="padding:12px 4px">No leads match. Choose All, or clear the search.</p>' : shown.map(l => `<div class="team-card" style="grid-template-columns:1fr">
       <div style="min-width:0">
         <p class="team-name">${esc(l.name)}</p>
         <p class="team-sub">${esc([l.job_title, l.company].filter(Boolean).join(' · '))}</p>
         <p class="team-sub">${esc(l.email || '')}</p>
-        <div class="team-chips"><span class="team-chip">${l.source === 'scan' ? 'Badge scanned' : 'Visited in the app'}</span>${l.scanned_by ? `<span class="team-chip">by ${esc(l.scanned_by)}</span>` : ''}<span class="team-chip">${esc(fmtDateTime(l.visited_at))}</span></div>
+        <div class="team-chips"><span class="team-chip">${l.source === 'scan' ? 'Badge scanned' : 'Visited in the app'}</span>${l.scanned_by ? `<span class="team-chip">by ${esc(l.scanned_by)}</span>` : ''}<span class="team-chip">${esc(fmtDateTime(l.visited_at))}</span>${(l.tags || []).map(t => `<span class="team-chip" style="background:#ECEEFB;color:#1A237E">${esc(leadTagLabel(t))}</span>`).join('')}</div>
         ${l.note ? `<p class="team-sub" style="margin-top:8px"><strong>Our note:</strong> ${esc(l.note)}</p>` : ''}
         ${l.notes ? `<p class="team-sub" style="margin-top:4px"><strong>Their note:</strong> ${esc(l.notes)}</p>` : ''}
-        ${l.lead_id ? `<div class="team-card-actions">${['hot', 'warm', 'cold'].map(r => `<button type="button" class="${l.rating === r ? 'mp-btn-primary' : 'mp-btn-secondary'}" aria-pressed="${l.rating === r}" data-lead-rate="${esc(l.lead_id)}" data-rating="${r}">${r.charAt(0).toUpperCase() + r.slice(1)}</button>`).join('')}<button type="button" class="mp-btn-secondary" data-lead-note="${esc(l.lead_id)}"><i class="fas fa-pen mr-1"></i> ${l.note ? 'Edit note' : 'Add note'}</button></div>` : ''}
+        ${l.lead_id && leadsEditing === String(l.lead_id) ? `<div style="margin-top:10px">
+          ${tagOpts.length ? `<p class="team-sub" style="margin:0 0 6px"><strong>What do they want?</strong></p><div data-lead-tags style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">${tagOpts.map(t => `<label class="team-chip" style="display:inline-flex;align-items:center;gap:6px;min-height:36px;cursor:pointer"><input type="checkbox" value="${esc(t.key)}"${(l.tags || []).includes(t.key) ? ' checked' : ''}> ${esc(t.label)}</label>`).join('')}</div>` : ''}
+          <label class="team-sub" for="lead-note-${esc(l.lead_id)}" style="display:block;margin-bottom:4px"><strong>Your note</strong></label>
+          <textarea id="lead-note-${esc(l.lead_id)}" maxlength="1000" rows="3" style="width:100%;padding:10px;border:1px solid #D6DAEA;border-radius:10px;font:inherit" placeholder="What they need, and when to call back">${esc(l.note || '')}</textarea>
+          <div class="team-card-actions"><button type="button" class="mp-btn-primary" data-lead-save="${esc(l.lead_id)}">Save</button><button type="button" class="mp-btn-secondary" data-lead-cancel>Cancel</button></div>
+        </div>` : ''}
+        ${l.lead_id && leadsEditing !== String(l.lead_id) ? `<div class="team-card-actions">${['hot', 'warm', 'cold'].map(r => `<button type="button" class="${l.rating === r ? 'mp-btn-primary' : 'mp-btn-secondary'}" aria-pressed="${l.rating === r}" data-lead-rate="${esc(l.lead_id)}" data-rating="${r}">${r.charAt(0).toUpperCase() + r.slice(1)}</button>`).join('')}<button type="button" class="mp-btn-secondary" data-lead-note="${esc(l.lead_id)}"><i class="fas fa-pen mr-1"></i> ${tagOpts.length ? 'Note and interests' : (l.note ? 'Edit note' : 'Add note')}</button></div>` : ''}
       </div></div>`).join('')
   const save = async (id, body) => {
-    try { await api('/api/exhibitor/leads/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(body) }); await loadLeads(); showToast('Saved') }
+    try { await api('/api/exhibitor/leads/' + encodeURIComponent(id), { method: 'PATCH', body: JSON.stringify(body) }); leadsEditing = ''; await loadLeads(); showToast('Saved') }
     catch (err) { showToast(err.message, true) }
   }
+  if (filters) filters.querySelectorAll('[data-leads-filter]').forEach(b => b.addEventListener('click', () => { leadsFilter = b.getAttribute('data-leads-filter'); renderLeads() }))
   list.querySelectorAll('[data-lead-rate]').forEach(b => b.addEventListener('click', () => {
     const cur = ls.find(l => String(l.lead_id) === b.getAttribute('data-lead-rate'))
     save(b.getAttribute('data-lead-rate'), { rating: cur && cur.rating === b.getAttribute('data-rating') ? '' : b.getAttribute('data-rating') })
   }))
-  list.querySelectorAll('[data-lead-note]').forEach(b => b.addEventListener('click', () => {
-    const cur = ls.find(l => String(l.lead_id) === b.getAttribute('data-lead-note'))
-    const note = prompt('Your note on this lead:', cur ? cur.note || '' : '')
-    if (note !== null) save(b.getAttribute('data-lead-note'), { note })
+  list.querySelectorAll('[data-lead-note]').forEach(b => b.addEventListener('click', () => { leadsEditing = b.getAttribute('data-lead-note'); renderLeads() }))
+  list.querySelectorAll('[data-lead-cancel]').forEach(b => b.addEventListener('click', () => { leadsEditing = ''; renderLeads() }))
+  list.querySelectorAll('[data-lead-save]').forEach(b => b.addEventListener('click', () => {
+    const id = b.getAttribute('data-lead-save'), card = b.closest('.team-card')
+    const body = { note: (card.querySelector('textarea') || {}).value || '' }
+    const box = card.querySelector('[data-lead-tags]')
+    if (box) body.tags = [...box.querySelectorAll('input:checked')].map(i => i.value).join(',')
+    save(id, body)
   }))
 }
+const leadsQ = document.getElementById('leads-q')
+if (leadsQ) leadsQ.addEventListener('input', () => { leadsQuery = leadsQ.value.trim().toLowerCase(); if (leadsInfo) renderLeads() })
 const leadsCsvBtn = document.getElementById('leads-csv')
 if (leadsCsvBtn) leadsCsvBtn.addEventListener('click', () => {
   const ls = (leadsInfo && leadsInfo.leads) || []
   if (!ls.length) { showToast('No leads to download yet'); return }
   // A cell that begins like a formula is quoted so a spreadsheet does not run it.
   const cell = (v) => { let t = String(v == null ? '' : v); if (/^[=+@\t\r-]/.test(t)) t = "'" + t; return '"' + t.replace(/"/g, '""') + '"' }
-  const rows = [['Name', 'Email', 'Company', 'Designation', 'Pass', 'How', 'Rating', 'Our note', 'Their note', 'Scanned by', 'When (UTC)']]
-    .concat(ls.map(l => [l.name, l.email, l.company, l.job_title, l.badge_type, l.source === 'scan' ? 'Badge scanned' : 'Visited in the app', l.rating, l.note, l.notes, l.scanned_by, l.visited_at]))
+  const rows = [['Name', 'Email', 'Company', 'Designation', 'LinkedIn', 'Pass', 'How', 'Rating', 'What they want', 'Our note', 'Their note', 'Scanned by', 'When']]
+    .concat(ls.map(l => [l.name, l.email, l.company, l.job_title, l.linkedin_url, l.badge_type, l.source === 'scan' ? 'Badge scanned' : 'Visited in the app', l.rating, (l.tags || []).map(leadTagLabel).join('; '), l.note, l.notes, l.scanned_by, fmtDateTime(l.visited_at)]))
   const url = URL.createObjectURL(new Blob(['\uFEFF' + rows.map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv' }))
   const a = document.createElement('a'); a.href = url; a.download = 'booth-leads.csv'; document.body.appendChild(a); a.click(); a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 5000)
