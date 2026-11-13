@@ -25,7 +25,7 @@
 
     { "name": "Tarun Chugh", "role": "MD & CEO", "org": "Bajaj Life Insurance", "photo": "images/speaker-tarun-chugh.webp", "logo": "images/logo-bajaj-life.webp" },
     { "name": "Ratan Kumar Kesh", "role": "Executive Director & COO", "org": "Bandhan Bank", "photo": "images/speaker-ratan-kumar-kesh-bandhan.webp", "logo": "images/logo-bandhan.webp" },
-    { "name": "Sarosh Amaria", "role": "MD", "org": "Tata Capital" },
+    { "name": "Sarosh Amaria", "role": "MD", "org": "Tata Capital", "photo": "images/speaker-sarosh-amaria-sq.webp" },
     { "name": "Pravin Kumar", "role": "Chief Market Information Security Officer & Data Protection Officer", "org": "National Payments Corporation of India (NPCI)", "photo": "images/speaker-pravin-kumar.jpg", "logo": "images/org-logos/favicon-npci.org.in.png" },
     { "name": "Mayur Kapur", "role": "Asia Chief Strategy Officer", "org": "TransUnion", "logo": "images/org-logos/transunion.webp" },
     { "name": "Shailesh Dhuri", "role": "CEO", "org": "Decimal Point Analytics", "photo": "images/speaker-shailesh-dhuri-final.webp", "logo": "images/org-logos/favicon-decimalpointanalytics.com.png" },
@@ -44,7 +44,7 @@
     { "name": "Mahalakshmi AV", "role": "Head of Sales, West and South India", "org": "AWS", "photo": "images/speaker-mahalakshmi-av-sq.webp", "logo": "images/org-logos/aws.webp" },
     { "name": "Sandeep Kumar", "role": "CIO", "org": "Go Digit Insurance", "photo": "images/speaker-sandeep-kumar-godigit.webp", "logo": "images/org-logos/favicon-godigit.com.png" },
 
-    { "name": "Rajat Nigam", "role": "CTO, Head of Technology & Media Operations", "org": "JioStar India", "logo": "images/org-logos/jiostar.webp" },
+    { "name": "Rajat Nigam", "role": "CTO, Head of Technology & Media Operations", "org": "JioStar India", "photo": "images/speaker-rajat-nigam-sq.webp", "logo": "images/org-logos/jiostar.webp" },
     { "name": "Simon David Hunter", "role": "President", "org": "Asian Screen Institute, Singapore", "photo": "images/speaker-simon-david-hunter-sq.webp" },
     { "name": "Saurabh Kushwah", "role": "Co-Founder & Chief Product and Technology Officer", "org": "BULLET Microdrama · ZEEL", "photo": "images/speaker-saurabh-kushwah-sq.webp", "logo": "images/org-logos/bullet-microdrama.webp" },
     { "name": "Pramod Prakash", "role": "Chief Technology Officer", "org": "Zee Entertainment Enterprises", "photo": "images/speaker-pramod-prakash-sq.webp", "logo": "images/org-logos/favicon-zee.com.png" },
@@ -53,7 +53,7 @@
     { "name": "Utsav Shroff", "role": "Director, India and South Asia Operations", "org": "University of Western Australia", "logo": "images/org-logos/uwa.webp" },
     { "name": "Dr. Lakshmi Mohan", "role": "Pro Vice Chancellor", "org": "ITM Skills University", "photo": "images/speaker-lakshmi-mohan-sq.webp", "logo": "images/org-logos/itm-skills-university.webp" },
     { "name": "Dr. Manpreet Singh Manna", "role": "Founding Executive Director", "org": "GCC School / SLIET", "photo": "images/speaker-manpreet-singh-manna-sq.webp" },
-    { "name": "Tarun Anand", "role": "Founder & Chancellor", "org": "Universal AI University", "logo": "images/org-logos/universal-ai-university.webp" },
+    { "name": "Tarun Anand", "role": "Founder & Chancellor", "org": "Universal AI University", "photo": "images/speaker-tarun-anand-sq.webp", "logo": "images/org-logos/universal-ai-university.webp" },
     { "name": "Raju Haldankar", "role": "President", "org": "Chetana's Institute of Management & Research", "photo": "images/speaker-raju-haldankar-sq.webp", "logo": "images/org-logos/cimr.webp" },
     { "name": "Dr. Shashank D. Dalvi", "role": "Vice Chancellor", "org": "MGM Institute of Health Sciences", "photo": "images/speaker-shashank-dalvi-sq.webp", "logo": "images/org-logos/mgm-ihs.webp" },
     { "name": "Madhvendra Singh", "role": "CEO", "org": "Electronics Sector Skills Council of India", "photo": "images/speaker-madhvendra-singh-panel.webp", "logo": "images/org-logos/essci.webp" },
@@ -73,7 +73,7 @@
     { "name": "Shekar Sivasubramanian", "role": "CEO", "org": "Wadhwani Institute for Artificial Intelligence", "logo": "images/org-logos/wadhwani-ai.webp" },
     { "name": "Dr. Sameer Agarwal", "role": "Executive Vice President", "org": "Molecule AI", "photo": "images/speaker-sameer-agarwal-sq.webp", "logo": "images/org-logos/molecule-ai.webp" },
     { "name": "Manish K. Prahlad", "role": "Co-Founder and CEO", "org": "Verdant Impact", "logo": "images/org-logos/verdant-impact.webp" },
-    { "name": "Dr. Omprakash Mandge", "role": "Principal", "org": "MET", "logo": "images/org-logos/met.webp" },
+    { "name": "Dr. Omprakash Mandge", "role": "Principal", "org": "MET", "photo": "images/speaker-omprakash-mandge-sq.webp", "logo": "images/org-logos/met.webp" },
 
     { "name": "Virendra Pal", "role": "AI & FinTech Expert", "org": "", "photo": "images/speaker-virendra-pal.webp" },
     { "name": "Dr. Parijat Shukla", "role": "PhD, Iowa State University", "org": "", "photo": "images/speaker-parijat-shukla-sq.webp" }
