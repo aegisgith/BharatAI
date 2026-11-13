@@ -214,7 +214,8 @@ const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (o
   const linked = d.sessions.filter(s => s.links.length).length;
   console.log(`  real agenda: ${timed} sessions, ${withSpeakers} name someone, ${linked} matched to the speakers list; ${d.speakers.length} speakers (0033 only), ${d.speakers.filter(s => s.slots).length} on the programme`);
   check('the real agenda loads in Admin', timed > 50 && d.ready.all, timed);
-  check('the real keynotes find their speakers (K.K. Singh, Pardeshi, Patil)', ['k-k-singh', 'praveen-pardeshi', 'shrikant-patil'].every(slug => { const sp = d.speakers.find(x => x.slug === slug); return sp && sp.slots >= 1; }), d.speakers.filter(s => s.slots).map(s => s.slug));
+  // Dr. Shrikant Patil dropped out on 13 Nov 2026 (2ad2c18), so his keynote left the agenda.
+  check('the real keynotes find their speakers (K.K. Singh, Pardeshi)', ['k-k-singh', 'praveen-pardeshi'].every(slug => { const sp = d.speakers.find(x => x.slug === slug); return sp && sp.slots >= 1; }), d.speakers.filter(s => s.slots).map(s => s.slug));
   check('every session sits in one of the four halls', d.halls.filter(h => h.unlisted).length === 0, d.halls.filter(h => h.unlisted).map(h => h.name));
   console.log('  real agenda clashes: ' + d.clashes.room.length + ' hall, ' + d.clashes.speaker.length + ' speaker' +
     d.clashes.room.slice(0, 5).map(c => '\n    hall ' + c.room + ': ' + c.a.title + ' / ' + c.b.title + ' at ' + c.a.start_time).join('') +
