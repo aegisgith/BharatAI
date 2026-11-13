@@ -20933,6 +20933,9 @@ function subNameParts(name: string): { first: string; last: string } | null {
   if (!words.every(w => /^[A-Za-z][A-Za-z.'-]*$/.test(w))) return null
   if (SUB_NOT_NAME_WORDS.test(words[0].replace(/\.$/, ''))) return null
   if (words.every(w => SUB_NOT_NAME_WORDS.test(w.replace(/\.$/, '')))) return null
+  // A word of a form anywhere, or a small English word after the first: a phrase, not a name.
+  if (words.some(w => /^(e-?mail|mail|id|phone|mobile|number|designation|contact|address|secondary|primary|alternate|official|solution|solutions)$/i.test(w.replace(/\.$/, '')))) return null
+  if (words.slice(1).some(w => /^(on|of|the|for|and|to|in|at|by|with|from|is|are|our|your|this|that|a|an)$/i.test(w))) return null
   return { first: words[0], last: words.slice(1).join(' ') }
 }
 const subTitleCase = (w: string) => w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : w

@@ -364,6 +364,8 @@ let teamId;
   check('run together: a phone written before the address belongs to that person', JSON.stringify(ppl(r.json.id)) === JSON.stringify(['Pawan|Rao||pawan.rao@arysoft.example|9820012345', 'Meena|Iyer||meena.iyer@arysoft.example|9820067890']), ppl(r.json?.id));
   r = await push({ source_id: 'ary-3', from_email: 'magdalini@arysoft.example', subject: 'Addresses only', text: 'Please add to our team: nahida.shaikh@arysoft.example, javed.shaikh@arysoft.example' });
   check('run together: with no name written, the address\'s own two words', JSON.stringify(ppl(r.json.id).map((x) => x.split('|').slice(0, 2).join(' '))) === JSON.stringify(['Nahida Shaikh', 'Javed Shaikh']), ppl(r.json?.id));
+  r = await push({ source_id: 'phr-1', from_email: 'kushal@convozen.example', subject: 'Team for the booth', text: 'Our team:\n1. Ravi Kumar - CTO - ravi.k@convozen.example\nSecondary Email ID - ravi.k2@convozen.example\nAI Solution On Sun - demo@convozen.example' });
+  check('a phrase is not a person: "Secondary Email ID", "AI Solution On Sun"', JSON.stringify(ppl(r.json.id).map((x) => x.split('|').slice(0, 2).join(' '))) === JSON.stringify(['Ravi Kumar']), ppl(r.json?.id));
   r = await push({ source_id: 'hd-1', from_email: 'kushal@convozen.example', subject: 'Heading only', text: 'Sr. No.  Full Name  Designation  Phone Number  Email ID  Organization' });
   check('a heading row on its own is nobody', r.json.status === 'ignored' || (r.status === 201 && sub(r.json.id).matches.people.length === 0), r.text);
 }
