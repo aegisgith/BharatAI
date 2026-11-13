@@ -128,6 +128,9 @@
         .tw-tile:focus-visible { outline: 3px solid var(--electric); outline-offset: 3px; }
         .tw-tile-photo { display: block; overflow: hidden; border-radius: 50%; background: var(--light); }
         .tw-tile-photo img { display: block; width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; transform: scale(var(--tw-zoom, 1)); }
+        /* A company logo where a photo goes (the IBM workshop): the whole logo, on white. */
+        .tw-tile-photo img.tw-logo { object-fit: contain; background: #fff; padding: 20%; box-sizing: border-box; }
+        .session-lead img.tw-logo { object-fit: contain; background: #fff; padding: 16px; box-sizing: border-box; border: 1px solid #E4E7F4; }
         .tw-tile strong { display: block; margin-top: 0.7rem; font-family: var(--font-display); font-size: 1.08rem; font-weight: 800; line-height: 1.2; color: var(--charcoal); }
         .tw-tile-role { display: block; margin-top: 0.2rem; font-size: 0.82rem; line-height: 1.35; color: var(--dark-grey); }
         .tw-tile-what { display: block; margin-top: 0.5rem; font-size: 0.92rem; font-weight: 700; line-height: 1.3; color: var(--tw-ink-orange); }
@@ -189,6 +192,7 @@
             .session-feature + .session-feature { margin-top: 1.75rem; }
             .session-lead { display: block; position: sticky; top: calc(var(--nav-h) + 4.5rem); align-self: start; text-align: center; }
             .session-lead img { width: 180px; height: 180px; margin-bottom: 0.85rem; }
+            .session-lead img.tw-logo { padding: 34px; }
             .session-body > .btn { width: auto; }
         }
 
@@ -390,6 +394,13 @@
                 <p>Our workshops are led by experienced AI practitioners and researchers who are building real-world AI systems at leading tech companies, startups, and research institutions. Get insights beyond textbooks and online courses.</p>
             </div>
             <ul class="tw-tiles">
+                <li><a class="tw-tile" href="#ibm-workshop">
+                    <span class="tw-tile-photo"><img class="tw-logo" src="/images/logo-ibm.webp" alt="" width="320" height="320" loading="lazy" decoding="async"></span>
+                    <strong>IBM</strong>
+                    <span class="tw-tile-role">Instructor to be announced</span>
+                    <span class="tw-tile-what">Workshop by IBM</span>
+                    <span class="tw-tile-how">Fri 20 Nov, 11:30, 90 minutes</span>
+                </a></li>
                 <li><a class="tw-tile" href="#cxo-guide">
                     <span class="tw-tile-photo"><img src="/images/speaker-vinay-kulkarni-sq.webp" alt="" width="400" height="400" loading="lazy" decoding="async"></span>
                     <strong>Dr. Vinay Kulkarni</strong>
@@ -400,21 +411,21 @@
                 <li><a class="tw-tile" href="#fde-workshop">
                     <span class="tw-tile-photo" style="--tw-zoom:1.1"><img src="/images/speaker-ashish-tendulkar-panel.webp" alt="" width="320" height="320" loading="lazy" decoding="async"></span>
                     <strong>Dr. Ashish Tendulkar</strong>
-                    <span class="tw-tile-role">Lead AI, Google</span>
+                    <span class="tw-tile-role">PhD, IIT Bombay; Google AI</span>
                     <span class="tw-tile-what">From Prototype to Production</span>
                     <span class="tw-tile-how">Live coding, 90 minutes</span>
                 </a></li>
                 <li><a class="tw-tile" href="#asr-workshop">
                     <span class="tw-tile-photo"><img src="/images/speaker-parijat-shukla-sq.webp" alt="" width="400" height="400" loading="lazy" decoding="async"></span>
                     <strong>Dr. Parijat Shukla</strong>
-                    <span class="tw-tile-role">PhD, Iowa State University</span>
+                    <span class="tw-tile-role">PhD in Machine Learning, Iowa State University</span>
                     <span class="tw-tile-what">Automatic Speech Recognition</span>
                     <span class="tw-tile-how">Hands-on, 90 minutes</span>
                 </a></li>
                 <li><a class="tw-tile" href="#llm-fine-tuning">
                     <span class="tw-tile-photo" style="--tw-zoom:1.1"><img src="/images/speaker-virendra-pal.webp" alt="" width="320" height="320" loading="lazy" decoding="async"></span>
                     <strong>Virendra Pal</strong>
-                    <span class="tw-tile-role">AI and FinTech Expert</span>
+                    <span class="tw-tile-role">AI and FinTech Expert; alumnus, Aegis School of Data Science and AI</span>
                     <span class="tw-tile-what">LLM Fine-Tuning, Hands-On</span>
                     <span class="tw-tile-how">Hands-on, 2 hours</span>
                 </a></li>
@@ -460,6 +471,7 @@
     <nav class="conf-subnav tw-subnav" id="confSubnav" aria-label="Workshops on this page">
         <div class="container conf-subnav-inner">
             <div class="conf-subnav-links">
+                <a href="#ibm-workshop" class="conf-subnav-link">IBM Workshop</a>
                 <a href="#cxo-guide" class="conf-subnav-link">CXO Guide</a>
                 <a href="#fde-workshop" class="conf-subnav-link">Prototype to Production</a>
                 <a href="#asr-workshop" class="conf-subnav-link">Speech Recognition</a>
@@ -479,6 +491,21 @@
                 <h2 class="section-title">Featured <span class="accent">Sessions</span></h2>
                 <p>For the leaders deciding where AI goes, and the engineers who build it</p>
             </div>
+            <article class="session-feature" id="ibm-workshop">
+                <div class="session-lead">
+                    <img class="tw-logo" src="/images/logo-ibm.webp" alt="IBM" width="180" height="180" loading="lazy" decoding="async">
+                    <div>
+                        <strong>IBM</strong>
+                        <span>Instructor to be announced</span>
+                    </div>
+                </div>
+                <div class="session-body">
+                    <div class="session-tags"><span class="workshop-badge">Workshop</span><span class="session-format">90 minutes</span></div>
+                    <h3>Workshop by IBM</h3>
+                    <p>A 90-minute workshop by IBM on Friday 20 November, 11:30 to 13:00, in Raman Theatre. The instructor and the topic will be announced soon.</p>
+                    <a href="/register#premium" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
+                </div>
+            </article>
             <article class="session-feature" id="cxo-guide">
                 <div class="session-lead">
                     <img src="/images/speaker-vinay-kulkarni-sq.webp" alt="Dr. Vinay Kulkarni" width="180" height="180" loading="lazy" decoding="async">
@@ -516,6 +543,7 @@
                     <img src="/images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar" width="180" height="180" loading="lazy" decoding="async">
                     <div>
                         <strong>Dr. Ashish Tendulkar</strong>
+                        <span>PhD, IIT Bombay</span>
                         <span>Google AI</span>
                     </div>
                 </div>
@@ -559,7 +587,7 @@
                     <img src="/images/speaker-parijat-shukla-sq.webp" alt="Dr. Parijat Shukla" width="180" height="180" loading="lazy" decoding="async">
                     <div>
                         <strong>Dr. Parijat Shukla</strong>
-                        <span>PhD, Iowa State University</span>
+                        <span>PhD in Machine Learning, Iowa State University</span>
                     </div>
                 </div>
                 <div class="session-body">
@@ -590,6 +618,7 @@
                     <div>
                         <strong>Virendra Pal</strong>
                         <span>AI and FinTech Expert</span>
+                        <span>Alumnus, Aegis School of Data Science and AI</span>
                     </div>
                 </div>
                 <div class="session-body">
