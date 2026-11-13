@@ -19665,11 +19665,11 @@ const UPGRADE_STUDENTS_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM
 // Raman Theatre. Written by hand: change it when a workshop, a topic, a trainer or a
 // time changes. [title, what follows it]
 const EMAIL_WORKSHOPS: [string, string][] = [
-  ['Workshop by IBM', ' (topic and trainer to be announced) &middot; Fri 20 Nov, 11:30'],
-  ['From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers', ', with Dr. Ashish Tendulkar, Google AI &middot; Fri 20 Nov, 14:00'],
-  ['LLM Fine-Tuning, Hands-On', ', with Virendra Pal, AI and FinTech Expert &middot; Fri 20 Nov, 15:45'],
-  ['Automatic Speech Recognition (Speech-to-Text)', ', with Dr. Parijat Shukla, PhD, Iowa State University &middot; Sat 21 Nov, 14:00'],
-  ['Workshop with Dr. Ashish Tendulkar', ', Google AI (topic to be announced) &middot; Sat 21 Nov, 15:45'],
+  ['Workshop by IBM', ' (instructor and topic to be announced) &middot; Fri 20 Nov, 11:30'],
+  ['From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers', ', with Dr. Ashish Tendulkar, PhD, IIT Bombay, Google AI &middot; Fri 20 Nov, 14:00'],
+  ['LLM Fine-Tuning, Hands-On', ', with Virendra Pal, AI and FinTech Expert, an alumnus of Aegis School of Data Science and AI &middot; Fri 20 Nov, 15:45'],
+  ['Automatic Speech Recognition (Speech-to-Text)', ', with Dr. Parijat Shukla, PhD in Machine Learning, Iowa State University &middot; Sat 21 Nov, 14:00'],
+  ['Workshop with Dr. Ashish Tendulkar', ', PhD, IIT Bombay, Google AI (topic to be announced) &middot; Sat 21 Nov, 15:45'],
 ]
 // The organiser's figure for the Innovation Stage (13 Nov 2026).
 const EMAIL_INNOVATION_TALKS = 40
