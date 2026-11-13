@@ -79,7 +79,7 @@
     { "hall": "bhabha", "day": 2, "start": "12:30", "end": "13:30", "type": "panel", "label": "Panel: Insurance", "track": "BFSI & FinTech AI", "title": "Reinventing Insurance for Bharat with AI: Expanding Access, Trust and Inclusion",
       "panel": [
         { "name": "Sandeep Kumar", "org": "Go Digit Insurance" },
-        { "name": "Abhay Tiwari", "org": "Star Union Dai-ichi Life Insurance" },
+        { "name": "Abhay Tewari", "org": "Star Union Dai-ichi Life Insurance" },
         { "name": "Shallu Kaushik", "org": "Tata Capital" },
         { "name": "Dr. Pawan Chawla", "org": "Tata AIA Life Insurance" }
       ] },
