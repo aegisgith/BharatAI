@@ -21046,7 +21046,8 @@ const SUB_MOBILE_RE = /(?:\+?91[\s-]?)?0?([6-9]\d{4}[\s-]?\d{5})(?!\d)/
 const SUB_HONORIFIC_RE = /^(dr|mr|mrs|ms|miss|prof|shri|smt|er|ca|adv)\.?\s+/i
 
 type SubPerson = { first_name: string; last_name: string; designation: string; email: string; mobile: string; line: string }
-type SubFile = { key: string; filename: string; mime: string; size: number; w: number; h: number; use: string; hash: string }
+type SubAi = { person: boolean | null; reads: string; ours: boolean; match?: number; failed?: boolean; at: string }
+type SubFile = { key: string; filename: string; mime: string; size: number; w: number; h: number; use: string; hash: string; ai?: SubAi }
 type SubMatch = { id: number; name: string; detail: string; how: string; sure: boolean }
 type SubWorld = { exhibitors: any[]; booths: any[]; team: any[]; talks: any[]; speakers: any[] }
 
@@ -21387,7 +21388,111 @@ async function subWorld(c: any, eventId: number): Promise<SubWorld> {
 // Who an email is from and for. Sure: the sender's address is on file as the booth
 // contact, someone on the team, or the speaker. Likely: the same company email, or the
 // company or person named in the words. The admin sees the reason beside each guess.
-function subMatch(sub: { from_email: string; from_name: string; subject: string; body: string; filenames: string[] }, world: SubWorld): { exhibitors: SubMatch[]; talks: SubMatch[]; speakers: SubMatch[] } {
+const SUB_AI_READ_MODEL = '@cf/llava-hf/llava-1.5-7b-hf'
+const SUB_AI_TEXT_MODEL = '@cf/meta/llama-3.1-8b-instruct'
+const SUB_AI_MAX_BYTES = 2 * 1024 * 1024
+const SUB_OURS_RE = /\bbharat\s*-?\s*ai\b|bharataiinnovation|भारत\s*एआई/i
+function subAiWait<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error('ai timed out')), ms))])
+}
+// One picture: a person in it, and the name written in it. null when there is no AI to ask.
+async function subAiLook(c: any, bytes: Uint8Array, mime: string): Promise<SubAi | null> {
+  if (!c.env.AI || !/^image\/(png|jpeg|webp)$/.test(mime) || bytes.length > SUB_AI_MAX_BYTES) return null
+  const image = Array.from(bytes)
+  const [person, reads] = await Promise.all([
+    subAiWait(c.env.AI.run(PERSON_MODEL, { image }), 10000).then((out: any) => {
+      const objs: any[] = Array.isArray(out) ? out : (Array.isArray(out?.result) ? out.result : [])
+      let score = 0
+      for (const o of objs) if (o && o.label === 'person') score = Math.max(score, Number(o.score) || 0)
+      return score >= PERSON_MIN_SCORE
+    }).catch(() => null),
+    subAiWait(c.env.AI.run(SUB_AI_READ_MODEL, { image, prompt: 'What company or brand name is written in this image? Answer with the name only, or NONE.', max_tokens: 40 }), 15000)
+      .then((out: any) => String(out?.description ?? out?.response ?? '').replace(/\s+/g, ' ').replace(/^["'\s]+|["'.\s]+$/g, '').trim().slice(0, 120))
+      .catch(() => null),
+  ])
+  const text = reads && !/^none\b/i.test(reads) ? reads : ''
+  return { person, reads: text, ours: SUB_OURS_RE.test(text), failed: person === null && reads === null ? true : undefined, at: new Date().toISOString() }
+}
+// What the AI saw decides the file's use: a person is a photo; a name and no person is a logo.
+function subAiUse(use: string, ai: SubAi | null | undefined): string {
+  if (!ai) return use
+  if (ai.person === true) return 'photo'
+  if (ai.person === false && use === 'photo') return ai.reads ? 'logo' : ''
+  if (!use && ai.reads) return 'logo'
+  return use
+}
+// The exhibitor a logo's words name, for that one file.
+function subAiMatchFile(file: SubFile, world: SubWorld) {
+  if (!file.ai || !file.ai.reads || file.ai.ours) return
+  const e = world.exhibitors.find(x => subMentions(file.ai!.reads, x.company_name))
+  if (e) file.ai.match = e.id
+  else delete file.ai.match
+}
+// Names the rules could not find, from a language model. Only what is written in the email is kept.
+async function subAiPeople(c: any, body: string, fromEmail: string): Promise<SubPerson[] | null> {
+  if (!c.env.AI) return null
+  const text = subBeforeSignoff(subOwnWords(body)).slice(0, 3500)
+  const addresses = (text.match(new RegExp(SUB_EMAIL_RE.source, 'g')) || []).map(x => x.toLowerCase()).filter(x => x !== fromEmail)
+  if (!addresses.length) return []
+  let raw = ''
+  try {
+    const out: any = await subAiWait(c.env.AI.run(SUB_AI_TEXT_MODEL, { max_tokens: 900, messages: [
+      { role: 'system', content: 'You list the people named in an email so they can be registered for an event. Reply with JSON only: an array of objects with first_name, last_name, designation, email, mobile. Use only what is written in the email; leave a field empty if it is not written. If there are no people, reply [].' },
+      { role: 'user', content: text },
+    ] }), 20000)
+    raw = String(out?.response ?? out?.result?.response ?? '')
+  } catch { return null }
+  const m = raw.match(/\[[\s\S]*\]/)
+  let list: any[] = []
+  try { list = m ? JSON.parse(m[0]) : [] } catch { return [] }
+  const low = text.toLowerCase()
+  const digits = text.replace(/\D/g, '')
+  const out: SubPerson[] = []
+  for (const p of Array.isArray(list) ? list.slice(0, 30) : []) {
+    const parts = subNameParts([p?.first_name, p?.last_name].map(x => String(x || '').trim()).filter(Boolean).join(' '))
+    if (!parts) continue
+    // Every word of the name is written in the email, and so are the address and the phone.
+    if (!(parts.first + ' ' + parts.last).split(' ').every(w => low.includes(w.toLowerCase()))) continue
+    const email = String(p?.email || '').toLowerCase().trim()
+    if (email && (!SUB_EMAIL_RE.test(email) || !low.includes(email))) continue
+    let mobile = String(p?.mobile || '').replace(/\D/g, '').slice(-10)
+    if (mobile && (mobile.length !== 10 || !digits.includes(mobile))) mobile = ''
+    const designation = String(p?.designation || '').trim().slice(0, 80)
+    out.push({ first_name: parts.first, last_name: parts.last, designation: designation && low.includes(designation.toLowerCase()) ? designation : '', email, mobile, line: 'read by AI' })
+  }
+  return out
+}
+// The tidy's share of AI work, a few files and one email's names a run, for what was waiting
+// before the AI step existed. Changes the rows in place and in the database.
+async function subAiBackfill(c: any, rows: any[], by: string): Promise<{ pictures: number; names: number }> {
+  const done = { pictures: 0, names: 0 }
+  if (!c.env.AI || !c.env.UPLOADS) return done
+  const open = rows.filter(r => r.status === 'new' && !r.applied.length && (!r.decided_by || String(r.decided_by).startsWith(by)))
+  const jobs: Array<{ r: any; f: any }> = []
+  for (const r of open) for (const f of r.attachments) if (f && !f.ai && !f.rejected && /^image\/(png|jpeg|webp)$/.test(f.mime) && f.size <= SUB_AI_MAX_BYTES) jobs.push({ r, f })
+  const pick = jobs.slice(0, 6)
+  await Promise.all(pick.map(async ({ f }) => {
+    try {
+      const obj = await c.env.UPLOADS.get(f.key)
+      if (!obj) { f.ai = { person: null, reads: '', ours: false, failed: true, at: new Date().toISOString() }; return }
+      const ai = await subAiLook(c, new Uint8Array(await obj.arrayBuffer()), f.mime)
+      if (ai) { f.ai = ai; f.use = subAiUse(f.use, ai); done.pictures++ }
+    } catch { /* tried again next run */ }
+  }))
+  for (const r of new Set(pick.map(j => j.r))) await c.env.DB.prepare('UPDATE inbox_submissions SET attachments = ? WHERE id = ?').bind(JSON.stringify(r.attachments), r.id).run()
+  const quiet = open.find(r => !r.matches?.ai_tried && !subPeople(r.body).length && /@/.test(String(r.body || '')))
+  if (quiet) {
+    const found = await subAiPeople(c, quiet.body, quiet.from_email)
+    if (found !== null) {
+      quiet.matches = { ...(quiet.matches || {}), ai_tried: true, ai_people: found }
+      await c.env.DB.prepare('UPDATE inbox_submissions SET matches = ? WHERE id = ?').bind(JSON.stringify(quiet.matches), quiet.id).run()
+      done.names += found.length
+    }
+  }
+  return done
+}
+
+function subMatch(sub: { from_email: string; from_name: string; subject: string; body: string; filenames: string[]; reads?: string[] }, world: SubWorld): { exhibitors: SubMatch[]; talks: SubMatch[]; speakers: SubMatch[] } {
   const from = String(sub.from_email || '').toLowerCase().trim()
   const domain = subDomain(from)
   const text = [sub.from_name, sub.subject, subBeforeSignoff(subOwnWords(sub.body)).slice(0, 4000), (sub.filenames || []).join(' ')].join(' \n ')
@@ -21410,6 +21515,7 @@ function subMatch(sub: { from_email: string; from_name: string; subject: string;
     for (const t of world.talks) if (subDomain(t.speaker_email) === domain) addTk(t, 'same company email', false)
     for (const s of world.speakers) if (subDomain(s.email) === domain) addSp(s, 'same company email', false)
   }
+  for (const r of (sub.reads || []).filter(Boolean)) for (const e of world.exhibitors) if (subMentions(r, e.company_name)) addEx(e, 'the logo reads "' + r.slice(0, 40) + '"', false)
   for (const e of world.exhibitors) if (subMentions(text, e.company_name)) addEx(e, 'named in the email', false)
   for (const t of world.talks) if (subMentionsPerson(text, t.speaker_name)) addTk(t, 'named in the email', false)
   for (const s of world.speakers) if (subMentionsPerson(text, s.name)) addSp(s, 'named in the email', false)
@@ -21586,7 +21692,7 @@ app.post('/api/external/inbox-submissions', async (c) => {
   }
   const body = subText(b.text || b.body || '')
   const fromName = String(b.from_name || '').slice(0, 120)
-  const people = subPeople(body)
+  let people = subPeople(body)
   const threadId = String(b.thread_id || '').slice(0, 200)
   // A picture this sender (or this thread) already sent is the signature, or an earlier
   // email quoted again: it was filed the first time.
@@ -21607,7 +21713,13 @@ app.post('/api/external/inbox-submissions', async (c) => {
     } catch { /* nothing to compare with */ }
   }
   const fresh = decoded.filter(d => !seen.has(d.hash))
-  const metas = fresh.map(d => { const { w, h } = subImageSize(d.bytes, d.mime); return { ...d, w, h, use: subFileUse(d.filename, d.mime, w, h) } })
+  let metas: any[] = fresh.map(d => { const { w, h } = subImageSize(d.bytes, d.mime); return { ...d, w, h, use: subFileUse(d.filename, d.mime, w, h) } })
+  // AI on each picture (at most six, side by side): our own logo goes; a person makes a photo.
+  await Promise.all(metas.slice(0, 6).map(async (m: any) => { const ai = await subAiLook(c, m.bytes, m.mime).catch(() => null); if (ai) { m.ai = ai; m.use = subAiUse(m.use, ai) } }))
+  metas = metas.filter((m: any) => !(m.ai && m.ai.ours))
+  // No names found by the rules in an email that has addresses: ask the AI, keep only what is written.
+  let aiTried = false, aiPeople: SubPerson[] = []
+  if (!people.length && /@/.test(body)) { const found = await subAiPeople(c, body, fromEmail).catch(() => null); if (found !== null) { aiTried = true; aiPeople = found; people = found } }
   const kind = subKind(subject, body, metas, people)
   if (!metas.length && kind !== 'team' && kind !== 'details') return c.json({ ok: true, status: 'ignored', reason: 'no files to use' })
   if (metas.length && !c.env.UPLOADS) return c.json({ error: 'uploads not configured' }, 503)
@@ -21618,10 +21730,11 @@ app.post('/api/external/inbox-submissions', async (c) => {
     const safe = m.filename.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/\.{2,}/g, '.').replace(/^[-.]+|-+$/g, '') || ('file.' + SUB_EXT[m.mime])
     const key = `${folder}/${i + 1}-${safe}`
     await c.env.UPLOADS.put(key, m.bytes, { httpMetadata: { contentType: m.mime, cacheControl: 'public, max-age=31536000' } })
-    stored.push({ key, filename: m.filename, mime: m.mime, size: m.bytes.length, w: m.w, h: m.h, use: m.use, hash: m.hash })
+    stored.push({ key, filename: m.filename, mime: m.mime, size: m.bytes.length, w: m.w, h: m.h, use: m.use, hash: m.hash, ...(m.ai ? { ai: m.ai } : {}) })
   }
   const world = await subWorld(c, eventId)
-  const matches = { ...subMatch({ from_email: fromEmail, from_name: fromName, subject, body, filenames: stored.map(f => f.filename) }, world), people }
+  for (const sf of stored) subAiMatchFile(sf, world)
+  const matches = { ...subMatch({ from_email: fromEmail, from_name: fromName, subject, body, filenames: stored.map(f => f.filename), reads: stored.map(f => f.ai && !f.ai.ours ? f.ai.reads : '') }, world), people, ...(aiTried ? { ai_tried: true, ai_people: aiPeople } : {}) }
   let id: number
   try {
     const r = await c.env.DB.prepare('INSERT INTO inbox_submissions (event_id, source, source_id, thread_id, from_email, from_name, to_email, subject, body, link, received_at, kind, attachments, matches) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
@@ -21654,7 +21767,8 @@ async function subTidy(c: any, by: string): Promise<{ looked: number; set_aside:
     senders.get(f.hash)!.add(subSenderKey(r.from_email))
   }
   const worlds = new Map<number, SubWorld>()
-  const out = { looked: 0, set_aside: {} as Record<string, number>, pictures_removed: 0, rematched: 0 }
+  const ai = await subAiBackfill(c, rows, by).catch(() => ({ pictures: 0, names: 0 }))
+  const out = { looked: 0, set_aside: {} as Record<string, number>, pictures_removed: 0, rematched: 0, ai_pictures: ai.pictures, ai_names: ai.names }
   const now = new Date().toISOString()
   for (const r of rows) {
     if (r.status !== 'new' || r.applied.length) continue
@@ -21667,8 +21781,9 @@ async function subTidy(c: any, by: string): Promise<{ looked: number; set_aside:
       const twin = rows.find(o => o.id < r.id && o.from_email === r.from_email && o.subject === r.subject && o.received_at >= lo && o.received_at <= hi)
       if (twin) why = 'the same email in another mailbox, #' + twin.id
     }
-    const keep = r.attachments.filter((f: SubFile) => !(f?.hash && ((senders.get(f.hash)?.size || 0) >= 2 || ignored.has(f.hash))))
-    const people = subPeople(r.body)
+    const keep = r.attachments.filter((f: SubFile) => !(f?.ai?.ours) && !(f?.hash && ((senders.get(f.hash)?.size || 0) >= 2 || ignored.has(f.hash))))
+    let people = subPeople(r.body)
+    if (!people.length && Array.isArray(r.matches?.ai_people) && r.matches.ai_people.length) people = r.matches.ai_people
     if (!why && !keep.length && !people.length && r.attachments.length) why = 'only a picture other companies sent too'
     if (why) {
       await c.env.DB.prepare("UPDATE inbox_submissions SET status = 'dismissed', decided_by = ?, decided_at = ? WHERE id = ? AND status = 'new'").bind(`${by} (${why})`, now, r.id).run()
@@ -21680,13 +21795,14 @@ async function subTidy(c: any, by: string): Promise<{ looked: number; set_aside:
     const ev = Number(r.event_id) || 1
     if (!worlds.has(ev)) worlds.set(ev, await subWorld(c, ev))
     const kind = subKind(r.subject, r.body, keep, people)
-    const matches = { ...subMatch({ from_email: r.from_email, from_name: r.from_name, subject: r.subject, body: r.body, filenames: keep.map((x: SubFile) => x.filename) }, worlds.get(ev)!), people }
+    for (const kf of keep) subAiMatchFile(kf, worlds.get(ev)!)
+    const matches = { ...subMatch({ from_email: r.from_email, from_name: r.from_name, subject: r.subject, body: r.body, filenames: keep.map((x: SubFile) => x.filename), reads: keep.map((x: SubFile) => x.ai && !x.ai.ours ? x.ai.reads : '') }, worlds.get(ev)!), people, ...(r.matches?.ai_tried ? { ai_tried: true, ai_people: r.matches.ai_people || [] } : {}) }
     const before = JSON.stringify({ a: r.attachments, k: r.kind, m: r.matches })
     if (before === JSON.stringify({ a: keep, k: kind, m: matches })) continue
     await c.env.DB.prepare("UPDATE inbox_submissions SET attachments = ?, kind = ?, matches = ? WHERE id = ? AND status = 'new' AND applied = '[]'").bind(JSON.stringify(keep), kind, JSON.stringify(matches), r.id).run()
     out.rematched++
   }
-  const changed = out.rematched + out.pictures_removed + Object.values(out.set_aside).reduce((a, b) => a + b, 0)
+  const changed = out.rematched + out.pictures_removed + out.ai_pictures + out.ai_names + Object.values(out.set_aside).reduce((a, b) => a + b, 0)
   if (changed) await audit(c, 'submission.tidy', 'submission', 'all', out, { actor: by, kind: by === SUB_TIDY_BY ? 'system' : 'admin' })
   return out
 }
@@ -21953,9 +22069,11 @@ app.post('/api/admin/inbox-submissions/:id/reread', async (c) => {
   const sub = await subRow(c, c.req.param('id')).catch(() => null)
   if (!sub) return c.json({ error: 'That submission is not there any more.' }, 404)
   if (sub.status === 'dismissed') return c.json({ error: 'Bring it back first.' }, 409)
-  const people = subPeople(sub.body)
+  let people = subPeople(sub.body)
+  let extra: any = {}
+  if (!people.length) { const found = await subAiPeople(c, sub.body, sub.from_email).catch(() => null); if (found !== null) { people = found; extra = { ai_tried: true, ai_people: found } } }
   const by = subActor(c)
-  await c.env.DB.prepare('UPDATE inbox_submissions SET matches = ?, decided_by = ?, decided_at = ? WHERE id = ?').bind(JSON.stringify({ ...sub.matches, people }), by, new Date().toISOString(), sub.id).run()
+  await c.env.DB.prepare('UPDATE inbox_submissions SET matches = ?, decided_by = ?, decided_at = ? WHERE id = ?').bind(JSON.stringify({ ...sub.matches, ...extra, people }), by, new Date().toISOString(), sub.id).run()
   await audit(c, 'submission.reread', 'submission', sub.id, { people: people.length })
   return c.json({ ok: true, people: people.length, row: await subRow(c, sub.id) })
 })
@@ -51575,7 +51693,7 @@ function adminPageScript(): string {
     // Submissions (logos, photos and team lists that clients emailed) live in
     // /js/admin-submissions.js (one global, SubDesk) with their own stylesheet, both
     // loaded the first time the section opens. Bump the version on any change to either.
-    var SUB_DESK_VERSION = '20261113b';
+    var SUB_DESK_VERSION = '20261113c';
     var subDeskAssets = null;
     function subDeskLoadAssets() {
       if (window.SubDesk) return Promise.resolve();

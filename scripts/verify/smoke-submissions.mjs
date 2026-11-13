@@ -474,6 +474,53 @@ let teamId;
   check('tidy: Bring back is a person\'s decision, and the tidy leaves it alone after', back.json.row.status === 'new' && st(late).status === 'new' && st(late).decided_by === 'Priya', st(late));
 }
 
+// ======== 13 Nov 2026: AI on top of the rules (Workers AI, played) ========
+{
+  const A = makeWorld();
+  const calls = [];
+  // Byte 100 of the made-up pictures is their seed: 77 has a person, 78 reads our own name,
+  // 79 reads Acme's, 81 makes the reading model fail.
+  A.env.AI = { async run(model, input) {
+    calls.push(model);
+    if (model === '@cf/facebook/detr-resnet-50') return input.image[100] === 77 ? [{ label: 'person', score: 0.97 }] : [{ label: 'tie', score: 0.4 }];
+    if (model === '@cf/llava-hf/llava-1.5-7b-hf') {
+      const sd = input.image[100];
+      if (sd === 81) throw new Error('model down');
+      return { description: sd === 78 ? 'Bharat AI Innovation' : sd === 79 ? 'ACME ROBOTICS' : 'NONE' };
+    }
+    if (model === '@cf/meta/llama-3.1-8b-instruct') return { response: 'Here you are: [{"first_name":"Rohan","last_name":"Kulkarni","designation":"Head of AI","email":"rohan@team.example","mobile":"98200 55555"},{"first_name":"Fake","last_name":"Person","designation":"CEO","email":"fake@nowhere.example","mobile":""}]' };
+    throw new Error('unknown model ' + model);
+  } };
+  let r = await A.push({ source_id: 'ai-1', from_email: 'pr@agency-ai.example', subject: 'Speaker photo', text: 'Photo attached.', attachments: [file('image001.png', png(600, 300, 77), 'image/png')] });
+  let f0 = A.sub(r.json.id).attachments[0];
+  check('AI: a wide picture with a person in it is a photo', r.status === 201 && f0.use === 'photo' && f0.ai.person === true, f0);
+  r = await A.push({ source_id: 'ai-2', from_email: 'x@vendor-ai.example', subject: 'Our logo', text: 'Logo attached.', attachments: [file('image001.png', png(900, 300, 78), 'image/png'), file('vendor.png', png(900, 300, 80), 'image/png')] });
+  check('AI: our own logo, recognised by its words, is not filed; the other file is', r.status === 201 && A.sub(r.json.id).attachments.length === 1 && A.sub(r.json.id).attachments[0].filename === 'vendor.png', A.sub(r.json?.id)?.attachments);
+  r = await A.push({ source_id: 'ai-3', from_email: 'y@agency-ai2.example', subject: 'Logo attached', text: 'logo', attachments: [file('brand.png', png(1000, 300, 79), 'image/png')] });
+  const s3 = A.sub(r.json.id);
+  check('AI: a logo that reads an exhibitor\'s name suggests that exhibitor, for that file', s3.attachments[0].ai.reads === 'ACME ROBOTICS' && s3.attachments[0].ai.match === A.ids.acme && s3.matches.exhibitors.some((e) => e.id === A.ids.acme && /^the logo reads "ACME ROBOTICS"/.test(e.how)), s3);
+  r = await A.push({ source_id: 'ai-4', from_email: 'z@team.example', subject: 'Registration', text: 'Please register our team member rohan@team.example for Rohan Kulkarni, Head of AI. Mobile 98200 55555.' });
+  const s4 = A.sub(r.json.id);
+  check('AI: names the rules missed, keeping only what is written in the email (the invented person dropped)', r.status === 201 && s4.matches.people.length === 1 && s4.matches.people[0].first_name === 'Rohan' && s4.matches.people[0].mobile === '9820055555' && s4.matches.people[0].designation === 'Head of AI' && s4.matches.ai_tried === true, s4.matches);
+  const before = calls.filter((m) => m.includes('llama')).length;
+  await A.push({ source_id: 'ai-5', from_email: 'z@team.example', subject: 'Team', text: 'Our team:\n1. Asha Iyer - Analyst - asha@team.example\n2. Om Rao - Lead - om@team.example' });
+  check('AI: not asked for names when the rules found them', calls.filter((m) => m.includes('llama')).length === before);
+  r = await A.push({ source_id: 'ai-6', from_email: 'q@agency-ai3.example', subject: 'Logo', text: 'logo', attachments: [file('down.png', png(800, 260, 81), 'image/png')] });
+  check('AI: a model that fails changes nothing (the file is filed as the rules see it)', r.status === 201 && A.sub(r.json.id).attachments[0].use === 'logo', A.sub(r.json?.id)?.attachments);
+  // What was waiting before the AI step: the tidy catches up, a few at a time.
+  const bytes = png(700, 250, 79);
+  await A.env.UPLOADS.put('submissions/old/1-acme.png', bytes, { httpMetadata: { contentType: 'image/png' } });
+  const oldRow = A.insert('inbox_submissions', { event_id: 1, source: 'aimailpilot', source_id: 'ai-old-1', status: 'new', applied: '[]', from_email: 'm@older.example', subject: 'Old logo', received_at: '2026-11-13T03:00:00.000Z', kind: 'logo', body: 'logo',
+    matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [] }), attachments: JSON.stringify([{ key: 'submissions/old/1-acme.png', filename: 'acme.png', mime: 'image/png', size: bytes.length, w: 700, h: 250, use: 'logo', hash: 'a'.repeat(64) }]) });
+  const oldPeople = A.insert('inbox_submissions', { event_id: 1, source: 'aimailpilot', source_id: 'ai-old-2', status: 'new', applied: '[]', from_email: 'n@older.example', subject: 'Old names', received_at: '2026-11-13T03:10:00.000Z', kind: 'details', attachments: '[]',
+    body: 'Please register our team member rohan@team.example for Rohan Kulkarni, Head of AI.', matches: JSON.stringify({ exhibitors: [], talks: [], speakers: [], people: [] }) });
+  r = await A.admin('/api/admin/inbox-submissions/tidy', { method: 'POST' });
+  check('AI tidy: an older logo is read and matched', r.json.ai_pictures >= 1 && A.sub(oldRow).attachments[0].ai?.match === A.ids.acme && A.sub(oldRow).matches.exhibitors.some((e) => e.id === A.ids.acme), [r.json, A.sub(oldRow).attachments]);
+  check('AI tidy: an older email\'s names found, and kept by the next tidy', r.json.ai_names >= 1 && A.sub(oldPeople).matches.people[0]?.first_name === 'Rohan', A.sub(oldPeople).matches);
+  await A.admin('/api/admin/inbox-submissions/tidy', { method: 'POST' });
+  check('AI tidy: asked once per email for names, and the names stay', A.sub(oldPeople).matches.people[0]?.first_name === 'Rohan' && calls.filter((m) => m.includes('llama')).length === before + 1);
+}
+
 // ======== a database without 0052 or 0050 ========
 {
   const O = makeWorld({ talkContacts: false, teams: false });

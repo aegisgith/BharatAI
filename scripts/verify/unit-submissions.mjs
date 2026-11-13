@@ -47,6 +47,8 @@ check('suggestions: "No" takes one out for good', T.liveSuggestions(both({ rejec
 check('suggestions: "Yes" puts the chosen one first, and the picker starts on it', T.liveSuggestions(both({ chosen: { exhibitor: 9 } }), 'exhibitor')[0].id === 9 && T.defaultChoice({ use: 'logo', mime: 'image/png' }, both({ chosen: { exhibitor: 9 } })) === 'logo:9');
 check('suggestions: every one rejected leaves nothing chosen', T.defaultChoice({ use: 'logo', mime: 'image/png' }, both({ rejected: { exhibitor: [8, 9] } })) === '');
 check('suggestions: ids as text from the server are the same ids', T.chosenId(both({ chosen: { talk: '3' } }), 'talk') === 3 && T.rejectedIds(both({ rejected: { talk: ['3'] } }), 'talk')[0] === 3 && T.chosenId(row(), 'talk') === null);
+check('AI: a logo whose words name an exhibitor starts on that exhibitor, unless it was turned down', T.defaultChoice({ use: 'logo', mime: 'image/png', ai: { match: 9 } }, both()) === 'logo:9' && T.defaultChoice({ use: 'logo', mime: 'image/png', ai: { match: 9 } }, both({ rejected: { exhibitor: [9] } })) === 'logo:8');
+check('AI: what it saw, in words', T.aiWords({ ai: { person: true, reads: '' } }) === 'AI: a person' && T.aiWords({ ai: { person: false, reads: 'SOLSYNCH' } }) === 'AI: reads “SOLSYNCH”' && T.aiWords({ ai: { person: false, reads: '' } }) === 'AI: no person, no name' && T.aiWords({ ai: { failed: true } }) === '' && T.aiWords({}) === '');
 check('a rejected file is never offered', T.defaultChoice({ use: 'logo', mime: 'image/png', rejected: { by: 'Priya' } }, both()) === '');
 
 // ---- what is sent for a choice ----

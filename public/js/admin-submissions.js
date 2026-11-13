@@ -91,6 +91,9 @@
     var asLogo = use === 'logo' || (!use && kind === 'logo');
     var asPhoto = use === 'photo' || (!use && kind === 'photo');
     if (mime === 'image/svg+xml') { asLogo = true; asPhoto = false; }
+    // The AI read an exhibitor's name in this logo: start there, unless that one was turned down.
+    var aiMatch = file && file.ai && file.ai.match ? Number(file.ai.match) : 0;
+    if (asLogo && aiMatch && rejectedIds(row, 'exhibitor').indexOf(aiMatch) < 0) return 'logo:' + aiMatch;
     if (asLogo && ex) return 'logo:' + ex.id;
     if (asPhoto && tk) return 'talk:' + tk.id;
     if (asPhoto && sp) return 'speaker:' + sp.id;
@@ -135,6 +138,17 @@
     return s;
   }
   function tabCount(counts, key) { return Number((counts || {})[key]) || 0; }
+  // What the AI saw in a picture, in words: a person, and the name written in it.
+  function aiWords(f) {
+    var a = f && f.ai;
+    if (!a || a.failed) return '';
+    var bits = [];
+    if (a.person === true) bits.push('a person');
+    if (a.reads) bits.push('reads “' + String(a.reads).slice(0, 60) + '”');
+    if (!bits.length && a.person === false) bits.push('no person, no name');
+    return bits.length ? 'AI: ' + bits.join(', ') : '';
+  }
+  function aiLine(f) { var t = aiWords(f); return t ? '<div class="sb-ai">' + esc(t) + '</div>' : ''; }
 
   // ---------------------------------------------------------------- drawing
   function optionList(row, file) {
@@ -188,7 +202,7 @@
     var h = '<div class="sb-file" data-file="' + i + '">' +
       '<a class="sb-thumb" data-photo="' + (photoLike ? 1 : 0) + '"' + (url ? ' href="' + esc(url) + '" target="_blank" rel="noopener"' : '') + ' title="Open the file">' + thumb + '</a>' +
       '<div><div class="sb-fname">' + esc(f.filename) + '</div>' +
-      '<div class="sb-fmeta">' + esc(fmtSize(f.size)) + esc(dims) + '</div>';
+      '<div class="sb-fmeta">' + esc(fmtSize(f.size)) + esc(dims) + '</div>' + aiLine(f);
     used.forEach(function (u) {
       h += '<div class="sb-row sb-done" style="margin-top:6px"><span>✓ ' + esc(u.text) + '</span>' +
         '<button class="sb-btn sb-btn-quiet" data-act="undo" data-id="' + row.id + '" data-index="' + u.index + '">Undo</button></div>';
@@ -505,6 +519,6 @@
     mount: mount,
     _t: { esc: esc, fmtSize: fmtSize, fmtWhen: fmtWhen, safeLink: safeLink, fileUrl: fileUrl, isPicture: isPicture, defaultChoice: defaultChoice,
       applyBody: applyBody, usesOfFile: usesOfFile, usedWords: usedWords, matchLine: matchLine, tabCount: tabCount,
-      liveSuggestions: liveSuggestions, rejectedIds: rejectedIds, chosenId: chosenId }
+      liveSuggestions: liveSuggestions, rejectedIds: rejectedIds, chosenId: chosenId, aiWords: aiWords }
   };
 })(window);

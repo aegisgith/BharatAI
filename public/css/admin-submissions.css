@@ -131,6 +131,7 @@
 .sb-thumb-sm { width: 56px; height: 42px; padding: 3px; }
 .sb-people tr[data-off="1"] input:not([type="checkbox"]) { text-decoration: line-through; color: var(--sb-muted); background: var(--sb-bg); }
 .sb-people-tools { gap: 2px 10px; margin: -2px 0 6px; }
+.sb-ai { font-size: 12px; color: var(--sb-violet-ink); margin-top: 2px; word-break: break-word; }
 .sb-team-empty { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; }
 
 /* ---- what was done, and the foot ---- */
