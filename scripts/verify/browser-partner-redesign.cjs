@@ -56,7 +56,6 @@ const widest = (p, ms) => p.evaluate((t) => new Promise((done) => { let most = 0
     'Your buyers in the room', '— complimentary VIP and delegate passes for the clients you want to close',
     'Buyers, investors and a stage — without a ₹25 L budget.',
     'Startup Pod', '— from', 'Innovation Stage', '— 8-minute main-stage slot, bundled with select booth packages',
-    'Startup Pitch', '— pitch to VCs, angels and corporate venture arms',
     'Bharat AI Connect', '— AI matchmaking and 1:1 meetings with enterprise buyers, with a Delegate or VIP pass',
     'Innovation Partner', '— a custom package for accelerators and ecosystem players',
     'Title, Powered and Knowledge Partner are exclusive — one brand each. Associate Partner has 4 slots across sectors.',

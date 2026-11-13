@@ -88,7 +88,6 @@ for (const [a, b] of [
   ['<b>B2B networking</b><span>Book meetings before you arrive.</span>', '<b>B2B नेटवर्किंग</b><span>आने से पहले ही मीटिंग तय करें।</span>'],
   ['<li class="lead">Also, as in Mumbai:</li>', '<li class="lead">मुंबई की तरह, यह भी:</li>'],
   ['<li>CXO AI Leadership Panels</li>', '<li>सीएक्सओ एआई लीडरशिप पैनल</li>'],
-  ['<li>Startup Pitch</li>', '<li>स्टार्टअप पिच</li>'],
   ['<li>Bharat AI Leaders’ Evening</li>', '<li>भारत एआई लीडर्स इवनिंग</li>'],
   ['<li>Private boardrooms</li>', '<li>निजी बोर्डरूम</li>'],
   ['<li>AI Marketplace</li>', '<li>एआई मार्केटप्लेस</li>'],

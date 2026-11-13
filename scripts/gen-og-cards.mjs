@@ -89,14 +89,6 @@ export const CARDS = {
     sub: 'Workshops led by practitioners on generative AI, agentic AI, LLM fine-tuning, RAG and prompt engineering.',
     chips: ['Generative AI', 'Agentic AI', 'RAG'],
   },
-  'startup-pitch': {
-    path: '/startup-pitch',
-    label: 'Startup Pitch',
-    headline: 'Pitch your AI startup to investors',
-    accent: 'to investors',
-    sub: 'Present to VCs, corporate venture arms and industry leaders at Bharat AI Innovation 2026.',
-    chips: ['VCs', 'Corporate venture arms'],
-  },
   accommodation: {
     path: '/accommodation',
     label: 'Hotels & Accommodation',

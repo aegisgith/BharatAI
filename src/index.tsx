@@ -23840,6 +23840,10 @@ app.get('/contact', (c) => {
   return c.html(contactPageHTML())
 })
 
+// 13 Nov 2026: there is no Startup Pitch, so its page went. Old links and search results land on the home page.
+app.get('/startup-pitch', (c) => c.redirect('/', 301))
+app.get('/startup-pitch.html', (c) => c.redirect('/', 301))
+
 // ==================== REGISTER PAGE (Free Visitor Pass) ====================
 
 app.get('/register', async (c) => {
@@ -29002,20 +29006,15 @@ function mainPageHTML(): string {
         </div>
 
         <!-- Explore hub: surfaces the sections that don't live in the top nav
-             (Exhibition, Awards, Startup Pitch, Innovation Showcase) so they're
+             (Exhibition, Awards, Innovation Showcase) so they're
              discoverable without crowding the nav bar. -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-10">
           <h2 class="text-xl font-bold mb-4"><i class="fas fa-compass text-primary-400 mr-2"></i>Explore the event</h2>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button onclick="switchTab('exhibition')" class="glass rounded-2xl p-5 text-left card-hover transition group">
               <i class="fas fa-store text-2xl text-primary-400 mb-3 block"></i>
               <div class="font-semibold text-sm">Exhibition</div>
               <div class="text-xs text-gray-500 mt-0.5">48 exhibitors and the floor plan</div>
-            </button>
-            <button onclick="switchTab('startup-pitch')" class="glass rounded-2xl p-5 text-left card-hover transition group">
-              <i class="fas fa-rocket text-2xl text-accent-400 mb-3 block"></i>
-              <div class="font-semibold text-sm">Startup Pitch</div>
-              <div class="text-xs text-gray-500 mt-0.5">Founders meet investors</div>
             </button>
             <!-- Awards is not part of Bharat AI Innovation. Hidden rather than
                  removed: the tab, its data and its routes are untouched, so
@@ -30063,14 +30062,10 @@ function mainPageHTML(): string {
                 <div id="my-meetings-list" class="space-y-3"></div>
               </div>
             </div>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="grid grid-cols-1 gap-6 mb-8">
               <div>
                 <h3 class="text-lg font-bold mb-3"><i class="fas fa-store text-accent-400 mr-2"></i>Booths I Visited</h3>
                 <div id="my-booths-list" class="space-y-3"></div>
-              </div>
-              <div>
-                <h3 class="text-lg font-bold mb-3"><i class="fas fa-rocket text-purple-400 mr-2"></i>Startup Pitch</h3>
-                <div class="glass rounded-xl p-6 text-center text-gray-500"><i class="fas fa-rocket text-2xl mb-2 block opacity-30"></i><p class="text-sm">Watch top AI startups pitch to investors</p><button onclick="switchTab('startup-pitch')" class="mt-2 text-primary-400 text-xs hover:underline font-medium">View Pitches &rarr;</button></div>
               </div>
             </div>
           </div>
@@ -32267,8 +32262,8 @@ function mainPageScript(): string {
         p = { label: badge.includes('startup') ? 'Startup' : 'Exhibitor', icon: 'fa-store', tint: '#FF6B00', blurb: 'Manage your booth, capture leads, and connect with buyers & investors.',
           actions: [A('Lead console','fa-user-group',"openExhibitorConsole()"), A('List on AI Market','fa-robot',"location.href='/marketplace?submit=true'"), A('Find investors','fa-handshake',"switchTab('networking')")] };
       } else if (badge.includes('investor')) {
-        p = { label: 'Investor', icon: 'fa-sack-dollar', tint: '#22c55e', blurb: 'Discover startups pitching at the event, build a watchlist, and book meetings.',
-          actions: [A('Deal flow','fa-rocket',"openInvestorDealflow()"), A('Browse founders','fa-users',"switchTab('networking')"), A('My meetings','fa-calendar',"switchTab('inbox')")] };
+        p = { label: 'Investor', icon: 'fa-sack-dollar', tint: '#22c55e', blurb: 'Meet founders and enterprise buyers, and book meetings.',
+          actions: [A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')"), A('Browse founders','fa-users',"switchTab('networking')"), A('My meetings','fa-calendar',"switchTab('inbox')")] };
       } else if (badge.includes('media') || badge.includes('press')) {
         p = { label: 'Media', icon: 'fa-newspaper', tint: '#3b82f6', blurb: 'Press schedule, speaker access, press kit, and interview requests.',
           actions: [A('Press area','fa-newspaper',"openMediaCenter()"), A('Speaker directory','fa-users',"switchTab('networking')"), A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')")] };
@@ -32280,12 +32275,12 @@ function mainPageScript(): string {
           actions: [A('Admin console','fa-gauge-high',"location.href='/admin'"), A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')"), A('Announcements','fa-bullhorn',"location.href='/admin'")] };
       } else if (badge.includes('jury')) {
         p = { label: 'Jury', icon: 'fa-gavel', tint: '#a78bfa', blurb: 'Your judging schedule and assigned startups.',
-          actions: [A('Jury schedule','fa-calendar-check',"switchTab('agba-jury')"), A('Startups','fa-rocket',"switchTab('startup-pitch')"), A('My profile','fa-user',"switchTab('myprofile')")] };
+          actions: [A('Jury schedule','fa-calendar-check',"switchTab('agba-jury')"), A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')"), A('My profile','fa-user',"switchTab('myprofile')")] };
       } else if (badge.includes('student')) {
         p = { label: 'Student', icon: 'fa-user-graduate', tint: '#14b8a6', blurb: 'Learn, get hands-on in workshops, and meet founders & researchers.',
-          actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Startup zone','fa-rocket',"switchTab('startup-pitch')"), A('Network','fa-users',"switchTab('networking')")] };
+          actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')"), A('Network','fa-users',"switchTab('networking')")] };
       } else if (badge.includes('academic')) {
-        p = { label: 'Academic', icon: 'fa-graduation-cap', tint: '#14b8a6', blurb: 'Workshops, the startup zone, and networking with researchers.',
+        p = { label: 'Academic', icon: 'fa-graduation-cap', tint: '#14b8a6', blurb: 'Workshops, the conference, and networking with researchers.',
           actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Network','fa-users',"switchTab('networking')"), A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')")] };
       } else {
         p = { label: displayBadge(currentUser.badge_type || 'Delegate'), icon: 'fa-id-badge', tint: '#FF6B00', blurb: 'Plan your agenda, connect with attendees, and manage your pass.',
@@ -37485,11 +37480,11 @@ function mainPageScript(): string {
               </div>
               <div class="text-xs font-medium">Explore Expo</div>
             </button>
-            <button onclick="switchTab('startup-pitch')" class="glass rounded-xl p-4 text-center card-hover quick-action-btn group">
+            <button onclick="switchTab('innovation')" class="glass rounded-xl p-4 text-center card-hover quick-action-btn group">
               <div class="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-2 group-hover:bg-purple-500/30 transition">
-                <i class="fas fa-rocket text-purple-400"></i>
+                <i class="fas fa-lightbulb text-purple-400"></i>
               </div>
-              <div class="text-xs font-medium">Startups</div>
+              <div class="text-xs font-medium">Innovation Talks</div>
             </button>
           </div>
         \`;

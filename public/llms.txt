@@ -16,11 +16,11 @@
 
 ## What it is
 
-Bharat AI Innovation 2026 is India's B2B platform for AI, run as a two-day conference and exhibition, covering Generative AI, Large Language Models (LLMs), enterprise AI deployment, AI governance and ethics, AI startups, AI for industry verticals (BFSI, healthcare, manufacturing, retail, agriculture, government), AI talent and skills, deep learning research, and the Indian AI ecosystem. It includes 10+ conference tracks across 4 halls, a 27,238 sq.ft exhibition floor with 93 booths across 8 industry zones, a startup pitch competition, and AI/ML training workshops.
+Bharat AI Innovation 2026 is India's B2B platform for AI, run as a two-day conference and exhibition, covering Generative AI, Large Language Models (LLMs), enterprise AI deployment, AI governance and ethics, AI startups, AI for industry verticals (BFSI, healthcare, manufacturing, retail, agriculture, government), AI talent and skills, deep learning research, and the Indian AI ecosystem. It includes 10+ conference tracks across 4 halls, a 27,238 sq.ft exhibition floor with 93 booths across 8 industry zones, and AI/ML training workshops.
 
 ## Positioning
 
-Bharat AI Innovation is India's B2B platform for AI, not a footfall exhibition. It brings together the organisations already running AI in production (enterprise CIOs, CDOs, CTOs, procurement heads, and state and central government departments), the companies providing it (AI startups, product companies and solution providers) and the policymakers shaping it (MeitY, Maharashtra MITRA, ministers). Business mechanisms: sponsor-curated CXO AI Leadership Panels; an Innovation Stage (8-minute main-stage slot, bundled with select booth packages); four private boardrooms at WTC Mumbai bookable by the hour (₹10,000–₹15,000 per hour + GST); Bharat AI Connect (every pass can view the attendee directory; AI matchmaking, connection requests and 1:1 meeting booking need a Delegate, VIP, Academic or Student pass); the Bharat AI Leaders’ Evening; and a Startup Pitch to VCs and corporate venture arms.
+Bharat AI Innovation is India's B2B platform for AI, not a footfall exhibition. It brings together the organisations already running AI in production (enterprise CIOs, CDOs, CTOs, procurement heads, and state and central government departments), the companies providing it (AI startups, product companies and solution providers) and the policymakers shaping it (MeitY, Maharashtra MITRA, ministers). Business mechanisms: sponsor-curated CXO AI Leadership Panels; an Innovation Stage (8-minute main-stage slot, bundled with select booth packages); four private boardrooms at WTC Mumbai bookable by the hour (₹10,000–₹15,000 per hour + GST); Bharat AI Connect (every pass can view the attendee directory; AI matchmaking, connection requests and 1:1 meeting booking need a Delegate, VIP, Academic or Student pass); and the Bharat AI Leaders’ Evening.
 
 ## Sponsorship and branding options (INR, excluding GST)
 
@@ -242,7 +242,6 @@ Digital media partner: The Mainstream.
 - [About](https://bharataiinnovation.com/about): About the event and Aegis Knowledge Trust
 - [Conference](https://bharataiinnovation.com/conference): 10+ tracks, schedule across 4 halls, 2 days
 - [Exhibition](https://bharataiinnovation.com/exhibition): 93 booths, 8 industry zones, booth packages
-- [Startup Pitch](https://bharataiinnovation.com/startup-pitch): Startup pitch competition for AI startups
 - [Training & Workshop](https://bharataiinnovation.com/training-workshop): AI/ML hands-on training workshops. Featured sessions: "Data Science to Agentic AI: A CXO's Guide to Strategic Decision-Making" by Dr. Vinay Kulkarni (Adjunct Faculty, IIT Bombay; Director, Aegis School of Data Science & AI), and "From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers", a 90-minute live-coding workshop by Dr. Ashish Tendulkar (Google AI); "Automatic Speech Recognition (Speech-to-Text)", a 90-minute hands-on workshop by Dr. Parijat Shukla (PhD, Iowa State University); "LLM Fine-Tuning, Hands-On", a 2-hour hands-on workshop in Google Colab by Virendra Pal (AI and FinTech Expert); plus a closed-door, 60-minute CXO Roundtable, "Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering", moderated by Bhupesh Daheria (CEO, Aegis School of Data Science & AI; Aegis Super Intelligence Lab) with Dr. Vinay Kulkarni and Dr. Ashish Tendulkar, for L&D Heads, Delivery Heads, Chief AI Officers, Chief Data Officers, CIOs and CTOs
 - [Partner](https://bharataiinnovation.com/partner): Sponsorship tiers, individually priced branding and activation options, AI Leadership Panel, startup path
 - [AI Readiness Certification](https://bharataiinnovation.com/ai-readiness): Independent AI maturity rating and certification, an Aegis Graham Bell Awards initiative
@@ -279,5 +278,4 @@ Generative AI, LLMs, ChatGPT, GPT-4, Claude, Gemini, RAG, AI agents, multimodal 
 - Network with 5,000+ AI professionals, founders, researchers, and enterprise leaders
 - See live demos across 93 booths in 8 AI industry zones
 - Attend deep-dive technical workshops on GenAI, LLMs, MLOps, and AI deployment
-- Connect with venture capital and angel investors in the startup pitch arena
 - Establish partnerships across India's growing AI ecosystem
