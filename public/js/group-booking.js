@@ -15,6 +15,8 @@
   function pctFor(k) { for (var i = 0; i < TIERS.length; i++) if (k >= TIERS[i].min) return TIERS[i].pct; return 0; }
   var MAX = Number(form.getAttribute('data-max') || 50);
   var PAY = form.getAttribute('data-pay') === '1';
+  // A colleague invitation (the server's LAST-WEEK OFFERS): sent back with the booking.
+  var REF = form.getAttribute('data-ref') || '';
   var KEY = 'bai_group_draft';
   var EMAIL = /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>.]{2,}$/;
   var GSTIN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/;
@@ -33,6 +35,8 @@
   function val(el) { return el ? String(el.value || '').trim() : ''; }
   function each(nodes, fn) { Array.prototype.forEach.call(nodes, fn); }
   function mobileOk(v) { var d = String(v || '').replace(/\D/g, '').length; return d >= 10 && d <= 15; }
+  function people(k) { return k + ' ' + (k === 1 ? 'person' : 'people'); }
+  function passes(k) { return k + ' ' + (k === 1 ? 'pass' : 'passes'); }
   function money(paise) {
     return '₹' + (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: paise % 100 ? 2 : 0, maximumFractionDigits: 2 });
   }
@@ -71,10 +75,10 @@
   }
   function show() {
     var s = sums();
-    $('gb-total').textContent = (s.n < MIN ? 'For ' + MIN + ' people: ' : '') + s.k + ' × ' + money(s.unit * 100) + ' + ' + GST + '% GST = ' + money(s.total);
+    $('gb-total').textContent = (s.n < MIN ? 'For ' + people(MIN) + ': ' : '') + s.k + ' × ' + money(s.unit * 100) + ' + ' + GST + '% GST = ' + money(s.total);
     $('gb-save').textContent = 'You save ' + money(s.save) + ' on the list price (' + s.pct + '% off).' + (s.more ? ' Add ' + s.more + ' more and every pass is ' + s.topPct + '% off.' : '');
-    $('gb-count').textContent = s.n >= MIN ? s.n + ' people on the list.' : s.n + ' of at least ' + MIN + ' people added.';
-    if (!busy) go.textContent = 'Pay ' + money(s.total) + ' and book ' + s.k + ' passes';
+    $('gb-count').textContent = s.n >= MIN ? people(s.n) + ' on the list.' : s.n + ' of at least ' + people(MIN) + ' added.';
+    if (!busy) go.textContent = 'Pay ' + money(s.total) + ' and book ' + passes(s.k);
   }
 
   // ---- saying what is wrong, next to it ----
@@ -129,7 +133,7 @@
       n++;
     }
     if (n < MIN) {
-      var text = 'A group booking is ' + MIN + ' passes or more. ' + (n ? 'You have ' + n + ' on the list: add ' + (MIN - n) + ' more.' : 'Add the people who are coming.');
+      var text = MIN <= 1 ? 'Add the person who is coming: their name and email.' : 'A group booking is ' + MIN + ' passes or more. ' + (n ? 'You have ' + n + ' on the list: add ' + (MIN - n) + ' more.' : 'Add the people who are coming.');
       var empty = all.filter(blank)[0];
       return empty ? failRow(empty, 'name', text) : fail(addBtn, $('gb-err-people'), text);
     }
@@ -232,6 +236,7 @@
       billing: bill,
       members: rows().map(function (r) { var o = {}; FIELDS.forEach(function (k) { o[k] = val(input(r, k)); }); return o; })
     };
+    if (REF) body.ref = REF;
     fetch('/api/group/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (x) {
@@ -253,6 +258,8 @@
   window.addEventListener('pageshow', function (ev) { if (ev.persisted) { busy = false; go.disabled = !PAY; show(); } });
 
   restore();
+  // An invitation starts with "The pass is for me" ticked: the first person is the buyer.
+  if (me.checked && !buyerRow()) syncMe();
   renumber();
   show();
   if (!PAY) go.disabled = true;

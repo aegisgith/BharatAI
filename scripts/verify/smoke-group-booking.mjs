@@ -39,6 +39,8 @@ const people = (n, tag, over = {}) => Array.from({ length: n }, (_, i) => ({ nam
 const buyerA = { name: 'Priya Buyer', email: 'priya.buyer@acme.example', mobile: '98200 11111', company: 'Acme Analytics' };
 const paise = (inr) => inr * 100;
 const withGst = (p) => p + Math.round(p * 18 / 100);
+// As the page prints a sum: "&#8377;9,025.82".
+const groupInrText = (p) => '&#8377;' + (p / 100).toLocaleString('en-IN', { minimumFractionDigits: p % 100 ? 2 : 0, maximumFractionDigits: 2 });
 const count = (sql, ...a) => Number(q(sql, ...a)[0]?.n || 0);
 let r;
 
@@ -216,6 +218,75 @@ setting('payment_gateway', 'ccavenue');
 let last = null;
 for (let i = 0; i < 21; i++) last = await hit('POST', '/api/group/start', { pass_type: 'Delegate Pass', buyer: buyerA, members: people(5, 'l') }, { 'CF-Connecting-IP': '10.9.9.9' });
 check('one address: 20 tries an hour, then a polite no', last.status === 429 && /a lot of bookings/.test(last.json?.error || ''), last.status + ' ' + last.text);
+
+// ---- 9b. bring a colleague (13 Nov, LAST-WEEK OFFERS): by email only, 15% off even one pass ----
+const ASHA = person(960, { name: 'Asha Inviter', email: 'asha@inviter.example', badge_type: 'Delegate Pass', payment_status: 'paid', company: 'Inviter Co', payment_amount: '10618.82' });
+r = await hit('POST', '/api/admin/offers/send?audience=colleagues&attendee=' + ASHA + '&force=1', undefined, ADMIN);
+check('offers off: no colleague email goes', r.json?.skipped === true, r.text);
+r = await hit('PUT', '/api/admin/offers', { on: true }, ADMIN);
+check('the offers switch turns on', r.status === 200 && r.json.active === true, r.text);
+sent.length = 0;
+r = await hit('POST', '/api/admin/offers/send?audience=colleagues&attendee=' + ASHA + '&force=1', undefined, ADMIN);
+const cmail = mailTo('asha@inviter.example').pop();
+const link = cmail ? (html(cmail).match(/https?:\/\/[^"<\s]+\/group\?c=([0-9a-z]+\.[0-9a-f]{24})/) || []) : [];
+const TOKEN = decodeURIComponent(link[1] || '');
+check('the colleague email: to the holder, the 15% prices for one pass, WhatsApp, the link, and NO sign-in link (it is made to be forwarded)', r.json?.success && cmail && /^Asha, bring a colleague to Bharat AI Innovation, 15% off$/.test(subject(cmail)) && html(cmail).includes('&#8377;7,649 + GST') && html(cmail).includes('&#8377;21,249 + GST') && html(cmail).includes('https://wa.me/?text=') && /up to 4 passes/.test(html(cmail)) && !!TOKEN && W.tokensIn(cmail).length === 0 && !/token=/.test(html(cmail)), cmail ? subject(cmail) + ' ' + W.tokensIn(cmail).length : r.text);
+r = await hit('GET', '/group?c=' + encodeURIComponent(TOKEN));
+const invPrice = withGst(paise(7649));
+check('/group?c=: the invitation page: Asha invited you, one person, 15% off one pass, "The pass is for me" ticked, the link sent back', r.status === 200 && /Asha invited you to Bharat AI Innovation 2026/.test(r.text) && r.text.includes('Inviter Co') && /data-min="1"/.test(r.text) && r.text.includes('data-ref="' + TOKEN + '"')
+  && r.text.includes('data-tiers="[{&quot;min&quot;:5,&quot;pct&quot;:30},{&quot;min&quot;:1,&quot;pct&quot;:15}]"') && (r.text.match(/class="gb-person"/g) || []).length === 2 && /id="gb-me" checked/.test(r.text) && r.text.includes('The pass is for me')
+  && r.text.includes('&#8377;7,649 <small>+ GST each</small>') && r.text.includes('Pay ' + groupInrText(invPrice) + ' and book 1 pass') && /noindex/i.test(r.headers.get('x-robots-tag') || ''), r.text.match(/Pay [^<]*/)?.[0]);
+r = await hit('GET', '/group?c=' + encodeURIComponent(TOKEN.replace(/.$/, ch => ch === '0' ? '1' : '0')));
+check('a link with a changed signature: "not open now", and the ordinary group page', /This colleague invitation is not open now/.test(r.text) && /data-min="3"/.test(r.text) && !/invited you/.test(r.text) && !/data-ref=/.test(r.text), '');
+const colBuyer = { name: 'Kiran Colleague', email: 'kiran@colleague.example', mobile: '98200 55555', company: 'Colleague Labs' };
+const just = (b) => [{ name: b.name, email: b.email, mobile: b.mobile, designation: 'Product Lead' }];
+r = await start({ pass_type: 'Delegate Pass', buyer: colBuyer, members: just(colBuyer) });
+check('one pass without the invitation: refused, a group is 3 or more', r.status === 400 && /3 passes or more/.test(r.json?.error || ''), r.text);
+r = await start({ pass_type: 'Delegate Pass', buyer: colBuyer, members: just(colBuyer), ref: TOKEN.slice(0, -1) + 'x' });
+check('one pass with a broken invitation: refused, saying the invitation is not open', r.status === 400 && /invitation is not open now/.test(r.json?.error || ''), r.text);
+r = await start({ pass_type: 'Delegate Pass', buyer: colBuyer, members: just(colBuyer), ref: TOKEN });
+const C1 = r.json?.order_id;
+const gc1 = C1 ? q('SELECT * FROM group_orders WHERE order_id = ?', C1)[0] : null;
+check('one pass with the invitation: 7,649 + GST = 9,025.82, the inviter and the rate kept with the booking', r.status === 201 && r.json.amount === invPrice / 100 && order(C1).base_paise === 764900 && order(C1).pass_type === 'Group: 1 x Delegate Pass' && JSON.parse(gc1.buyer).ref === ASHA && JSON.parse(gc1.buyer).pct === 15, r.status + ' ' + r.text);
+const five = await start({ pass_type: 'VIP Pass', buyer: { name: 'Big Team', email: 'big@colleague.example', mobile: '98200 66666', company: 'Big' }, members: people(5, 'col'), ref: TOKEN });
+check('5 through the invitation: still 30% off each (the better rate), and not counted against the link', five.status === 201 && order(five.json.order_id).base_paise === 5 * 1749900, five.status + ' ' + five.text);
+sent.length = 0;
+const cback = await answer(C1);
+await until(() => who(order(C1).attendee_id)?.badge_type === 'Delegate Pass' && mailTo(TEAM).some(p => /^Colleague booking paid:/.test(subject(p))) && mailTo('kiran@colleague.example').some(p => /^Booked:/.test(subject(p))), 12000);
+const KIRAN = Number(order(C1).attendee_id);
+check('paid: Kiran holds a paid Delegate Pass with the share 9,025.82, lunch, coming', who(KIRAN).badge_type === 'Delegate Pass' && who(KIRAN).payment_status === 'paid' && who(KIRAN).payment_amount === '9025.82' && Number(who(KIRAN).main_event) === 1, JSON.stringify(who(KIRAN)));
+const kmail = mailTo('kiran@colleague.example');
+const kb = kmail.find(p => /^Booked:/.test(subject(p))), kp = kmail.find(p => /is confirmed$/.test(subject(p)));
+check('Kiran\'s emails: "Booked: 1 Delegate Pass for Bharat AI Innovation 2026" (not "for your group"), 15% off with a colleague invitation; the pass email not "booked by" themselves', kb && subject(kb) === 'Booked: 1 Delegate Pass for Bharat AI Innovation 2026' && /15% off with a colleague invitation/.test(html(kb)) && kp && !/booked by/i.test(html(kp)), kmail.map(subject).join(' | '));
+const ktm = mailTo(TEAM).find(p => /^Colleague booking paid:/.test(subject(p)));
+check('the team is told it came through Asha\'s invitation, at 15% off', ktm && /colleague invitation of <strong>Asha Inviter<\/strong> \(asha@inviter\.example\)/.test(html(ktm)) && /1 pass at 15% off/.test(html(ktm)), ktm ? html(ktm).slice(0, 300) : 'none');
+r = await hit('GET', cback.location);
+check('the result page: "You are booked"', /Payment received\. You are booked\./.test(r.text) && /1 Delegate Pass for Bharat AI Innovation 2026 is confirmed/.test(r.text), r.text.slice(0, 200));
+// The cap: 4 passes per link. 1 paid; 2 more at checkout; then 2 more is one too many.
+r = await start({ pass_type: 'Premium Delegate Pass', buyer: { name: 'Second One', email: 'second@colleague.example', mobile: '98200 77777', company: '' }, members: people(2, 'sec'), ref: TOKEN });
+check('2 more through the link (3 of 4 used): accepted at 15%, 12,749 each', r.status === 201 && order(r.json.order_id).base_paise === 2 * 1274900, r.status + ' ' + r.text);
+const C2 = r.json?.order_id;
+r = await start({ pass_type: 'Delegate Pass', buyer: { name: 'Third One', email: 'third@colleague.example', mobile: '98200 88888', company: '' }, members: people(2, 'thi'), ref: TOKEN });
+check('2 more again: refused, the invitation has 1 pass left', r.status === 409 && /has 1 pass left at 15% off/.test(r.json?.error || ''), r.status + ' ' + r.text);
+r = await start({ pass_type: 'Premium Delegate Pass', buyer: { name: 'Second One', email: 'second@colleague.example', mobile: '98200 77777', company: '' }, members: people(2, 'sec'), ref: TOKEN });
+check('the same buyer starting again is not blocked by their own open checkout', r.status === 201 && q('SELECT status FROM group_orders WHERE order_id = ?', C2)[0].status === 'cancelled', r.status + ' ' + r.text);
+const cab = await answer(r.json.order_id, { order_status: 'Aborted' });
+r = await hit('GET', cab.location);
+check('a cancelled colleague booking: Try again goes back to the invitation', r.text.includes('href="/group?c=' + encodeURIComponent(TOKEN) + '"'), (r.text.match(/href="\/group[^"]*"/) || [])[0]);
+r = await hit('GET', '/api/admin/offers', undefined, ADMIN);
+check('Admin, Last-week offers: one colleague booking counted, the rate and the cap shown, Asha already written to', r.json?.colleagues?.ready === true && r.json.colleagues.bookings === 1 && r.json.colleagues.passes === 1 && r.json.colleagues.paise === invPrice && r.json.prices.colleague_pct === 15 && r.json.prices.colleague_passes === 4 && typeof r.json.audiences.colleagues === 'number', JSON.stringify(r.json?.colleagues) + ' ' + JSON.stringify(r.json?.audiences));
+r = await hit('GET', '/api/admin/offers/preview?audience=colleagues', undefined, ADMIN);
+check('the preview builds, with no sign-in link', r.status === 200 && /bring a colleague/.test(r.json?.subject || '') && !/token=/.test(r.json?.html || ''), r.text.slice(0, 200));
+r = await hit('GET', '/api/payments/config');
+const pub = await hit('GET', '/passes');
+// (The /passes FAQ says a pass may be transferred to a colleague: that is not the offer.)
+const offerWords = /bring a colleague|colleague invitation|invited you|colleague_pct/i;
+check('nothing public says it: not the config, not /passes, not the plain /group', !offerWords.test(r.text) && !offerWords.test(pub.text) && !offerWords.test((await hit('GET', '/group')).text), '');
+r = await hit('PUT', '/api/admin/offers', { on: false }, ADMIN);
+r = await hit('GET', '/group?c=' + encodeURIComponent(TOKEN));
+check('offers off: the link says the invitation is not open now', /This colleague invitation is not open now/.test(r.text) && !/invited you/.test(r.text), '');
+r = await start({ pass_type: 'Delegate Pass', buyer: { name: 'Late Comer', email: 'late@colleague.example', mobile: '98200 99999', company: '' }, members: people(1, 'late'), ref: TOKEN });
+check('offers off: one pass through the link is refused', r.status === 400 && /invitation is not open now/.test(r.json?.error || ''), r.text);
 
 // ---- 10. the pages that state the rule ----
 r = await hit('GET', '/passes');

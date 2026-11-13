@@ -2948,7 +2948,7 @@ function payRefusal(a: any, passType = ''): string | null {
 // ==================== LAST-WEEK OFFERS (12 Nov 2026) ====================
 //
 // The organiser, eight days before the event: "lets use last min opportunity to
-// monetise". Three offers on one switch, app_settings.last_week_offers = 'on'
+// monetise". Four offers on one switch, app_settings.last_week_offers = 'on'
 // (Admin, Payments, Last-week offers), until the last day of the event:
 //  1. An Exhibitor or Exhibition Speaker pass moves up to VIP: Rs 4,999 when the
 //     company's booth is a Startup Pod or an Explorer Booth, Rs 9,999 for any
@@ -2959,6 +2959,11 @@ function payRefusal(a: any, passType = ''): string | null {
 //     Rs 15,000 with a VIP Pass. Capped (showcase_slots_cap, default 12): the
 //     stage has room for about 12-15 more once the booth talks are placed (the
 //     Hall session, 12 Nov). Needs 0058.
+//  4. (13 Nov) Bring a colleague, by email only: a paid Delegate, Premium Delegate
+//     or VIP holder gets a personal link, /group?c=<token>. Through it even one
+//     pass is COLLEAGUE_PCT off (Delegate, Premium Delegate or VIP; 5 or more stay
+//     30% each), for up to COLLEAGUE_LINK_PASSES passes in all per link. Booked
+//     and paid on /group (GROUP BOOKING), so it needs 0059. Never on a public page.
 // The Student Pass (Rs 999, one workshop) came the same day as a pass of its own, not
 // an offer: PAID_TIERS, WORKSHOP_TIERS, STUDENT_WORKSHOP_SHARE.
 // All + 18% GST. Off, every price and rule is exactly as before, which is what the
@@ -2986,6 +2991,11 @@ const SHOWCASE_PLACE = 'the Innovation Stage: Aryabhata Theatre, in the Expo Hal
 const SHOWCASE_PASS = 'Exhibition Speaker'
 const SHOWCASE_LINK_DAYS = 14
 const isShowcaseOrder = (o: any): boolean => [SHOWCASE_SLOT, SHOWCASE_SLOT_VIP].includes(String(o?.pass_type || ''))
+const COLLEAGUE_PCT = 15
+const COLLEAGUE_LINK_PASSES = 4
+// Who gets an invitation, and whose link works: a paid pass of these kinds.
+const COLLEAGUE_HOSTS = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass']
+const colleagueHost = (a: any): boolean => COLLEAGUE_HOSTS.includes(String(a?.badge_type || '').trim()) && String(a?.payment_status || '').trim().toLowerCase() === 'paid'
 
 let _offersSwitch = false
 let _offersSwitchAt = 0
@@ -3107,6 +3117,38 @@ async function showcaseTokenEmail(c: any, token: string): Promise<string> {
 async function showcaseLinkUrl(c: any, email: string): Promise<string> {
   const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
   return base + '/showcase-slot?t=' + encodeURIComponent(await showcaseLinkToken(c, email))
+}
+
+// ---- Bring a colleague ----
+// The link names the person who invites, signed: it gives a lower price and nothing
+// else (no sign-in, no details), so it is safe to forward. It works while the offers
+// run and while that person still holds a paid Delegate, Premium Delegate or VIP Pass.
+async function colleagueToken(c: any, attendeeId: number): Promise<string> {
+  const id = Math.floor(Number(attendeeId))
+  return id.toString(36) + '.' + (await hmacHexA(passTokenSecret(c), 'colleague:' + id)).slice(0, 24)
+}
+async function colleagueLinkUrl(c: any, attendeeId: number): Promise<string> {
+  const base = ((await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app').replace(/\/app\/?$/, '')
+  return base + '/group?c=' + encodeURIComponent(await colleagueToken(c, attendeeId))
+}
+async function colleagueInviter(c: any, token: any): Promise<any | null> {
+  const m = /^([0-9a-z]{1,8})\.([0-9a-f]{24})$/.exec(String(token || '').trim())
+  if (!m || !offersActive() || !passTokenSecret(c)) return null
+  const id = parseInt(m[1], 36)
+  if (!(id > 0) || !safeEqualA(m[2], (await hmacHexA(passTokenSecret(c), 'colleague:' + id)).slice(0, 24))) return null
+  const a = await c.env.DB.prepare('SELECT id, name, company, email, badge_type, payment_status FROM attendees WHERE id = ?').bind(id).first().catch(() => null) as any
+  return a && colleagueHost(a) ? a : null
+}
+// Passes booked through this person's link at the colleague price (bookings smaller
+// than a group): paid, or at checkout now. The buyer's own open checkout is left out,
+// because starting again replaces it.
+async function colleagueLinkUsed(c: any, inviterId: number, buyerEmail = ''): Promise<number> {
+  const r = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(qty), 0) AS n FROM group_orders
+      WHERE event_id = 1 AND json_extract(buyer, '$.ref') = ? AND qty < ?
+        AND (status = 'paid' OR (status = 'held' AND created_at > datetime('now', ?) AND lower(COALESCE(json_extract(buyer, '$.email'), '')) != ?))`
+  ).bind(Number(inviterId), GROUP_MIN, showcaseHoldWindow(), String(buyerEmail || '').toLowerCase()).first().catch(() => null) as any
+  return Number(r?.n || 0)
 }
 
 // Who is booking: the emailed link's address, else the signed-in attendee.
@@ -3385,6 +3427,7 @@ const OFFER_AUDIENCES: Record<string, { refId: number; title: string }> = {
   vip_delegates: { refId: 1, title: 'Last-week offer: paid Delegates to VIP' },
   exhibitors: { refId: 2, title: 'Last-week offer: Exhibitor passes to VIP' },
   speakers: { refId: 3, title: 'Last-week offer: showcase slots to speaking requests' },
+  colleagues: { refId: 4, title: 'Last-week offer: bring a colleague, 15% off' },
 }
 const offerAudienceOf = (refId: any) => Object.keys(OFFER_AUDIENCES).find(k => OFFER_AUDIENCES[k].refId === Number(refId)) || ''
 // The audience key is one of OFFER_AUDIENCES', never typed text.
@@ -3442,6 +3485,12 @@ async function offerAudienceRows(c: any, audience: string, ids?: any[]): Promise
     const { results } = await c.env.DB.prepare(
       `SELECT id, name, email FROM attendees WHERE event_id = 1 AND email IS NOT NULL AND TRIM(email) != ''
           AND badge_type IN ('Exhibitor', 'Exhibition Speaker')${sc}${notSlot}${offerNotSentSql('exhibitors', 'attendees.email')} ORDER BY id`).all()
+    return (results as any[]) || []
+  }
+  if (audience === 'colleagues') {
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE event_id = 1 AND email IS NOT NULL AND TRIM(email) != ''
+          AND badge_type IN (${COLLEAGUE_HOSTS.map(() => '?').join(', ')}) AND LOWER(COALESCE(payment_status, '')) = 'paid'${sc}${offerNotSentSql('colleagues', 'attendees.email')} ORDER BY id`).bind(...COLLEAGUE_HOSTS).all()
     return (results as any[]) || []
   }
   if (audience === 'speakers') {
@@ -3503,6 +3552,22 @@ async function offerMail(c: any, audience: string, a: any, to: string, preview: 
       `<p style="margin:0;font-size:12px;line-height:1.6;color:#888;text-align:center;">The button signs you in and shows the sum before you pay, on CCAvenue’s secure page.</p>`)
     return { subject: hello + 'move your Exhibitor pass up to VIP', html }
   }
+  if (audience === 'colleagues') {
+    // Written to be forwarded: no sign-in link anywhere, only the invitation.
+    const badge = String(a?.badge_type || 'Delegate Pass')
+    const url = preview || !a?.id ? 'https://bharataiinnovation.com/group?c=preview' : await colleagueLinkUrl(c, Number(a.id))
+    const prices = GROUP_PASSES.map(p => `<strong>${payEsc(p)}</strong>: &#8377;${groupUnitInr(p, 1, COLLEAGUE_PCT).toLocaleString('en-IN')} + GST <span style="color:#888;">(usually &#8377;${passPriceInr(p).toLocaleString('en-IN')})</span>`)
+    const wa = 'https://wa.me/?text=' + encodeURIComponent(`Join me at Bharat AI Innovation 2026, 20-21 Nov, WTC Mumbai. With my invitation your pass is ${COLLEAGUE_PCT}% off: ${url}`)
+    const html = shell('Bring a colleague', payP(`Your <strong>${payEsc(badge)}</strong> for Bharat AI Innovation 2026 is confirmed. Thank you.`) +
+      payP(`Is there someone who should be there with you? Until ${OFFERS_LAST_DAY_TEXT}, anyone you invite gets <strong>${COLLEAGUE_PCT}% off</strong> their pass, even for just one pass:`) +
+      li(prices) +
+      payP(`Your invitation covers up to ${COLLEAGUE_LINK_PASSES} passes. Booking ${GROUP_TIERS[0].min} or more passes together, each one is ${GROUP_TIERS[0].pct}% off.`) +
+      `<div style="text-align:center;margin:18px 0 8px;">${payButton(url, 'Open my invitation')}</div>` +
+      payP(`Forward this email to them, or send them the link on WhatsApp: <a href="${payEsc(wa)}" style="color:#FF6B00;font-weight:bold;">share on WhatsApp</a>.`) +
+      `<p style="margin:0 0 14px;font-size:12px;line-height:1.6;color:#666;word-break:break-all;">${payEsc(url)}</p>` +
+      `<p style="margin:0;font-size:12px;line-height:1.6;color:#888;text-align:center;">The link only opens the booking page at the lower price. It does not sign anyone in to your account, so it is safe to share. They pay on CCAvenue’s secure page.</p>`)
+    return { subject: hello + `bring a colleague to Bharat AI Innovation, ${COLLEAGUE_PCT}% off`, html }
+  }
   const url = preview ? '#preview' : await showcaseLinkUrl(c, to)
   const slot = SHOWCASE_PRICES_INR[SHOWCASE_SLOT].toLocaleString('en-IN'), vip = SHOWCASE_PRICES_INR[SHOWCASE_SLOT_VIP].toLocaleString('en-IN')
   const html = shell('A slot on the Innovation Stage',
@@ -3539,6 +3604,8 @@ app.post('/api/admin/offers/send', async (c) => {
     const badge = String(a.badge_type || '').trim()
     if (audience === 'vip_delegates' && !(['Delegate Pass', 'Premium Delegate Pass'].includes(badge) && String(a.payment_status || '').toLowerCase() === 'paid')) return c.json({ skipped: true, reason: 'Holds ' + (badge || 'no pass') + ' now' })
     if (audience === 'exhibitors' && !exhibitorOfferHolder(a)) return c.json({ skipped: true, reason: 'Holds ' + (badge || 'no pass') + ' now' })
+    if (audience === 'colleagues' && !colleagueHost(a)) return c.json({ skipped: true, reason: 'Holds ' + (badge || 'no pass') + ' now, not a paid Delegate, Premium Delegate or VIP Pass' })
+    if (audience === 'colleagues' && !(await groupReady(c))) return c.json({ skipped: true, reason: 'Group booking is not set up yet (migration 0059)' })
   }
   if (!validEmailSyntax(to)) return c.json({ skipped: true, reason: 'No usable email address' })
   if (a?.unsubscribed_at || String(a?.marketing_consent ?? '') === '0') return c.json({ skipped: true, reason: 'Unsubscribed, or said no to email' })
@@ -3570,10 +3637,17 @@ app.get('/api/admin/offers', async (c) => {
     `SELECT pass_type, previous_badge, COUNT(*) AS n, COALESCE(SUM(amount_paise), 0) AS paise FROM payment_orders
       WHERE event_id = 1 AND status = 'paid' AND paid_at >= '2026-11-12' AND (pass_type IN (?, ?) OR (pass_type = 'VIP Pass' AND previous_badge IN ('Delegate Pass', 'Premium Delegate Pass', 'Exhibitor', 'Exhibition Speaker')) OR pass_type = 'Student Pass')
       GROUP BY pass_type, previous_badge`).bind(SHOWCASE_SLOT, SHOWCASE_SLOT_VIP).all().catch(() => ({ results: [] }))) as any).results || []) as any[]
+  // Bookings through a colleague invitation (group_orders with the inviter in buyer.ref).
+  const groups = await groupReady(c)
+  const col = groups ? await c.env.DB.prepare(
+    `SELECT COUNT(*) AS bookings, COALESCE(SUM(g.qty), 0) AS passes, COALESCE(SUM(o.amount_paise), 0) AS paise
+       FROM group_orders g JOIN payment_orders o ON o.order_id = g.order_id
+      WHERE g.event_id = 1 AND g.status = 'paid' AND json_extract(g.buyer, '$.ref') IS NOT NULL`).first().catch(() => null) as any : null
   return c.json({
     on, active: offersActive(), last_day: OFFERS_LAST_DAY_IST, last_day_text: OFFERS_LAST_DAY_TEXT,
-    prices: { vip_step: OFFER_VIP_STEP_INR, exhibitor_vip: OFFER_EXHIBITOR_VIP_INR, student: passPriceInr('Student Pass'), showcase: SHOWCASE_PRICES_INR, startup_booths: OFFER_STARTUP_BOOTHS, student_share: STUDENT_WORKSHOP_SHARE },
+    prices: { vip_step: OFFER_VIP_STEP_INR, exhibitor_vip: OFFER_EXHIBITOR_VIP_INR, student: passPriceInr('Student Pass'), showcase: SHOWCASE_PRICES_INR, startup_booths: OFFER_STARTUP_BOOTHS, student_share: STUDENT_WORKSHOP_SHARE, colleague_pct: COLLEAGUE_PCT, colleague_passes: COLLEAGUE_LINK_PASSES },
     showcase: show, slots, audiences, sold, gap_seconds: await sendGapSeconds(c), window: sendWindowState().window,
+    colleagues: { ready: groups, bookings: Number(col?.bookings || 0), passes: Number(col?.passes || 0), paise: Number(col?.paise || 0) },
   })
 })
 
@@ -19950,8 +20024,9 @@ app.post('/api/admin/campaigns', async (c) => {
   }
   // Last-week offers (LAST-WEEK OFFERS): one of three audiences, each written to once.
   if (kind === 'offer') {
-    if (!OFFER_AUDIENCES[audience]) return c.json({ error: 'An offer campaign is for vip_delegates, exhibitors or speakers.' }, 400)
+    if (!OFFER_AUDIENCES[audience]) return c.json({ error: 'An offer campaign is for vip_delegates, exhibitors, speakers or colleagues.' }, 400)
     if (!offersActive()) return c.json({ error: 'Switch the last-week offers on first.' }, 409)
+    if (audience === 'colleagues' && !(await groupReady(c))) return c.json({ error: 'The colleague invitation books on the group page, which needs migration 0059 first.' }, 409)
     refId = OFFER_AUDIENCES[audience].refId
   }
   if (kind === 'announcement' && !refId) return c.json({ error: 'An announcement campaign needs the announcement id.' }, 400)
@@ -23912,16 +23987,18 @@ const groupPlural = (n: number, pass: string) => n + ' ' + pass + (n === 1 ? '' 
 const groupPassName = (badge: string) => /pass$/i.test(badge) ? badge : badge + ' pass'
 
 // One pass in a group of n, whole rupees before GST: today's list price less the tier for
-// n (groupPctFor), to the rupee. /js/group-booking.js rounds the same way.
-function groupUnitInr(pass: string, n: number): number {
+// n (groupPctFor), to the rupee. /js/group-booking.js rounds the same way. A colleague
+// invitation (LAST-WEEK OFFERS) passes its own rate: groupPctWith.
+function groupUnitInr(pass: string, n: number, pct = groupPctFor(n)): number {
   const list = GROUP_PASSES.includes(pass) ? passPriceInr(pass) : 0
-  const pct = groupPctFor(n)
   return list && pct ? Math.round(list * (100 - pct) / 100) : 0
 }
+// The rate for n passes, with or without a colleague invitation: the better of the two.
+const groupPctWith = (n: number, invited: boolean): number => invited ? Math.max(COLLEAGUE_PCT, groupPctFor(n)) : groupPctFor(n)
 // The whole group in paise: n x the pass, + GST. A pass in whole rupees has GST in
 // whole paise, so the total is exactly n x one pass with its GST.
-function groupAmounts(pass: string, n: number): { unit: number; unitBase: number; unitTotal: number; base: number; gst: number; total: number } | null {
-  const unit = groupUnitInr(pass, n)
+function groupAmounts(pass: string, n: number, pct = groupPctFor(n)): { unit: number; unitBase: number; unitTotal: number; base: number; gst: number; total: number } | null {
+  const unit = groupUnitInr(pass, n, pct)
   if (!unit || !(n > 0)) return null
   const unitBase = unit * 100
   const base = unitBase * n
@@ -23956,8 +24033,8 @@ type GroupPerson = { row: number; name: string; email: string; mobile: string; d
 type GroupAsk = { pass: string; buyer: { name: string; email: string; mobile: string; company: string }; people: GroupPerson[] }
 // The form, checked the way /js/group-booking.js checks it, so a refusal here is one
 // the page already explains. People are numbered as the page numbers them (Person 1
-// is the first row); an empty row is passed over.
-function groupCheck(body: any): GroupAsk | { error: string; field: string; row?: number } {
+// is the first row); an empty row is passed over. min is 1 through a colleague invitation.
+function groupCheck(body: any, min = GROUP_MIN): GroupAsk | { error: string; field: string; row?: number } {
   const pass = String(body?.pass_type || '')
   if (!GROUP_PASSES.includes(pass) || !groupUnitInr(pass, GROUP_MIN)) return { error: 'Choose the pass for your group: Delegate, Premium Delegate or VIP.', field: 'pass' }
   const b = body?.buyer || {}
@@ -23981,8 +24058,9 @@ function groupCheck(body: any): GroupAsk | { error: string; field: string; row?:
     seen.set(p.email, row)
     people.push(p)
   }
-  if (people.length < GROUP_MIN) {
-    return { error: 'A group booking is ' + GROUP_MIN + ' passes or more. ' + (people.length ? 'You have ' + people.length + ' on the list: add ' + (GROUP_MIN - people.length) + ' more.' : 'Add the people who are coming.'), field: 'members' }
+  if (people.length < min) {
+    if (min <= 1) return { error: 'Add the person who is coming: their name and email.', field: 'members' }
+    return { error: 'A group booking is ' + min + ' passes or more. ' + (people.length ? 'You have ' + people.length + ' on the list: add ' + (min - people.length) + ' more.' : 'Add the people who are coming.'), field: 'members' }
   }
   if (people.length > GROUP_MAX) return { error: 'One booking takes up to ' + GROUP_MAX + ' people. For more, make a second booking, or write to info@bharataiinnovation.com.', field: 'members' }
   return { pass, buyer, people }
@@ -24045,15 +24123,32 @@ app.post('/api/group/start', async (c) => {
   if (_groupStarts.size > 5000) _groupStarts.clear()
 
   const body = await c.req.json().catch(() => ({})) as any
-  const ask = groupCheck(body)
-  if ('error' in ask) return c.json(ask, 400)
+  // A colleague invitation (LAST-WEEK OFFERS): even one pass at COLLEAGUE_PCT off.
+  const inviter = body.ref ? await colleagueInviter(c, body.ref) : null
+  const ask = groupCheck(body, inviter ? 1 : GROUP_MIN)
+  if ('error' in ask) {
+    if (body.ref && !inviter && ask.field === 'members') {
+      return c.json({ error: `This invitation is not open now: the colleague offer has ended, or the link is not complete. A booking of ${GROUP_MIN} or more passes still gets the group price.`, field: 'members' }, 400)
+    }
+    return c.json(ask, 400)
+  }
   // The GST invoice section, as the paid form sends it (empty: an invoice in the
   // buyer's own name). Kept with the order and saved for the buyer when the money
   // lands, so a stranger typing someone's address cannot change their details.
   const billing: any = body.billing === undefined ? undefined : cleanBilling(body.billing)
   if (billing && 'error' in billing) return c.json({ error: billing.error, field: 'billing' }, 400)
-  const amounts = groupAmounts(ask.pass, ask.people.length)
+  const pct = groupPctWith(ask.people.length, !!inviter)
+  const amounts = groupAmounts(ask.pass, ask.people.length, pct)
   if (!amounts) return c.json({ error: 'Choose the pass for your group: Delegate, Premium Delegate or VIP.', field: 'pass' }, 400)
+  // One link gives the colleague price on COLLEAGUE_LINK_PASSES passes in all.
+  if (inviter && ask.people.length < GROUP_MIN) {
+    const left = COLLEAGUE_LINK_PASSES - await colleagueLinkUsed(c, Number(inviter.id), ask.buyer.email)
+    if (ask.people.length > left) {
+      return c.json({ error: left > 0
+        ? `This invitation has ${left} ${left === 1 ? 'pass' : 'passes'} left at ${COLLEAGUE_PCT}% off. Take someone off the list, or book ${GROUP_MIN} or more passes for the group price.`
+        : `This invitation has been used for all its ${COLLEAGUE_LINK_PASSES} passes. A booking of ${GROUP_MIN} or more passes still gets the group price.`, field: 'members' }, 409)
+    }
+  }
 
   const known = await groupByEmail(c, ask.people.map(p => p.email))
   for (const p of ask.people) {
@@ -24096,11 +24191,13 @@ app.post('/api/group/start', async (c) => {
   const passType = groupPassType(ask.people.length, ask.pass)
   await c.env.DB.prepare(
     'INSERT INTO group_orders (event_id, order_id, buyer_attendee_id, pass_type, qty, unit_base_paise, members, buyer, billing) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(orderId, buyer.id, ask.pass, ask.people.length, amounts.unitBase, JSON.stringify(members), JSON.stringify(ask.buyer), billing === undefined ? '' : JSON.stringify(billing.billing)).run()
+  ).bind(orderId, buyer.id, ask.pass, ask.people.length, amounts.unitBase, JSON.stringify(members),
+    // The rate kept with the booking; ref is the inviter of a colleague booking.
+    JSON.stringify({ ...ask.buyer, pct, ...(inviter ? { ref: Number(inviter.id) } : {}) }), billing === undefined ? '' : JSON.stringify(billing.billing)).run()
   await c.env.DB.prepare(
     'INSERT INTO payment_orders (order_id, attendee_id, event_id, pass_type, previous_badge, base_paise, gst_paise, amount_paise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).bind(orderId, buyer.id, 1, passType, buyer.badge_type || '', amounts.base, amounts.gst, amounts.total).run()
-  await audit(c, 'group.order', 'attendee', buyer.id, { order_id: orderId, pass_type: passType, amount_paise: amounts.total, people: ask.people.length }, { actor: 'attendee ' + buyer.id, kind: 'attendee' })
+  await audit(c, 'group.order', 'attendee', buyer.id, { order_id: orderId, pass_type: passType, amount_paise: amounts.total, people: ask.people.length, pct, ...(inviter ? { invited_by: Number(inviter.id) } : {}) }, { actor: 'attendee ' + buyer.id, kind: 'attendee' })
   if (made) await issueAttendeeSession(c, buyer.id)
   return c.json({ order_id: orderId, amount: amounts.total / 100, qty: ask.people.length, pay_url: '/pay/ccavenue/' + await payLinkToken(c, orderId) }, 201)
 })
@@ -24245,9 +24342,10 @@ async function groupEmails(c: any, x: { order: any; kind: { qty: number; pass: s
             href = `${appUrl}?email=${encodeURIComponent(e.email)}&token=${issued.token}`
           } catch { /* the plain link still opens the app */ }
         }
+        const self = Number(e.attendee_id) === Number(buyer.id)
         const html = page('Your pass is confirmed', hi(e.name) +
-          payP(`Your <strong>${payEsc(pass)}</strong> for Bharat AI Innovation 2026 is confirmed, booked by ${by}.`) +
-          payRows([['Your pass', payEsc(pass)], ['Booked by', by], ['When', '20 and 21 Nov 2026'], ['Where', 'World Trade Center Mumbai, Cuffe Parade']]) +
+          payP(`Your <strong>${payEsc(pass)}</strong> for Bharat AI Innovation 2026 is confirmed${self ? '' : ', booked by ' + by}.`) +
+          payRows([['Your pass', payEsc(pass)], ...(self ? [] : [['Booked by', by] as [string, string]]), ['When', '20 and 21 Nov 2026'], ['Where', 'World Trade Center Mumbai, Cuffe Parade']]) +
           `<ul style="margin:0 0 16px 18px;padding:0;font-size:14px;line-height:1.7;color:#555;">
             <li>Open the app with the button below.</li>
             <li>Add your photo and download your pass: the badge desk scans it to check you in.</li>
@@ -24261,20 +24359,24 @@ async function groupEmails(c: any, x: { order: any; kind: { qty: number; pass: s
       await new Promise(r => setTimeout(r, 120))
     }
 
+    // The rate this booking was made at (kept since 13 Nov), and who invited a colleague booking.
+    const pct = Number(typed.pct) > 0 ? Number(typed.pct) : groupPctFor(kind.qty)
+    const inviter = Number(typed.ref) > 0 ? await c.env.DB.prepare('SELECT id, name, email FROM attendees WHERE id = ?').bind(Number(typed.ref)).first().catch(() => null) as any : null
+    const small = kind.qty < GROUP_MIN
     const li = (e: any, note: string) => `<li style="margin:0 0 4px;">${payEsc(e.name || e.email)} <span style="color:#666;">(${payEsc(e.email)})</span>: ${note}</li>`
     const people = `<ol style="margin:0 0 16px 18px;padding:0;font-size:14px;line-height:1.6;color:#333;">` +
       given.map(e => li(e, 'confirmed')).join('') +
       skipped.map(e => li(e, '<span style="color:#B3261E;">not given, already had a pass</span>')).join('') +
       failed.map(e => li(e, '<span style="color:#B3261E;">our team is finishing this one</span>')).join('') + `</ol>`
     const rows = payRows([
-      ['Booked', `${kind.qty} x ${payEsc(pass)}, ${groupPctFor(kind.qty)}% off`],
+      ['Booked', `${kind.qty} x ${payEsc(pass)}, ${pct}% off${inviter || typed.ref ? ' with a colleague invitation' : ''}`],
       ['Each pass', `${shareText} <span style="font-weight:normal;color:#666;">(includes ${PASS_GST_RATE}% GST)</span>`],
       ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${PASS_GST_RATE}% GST)</span>`],
       ['Order number', payEsc(order.order_id)],
       ['CCAvenue reference', payEsc(trackingId)],
     ])
     const n = (k: number) => k + ' ' + (k === 1 ? 'person' : 'people')
-    const buyerHtml = page('Your group is booked', hi(buyerName) +
+    const buyerHtml = page(small ? 'You are booked' : 'Your group is booked', hi(buyerName) +
       payP(`Thank you. Your payment has arrived and ${groupPlural(given.length, pass)} for Bharat AI Innovation 2026 ${given.length === 1 ? 'is' : 'are'} confirmed.`) +
       rows +
       `<p style="margin:0 0 8px;font-size:14px;font-weight:bold;color:#1E2140;">Who is coming</p>` + people +
@@ -24284,13 +24386,14 @@ async function groupEmails(c: any, x: { order: any; kind: { qty: number; pass: s
       (receipt
         ? payP(`Receipt <strong>${payEsc(receipt.invoice_no)}</strong> is in a separate email, and here: <a href="${payEsc(receipt.url)}" style="color:#FF6B00;font-weight:bold;">view the receipt</a>. Your GST invoice follows from our accounts team.`)
         : payP('Your receipt and GST invoice follow separately.')))
-    await sendAdminEmail(c, String(buyer.email), `Booked: ${groupPlural(given.length, pass)} for your group at Bharat AI Innovation 2026`, buyerHtml, { unsubscribe: false })
+    await sendAdminEmail(c, String(buyer.email), small ? `Booked: ${groupPlural(given.length, pass)} for Bharat AI Innovation 2026` : `Booked: ${groupPlural(given.length, pass)} for your group at Bharat AI Innovation 2026`, buyerHtml, { unsubscribe: false })
 
     const team = (await settingValue(c, 'inquiry_notify_email').catch(() => '')) || 'info@bharataiinnovation.com'
     const act = skipped.length || failed.length
-    await sendAdminEmail(c, team, `Group booking paid: ${buyerName}${company ? ', ' + company : ''}, ${kind.qty} x ${pass}, Rs ${amount}${act ? ' (ACTION NEEDED)' : ''}`,
+    const invited = typed.ref ? ` through the colleague invitation of ${inviter ? '<strong>' + payEsc(inviter.name || '') + '</strong> (' + payEsc(inviter.email || '') + ')' : 'attendee ' + Number(typed.ref)}` : ''
+    await sendAdminEmail(c, team, `${typed.ref ? 'Colleague booking paid' : 'Group booking paid'}: ${buyerName}${company ? ', ' + company : ''}, ${kind.qty} x ${pass}, Rs ${amount}${act ? ' (ACTION NEEDED)' : ''}`,
       `<div style="font-family:Arial,sans-serif;max-width:600px;">
-        <p style="font-size:14px;line-height:1.6;color:#333;margin:0 0 14px;"><strong>${payEsc(buyerName)}</strong> (${payEsc(buyer.email)}${typed.mobile ? ', ' + payEsc(typed.mobile) : ''}${company ? ', ' + payEsc(company) : ''}) has paid online for a group booking at ${GROUP_DISCOUNT_PCT}% off.</p>
+        <p style="font-size:14px;line-height:1.6;color:#333;margin:0 0 14px;"><strong>${payEsc(buyerName)}</strong> (${payEsc(buyer.email)}${typed.mobile ? ', ' + payEsc(typed.mobile) : ''}${company ? ', ' + payEsc(company) : ''}) has paid online for ${kind.qty} ${kind.qty === 1 ? 'pass' : 'passes'} at ${pct}% off${invited}.</p>
         ${rows}${people}
         ${skipped.length ? `<p style="font-size:14px;line-height:1.6;color:#B3261E;margin:0 0 12px;"><strong>Refund or swap:</strong> ${n(skipped.length)} paid for and not given, because they already held a pass (${skipped.map(e => payEsc(e.email) + ': ' + payEsc(groupPassName(e.held || ''))).join('; ')}). Write to the buyer.</p>` : ''}
         ${failed.length ? `<p style="font-size:14px;line-height:1.6;color:#B3261E;margin:0 0 12px;"><strong>Not finished:</strong> give ${n(failed.length)} the ${payEsc(pass)} by hand in Admin, Attendees (${failed.map(e => payEsc(e.email)).join('; ')}).</p>` : ''}
@@ -24308,12 +24411,17 @@ async function groupPayResult(c: any, order: any) {
   const g = await c.env.DB.prepare('SELECT * FROM group_orders WHERE order_id = ?').bind(order.order_id).first().catch(() => null) as any
   let list: any[] = []
   try { list = JSON.parse(String(g?.members || '[]')) || [] } catch { list = [] }
+  let typed: any = {}
+  try { typed = JSON.parse(String(g?.buyer || '{}')) || {} } catch { typed = {} }
+  // A colleague booking goes back to its invitation, which keeps the lower price.
+  const again = Number(typed.ref) > 0 ? '/group?c=' + encodeURIComponent(await colleagueToken(c, Number(typed.ref))) : '/group'
+  const small = (kind?.qty || 0) < GROUP_MIN
   if (order.status === 'paid') {
     const settled = String(g?.status || '') === 'paid'
     const given = settled ? list.filter(e => e?.status === 'given').length : (kind?.qty || 0)
     const skipped = settled ? list.filter(e => e?.status === 'skipped').length : 0
     const buyerIn = settled && list.some(e => e?.status === 'given' && Number(e.attendee_id) === Number(order.attendee_id))
-    return c.html(payPage('Group booked', payH1('Payment received. Your group is booked.') +
+    return c.html(payPage(small ? 'Booked' : 'Group booked', payH1(small ? 'Payment received. You are booked.' : 'Payment received. Your group is booked.') +
       payP(`${groupPlural(given, pass)} for Bharat AI Innovation 2026 ${given === 1 ? 'is' : 'are'} confirmed. Each person on your list gets an email from us with their own link to the app, to add their photo and download their pass.`) +
       (skipped ? payP(`${skipped} ${skipped === 1 ? 'person' : 'people'} on your list already had a pass, so we did not give them a second one. Our team will write to you about ${skipped === 1 ? 'it' : 'them'}.`) : '') +
       payRows([['Amount paid', `&#8377;${rupees(Number(order.amount_paise))} <span style="font-weight:normal;color:#666;">(includes GST)</span>`], ['Order number', no], ['CCAvenue reference', payEsc(order.tracking_id)]]) +
@@ -24332,7 +24440,7 @@ async function groupPayResult(c: any, order: any) {
   }
   return c.html(payPage('Not booked yet', payH1(order.status === 'aborted' ? 'You cancelled the payment.' : order.status === 'created' ? 'We have not heard back about this payment.' : 'The payment did not go through.') +
     payP(order.status === 'created' ? 'If you completed it, give it a minute and refresh this page. If you did not, nothing was charged.' : 'Nothing was charged for this order, and no passes were issued.') +
-    payButton('/group', 'Try again')))
+    payButton(again, 'Try again')))
 }
 
 // Admin's Overview board counts "by hand" a paid tier with no paid order of its own.
@@ -24356,15 +24464,39 @@ app.get('/group', async (c) => {
   } catch { /* an empty form */ }
   const want = String(c.req.query('pass') || '').toLowerCase()
   const pick = want === 'vip' ? 'VIP Pass' : want === 'premium' ? 'Premium Delegate Pass' : 'Delegate Pass'
-  return c.html(groupPageHTML({ open, payOn, fill, pick }))
+  // A colleague invitation (LAST-WEEK OFFERS): the link's person, and what is left on it.
+  const ref = String(c.req.query('c') || '').trim()
+  let invite: { token: string; first: string; company: string; left: number } | null = null
+  if (ref && open) {
+    const a = await colleagueInviter(c, ref)
+    // "Dr. RAJESH KUMAR" reads as "Rajesh": no title, no capitals shouting.
+    const word = String(a?.name || '').trim().replace(/^((dr|mr|mrs|ms|miss|shri|smt|prof|er|ca)\.?\s+)+/i, '').split(/\s+/)[0] || ''
+    const first = word.length > 1 && word === word.toUpperCase() ? word[0] + word.slice(1).toLowerCase() : word
+    if (a) invite = { token: ref, first: first || 'Your colleague', company: String(a.company || '').trim(), left: Math.max(0, COLLEAGUE_LINK_PASSES - await colleagueLinkUsed(c, Number(a.id))) }
+  }
+  if (ref) c.header('X-Robots-Tag', 'noindex')
+  return c.html(groupPageHTML({ open, payOn, fill, pick, invite, inviteGone: !!ref && open && !invite }))
 })
 
-function groupPageHTML(o: { open: boolean; payOn: boolean; fill: any; pick: string }): string {
+function groupPageHTML(o: { open: boolean; payOn: boolean; fill: any; pick: string; invite?: { token: string; first: string; company: string; left: number } | null; inviteGone?: boolean }): string {
   const e = payEsc
   const f = o.fill || {}
+  const inv = o.invite && o.invite.left > 0 ? o.invite : null
+  // Through an invitation even one pass has a price: the tiers end at 1 person.
+  const tiers = inv ? [GROUP_TIERS[0], { min: 1, pct: COLLEAGUE_PCT }] : GROUP_TIERS
+  const min = inv ? 1 : GROUP_MIN
+  const pctAt = (n: number) => groupPctWith(n, !!inv)
   const option = (p: string) => {
-    const list = passPriceInr(p), unit = groupUnitInr(p, GROUP_TIERS[0].min), small = groupUnitInr(p, GROUP_MIN)
-    return `
+    const list = passPriceInr(p), unit = groupUnitInr(p, GROUP_TIERS[0].min), small = groupUnitInr(p, min, pctAt(min))
+    return inv ? `
+        <label class="gb-opt">
+          <input type="radio" name="pass" value="${e(p)}" data-list="${list}"${p === o.pick ? ' checked' : ''}>
+          <span class="gb-opt-in">
+            <span class="gb-opt-head"><b>${e(p)}</b><span class="gb-price"><span class="gb-sr">List price </span><s>${groupInr(list * 100)}</s> <span class="gb-sr">, your price </span>${groupInr(small * 100)} <small>+ GST each</small></span></span>
+            <span class="gb-opt-line">${groupInr(unit * 100)} + GST each for ${GROUP_TIERS[0].min} or more</span>
+            <span class="gb-opt-line">${GROUP_LINES[p]}</span>
+          </span>
+        </label>` : `
         <label class="gb-opt">
           <input type="radio" name="pass" value="${e(p)}" data-list="${list}"${p === o.pick ? ' checked' : ''}>
           <span class="gb-opt-in">
@@ -24387,23 +24519,27 @@ function groupPageHTML(o: { open: boolean; payOn: boolean; fill: any; pick: stri
             </div>
             <p class="gb-err gb-row-err" role="alert"></p>
           </li>`
-  // What the page shows before the script runs: the price for GROUP_MIN people.
-  const a = groupAmounts(o.pick, GROUP_MIN)!
-  const off = GROUP_MIN * (passPriceInr(o.pick) - a.unit) * 100
+  // What the page shows before the script runs: the price for the fewest people.
+  const a = groupAmounts(o.pick, min, pctAt(min))!
+  const off = min * (passPriceInr(o.pick) - a.unit) * 100
   const saved = off + Math.round(off * PASS_GST_RATE / 100)
+  const people = (n: number) => n + ' ' + (n === 1 ? 'person' : 'people')
+  const passes = (n: number) => n + ' ' + (n === 1 ? 'pass' : 'passes')
   let body: string
   if (!o.open) {
     body = `<div class="gb-card"><h2>Group booking opens shortly</h2><p>Please come back in a little while. Until then, single passes are on <a href="/register">the registration page</a>, or write to <a href="mailto:info@bharataiinnovation.com">info@bharataiinnovation.com</a>.</p></div>`
   } else {
-    body = `<form class="gb-card" id="gb-form" novalidate data-gst="${PASS_GST_RATE}" data-min="${GROUP_MIN}" data-max="${GROUP_MAX}" data-tiers="${e(JSON.stringify(GROUP_TIERS))}" data-pay="${o.payOn ? '1' : '0'}">
+    const gone = o.inviteGone || (o.invite && !inv)
+      ? `<p class="gb-note" role="status">${o.invite && !inv ? `This invitation has been used for all its ${COLLEAGUE_LINK_PASSES} passes.` : 'This colleague invitation is not open now.'} A booking of ${GROUP_MIN} or more passes still gets the group price below.</p>` : ''
+    body = `${gone}<form class="gb-card" id="gb-form" novalidate data-gst="${PASS_GST_RATE}" data-min="${min}" data-max="${GROUP_MAX}" data-tiers="${e(JSON.stringify(tiers))}" data-pay="${o.payOn ? '1' : '0'}"${inv ? ` data-ref="${e(inv.token)}"` : ''}>
       <h2>1. Choose the pass</h2>
-      <p class="gb-help">Everyone in one booking gets the same pass. Prices are per person.</p>
+      <p class="gb-help">${inv ? `Prices are per person, ${COLLEAGUE_PCT}% off with ${e(inv.first)}&rsquo;s invitation. Booking for others too? Everyone in one booking gets the same pass.` : 'Everyone in one booking gets the same pass. Prices are per person.'}</p>
       <fieldset class="gb-opts"><legend class="gb-sr">The pass for everyone in the group</legend>${GROUP_PASSES.map(option).join('')}
       </fieldset>
       <em class="gb-err" id="gb-err-pass" role="alert"></em>
 
       <h2>2. Your details</h2>
-      <p class="gb-help">You pay, and the receipt comes to you. You need not be coming yourself.</p>
+      <p class="gb-help">${inv ? 'You pay, and the receipt comes to you.' : 'You pay, and the receipt comes to you. You need not be coming yourself.'}</p>
       ${field('buyer-name', 'Your name', f.name || '', 'autocomplete="name" autocapitalize="words" maxlength="80"')}
       ${field('buyer-email', 'Your email', f.email || '', 'type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254"')}
       ${field('buyer-mobile', 'Your mobile', f.mobile || '', 'type="tel" inputmode="tel" autocomplete="tel" maxlength="20"')}
@@ -24418,19 +24554,20 @@ function groupPageHTML(o: { open: boolean; payOn: boolean; fill: any; pick: stri
 
       <h2>3. Who is coming</h2>
       <p class="gb-help">Each person gets their own pass by email, with a link to the app. Their mobile and designation can wait: they can add them in the app.</p>
-      <label class="gb-check"><input type="checkbox" id="gb-me"> <span>I am attending too</span></label>
-      <ol class="gb-people" id="gb-people">${Array.from({ length: GROUP_MIN }, (_, i) => person(i + 1)).join('')}
+      <label class="gb-check"><input type="checkbox" id="gb-me"${inv ? ' checked' : ''}> <span>${inv ? 'The pass is for me' : 'I am attending too'}</span></label>
+      <ol class="gb-people" id="gb-people">${Array.from({ length: min }, (_, i) => person(i + 1)).join('')}
       </ol>
       <em class="gb-err" id="gb-err-people" role="alert"></em>
       <button type="button" class="gb-add" id="gb-add">Add a person</button>
       <p class="gb-help" id="gb-max" hidden>That is ${GROUP_MAX}, the most one booking takes. For more, make a second booking.</p>
+      ${inv ? `<p class="gb-help">The invitation covers ${passes(inv.left)} at ${COLLEAGUE_PCT}% off${inv.left < COLLEAGUE_LINK_PASSES ? ' still' : ''}; ${GROUP_TIERS[0].min} or more in one booking are ${GROUP_TIERS[0].pct}% off each.</p>` : ''}
 
       <div class="gb-sum" aria-live="polite">
-        <p class="gb-count" id="gb-count">0 of at least ${GROUP_MIN} people added.</p>
-        <p class="gb-total" id="gb-total">For ${GROUP_MIN} people: ${GROUP_MIN} &times; ${groupInr(a.unitBase)} + ${PASS_GST_RATE}% GST = ${groupInr(a.total)}</p>
+        <p class="gb-count" id="gb-count">0 of at least ${people(min)} added.</p>
+        <p class="gb-total" id="gb-total">For ${people(min)}: ${min} &times; ${groupInr(a.unitBase)} + ${PASS_GST_RATE}% GST = ${groupInr(a.total)}</p>
         <p class="gb-save" id="gb-save">You save ${groupInr(saved)} on the list price.</p>
       </div>
-      <button class="gb-btn" type="submit" id="gb-go"${o.payOn ? '' : ' disabled'}>Pay ${groupInr(a.total)} and book ${GROUP_MIN} passes</button>
+      <button class="gb-btn" type="submit" id="gb-go"${o.payOn ? '' : ' disabled'}>Pay ${groupInr(a.total)} and book ${passes(min)}</button>
       <p class="gb-msg" id="gb-msg" role="status" aria-live="polite">${o.payOn ? '' : 'Online payment is not available just now. Please try again in a little while.'}</p>
       <p class="gb-small">You pay once, on CCAvenue&rsquo;s secure page: UPI, cards, net banking or wallets. The passes are confirmed the moment the payment goes through.</p>
     </form>
@@ -24495,6 +24632,7 @@ function groupPageHTML(o: { open: boolean; payOn: boolean; fill: any; pick: stri
   .gb-msg{min-height:18px;font-size:14px!important;font-weight:700;color:#B3261E!important;margin:10px 0 0!important}
   .gb-small{font-size:12px!important;color:#5E6585!important;margin:8px 0 0!important}
   .gb-points{margin:12px 0 0 18px;padding:0;font-size:14px;line-height:1.7;color:#4B5270}
+  .gb-note{margin:20px 0 0;padding:12px 14px;border-radius:12px;background:#FFF4E5;border:1px solid #F5C58A;font-size:14px;line-height:1.6;color:#6B3A00}
   @media (min-width:640px){
     .gb-wrap{padding-top:36px}
     .gb-hero h1{font-size:34px}
@@ -24506,7 +24644,17 @@ function groupPageHTML(o: { open: boolean; payOn: boolean; fill: any; pick: stri
 <body class="gb-page">
 ${siteHeaderHTML('/passes')}
 <main class="gb-wrap">
-  <section class="gb-hero">
+  ${inv ? `<section class="gb-hero">
+    <span class="gb-tag">Colleague invitation &middot; ${COLLEAGUE_PCT}% off</span>
+    <h1>${e(inv.first)} invited you to Bharat AI Innovation 2026</h1>
+    <p class="gb-rule">With this invitation your pass is ${COLLEAGUE_PCT}% off, even for just one pass.</p>
+    <p>${e(inv.first)}${inv.company ? ' from ' + e(inv.company) : ''} is coming to the event. 20&ndash;21 Nov, World Trade Center Mumbai. The invitation is open until ${OFFERS_LAST_DAY_TEXT}.</p>
+    <ul class="gb-points">
+      <li>Delegate, Premium Delegate or VIP.</li>
+      <li>Pay online. Your pass comes to your email, with a link to the app.</li>
+      <li>Every paid pass has guaranteed entry on both days.</li>
+    </ul>
+  </section>` : `<section class="gb-hero">
     <span class="gb-tag">Group booking &middot; up to ${GROUP_DISCOUNT_PCT}% off</span>
     <h1>Book passes for your group</h1>
     <p class="gb-rule">${GROUP_RULE_TEXT}</p>
@@ -24516,10 +24664,10 @@ ${siteHeaderHTML('/passes')}
       <li>You pay once. Each person gets their own pass by email.</li>
       <li>Every paid pass has guaranteed entry on both days.</li>
     </ul>
-  </section>
+  </section>`}
   ${body}
 </main>
-<script src="/js/group-booking.js?v=20261112" defer></script>
+<script src="/js/group-booking.js?v=20261113a" defer></script>
 </body></html>`
 }
 
@@ -50455,7 +50603,7 @@ function adminPageScript(): string {
     // ============ LAST-WEEK OFFERS (Payments) ============
     // The screen is /js/admin-offers.js (one global, OffersDesk), loaded the first
     // time Payments opens; it draws itself into #offers-block.
-    var OFFERS_DESK_VERSION = '20261112a';
+    var OFFERS_DESK_VERSION = '20261113a';
     var offersDeskAsset = null;
     function loadOffersDesk() {
       var host = document.getElementById('offers-block');

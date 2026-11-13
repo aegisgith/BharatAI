@@ -18,6 +18,7 @@
     vip_delegates: { label: 'Paid Delegates and Premium Delegates', offer: 'VIP for the offer price' },
     exhibitors: { label: 'Exhibitor and Exhibition Speaker passes', offer: 'VIP at the booth price' },
     speakers: { label: 'People who asked to speak (ticked below)', offer: 'a paid showcase slot' },
+    colleagues: { label: 'Paid Delegates, Premium Delegates and VIPs', offer: 'bring a colleague, 15% off' },
   };
 
   function mount(host, api) {
@@ -42,6 +43,9 @@
       by[k] = by[k] || { n: 0, paise: 0 };
       by[k].n += Number(r.n || 0); by[k].paise += Number(r.paise || 0);
     });
+    // Colleague invitations are bookings on /group, counted apart (d.colleagues).
+    var col = d.colleagues || {};
+    if (col.bookings) by['Colleague invitations'] = { n: Number(col.passes || 0), paise: Number(col.paise || 0) };
     var keys = Object.keys(by);
     if (!keys.length) return 'Nothing sold through the offers yet.';
     var all = 0;
@@ -100,7 +104,9 @@
         'Exhibitor pass to VIP: &#8377;' + inr((p.exhibitor_vip || {}).startup) + ' (Startup Pod, Explorer Booth) or &#8377;' + inr((p.exhibitor_vip || {}).other) + ' (any other booth). ' +
         '(Also new, not an offer: the Student Pass, &#8377;' + inr(p.student) + ' with one workshop, up to ' + Math.round((p.student_share || 0) * 100) + '% of each workshop.) ' +
         'Showcase slot &#8377;' + inr((p.showcase || {})['Innovation Showcase Slot']) + ', with a VIP Pass &#8377;' + inr((p.showcase || {})['Innovation Showcase Slot + VIP Pass']) + '. ' +
-        'Booking page: <a href="/showcase-slot" target="_blank" class="text-primary-300">/showcase-slot</a>.</p>' +
+        'Booking page: <a href="/showcase-slot" target="_blank" class="text-primary-300">/showcase-slot</a>. ' +
+        'Bring a colleague: each paid Delegate, Premium Delegate or VIP gets a personal link by email; through it even one pass is ' + Number(p.colleague_pct || 0) + '% off, for up to ' + Number(p.colleague_passes || 0) + ' passes per link, booked and paid on /group' +
+        ((d.colleagues || {}).ready ? '.' : ' <span class="text-amber-300">(needs migration 0059 first)</span>.') + '</p>' +
       '<p class="text-[12px] text-gray-300 mb-3">' + soldLine(d) + '</p>' +
       '<div class="text-sm font-semibold text-white mb-1" style="margin-top:14px;">Showcase slots</div>' +
       (sh.ready
