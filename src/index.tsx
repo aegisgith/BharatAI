@@ -1410,10 +1410,10 @@ async function waitlistEmail(c: any, attendee: any): Promise<{ subject: string; 
           ${WL_BTN(go('pay', '&pass=delegate'), 'Get a Delegate Pass &rarr;', '#0f7b47')}
           <p style="margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#888;">${token ? 'The button signs you in with this email and opens the secure payment page. Your registration and reference number stay the same.' : 'Open the app, sign in with this email and choose Delegate Pass.'} Every pass compared: <a href="https://bharataiinnovation.com/passes" style="color:#555;">bharataiinnovation.com/passes</a>.</p>
         </div>
-        <p style="margin:22px 0 6px;font-size:14px;font-weight:bold;color:#1E2140;">Meanwhile</p>
-        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">Add your photo and make your &ldquo;I&rsquo;m attending&rdquo; badge, and see some of the people coming. Your account is ready; there is no pass to download until your place is confirmed.</p>
+        <p style="margin:22px 0 6px;font-size:14px;font-weight:bold;color:#1E2140;">Finish your profile</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">${WAITLIST_PROFILE_TEXT} Your account is ready; there is no pass to download until your place is confirmed.</p>
         <div style="text-align:center;margin:0 0 6px;">
-          ${WL_BTN(go('social-card'), 'Add my photo', '#1E2140')}
+          ${WL_BTN(go('complete-profile'), 'Finish my profile', '#1E2140')}
         </div>
         <div style="text-align:center;margin:10px 0 0;">
           <a href="${appUrl}" style="display:inline-block;padding:10px 22px;background:#fff;color:#1E2140;text-decoration:none;border:1px solid #D5D9EA;border-radius:10px;font-weight:bold;font-size:13px;">Open the app</a>
@@ -2708,6 +2708,11 @@ const FREE_PASS_WAITLIST_KEY = 'free_pass_waitlist'
 const ENTRY_STATUSES = ['waitlisted', 'confirmed']
 const WAITLIST_TEXT = 'Free Visitor Passes are full for now. You are on the waiting list. If the wait list gets over, we will inform you.'
 const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate Pass.'
+// What everyone on the list is asked while they wait (organiser, 13 Nov 2026: "they need to
+// complete the entire formality"): the photo, LinkedIn and the details. Admin, Waiting list,
+// Confirm takes only finished profiles unless the organiser picks everyone.
+const WAITLIST_PROFILE_TEXT = 'While you wait, finish your profile: add your photo and your LinkedIn, and check your organisation, designation and city. We confirm places only for people who have finished their profile.'
+const WAITLIST_PROFILE_SHORT = 'While you wait, finish your profile with your photo and LinkedIn. We confirm places only for finished profiles.'
 const WAITLIST_PAGE_TEXT = 'Free Visitor Passes are full for now. A new free registration joins the waiting list; if the wait list gets over, we will inform you. Every paid pass has guaranteed entry on both days.'
 const WAITLIST_DESK_TEXT = 'On the waiting list for a Free Visitor Pass: entry not confirmed. Do not admit on this pass. Send them to the registration desk for a Delegate Pass.'
 
@@ -26720,6 +26725,17 @@ async function submitRegistration(e) {
       document.getElementById('rs-sent').textContent = '${WAITLIST_TEXT} We have emailed ' + data.email + '.';
       document.getElementById('rs-up-title').textContent = '${WAITLIST_UPSELL}';
       success.classList.add('rs-waitlist');
+      // The first thing to do is the profile: places are confirmed for finished ones.
+      var wk = success.querySelector && success.querySelector('.rs-kicker');
+      var wh = success.querySelector && success.querySelector('.rs-hero');
+      if (wk) wk.textContent = 'While you wait';
+      if (wh) {
+        wh.setAttribute('href', '/app?action=complete-profile');
+        var wt = wh.querySelector('.rs-hero-title'), wx = wh.querySelector('.rs-hero-text'), wb = wh.querySelector('.rs-hero-btn');
+        if (wt) wt.textContent = 'Finish your profile: add your photo and your LinkedIn';
+        if (wx) wx.textContent = 'We confirm places only for people who have finished their profile: photo, LinkedIn, organisation, designation and city.';
+        if (wb && wb.firstChild) wb.firstChild.textContent = 'Finish my profile ';
+      }
     }
     // Every link on this screen goes into the app. Registering set this browser's
     // session, so leave the note a registration made inside the app leaves and the
@@ -32201,7 +32217,7 @@ function mainPageScript(): string {
       if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : waitlisted ? ' is on the waiting list' : visitor ? ' is a free pass: entry not guaranteed' : ' is ready';
       document.getElementById('pcc-pass-note').textContent = pending
         ? (payNow ? 'It is issued the moment your payment goes through. Pay now to finish.' : 'It will be issued as soon as your payment is confirmed.')
-        : waitlisted ? '${WAITLIST_TEXT} ${WAITLIST_UPSELL}'
+        : waitlisted ? '${WAITLIST_TEXT} ${WAITLIST_PROFILE_SHORT} ${WAITLIST_UPSELL}'
         : visitor ? 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. Every paid pass has guaranteed entry on both days.'
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
@@ -38176,6 +38192,8 @@ function mainPageScript(): string {
       if (!has(u.city)) gaps.push('city');
       if (!has(u.industry)) gaps.push('industry');
       if (!has(u.mobile)) gaps.push('mobile number');
+      // On the free-pass waiting list the organisers ask for LinkedIn too.
+      if (!has(u.linkedin_url) && String(u.entry_status || '') === 'waitlisted' && /visitor/i.test(String(u.badge_type || 'Visitor Pass'))) gaps.push('LinkedIn');
       return gaps;
     }
 
@@ -38189,6 +38207,7 @@ function mainPageScript(): string {
         industry: document.getElementById('edit-industry').value,
         mobile: document.getElementById('edit-mobile').value,
         avatar_url: 'data:image/skip',
+        linkedin_url: 'skip',
       });
       return profileGaps(u);
     }
@@ -40998,9 +41017,36 @@ function adminPageScript(): string {
         && (attUnpaidTier(a) || /^(visitor|general)( pass)?$/i.test(String(a.badge_type || 'Visitor Pass').trim()));
     }
     function attEntryChip(a) {
-      if (attEntryWaitlisted(a)) return ' <span class="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="On the waiting list for a Free Visitor Pass: no pass to download, refused at the desk, until confirmed">waiting list</span>';
-      if (a && String(a.entry_status || '') === 'confirmed') return ' <span class="px-1.5 py-0.5 rounded-full text-[10px] bg-green-500/20 text-green-300" title="Confirmed from the waiting list">let in' + (a.entry_slot ? ': ' + escH(a.entry_slot) : '') + '</span>';
+      if (attEntryWaitlisted(a)) return '<span class="px-1.5 py-0.5 mr-1 rounded-full text-[10px] font-semibold whitespace-nowrap bg-amber-500/20 text-amber-300" title="On the waiting list for a Free Visitor Pass: no pass to download, refused at the desk, until confirmed">waiting list</span>';
+      if (a && String(a.entry_status || '') === 'confirmed') return '<span class="px-1.5 py-0.5 mr-1 rounded-full text-[10px] font-semibold whitespace-nowrap bg-green-500/20 text-green-300" title="Confirmed from the waiting list">let in' + (a.entry_slot ? ': ' + escH(a.entry_slot) : '') + '</span>';
       return '';
+    }
+    // What a place is confirmed on (organiser, 13 Nov 2026: the form, a photo, LinkedIn
+    // and the details). Empty when the profile is finished.
+    function attWaitlistGaps(a) {
+      var g = [], has = function (v) { return String(v == null ? '' : v).trim() !== ''; };
+      if (!hasUploadedPhoto(a.avatar_url)) g.push('photo');
+      if (!has(a.linkedin_url)) g.push('LinkedIn');
+      if (!has(a.company)) g.push('organisation');
+      if (!has(a.job_title) && !/^(academic|student)/i.test(String(a.badge_type || ''))) g.push('designation');
+      if (!has(a.city)) g.push('city');
+      return g;
+    }
+    // Of a selection: who finished (their ids), how many did not, and what they lack.
+    // A ticked row the page no longer holds counts as not finished, never confirmed unseen.
+    function attWaitlistFinished(ids) {
+      var want = new Set(ids.map(String)), out = { ids: [], unfinished: 0, summary: '' }, counts = {}, seen = 0;
+      (lastAttendees || []).forEach(function (a) {
+        if (!want.has(String(a.id))) return;
+        seen++;
+        var g = attWaitlistGaps(a);
+        if (!g.length) { out.ids.push(a.id); return; }
+        out.unfinished++;
+        g.forEach(function (k) { counts[k] = (counts[k] || 0) + 1; });
+      });
+      out.unfinished += Math.max(0, ids.length - seen);
+      out.summary = Object.keys(counts).map(function (k) { return 'no ' + k + ': ' + counts[k]; }).join(', ');
+      return out;
     }
     // Overview, the waiting list card: the Attendees tab, filtered to the list.
     function openWaitlist() {
@@ -42443,7 +42489,7 @@ function adminPageScript(): string {
                   <td class="text-xs text-gray-400 ie-cell" onclick="inlineEdit(this, \${a.id}, 'country', '\${esc(a.country||'')}')">\${a.country ? escH(a.country) : '<span class=&quot;text-gray-600&quot;>-</span>'}</td>
                   <td class="text-xs">\${safeUrl(a.linkedin_url) ? '<a href="'+safeUrl(a.linkedin_url)+'" target="_blank" class="text-blue-400 hover:text-blue-300"><i class="fab fa-linkedin"></i></a>' : '<span class="text-gray-600">-</span>'}</td>
                   <td class="ie-cell" onclick="inlineMultiSelect(this, \${a.id}, 'role', '\${esc(a.role||'attendee')}')"><div class="flex flex-wrap gap-0.5">\${(a.role||'attendee').split(',').map(r=>'<span class=&quot;px-1.5 py-0.5 rounded text-[9px] bg-primary-500/20 text-primary-300 whitespace-nowrap cursor-pointer&quot;>'+escH(r.trim())+'</span>').join('')}</div></td>
-                  <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'badge_type', '\${esc(a.badge_type)}', BADGE_TYPES)">\${attPassChip(a, 'px-2 py-0.5 rounded-full text-[10px] cursor-pointer hover:ring-1 hover:ring-primary-400/50')}\${attEntryChip(a)}</td>
+                  <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'badge_type', '\${esc(a.badge_type)}', BADGE_TYPES)">\${attEntryChip(a)}\${attPassChip(a, 'px-2 py-0.5 rounded-full text-[10px] cursor-pointer hover:ring-1 hover:ring-primary-400/50')}</td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'rsvp_status', '\${a.rsvp_status||''}', ['','confirmed','maybe','declined'])"><span class="px-2 py-0.5 rounded-full text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${a.rsvp_status === 'confirmed' ? 'bg-green-500/20 text-green-400' : a.rsvp_status === 'declined' ? 'bg-red-500/20 text-red-400' : a.rsvp_status === 'maybe' ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-500/10 text-gray-500'}">\${a.rsvp_status ? (a.rsvp_status === 'confirmed' ? '✓ Yes' : a.rsvp_status === 'declined' ? '✗ No' : '? Maybe') : '—'}</span></td>
                   <td class="ie-cell" onclick="inlineSelect(this, \${a.id}, 'lunch_inclusion', '\${a.lunch_inclusion||'Yes'}', ['Yes','No'])"><span class="px-1.5 py-0.5 rounded text-[10px] font-medium cursor-pointer hover:ring-1 hover:ring-primary-400/50 \${(a.lunch_inclusion||'Yes')==='Yes' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}">\${a.lunch_inclusion||'Yes'}</span></td>
                   <td class="text-xs ie-cell" onclick="inlineSelect(this, \${a.id}, 'arrival_time', '\${a.arrival_time||''}', ['','09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30'])">\${a.arrival_time ? '<span class="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 cursor-pointer hover:ring-1 hover:ring-blue-400/50">'+ (parseInt(a.arrival_time) > 12 ? (parseInt(a.arrival_time)-12)+':'+a.arrival_time.split(':')[1]+' PM' : a.arrival_time+' AM') +'</span>' : '<span class="text-gray-600 cursor-pointer hover:text-gray-400">-</span>'}</td>
@@ -42928,28 +42974,45 @@ function adminPageScript(): string {
     function bulkEntry() {
       var ids = attSelectedIds();
       if (!ids.length) { toast('Nothing selected.', 'error'); return; }
+      var fin = attWaitlistFinished(ids);
       openModal(
         '<h3 class="text-lg font-bold mb-1">Waiting list: ' + ids.length + ' attendee' + (ids.length === 1 ? '' : 's') + '</h3>' +
         '<p class="text-xs text-gray-400 mb-4">A free pass on the waiting list has no pass to download and is refused at the desk. A paid pass is never on the list.</p>' +
         '<label class="block text-xs text-gray-400 mb-1">Decision</label>' +
-        '<select id="bulk-entry" class="w-full px-3 py-2.5 rounded-lg text-sm mb-3">' +
+        '<select id="bulk-entry" onchange="bulkEntryDecision(this.value)" class="w-full px-3 py-2.5 rounded-lg text-sm mb-3">' +
           '<option value="confirmed">Confirm their place (sends the confirmation email)</option>' +
           '<option value="waitlisted">Put on the waiting list (no email)</option>' +
           '<option value="clear">Take the mark off: an ordinary free pass (no email)</option>' +
         '</select>' +
-        '<label class="block text-xs text-gray-400 mb-1">Entry slot, if any (it goes in the email)</label>' +
-        '<input id="bulk-entry-slot" class="w-full px-3 py-2.5 rounded-lg text-sm mb-4" placeholder="e.g. Day 2, 2 pm to 6 pm" maxlength="80">' +
+        '<div id="bulk-entry-who-wrap">' +
+          '<label class="block text-xs text-gray-400 mb-1">Who to confirm (a finished profile: photo, LinkedIn, organisation, designation, city)</label>' +
+          '<select id="bulk-entry-who" class="w-full px-3 py-2.5 rounded-lg text-sm mb-2">' +
+            '<option value="finished">Only the ' + fin.ids.length + ' who finished their profile</option>' +
+            '<option value="all">All ' + ids.length + ' selected, finished or not</option>' +
+          '</select>' +
+          (fin.unfinished ? '<p class="text-xs text-amber-300 mb-3">' + fin.unfinished + ' of them ' + (fin.unfinished === 1 ? 'has' : 'have') + ' not finished' + (fin.summary ? ' (' + escH(fin.summary) + ')' : '') + '. Chase Profiles asks them for the photo and details.</p>' : '<p class="text-xs text-green-300 mb-3">All of them have finished their profile.</p>') +
+          '<label class="block text-xs text-gray-400 mb-1">Entry slot, if any (it goes in the email)</label>' +
+          '<input id="bulk-entry-slot" class="w-full px-3 py-2.5 rounded-lg text-sm mb-4" placeholder="e.g. Day 2, 2 pm to 6 pm" maxlength="80">' +
+        '</div>' +
         '<div class="flex gap-2">' +
           '<button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Cancel</button>' +
           '<button onclick="bulkEntryGo()" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white">Apply</button>' +
         '</div>');
     }
+    // The who-to-confirm choice and the slot matter only when confirming.
+    function bulkEntryDecision(v) {
+      var w = document.getElementById('bulk-entry-who-wrap');
+      if (w) w.style.display = v === 'confirmed' ? '' : 'none';
+    }
     async function bulkEntryGo() {
       var ids = attSelectedIds();
-      var sel = document.getElementById('bulk-entry'), slotEl = document.getElementById('bulk-entry-slot');
+      var sel = document.getElementById('bulk-entry'), slotEl = document.getElementById('bulk-entry-slot'), whoEl = document.getElementById('bulk-entry-who');
       if (!sel) return;
       var decision = sel.value, slot = slotEl ? slotEl.value.trim() : '';
+      // Confirm only finished profiles unless the organiser chose everyone.
+      if (decision === 'confirmed' && !(whoEl && whoEl.value === 'all')) ids = attWaitlistFinished(ids).ids;
       closeModal();
+      if (!ids.length) { toast('Nobody selected has finished their profile yet (photo, LinkedIn, details), so nobody was confirmed.', 'error'); return; }
       try {
         var r = await api.post('/api/admin/attendees/waitlist', { ids: ids, decision: decision, slot: slot });
         if (r && r.error) throw new Error(r.error);

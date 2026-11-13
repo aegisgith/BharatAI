@@ -5,7 +5,9 @@
 //  4. the sanitiser: entry_status is one of two words or nothing, entry_slot at most 80 characters;
 //  5. the words on /register and /passes, switch off and on, in the organiser's words;
 //  6. the admin page's own functions, lifted from the /admin.js this build serves;
-//  7. a database without 0056: the switch is ignored and Admin says not ready.
+//  7. a database without 0056: the switch is ignored and Admin says not ready;
+//  8. (13 Nov 2026) the profile: the app asks a waitlisted Visitor for LinkedIn too, Confirm
+//     counts who finished (photo, LinkedIn, organisation, designation, city), the tag goes first.
 // Run after `npm run build`:  node scripts/verify/unit-waitlist.mjs
 import vm from 'node:vm';
 import { waitlistWorld, ADMIN, WAITLIST_TEXT, WAITLIST_UPSELL } from './waitlist-world.mjs';
@@ -80,7 +82,8 @@ const lift = (a, b) => { const i = adminJs.indexOf(a), j = adminJs.indexOf(b, i 
 const escH = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const attUnpaidTier = (a) => !!a && ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].indexOf(String(a.badge_type || '')) >= 0
   && ['pending', 'refunded'].indexOf(String(a.payment_status || '').trim().toLowerCase()) >= 0;
-const box = vm.createContext({ String, Number, escH, attUnpaidTier, switchSection() {}, attFilters: {}, attPage: 1, lastAttendees: null, attPassLabel: (a) => String(a.badge_type || ''), attIncomplete: () => false });
+const hasUploadedPhoto = (u) => { u = String(u || ''); return u.indexOf('data:image/') === 0 || u.indexOf('/api/uploads/') === 0 || /^https?:\/\//.test(u); };
+const box = vm.createContext({ String, Number, Math, Set, Object, escH, attUnpaidTier, hasUploadedPhoto, switchSection() {}, attFilters: {}, attPage: 1, lastAttendees: null, attPassLabel: (a) => String(a.badge_type || ''), attIncomplete: () => false });
 vm.runInContext(lift('// ============ FREE PASS WAITING LIST (ADMIN) ============', '// ============ END FREE PASS WAITING LIST (ADMIN) ============'), box);
 vm.runInContext(lift('function attMatchesFilters(a) {', '// Selection lives across pages'), box);
 const F = box;
@@ -98,6 +101,36 @@ check('admin filter: Let in keeps the let in, drops the waiting', F.attMatchesFi
 F.attFilters = { entry: '', main: 'yes' };
 check('admin filter: no filter keeps both', F.attMatchesFilters(waiting) === true && F.attMatchesFilters(letIn) === true);
 check('admin page: the Waiting list button, the Entry filter, the Settings card', adminJs.includes('bulkEntry()') && adminJs.includes("setAttFilter('entry'") && adminJs.includes('loadWaitlistCard') && adminJs.includes('openWaitlist()'));
+
+// ---- 8. the profile (13 Nov 2026) ----
+const FULL = { avatar_url: '/api/uploads/a.jpg', linkedin_url: 'linkedin.com/in/asha', company: 'Acme', job_title: 'CTO', city: 'Pune' };
+check('admin gaps: a finished profile has none', F.attWaitlistGaps(Object.assign({ badge_type: 'Visitor Pass' }, FULL)).length === 0);
+check('admin gaps: no photo and no LinkedIn are named', JSON.stringify(F.attWaitlistGaps(Object.assign({ badge_type: 'Visitor Pass' }, FULL, { avatar_url: '', linkedin_url: ' ' }))) === '["photo","LinkedIn"]');
+check('admin gaps: a student needs no designation', F.attWaitlistGaps(Object.assign({ badge_type: 'Student Pass' }, FULL, { job_title: '' })).length === 0);
+check('admin gaps: organisation, designation and city', JSON.stringify(F.attWaitlistGaps({ badge_type: 'Visitor Pass', avatar_url: 'https://x/y.jpg', linkedin_url: 'x' })) === '["organisation","designation","city"]');
+F.lastAttendees = [Object.assign({ id: 1, badge_type: 'Visitor Pass' }, FULL), Object.assign({ id: 2, badge_type: 'Visitor Pass' }, FULL, { linkedin_url: '' }), Object.assign({ id: 3, badge_type: 'Visitor Pass' }, FULL, { avatar_url: '', linkedin_url: '' })];
+const fin = F.attWaitlistFinished(['1', '2', '3', '99']);
+check('admin confirm: only the finished one is taken', JSON.stringify(fin.ids) === '[1]', fin);
+check('admin confirm: three not finished, one of them unseen on the page', fin.unfinished === 3, fin);
+check('admin confirm: what they lack, counted', fin.summary === 'no LinkedIn: 2, no photo: 1', fin.summary);
+check('admin confirm: the choice is offered, finished only by default', adminJs.includes('bulk-entry-who') && adminJs.includes('<option value="finished">Only the ') && adminJs.includes("!(whoEl && whoEl.value === 'all')"));
+check('admin table: the waiting-list tag comes before the pass', adminJs.includes('${attEntryChip(a)}${attPassChip(a, '));
+check('admin chip: no leading space now that it comes first', F.attEntryChip({ badge_type: 'Visitor Pass', entry_status: 'waitlisted' }).indexOf('<span') === 0);
+const appJs = (await W.hit('GET', '/app.js')).text;
+const liftApp = (a, b) => { const i = appJs.indexOf(a), j = appJs.indexOf(b, i + 1); if (i < 0 || j < 0) throw new Error('app block missing: ' + a); return appJs.slice(i, j); };
+const appBox = vm.createContext({ String, currentUser: null });
+vm.runInContext(liftApp('function hasUploadedPhoto(u) {', '// A coloured square'), appBox);
+vm.runInContext(liftApp('function profileGaps(u) {', '// The subset the Edit Profile dialog'), appBox);
+const BASE = { avatar_url: '/api/uploads/a.jpg', company: 'Acme', job_title: 'CTO', city: 'Pune', industry: 'AI', mobile: '9820000000' };
+const gapsOf = (x) => JSON.stringify(appBox.profileGaps(Object.assign({}, BASE, x)));
+check('app: a waitlisted Visitor without LinkedIn is asked for it', gapsOf({ badge_type: 'Visitor Pass', entry_status: 'waitlisted' }) === '["LinkedIn"]');
+check('app: with LinkedIn the profile is finished', gapsOf({ badge_type: 'Visitor Pass', entry_status: 'waitlisted', linkedin_url: 'linkedin.com/in/a' }) === '[]');
+check('app: an ordinary Visitor is not asked for LinkedIn', gapsOf({ badge_type: 'Visitor Pass' }) === '[]');
+check('app: a paid Delegate with the old mark is not asked', gapsOf({ badge_type: 'Delegate Pass', payment_status: 'paid', entry_status: 'waitlisted' }) === '[]');
+check('app: LinkedIn never blocks saving the profile form', appJs.includes("avatar_url: 'data:image/skip',") && appJs.includes("linkedin_url: 'skip',"));
+check('app: the pass card asks for the profile', appJs.includes('While you wait, finish your profile with your photo and LinkedIn. We confirm places only for finished profiles.'));
+const regOn = (await W.hit('GET', '/register')).text;
+check('/register success: the profile first, to the complete-profile link', regOn.includes("wh.setAttribute('href', '/app?action=complete-profile')") && regOn.includes('Finish your profile: add your photo and your LinkedIn'));
 
 // ---- 7. a database without 0056 ----
 const P = await waitlistWorld({ migrate: false });

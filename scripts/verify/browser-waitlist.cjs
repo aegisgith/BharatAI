@@ -62,6 +62,10 @@ const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate P
   const delegateBtn = page.locator('#reg-success .rs-tier-main .rs-btn');
   check('success: a Delegate button on the screen', await delegateBtn.count() === 1 && await delegateBtn.first().isVisible());
   check('success: nothing wider than the phone', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+  // 13 Nov 2026: on the list, the first thing to do is the profile (photo, LinkedIn, details).
+  const hero = await page.evaluate(() => { const h = document.querySelector('#reg-success .rs-hero'); const k = document.querySelector('#reg-success .rs-kicker'); return h ? { href: h.getAttribute('href'), title: (h.querySelector('.rs-hero-title') || {}).textContent, btn: (h.querySelector('.rs-hero-btn') || {}).textContent, kicker: k && k.textContent } : null; });
+  check('success: the profile comes first, to the complete-profile link', !!hero && hero.href === '/app?action=complete-profile' && /Finish your profile: add your photo and your LinkedIn/.test(hero.title) && /Finish my profile/.test(hero.btn) && hero.kicker === 'While you wait', JSON.stringify(hero));
+  if (process.env.SHOT_DIR) await page.locator('#reg-success').screenshot({ path: process.env.SHOT_DIR + '/waitlist-success.png' }).catch(() => {});
   const row = await sql("SELECT entry_status FROM attendees WHERE email = 'asha.rao@gmail.com'");
   check('the row is on the list', Array.isArray(row) && row[0] && row[0].entry_status === 'waitlisted', JSON.stringify(row));
   const mail = await (await page.request.get(BASE + '/__mail')).json();
@@ -79,6 +83,9 @@ const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate P
   check('app: the pass card says waiting list', /is on the waiting list/.test(state), state);
   check('app: the card carries the organiser words', note.includes(WAITLIST_TEXT) && note.includes(WAITLIST_UPSELL), note);
   check('app: no Download button', await page.evaluate(() => { const b = document.getElementById('pcc-download-btn'); return !!b && b.classList.contains('hidden'); }));
+  check('app: the card asks for the profile and says why', note.includes('finish your profile with your photo and LinkedIn') && note.includes('We confirm places only for finished profiles.'), note);
+  const missing = await page.evaluate(() => { if (typeof updateProfileCompletionCard === 'function') updateProfileCompletionCard(); return (document.getElementById('pc-missing') || {}).textContent || ''; });
+  check('app: the profile card names the photo and LinkedIn', /photo/.test(missing) && /LinkedIn/.test(missing), missing);
   const gBtn = page.locator('#pcc-guarantee-btn');
   check('app: the way to be sure of entry is on the card', await gBtn.count() === 1 && await gBtn.isVisible());
   await gBtn.click().catch(() => {});

@@ -14,7 +14,7 @@
 //    confirmation email as a bulk run with the slot), back on the list, mark taken off;
 //  - someone registered before the switch is untouched; switch off again.
 // Run after `npm run build`:  node scripts/verify/smoke-waitlist.mjs
-import { waitlistWorld, settle, WAITLIST_TEXT, WAITLIST_UPSELL, DESK_TEXT } from './waitlist-world.mjs';
+import { waitlistWorld, settle, WAITLIST_TEXT, WAITLIST_UPSELL, WAITLIST_PROFILE_TEXT, DESK_TEXT } from './waitlist-world.mjs';
 import { checker } from './talks-world.mjs';
 const { check, done } = checker();
 const W = await waitlistWorld({ on: false });
@@ -39,6 +39,7 @@ check('on: one email, the waiting-list one', wm.length === 1 && /waiting list/.t
 const html = W.body(wm[0]);
 check('on: the organiser words', html.includes(WAITLIST_TEXT) && html.includes(WAITLIST_UPSELL));
 check('on: the Delegate button signs in and opens payment', /action=pay&pass=delegate&token=/.test(html) && /Get a Delegate Pass/.test(html));
+check('on: the email asks for the photo, LinkedIn and details (13 Nov 2026)', html.includes(WAITLIST_PROFILE_TEXT) && /action=complete-profile&token=/.test(html) && /Finish my profile/.test(html));
 check('on: the reference, no download link', html.includes('BHAI-2026-' + String(asha).padStart(5, '0')) && !/download-pass/.test(html));
 check('on: a register.self audit row', W.rows('register.self', asha).length === 1);
 const asAsha = W.as(asha);

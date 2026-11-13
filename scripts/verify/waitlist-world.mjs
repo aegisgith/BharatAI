@@ -11,6 +11,7 @@ export { ADMIN, CRON, settle };
 // The organiser's words (12 Nov 2026), as the server carries them.
 export const WAITLIST_TEXT = 'Free Visitor Passes are full for now. You are on the waiting list. If the wait list gets over, we will inform you.';
 export const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate Pass.';
+export const WAITLIST_PROFILE_TEXT = 'While you wait, finish your profile: add your photo and your LinkedIn, and check your organisation, designation and city. We confirm places only for people who have finished their profile.';
 export const DESK_TEXT = 'On the waiting list for a Free Visitor Pass: entry not confirmed. Do not admit on this pass. Send them to the registration desk for a Delegate Pass.';
 
 export async function waitlistWorld({ migrate = true, on = null } = {}) {
