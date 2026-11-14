@@ -269,7 +269,7 @@ for (const [a, b] of [
 swap('<h2>Before Delhi, <span class="accent">Mumbai</span></h2>', '<h2>दिल्ली से पहले, <span class="accent">मुंबई</span></h2>');
 swap('<p>Bharat AI Innovation 2026 is on 20–21 November at World Trade Center Mumbai. Passes are open now.</p>', '<p>भारत एआई इनोवेशन 2026, 20–21 नवंबर को वर्ल्ड ट्रेड सेंटर मुंबई में है। पास अभी उपलब्ध हैं।</p>');
 swap('Get my Delegate Pass <i', 'मेरा डेलीगेट पास लें <i');
-swap('>Free Visitor Pass for Mumbai</a>', '>मुंबई के लिए मुफ़्त विज़िटर पास</a>');
+swap('>Expo Pass for Mumbai, &#8377;999</a>', '>मुंबई के लिए एक्सपो पास, &#8377;999</a>');
 
 // ---- footer and the bar at the bottom ----
 swap("Advancing India's Future Through AI Innovation. Join us in creating a Viksit Bharat by 2047.", 'एआई इनोवेशन के ज़रिए भारत के भविष्य को आगे बढ़ाना। 2047 तक विकसित भारत बनाने में हमारे साथ जुड़ें।');

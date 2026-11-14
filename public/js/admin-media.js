@@ -24,7 +24,7 @@
   var KINDS = [{ key: '', label: 'Everyone' }, { key: 'media', label: 'Media' }, { key: 'influencer', label: 'Influencers' }];
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var IST_MS = 330 * 60000;
-  var PAID = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass'];
+  var PAID = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass', 'Expo Pass'];
 
   var S = { el: null, deps: null, tab: 'new', kind: '', rows: [], counts: {}, labels: { platforms: {}, formats: {}, kinds: {}, passes: {} }, error: '', loading: false, busy: {}, notes: {}, picks: {}, mail: {}, keep: {} };
 

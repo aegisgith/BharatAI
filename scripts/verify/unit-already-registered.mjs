@@ -41,6 +41,9 @@ same('delegate', signinPayIntent('pay', 'delegate'), { key: 'delegate', name: 'D
 same('premium', signinPayIntent('pay', 'premium'), { key: 'premium', name: 'Premium Delegate Pass' });
 same('vip', signinPayIntent('pay', 'vip'), { key: 'vip', name: 'VIP Pass' });
 same('academic', signinPayIntent('pay', 'academic'), { key: 'academic', name: 'Academic Pass' });
+// 14 Nov 2026: a registered person paying for these got the plain sign-in email.
+same('student', signinPayIntent('pay', 'student'), { key: 'student', name: 'Student Pass' });
+same('expo', signinPayIntent('pay', 'expo'), { key: 'expo', name: 'Expo Pass' });
 same('capitals in the pass are the same pass', signinPayIntent('pay', 'VIP'), { key: 'vip', name: 'VIP Pass' });
 const NONE = { key: '', name: '' };
 for (const [label, a, p] of [

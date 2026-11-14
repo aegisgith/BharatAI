@@ -9,6 +9,9 @@ const PASS_BY_KEY = new Map<string, string>([
   ['premium', 'Premium Delegate Pass'],
   ['vip', 'VIP Pass'],
   ['academic', 'Academic Pass'],
+  // 14 Nov 2026: someone already registered paying for these got a plain sign-in email instead.
+  ['student', 'Student Pass'],
+  ['expo', 'Expo Pass'],
 ])
 
 export function signinPayIntent(nextAction: unknown, pass: unknown): { key: string; name: string } {

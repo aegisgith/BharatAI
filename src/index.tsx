@@ -1298,7 +1298,7 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
             ${net('See who is attending', 'Browse delegates, speakers and investors by what they work on, and connect.')}
             ${net('Message them directly', 'A private conversation, no email address exchanged.')}
             ${net('Book a meeting slot', 'Propose a time, a length and a place. They accept or decline in the app, so you arrive with a diary rather than a hope.')}
-            ${net('Build your agenda', 'Star the sessions you want across both days and carry the plan on your phone.')}`
+            ${String(attendee.badge_type || '') === 'Expo Pass' ? '' : net('Build your agenda', 'Star the sessions you want across both days and carry the plan on your phone.')}`
 
   const boardrooms = `<p style="margin:14px 0 0;font-size:11.5px;line-height:1.6;color:#999;text-align:center;">Need somewhere private for a longer conversation? WTC boardrooms can be hired by the hour &mdash; rates are on the <a href="https://bharataiinnovation.com/networking#boardrooms" style="color:#0f7b47;">networking page</a>.</p>`
 
@@ -2856,7 +2856,7 @@ const NO_FREE_PUSH = NO_FREE_TEXT + ' To attend on 20 and 21 Nov, get your pass 
 const WAITLIST_PROFILE_TEXT = 'While you wait, finish your profile: add your photo and your LinkedIn, and check your organisation, designation and city. We confirm places only for people who have finished their profile.'
 const WAITLIST_PROFILE_SHORT = 'While you wait, finish your profile with your photo and LinkedIn. We confirm places only for finished profiles.'
 const WAITLIST_PAGE_TEXT = 'Free Visitor Passes are full for now. A new free registration joins the waiting list; if the wait list gets over, we will inform you. Every paid pass has guaranteed entry on both days.'
-const WAITLIST_DESK_TEXT = 'On the waiting list for a Free Visitor Pass: entry not confirmed. Do not admit on this pass. Send them to the registration desk for a Delegate Pass.'
+const WAITLIST_DESK_TEXT = 'On the waiting list for a Free Visitor Pass: entry not confirmed. Do not admit on this pass. There is no on-spot registration: they can buy a pass online on their phone at bharataiinnovation.com/register.'
 
 let _entryStatusCol: boolean | null = null
 let _entryStatusCheckedAt = 0
@@ -3448,13 +3448,14 @@ async function settleShowcaseOrder(c: any, order: any, trackingId: string, payme
   const status = String(a.payment_status || '').trim().toLowerCase()
   const withVip = String(order.pass_type) === SHOWCASE_SLOT_VIP
   // Free or not paid for: the slot's pass replaces it. A pass worth more stays.
-  const freeLike = !badge || FREE_BADGE_RE.test(badge) || (PAID_TIERS.includes(badge) && ['pending', 'refunded'].includes(status))
+  // The Expo Pass has no stage (14 Nov 2026): a stage slot replaces it, the money paid for it counted.
+  const freeLike = !badge || FREE_BADGE_RE.test(badge) || badge === 'Expo Pass' || (PAID_TIERS.includes(badge) && ['pending', 'refunded'].includes(status))
   const next = withVip ? (holdsVip(a) ? '' : 'VIP Pass') : (freeLike ? SHOWCASE_PASS : '')
   const cols = await attendeeColumns(c)
   if (next) {
     const sets = ['badge_type = ?'], vals: any[] = [next]
     if (cols.has('payment_status')) sets.push("payment_status = 'paid'")
-    if (cols.has('payment_amount')) { sets.push('payment_amount = ?'); vals.push(((freeLike ? 0 : Number(a.payment_amount) || 0) + Number(order.amount_paise) / 100).toFixed(2)) }
+    if (cols.has('payment_amount')) { sets.push('payment_amount = ?'); vals.push((((freeLike && badge !== 'Expo Pass') ? 0 : Number(a.payment_amount) || 0) + Number(order.amount_paise) / 100).toFixed(2)) }
     if (cols.has('main_event')) sets.push('main_event = 1')
     if (cols.has('main_event_answered_at')) sets.push("main_event_answered_at = COALESCE(main_event_answered_at, datetime('now'))")
     if (cols.has('lunch_inclusion')) sets.push("lunch_inclusion = 'Yes'")
@@ -17214,7 +17215,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
   const badgeBlock = `
       <div style="margin:22px 0 0;padding:22px;background:#1E2140;background:linear-gradient(135deg,#1E2140,#2A2F5C);border-radius:14px;">
         <p style="margin:0 0 4px;font-size:11px;letter-spacing:1.6px;font-weight:bold;color:${kind === 'paid' ? '#F2C94C' : '#FF9E4D'};">TELL YOUR NETWORK</p>
-        <p style="margin:0 0 8px;font-size:19px;font-weight:bold;color:#fff;line-height:1.3;">${kind === 'paid' ? `Your gold ${esc(passShort)} badge is ready to post` : 'Your &ldquo;I&rsquo;m attending&rdquo; badge is ready to post'}</p>
+        <p style="margin:0 0 8px;font-size:19px;font-weight:bold;color:#fff;line-height:1.3;">${kind === 'paid' && /delegate|vip/i.test(badge) ? `Your gold ${esc(passShort)} badge is ready to post` : 'Your &ldquo;I&rsquo;m attending&rdquo; badge is ready to post'}</p>
         <p style="margin:0 0 16px;font-size:13px;line-height:1.65;color:#C9CDE6;">A ready-made picture with your photo, name and organisation, sized for LinkedIn, Instagram, WhatsApp and Stories, with a caption to copy. Post it and the people coming can find you before you arrive and ask to connect or to meet. Accepting and replying are free on every pass.</p>
         <table style="width:100%;border-collapse:collapse;background:#fff;border-radius:10px;"><tr><td style="padding:16px 16px 2px;">
           <table style="width:100%;border-collapse:collapse;">
@@ -27840,7 +27841,7 @@ function registerPageHTML(opts: { waitlist?: boolean; waitlistClosed?: boolean }
             <span class="rg-tier-what">${what}</span>
             <span class="rg-tier-foot"><span class="rg-tier-price">${priceNow(pass)} <small>+ GST</small>${latePriceTag(pass)}</span><span class="rg-tier-go">Get this pass <i class="fas fa-arrow-right" aria-hidden="true"></i></span></span>
           </a></li>`
-  return `${sharedHeadHTML('Passes & Registration', '/register', "Passes for Bharat AI Innovation 2026, India's B2B AI conference and exhibition: " + (latePricing() ? 'Delegate' : 'Delegate ₹4,999 + GST until 5 Nov') + " with guaranteed entry, Premium Delegate, VIP, Academic, or a free Visitor Pass where entry is not guaranteed (by slot as available). 20–21 Nov 2026, WTC Mumbai.").replace('</head>', BOOKING_DESIGN + BOOKING_MOTION + '<link rel="stylesheet" href="/css/nw-glimpse.css?v=20261114"></head>')}
+  return `${sharedHeadHTML('Passes & Registration', '/register', "Passes for Bharat AI Innovation 2026, India's B2B AI conference and exhibition: " + (latePricing() ? 'Delegate' : 'Delegate ₹4,999 + GST until 5 Nov') + " with guaranteed entry, Premium Delegate, VIP, Student, Academic, or the Expo Pass for the exhibition floor. No on-spot registration. 20–21 Nov 2026, WTC Mumbai.").replace('</head>', BOOKING_DESIGN + BOOKING_MOTION + '<link rel="stylesheet" href="/css/nw-glimpse.css?v=20261114"></head>')}
 <body class="min-h-screen ps-page rg-page">
 ${siteHeaderHTML('/passes')}
 
@@ -28045,7 +28046,7 @@ ${siteHeaderHTML('/passes')}
           <section class="rg-offer" aria-labelledby="rc-title">
             <p class="rc-step">Step 2 of 2</p>
             <h2 id="rc-title">Now select your pass type</h2>
-            <p>Every pass here has guaranteed entry on both days, the full conference and the networking app.</p>
+            <p>Every pass here has guaranteed entry on both days and the networking app. All but the Expo Pass include the full conference.</p>
             <p class="rg-clock"><i class="fas fa-clock" aria-hidden="true"></i><span>${latePricing() ? PRICE_ROSE_TEXT : `Prices rise on ${PRICE_LATE_FROM_TEXT}. Book by ${PRICE_DEADLINE_TEXT} to pay the standard price.`}</span></p>
             <ul class="rg-tiers" id="rc-tiers">
               <li data-pass="Media" hidden><a class="rg-tier" style="--c:#007A94;" href="/media-pass">
@@ -28105,7 +28106,7 @@ ${siteHeaderHTML('/passes')}
               <span class="rs-up-ic"><i class="fas fa-shield-alt"></i></span>
               <div>
                 <p class="rs-up-title" id="rs-up-title">Get confirmed entry on both days</p>
-                <p class="rs-up-sub">${FREE_ENTRY_TEXT}</p>
+                <p class="rs-up-sub">${waitlist ? NO_FREE_TEXT + ' Every paid pass has guaranteed entry on both days.' : FREE_ENTRY_TEXT}</p>
               </div>
             </div>
             <p class="rs-up-clock"><i class="fas fa-clock"></i>${latePricing() ? PRICE_ROSE_TEXT : `These prices are valid till ${PRICE_DEADLINE_TEXT}`}</p>
@@ -28156,8 +28157,7 @@ ${siteHeaderHTML('/passes')}
     </div>
   </section>
 
-  <!-- Who is coming (organiser, 14 Nov 2026: "show this part so they get motivated to register and pay
-       money"): the /networking showcase, the same screens (read from networking.html when this was
+  <!-- Who is coming (14 Nov 2026): the /networking showcase, the same screens (read from networking.html when this was
        written), drawn by the shared css/nw-glimpse.css and js/nw-glimpse.js from GET /api/events/1/glimpse. -->
   <section class="nw-glimpse" id="who-is-coming">
       <div class="ps-wrap nw-wrap">
@@ -28234,8 +28234,8 @@ ${siteHeaderHTML('/passes')}
               <p class="nw-now" id="nw-now" aria-live="polite">Step 1 of 5 &middot; <span>Find the right people</span></p>
           </div>
           <div class="nw-copy-bottom">
-              <div><a href="#delegate" class="ps-buy">Get a Delegate Pass to meet them <i class="fas fa-arrow-right"></i></a></div>
-              <p>Connecting, messaging and booking meetings come with every paid pass, from the <a href="#expo">Expo Pass at &#8377;999</a>.</p>
+              <div><a href="#delegate" class="ps-buy" onclick="return nwPay('Delegate Pass')">Get a Delegate Pass to meet them <i class="fas fa-arrow-right"></i></a></div>
+              <p>Connecting, messaging and booking meetings come with every paid pass, from the <a href="#expo" onclick="return nwPay('Expo Pass')">Expo Pass at &#8377;999</a>.</p>
           </div>
       </div>
       <div class="ps-wrap nw-cards-band" id="nw-cards" hidden>
@@ -28255,9 +28255,9 @@ ${siteHeaderHTML('/passes')}
       <p class="nw-d-who" id="nw-d-who"></p>
       <p class="nw-d-where" id="nw-d-where"></p>
       <p class="nw-d-text" id="nw-d-text">Register to see their name and company in the Bharat AI Connect app.</p>
-      <a href="#delegate" class="ps-buy nw-d-btn">Get a Delegate Pass <i class="fas fa-arrow-right"></i></a>
+      <a href="#delegate" class="ps-buy nw-d-btn" onclick="return nwPay('Delegate Pass')">Get a Delegate Pass <i class="fas fa-arrow-right"></i></a>
       <p class="nw-d-note">Connect, message them and book a meeting before you arrive. Entry on both days.</p>
-      <a href="#expo" class="nw-d-free">Expo Pass, &#8377;999 + GST</a>
+      <a href="#expo" class="nw-d-free" onclick="return nwPay('Expo Pass')">Expo Pass, &#8377;999 + GST</a>
       <p class="nw-d-note">The exhibition floor with guaranteed entry on both days, and the app to connect, message and book meetings.</p>
       <a href="/app" class="nw-d-app">Already registered? Open the app &rarr;</a>
   </dialog>
@@ -28267,7 +28267,7 @@ ${siteHeaderHTML('/passes')}
     <section class="ps-compare" id="compare">
       <div class="ps-wrap">
         <h2 class="ps-h2">Compare passes</h2>
-        <p class="ps-lead">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. ${waitlist ? NO_FREE_TEXT : 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none.'} Workshops come only with Premium Delegate and VIP.</p>
+        <p class="ps-lead">Every paid pass has guaranteed entry on both days and the networking app; all but the Expo Pass include the full conference. ${waitlist ? NO_FREE_TEXT : 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none.'} A workshop comes with the Student, Premium Delegate and VIP passes.</p>
         ${passComparisonHTML()}
         <div class="rg-compare-go">
           <button type="button" class="ps-buy" onclick="openRegisterPaidPassModal(document.getElementById('rpp-pass-type').value || 'Delegate Pass')">Get a paid pass</button>
@@ -28490,7 +28490,7 @@ async function submitRegistration(e) {
       var wk = success.querySelector && success.querySelector('.rs-kicker');
       var wh = success.querySelector && success.querySelector('.rs-hero');
       if (wk) wk.textContent = 'While you wait';
-      if (wh) {
+      if (wh && !${closed ? 'true' : 'false'}) {
         wh.setAttribute('href', '/app?action=complete-profile');
         var wt = wh.querySelector('.rs-hero-title'), wx = wh.querySelector('.rs-hero-text'), wb = wh.querySelector('.rs-hero-btn');
         if (wt) wt.textContent = 'Finish your profile: add your photo and your LinkedIn';
@@ -28607,6 +28607,15 @@ function closeRegisterPaidPassModal() {
   document.getElementById('reg-paid-pass-modal').classList.add('hidden');
   document.getElementById('reg-paid-pass-modal').classList.remove('flex');
   document.body.style.overflow = '';
+  // A link to #delegate (or any pass) opens the form through hashchange: clear it, so the same
+  // link works again after closing (14 Nov 2026: the second tap did nothing).
+  try { if (/^#(delegate|premium|vip|academic|student|expo)$/i.test(location.hash)) history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+}
+// The showcase's buttons (#who-is-coming): the "Want to meet" dialog sits on top of the page,
+// so it closes first, or the paid form would open behind it.
+function nwPay(pass) {
+  try { var d = document.getElementById('nw-dialog'); if (d && d.open) d.close(); } catch (e) {}
+  return upgradeFromSuccess(pass);
 }
 async function submitRegisterPaidPassForm(e) {
   e.preventDefault();
@@ -28863,7 +28872,7 @@ document.addEventListener('DOMContentLoaded', function () {
           </div>
         </label>`).join('')}
       </div>
-      <p class="rg-choose-note">A workshop comes only with Premium Delegate and VIP, one each, seats first come, first served. <a href="#compare" onclick="closeRegisterPaidPassModal()" class="ps-link">Compare passes</a></p>
+      <p class="rg-choose-note">A workshop comes with the Student, Premium Delegate and VIP passes, one each, seats first come, first served. <a href="#compare" onclick="closeRegisterPaidPassModal()" class="ps-link">Compare passes</a></p>
       <input type="hidden" id="rpp-pass-type" value="">
 
       <form id="reg-paid-pass-form" onsubmit="submitRegisterPaidPassForm(event)" class="rg-form">
@@ -32263,6 +32272,15 @@ function mainPageHTML(): string {
             </div>
           </label>
           <label class="pass-option cursor-pointer">
+            <input type="radio" name="pp-pass" value="Student Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
+            <div class="p-3 rounded-xl text-center" style="background:rgba(173,20,87,0.08);border:1px solid rgba(173,20,87,0.25);">
+              <i class="fas fa-user-graduate text-pink-400 text-lg mb-1 block"></i>
+              <div class="text-white font-semibold text-xs">Student</div>
+              <div class="text-pink-300 font-bold text-sm">${priceNow('Student Pass')} + GST</div>
+              <div class="text-gray-500 text-[10px]">1 workshop, student ID</div>
+            </div>
+          </label>
+          <label class="pass-option cursor-pointer">
             <input type="radio" name="pp-pass" value="Expo Pass" class="hidden" onchange="document.getElementById('pp-pass-type').value=this.value;document.querySelectorAll('.pass-option').forEach(el=>el.classList.remove('ring-2','ring-orange-500'));this.closest('.pass-option').classList.add('ring-2','ring-orange-500')">
             <div class="p-3 rounded-xl text-center" style="background:rgba(216,67,21,0.08);border:1px solid rgba(216,67,21,0.25);">
               <i class="fas fa-ticket-alt text-orange-400 text-lg mb-1 block"></i>
@@ -32515,7 +32533,7 @@ function mainPageScript(): string {
     function vipUpsellLine(name) {
       if (!currentUser) return '';
       var b = String(currentUser.badge_type || '');
-      if (!/visitor|general|delegate|academic|student/i.test(b) || /vip/i.test(b)) return '';
+      if (!/visitor|general|delegate|academic|student|expo/i.test(b) || /vip/i.test(b)) return '';
       if (/speaker|exhibitor|organiser|jury|media|staff/i.test(String(currentUser.role || ''))) return '';
       return '<button type="button" onclick="closeProfileModal();showUpgradeModal(&quot;vip&quot;, this.getAttribute(&quot;data-name&quot;))" data-name="' + esc(name) + '"' +
         ' class="w-full py-2.5 rounded-xl text-sm font-medium text-center" style="background:rgba(245,158,11,0.12);color:#FBBF24;"><i class="fas fa-crown mr-1"></i>Meet ' + esc(name) + ' at the speaker meet &amp; greet (VIP)</button>';
@@ -33357,7 +33375,7 @@ function mainPageScript(): string {
         document.getElementById('qv-success-name').textContent = 'Welcome, ' + data.name + '!';
         const refId = 'BHAI-2026-' + String(data.id).padStart(5, '0');
         document.getElementById('qv-success-msg').innerHTML = data.entry_status === 'waitlisted'
-          ? '${WAITLIST_TEXT} Reference: <strong>' + refId + '</strong><br>${WAITLIST_UPSELL} <a href="#" onclick="showUpgradeModal(&quot;passcard&quot;); return false;" class="underline font-semibold text-primary-300">Get a Delegate Pass</a>'
+          ? (Date.now() >= Date.parse(window.__WL_CLOSE || '${WAITLIST_CLOSE_DEFAULT}') ? '${WAITLIST_CLOSED_TEXT}' : '${WAITLIST_TEXT}') + ' Reference: <strong>' + refId + '</strong><br>${WAITLIST_UPSELL} <a href="#" onclick="showUpgradeModal(&quot;passcard&quot;); return false;" class="underline font-semibold text-primary-300">Get a Delegate Pass</a>'
           : 'Your Visitor Pass is registered. Reference: <strong>' + refId + '</strong><br>${FREE_ENTRY_TEXT} You can now sign in to access networking, inbox & more.';
 
         // Auto-sign-in the user
@@ -34032,7 +34050,7 @@ function mainPageScript(): string {
       if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : waitlisted ? ' is on the waiting list' : visitor ? ' is a free pass: entry not guaranteed' : ' is ready';
       document.getElementById('pcc-pass-note').textContent = pending
         ? (payNow ? 'It is issued the moment your payment goes through. Pay now to finish.' : 'It will be issued as soon as your payment is confirmed.')
-        : waitlisted ? '${WAITLIST_TEXT} ${WAITLIST_PROFILE_SHORT} ${WAITLIST_UPSELL}'
+        : waitlisted ? (Date.now() >= Date.parse(window.__WL_CLOSE || '${WAITLIST_CLOSE_DEFAULT}') ? '${WAITLIST_CLOSED_TEXT} ${WAITLIST_UPSELL}' : '${WAITLIST_TEXT} ${WAITLIST_PROFILE_SHORT} ${WAITLIST_UPSELL}')
         : visitor ? 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. Every paid pass has guaranteed entry on both days.'
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
@@ -34068,7 +34086,7 @@ function mainPageScript(): string {
       if (!el) return;
       var s = _ppOffers && _ppOffers.showcase;
       var b = currentUser ? String(currentUser.badge_type || '') : '';
-      if (!currentUser || !s || !s.prices || b === 'Academic Pass' || b === 'Student Pass') { el.classList.add('hidden'); return; }
+      if (!currentUser || !s || !s.prices || b === 'Academic Pass' || b === 'Student Pass' || b === 'Expo Pass') { el.classList.add('hidden'); return; }
       var price = Number(s.prices['Innovation Showcase Slot'] || 0);
       el.innerHTML = '<i class="fas fa-microphone-lines mr-1.5 text-amber-400"></i>Speak on the Innovation Stage: a ' + Number(s.minutes || 10) + '-minute showcase slot' +
         (price ? ', &#8377;' + inr(price) + ' + GST' : '') + (s.few_left ? ', only ' + Number(s.few_left) + ' left' : '') +
@@ -34259,6 +34277,9 @@ function mainPageScript(): string {
       } else if (badge.includes('student')) {
         p = { label: 'Student', icon: 'fa-user-graduate', tint: '#14b8a6', blurb: 'Learn, get hands-on in workshops, and meet founders & researchers.',
           actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')"), A('Network','fa-users',"switchTab('networking')")] };
+      } else if (badge.includes('expo')) {
+        p = { label: 'Expo Pass', icon: 'fa-ticket-alt', tint: '#BF360C', blurb: 'The exhibition floor on both days, and the networking app to meet people before you arrive.',
+          actions: [A('Network','fa-users',"switchTab('networking')"), A('AI Market','fa-robot',"switchTab('marketplace')"), A('My pass','fa-id-badge',"generateDelegatePass()")] };
       } else if (badge.includes('academic')) {
         p = { label: 'Academic', icon: 'fa-graduation-cap', tint: '#14b8a6', blurb: 'Workshops, the conference, and networking with researchers.',
           actions: [A('Workshops','fa-laptop-code',"switchTab('workshops')"), A('Network','fa-users',"switchTab('networking')"), A('Conference Schedule','fa-calendar-alt',"switchTab('schedule')")] };
@@ -34407,7 +34428,8 @@ function mainPageScript(): string {
     // Keynotes, networking and breaks are open to every pass. Starring stays free:
     // a plan is harmless, and the chip is the sale.
     function delegateSessionChip(s) {
-      if (!currentUser || !isVisitorPass()) return '';
+      // The Expo Pass has no sessions either (14 Nov 2026).
+      if (!currentUser || !(isVisitorPass() || String(currentUser.badge_type || '') === 'Expo Pass')) return '';
       var t = String(s.session_type || '').toLowerCase();
       if (t !== 'panel' && t !== 'talk' && t !== 'workshop') return '';
       var ws = t === 'workshop';
@@ -52699,7 +52721,7 @@ function adminPageScript(): string {
     // Media & Influencer Pass requests live in /js/admin-media.js (one global,
     // MediaDesk) with their own stylesheet, both loaded the first time the section
     // opens. Bump the version on any change to either.
-    var MEDIA_DESK_VERSION = '20261112a';
+    var MEDIA_DESK_VERSION = '20261114';
     var mediaDeskAssets = null;
     function mediaDeskLoadAssets() {
       if (window.MediaDesk) return Promise.resolve();

@@ -12,7 +12,7 @@ export { ADMIN, CRON, settle };
 export const WAITLIST_TEXT = 'Free Visitor Passes are full. You are on the waiting list, which closes on Monday 16 Nov at 5 PM: after that, no free places are given.';
 export const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate Pass.';
 export const WAITLIST_PROFILE_TEXT = 'While you wait, finish your profile: add your photo and your LinkedIn, and check your organisation, designation and city. We confirm places only for people who have finished their profile.';
-export const DESK_TEXT = 'On the waiting list for a Free Visitor Pass: entry not confirmed. Do not admit on this pass. Send them to the registration desk for a Delegate Pass.';
+export const DESK_TEXT = 'On the waiting list for a Free Visitor Pass: entry not confirmed. Do not admit on this pass. There is no on-spot registration: they can buy a pass online on their phone at bharataiinnovation.com/register.';
 
 export async function waitlistWorld({ migrate = true, on = null } = {}) {
   const W = await makeWorld();

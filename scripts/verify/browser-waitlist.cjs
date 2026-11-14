@@ -18,6 +18,8 @@ const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate P
 (async () => {
   const browser = await chromium.launch({ channel: process.env.BROWSER_CHANNEL || 'msedge' });
   const ctx = await browser.newContext({ ...PHONE, serviceWorkers: 'block' });
+  // The app's own clock check for the waiting list's close (16 Nov 2026): kept open here, as the harness keeps it.
+  await ctx.addInitScript(() => { window.__WL_CLOSE = '2099-01-01T00:00:00Z'; });
   await ctx.route((u) => !String(u).startsWith(BASE), (r) => r.abort());
   const page = await ctx.newPage();
   // A statement the harness refuses (a column already there from an earlier run) is not a failure here.

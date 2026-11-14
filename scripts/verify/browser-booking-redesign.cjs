@@ -103,6 +103,8 @@ const fillFree = async (p, email, mobile, kind = 'corporate') => {
     'Exhibition floor access', 'Product & startup demos', 'Exhibition day activities', 'Want Full Conference Access?', 'Group Registration',
     // 14 Nov 2026: the free Visitor Pass is no longer sold; the Expo Pass column has guaranteed entry.
     'not on a free Visitor Pass: entry depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email',
+    // 14 Nov 2026 (deep check): not every pass has the conference (Expo), and the Student Pass has a workshop.
+    'Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none. Workshops come only with Premium Delegate and VIP.',
     // 14 Nov 2026: no promise of an email; there is no on-spot registration instead.
     'Entry on a free Visitor Pass is not guaranteed. It depends on slot availability on 20 and 21 Nov: you may be offered a half-day slot, or none. We confirm by email before the event. Every paid pass has guaranteed entry on both days.',
   ]);

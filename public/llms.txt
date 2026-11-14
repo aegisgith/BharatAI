@@ -10,7 +10,7 @@
 - **Organizer:** Aegis Knowledge Trust
 - **Contact:** info@bharataiinnovation.com | +91 89765 80367
 - **Website:** https://bharataiinnovation.com/
-- **Registration:** https://bharataiinnovation.com/register (Visitor Pass free); every pass compared at https://bharataiinnovation.com/passes
+- **Registration:** https://bharataiinnovation.com/register (free registration is closed; passes from ₹999 + GST); every pass compared at https://bharataiinnovation.com/passes
 - **Format:** In-person (offline)
 - **Language:** English
 
@@ -20,7 +20,7 @@ Bharat AI Innovation 2026 is India's B2B platform for AI, run as a two-day confe
 
 ## Positioning
 
-Bharat AI Innovation is India's B2B platform for AI, not a footfall exhibition. It brings together the organisations already running AI in production (enterprise CIOs, CDOs, CTOs, procurement heads, and state and central government departments), the companies providing it (AI startups, product companies and solution providers) and the policymakers shaping it (MeitY, Maharashtra MITRA, ministers). Business mechanisms: sponsor-curated CXO AI Leadership Panels; an Innovation Stage (8-minute main-stage slot, bundled with select booth packages); four private boardrooms at WTC Mumbai bookable by the hour (₹10,000–₹15,000 per hour + GST); Bharat AI Connect (every pass can view the attendee directory; AI matchmaking, connection requests and 1:1 meeting booking need a Delegate, VIP, Academic or Student pass); and the Bharat AI Leaders’ Evening.
+Bharat AI Innovation is India's B2B platform for AI, not a footfall exhibition. It brings together the organisations already running AI in production (enterprise CIOs, CDOs, CTOs, procurement heads, and state and central government departments), the companies providing it (AI startups, product companies and solution providers) and the policymakers shaping it (MeitY, Maharashtra MITRA, ministers). Business mechanisms: sponsor-curated CXO AI Leadership Panels; an Innovation Stage (8-minute main-stage slot, bundled with select booth packages); four private boardrooms at WTC Mumbai bookable by the hour (₹10,000–₹15,000 per hour + GST); Bharat AI Connect (every pass can view the attendee directory; AI matchmaking, connection requests and 1:1 meeting booking need a paid pass, from the Expo Pass up); and the Bharat AI Leaders’ Evening.
 
 ## Sponsorship and branding options (INR, excluding GST)
 
@@ -41,13 +41,13 @@ Bharat AI Innovation is India's B2B platform for AI, not a footfall exhibition. 
 
 ## Pass types and pricing (INR)
 
-- **Visitor Pass** — FREE (exhibition access; entry is NOT guaranteed: it depends on slot availability on 20 and 21 November, a half-day slot or none, confirmed by email before the event; when free passes are full, a new free registration joins a waiting list and is told so)
+- **Expo Pass** — ₹999 + GST (the exhibition floor only, guaranteed entry on both days, the networking app; no conference, no AI Innovation Talk and Showcase, no lunch, no workshop). Free registration is closed: the free Visitor Pass is no longer offered (people who already hold one keep it).
 - **Student Pass** — ₹999 + GST (conference + one hands-on workshop + student zone; students with a valid student ID; no lunch; students may take up to half of each workshop's seats)
 - **Academic Pass** — ₹3,999 + GST (conference + student zone; faculty and researchers with a valid ID; no lunch or workshop)
 - **Delegate Pass** — ₹8,999 + GST (full conference + exhibition + networking lunch; no workshop)
 - **Premium Delegate Pass** — ₹14,999 + GST (everything in Delegate + one hands-on workshop)
 - **VIP Pass** — ₹24,999 + GST (everything in Premium Delegate + the Bharat AI Leaders’ Evening on Day 1, VIP lounge, priority seating, speaker meet & greet)
-- **Entry:** every paid pass has guaranteed entry on both days; a free Visitor Pass has no guaranteed entry — slot availability on 20 and 21 November decides, a half-day slot or none. When free passes are full, a new free registration joins a waiting list and is informed if a place opens.
+- **Entry:** every paid pass has guaranteed entry on both days. Free registration is closed, and there is no on-spot registration at the venue: bring your pass and a government photo ID.
 - **Dated prices:** these prices apply from 6 November 2026 and may go up again. Until 5 November they were Academic ₹999, Delegate ₹4,999, Premium Delegate ₹9,999, VIP ₹19,999 (+ GST).
 - **Groups:** passes of one kind in one booking (Delegate, Premium Delegate or VIP), paid online: 3 or 4 passes, 15% off each; 5 or more, 30% off each at https://bharataiinnovation.com/group. Each person gets their own pass by email.
 - **Moving up:** a confirmed Student, Academic, Delegate or Premium Delegate pass can be upgraded online for the difference between the two list prices, from the pass card in the app.
@@ -267,7 +267,7 @@ Digital media partner: The Mainstream.
 - [Past Speakers](https://bharataiinnovation.com/past-speakers): Speakers from the Data Science Congress, the forerunner event hosted by Aegis School of Data Science
 - [AI Marketplace](https://bharataiinnovation.com/marketplace): Directory of AI products and companies exhibiting at the event
 - [Passes](https://bharataiinnovation.com/passes): Every pass compared, with dated prices and the questions a buyer asks before paying
-- [Register](https://bharataiinnovation.com/register): Registration: free Visitor Pass, or Student, Academic, Delegate, Premium Delegate and VIP passes
+- [Register](https://bharataiinnovation.com/register): Passes: Expo, Student, Academic, Delegate, Premium Delegate and VIP
 - [Book a booth](https://bharataiinnovation.com/inquiry): Exhibition booth enquiry form
 - [Contact](https://bharataiinnovation.com/contact): Contact form and event team
 - [Policies](https://bharataiinnovation.com/terms): [Terms of Service](https://bharataiinnovation.com/terms), [Privacy Policy](https://bharataiinnovation.com/privacy), [Refund & Cancellation](https://bharataiinnovation.com/refund), [Shipping & Delivery](https://bharataiinnovation.com/shipping), [Code of Conduct](https://bharataiinnovation.com/code-of-conduct)
@@ -275,7 +275,7 @@ Digital media partner: The Mainstream.
 ## Common questions
 
 - **When and where is Bharat AI Innovation 2026?** 20–21 November 2026, 09:00–18:00 IST each day, at World Trade Center Mumbai, Cuffe Parade, Mumbai.
-- **Is it free to attend?** The Visitor Pass is free and covers the exhibition, but entry is not guaranteed: it depends on slot availability on 20 and 21 November (a half-day slot, or none), confirmed by email. Paid passes have guaranteed entry on both days. The full conference and networking features (AI matchmaking, connection requests, 1:1 meeting booking) need a Student (₹999 + GST, with a workshop), Academic (₹999 + GST), Delegate (₹4,999 + GST), Premium Delegate (₹9,999 + GST) or VIP (₹19,999 + GST) pass; standard prices until 5 November 2026, then Academic ₹3,999, Delegate ₹8,999, Premium Delegate ₹14,999, VIP ₹24,999. Register at https://bharataiinnovation.com/register.
+- **Is it free to attend?** No. Free registration is closed, and there is no on-spot registration. Passes, all + 18% GST: Expo ₹999 (the exhibition floor only), Student ₹999 (with a workshop), Academic ₹3,999, Delegate ₹8,999, Premium Delegate ₹14,999, VIP ₹24,999. Every paid pass has guaranteed entry on both days and the networking app; all but the Expo Pass include the conference. Buy at https://bharataiinnovation.com/register.
 - **Who is it for?** Enterprise and government buyers of AI (CIOs, CDOs, CTOs, procurement heads), AI builders (startups, product companies, solution providers), policymakers, and investors.
 - **How do I exhibit?** Book one of 93 booths across 8 industry zones, from the Startup Pod at ₹48,000 + GST to the Mega Pavilion at ₹17,40,000 + GST. See https://bharataiinnovation.com/exhibition.
 - **How do I sponsor?** Every sponsorship and branding option is priced separately at https://bharataiinnovation.com/partner, or write to partner@bharataiinnovation.com.

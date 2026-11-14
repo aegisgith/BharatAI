@@ -56,5 +56,12 @@ check('/register offers it on the pass choice and in the paid form', reg.include
 const appPage = (await W.hit('GET', '/app')).text, app = (await W.hit('GET', '/app.js')).text;
 check('the app knows it: its sheet, its link, its ladder', appPage.includes('name="pp-pass" value="Expo Pass"') && app.includes("expo: 'Expo Pass'") && app.includes("var UPGRADE_LADDER = ['Expo Pass',"));
 
+// ---- the deep check of 14 Nov 2026 ----
+check('the paid form in the app offers the Student Pass too (every student email lands there)', appPage.includes('name="pp-pass" value="Student Pass"'));
+check('/register says the Expo Pass has no conference, on the pass choice and above the comparison', reg.includes('All but the Expo Pass include the full conference.') && reg.includes('all but the Expo Pass include the full conference') && !reg.includes('the full conference and the networking app.</p>'));
+check('/register: a workshop comes with the Student Pass too', reg.includes('A workshop comes with the Student, Premium Delegate and VIP passes') && !reg.includes('Workshops come only with Premium Delegate and VIP'));
+check('/register: the showcase buttons open the paid form every time, closing the dialog first', (reg.match(/onclick="return nwPay\('(Delegate|Expo) Pass'\)"/g) || []).length === 4 && reg.includes('function nwPay(pass)') && reg.includes("history.replaceState(null, '', location.pathname + location.search)"));
+check('the app: an Expo Pass sees the sessions locked, its own welcome, no showcase slot', app.includes("isVisitorPass() || String(currentUser.badge_type || '') === 'Expo Pass'") && app.includes("label: 'Expo Pass', icon: 'fa-ticket-alt'") && app.includes("b === 'Student Pass' || b === 'Expo Pass') { el.classList.add('hidden')"));
+
 console.log(fails() ? fails() + ' FAILED' : 'all Expo Pass checks passed');
 process.exit(fails() ? 1 : 0);
