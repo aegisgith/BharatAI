@@ -49,6 +49,7 @@ check('and may pay for it, at the full price', r.status === 201 && W.order(r.jso
 // ---- the pages ----
 const passes = (await W.hit('GET', '/passes')).text;
 check('/passes sells the Expo Pass, ~~Free~~ Rs 999, in place of the free Visitor Pass', passes.includes('id="expo"') && /<s[^>]*>Free<\/s> &#8377;999/.test(passes) && !passes.includes('Get the free Visitor Pass') && passes.includes('/register?source=passes-card#expo'));
+check('the Expo column has no AI Innovation Talk and Showcase (14 Nov 2026), and every other pass has it', (() => { const row = passes.slice(passes.indexOf('<th scope="row">AI Innovation Talk and Showcase')); const cells = row.slice(0, row.indexOf('</tr>')).match(/<td>[\s\S]*?<\/td>/g) || []; return cells.length === 6 && /Not included/.test(cells[0]) && cells.slice(1).every((c) => /Included/.test(c) && !/Not included/.test(c)); })());
 check('the comparison has an Expo column and no free Visitor column', /color:#BF360C;">Expo<span>/.test(passes) && !/>Visitor<span>Free<\/span>/.test(passes));
 const reg = (await W.hit('GET', '/register')).text;
 check('/register offers it on the pass choice and in the paid form', reg.includes('<li data-pass="Expo Pass">') && reg.includes('value="Expo Pass"') && reg.includes("expo: 'Expo Pass'"));

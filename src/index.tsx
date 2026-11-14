@@ -27518,7 +27518,8 @@ function passComparisonHTML(): string {
       // slot is confirmed by email before the event); a paid pass is guaranteed in.
       ['Guaranteed entry on both days', [1, 1, 1, 1, 1, 1]],
       ['Exhibition floor', [1, 1, 1, 1, 1, 1]],
-      ['AI Innovation Talk and Showcase <small>live product demos on the Innovation Stage</small>', [1, 1, 1, 1, 1, 1]],
+      // 14 Nov 2026 (organiser): "expo pass should not have access to innovation talk and showcase".
+      ['AI Innovation Talk and Showcase <small>live product demos on the Innovation Stage</small>', [0, 1, 1, 1, 1, 1]],
       ['Conference sessions, both days', [0, 1, 1, 1, 1, 1]],
       ['AI Marketplace listing', [1, 1, 1, 1, 1, 1]],
     ] },
@@ -27698,7 +27699,7 @@ ${siteHeaderHTML('/passes')}
       </div>
       ${pass('student', 'Student Pass', '#AD1457', 'Students: a workshop included', ['Guaranteed entry on both days', 'Every conference session', 'One hands-on workshop, seat chosen in the app', 'Student networking zone', 'Bring your student ID', 'No lunch'], true)}
       ${pass('academic', 'Academic Pass', '#6A4BE8', 'Faculty and researchers', ['Guaranteed entry on both days', 'Every conference session', 'Student networking zone', 'Bring your faculty or institution ID', 'No lunch, no workshop'], true)}
-      ${pass('expo', 'Expo Pass', '#BF360C', 'The exhibition floor', ['Guaranteed entry on both days', 'Exhibition floor and the Innovation Stage', 'Full directory, conversations and meetings', 'No conference sessions, lunch or workshop'], true)}
+      ${pass('expo', 'Expo Pass', '#BF360C', 'The exhibition floor', ['Guaranteed entry on both days', 'The exhibition floor', 'Full directory, conversations and meetings', 'No conference sessions, AI Innovation Talks, lunch or workshop'], true)}
       <p class="ps-moveup" id="passes-move-up">Already paid for a pass? <a href="/app?action=pay&amp;pass=premium" class="ps-link">Move up and pay only the difference</a>.</p>
     </div>
   </section>
@@ -28010,7 +28011,7 @@ ${siteHeaderHTML('/passes')}
               ${tier('vip', 'VIP Pass', 'VIP Pass', 'Premium + Bharat AI Leaders’ Evening + VIP lounge + speaker meet &amp; greet', 'All access', '#8A6500')}
               ${tier('student', 'Student Pass', 'Student Pass', 'Conference + one workshop + student zone, with a student ID', 'Students', '#AD1457')}
               ${tier('academic', 'Academic Pass', 'Academic Pass', 'Conference + student zone, with a faculty or institution ID', 'Faculty and researchers', '#6A4BE8')}
-              ${tier('expo', 'Expo Pass', 'Expo Pass', 'The exhibition floor and the Innovation Stage, guaranteed entry on both days', 'Exhibition only', '#BF360C')}
+              ${tier('expo', 'Expo Pass', 'Expo Pass', 'The exhibition floor only, guaranteed entry on both days', 'Exhibition only', '#BF360C')}
             </ul>
             <a href="#compare" class="rg-compare">Compare every pass, side by side</a>
           </section>
@@ -34805,7 +34806,7 @@ function mainPageScript(): string {
       var academicSeat = from === 'Student Pass';
       if (TEAM_PASSES_APP.indexOf(from) >= 0) return 'Adds every conference session, one hands-on workshop, ' + vip;
       // The Expo Pass has the floor only: every step up adds the conference.
-      if (from === 'Expo Pass') return 'Adds every conference session' + (to === 'Academic Pass' ? ' and the student networking zone'
+      if (from === 'Expo Pass') return 'Adds every conference session, the AI Innovation Talks' + (to === 'Academic Pass' ? ' and the student networking zone'
         : to === 'Delegate Pass' ? ', the networking lunch and the conference kit'
         : to === 'Premium Delegate Pass' ? ', the networking lunch, the conference kit and one hands-on workshop'
         : ', the networking lunch, one hands-on workshop, ' + vip);

@@ -116,7 +116,7 @@ const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y
   check('phone: only Premium and VIP say workshop', /hands-on workshop/.test(await list('premium')) && /Everything in Premium/.test(await list('vip')) && !/workshop/i.test((await list('delegate'))) && /No lunch, no workshop/.test(await list('academic')));
   check('phone: VIP has the Leaders\' Evening, Day 1', /Bharat AI Leaders’ Evening, Day 1/.test(await list('vip')));
   // 14 Nov 2026: the Expo Pass (Rs 999) in place of the free Visitor Pass.
-  check('phone: the Expo Pass says guaranteed entry and what it leaves out', /Guaranteed entry on both days/.test(await list('expo')) && /No conference sessions, lunch or workshop/.test(await list('expo')));
+  check('phone: the Expo Pass says guaranteed entry and what it leaves out', /Guaranteed entry on both days/.test(await list('expo')) && /No conference sessions, AI Innovation Talks, lunch or workshop/.test(await list('expo')) && !/Innovation Stage/.test(await list('expo')));
   // 13 Nov 2026: groups book online, 3 or 4 passes 15% off, 5 or more 30% off.
   check('phone: groups book online, 15% off for 3 or 4, 30% off for 5 or more', /3 or 4 passes, 15% off each; 5 or more, 30% off each/.test(await p.locator('.ps-team').innerText()));
   check('phone: the team button goes to the online group booking (13 Nov 2026)', (await p.locator('.ps-team .ps-buy').getAttribute('href')) === '/group');
