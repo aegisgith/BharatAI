@@ -11,7 +11,7 @@
 DELETE FROM sessions WHERE event_id = 1;
 
 INSERT INTO sessions (event_id, title, description, speaker_name, speaker_title, speaker_avatar, session_type, track, room, start_time, end_time, capacity) VALUES
-(1, 'Registration', 'Collect your badge at the registration desk.', NULL, NULL, '📋', 'break', NULL, 'Homi J. Bhabha Hall', '2026-11-20 08:30', '2026-11-20 09:30', 5000),
+(1, 'Registration', 'Show your pass and a government photo ID at the badge desk.', NULL, NULL, '📋', 'break', NULL, 'Homi J. Bhabha Hall', '2026-11-20 08:30', '2026-11-20 09:30', 5000),
 (1, 'Welcome Note', NULL, 'Mr. Bhupesh Daheria', 'Trustee, Aegis Knowledge Trust; CEO, Aegis School of Data Science & AI', '🎤', 'keynote', NULL, 'Homi J. Bhabha Hall', '2026-11-20 09:30', '2026-11-20 09:35', 1000),
 (1, 'Inauguration and Chief Guest Keynote', 'Chief guest to be announced.', NULL, NULL, '🎤', 'keynote', NULL, 'Homi J. Bhabha Hall', '2026-11-20 09:35', '2026-11-20 10:00', 1000),
 (1, 'Keynote', NULL, 'Hon’ble Shri Chandrakant Dada Patil', 'Minister of Higher and Technical Education, Government of Maharashtra', '🎤', 'keynote', NULL, 'Homi J. Bhabha Hall', '2026-11-20 10:00', '2026-11-20 10:15', 1000),
@@ -26,7 +26,7 @@ INSERT INTO sessions (event_id, title, description, speaker_name, speaker_title,
 (1, 'Keynote', NULL, 'Shri Prakash Kumar', 'Additional Director, IndiaAI Mission, MeitY', '🎤', 'keynote', NULL, 'Homi J. Bhabha Hall', '2026-11-20 12:30', '2026-11-20 12:40', 1000),
 (1, 'Networking Lunch', 'The exhibition floor stays open.', NULL, NULL, '🍽️', 'break', NULL, 'Homi J. Bhabha Hall', '2026-11-20 13:00', '2026-11-20 14:00', 5000),
 (1, 'AI Democratizing and Driving Financial Inclusion', 'Panel: BFSI', 'Tarun Chugh (Bajaj Life Insurance), Nilesh Shah (Kotak Mahindra Asset Management), Ratan Kumar Kesh (Bandhan Bank), Sarosh Amaria (Tata Capital), Pravin Kumar (NPCI), Mayur Kapur (TransUnion), Shailesh Dhuri (Moderator)', NULL, '💬', 'panel', 'BFSI & FinTech AI', 'Homi J. Bhabha Hall', '2026-11-20 14:00', '2026-11-20 15:00', 1000),
-(1, 'Beyond Pilots: Turning Enterprise Investments into Measurable Business Value', 'Panel: Jade Global. Hosted by Jade Global. Panellists to be announced.', NULL, NULL, '💬', 'panel', 'Enterprise AI', 'Homi J. Bhabha Hall', '2026-11-20 15:00', '2026-11-20 16:00', 1000),
+(1, 'Beyond Pilots: Turning Enterprise Investments into Measurable Business Value', 'Panel: Jade Global. Hosted by Jade Global.', 'Arun Menon (Jade Global), Sushil Vishwakarma (Whirlpool Corporation), Amod Deshpande (Allvue Systems), Ganesh Joshi (Nilons Enterprises)', NULL, '💬', 'panel', 'Enterprise AI', 'Homi J. Bhabha Hall', '2026-11-20 15:00', '2026-11-20 16:00', 1000),
 (1, 'Hi-Tea Break', NULL, NULL, NULL, '🍵', 'break', NULL, 'Homi J. Bhabha Hall', '2026-11-20 16:00', '2026-11-20 16:15', 5000),
 (1, 'Ganesh Kavach App', 'Innovation Talk', 'Shri Vivek Khandekar (IFS)', 'Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department', '💡', 'talk', 'Government & Public Sector AI', 'Homi J. Bhabha Hall', '2026-11-20 16:15', '2026-11-20 16:30', 1000),
 (1, 'The Rise of Autonomous Enterprises: Leaders'' Strategies for GenAI & Agentic AI', 'Panel: Agentic AI', 'Ms. Surbhi Gupta (Birla Opus Paints), Abhay Sharma (IBM), Akhil Gupta (NoBroker), Raveesh Dewan (Joget Inc.), Mukesh Jain (Moderator)', NULL, '💬', 'panel', 'GenAI & Agentic AI', 'Homi J. Bhabha Hall', '2026-11-20 16:30', '2026-11-20 17:30', 1000),

@@ -7,7 +7,7 @@
     { "key": "aryabhata", "name": "Kalam Theatre", "venue": "Centrum Hall A, First Floor, Centre One", "icon": "🎭" }
   ],
   "sessions": [
-    { "hall": "bhabha", "day": 1, "start": "08:30", "end": "09:30", "type": "break", "label": "Registration", "title": "Registration", "note": "Collect your badge at the registration desk." },
+    { "hall": "bhabha", "day": 1, "start": "08:30", "end": "09:30", "type": "break", "label": "Registration", "title": "Registration", "note": "Show your pass and a government photo ID at the badge desk." },
     { "hall": "bhabha", "day": 1, "start": "09:30", "end": "09:35", "type": "keynote", "label": "Welcome", "title": "Welcome Note", "speaker": { "name": "Mr. Bhupesh Daheria", "role": "Trustee, Aegis Knowledge Trust; CEO, Aegis School of Data Science & AI" } },
     { "hall": "bhabha", "day": 1, "start": "09:35", "end": "10:00", "type": "keynote", "label": "Inauguration", "title": "Inauguration and Chief Guest Keynote", "note": "Chief guest to be announced." },
     { "hall": "bhabha", "day": 1, "start": "10:00", "end": "10:15", "type": "keynote", "label": "Keynote", "speaker": { "name": "Hon’ble Shri Chandrakant Dada Patil", "role": "Minister of Higher and Technical Education, Government of Maharashtra" } },
@@ -43,7 +43,13 @@
         { "name": "Mayur Kapur", "org": "TransUnion" }
       ],
       "moderator": { "name": "Shailesh Dhuri", "org": "Decimal Point Analytics" } },
-    { "hall": "bhabha", "day": 1, "start": "15:00", "end": "16:00", "type": "panel", "label": "Panel: Jade Global", "track": "Enterprise AI", "title": "Beyond Pilots: Turning Enterprise Investments into Measurable Business Value", "note": "Hosted by Jade Global. Panellists to be announced." },
+    { "hall": "bhabha", "day": 1, "start": "15:00", "end": "16:00", "type": "panel", "label": "Panel: Jade Global", "track": "Enterprise AI", "title": "Beyond Pilots: Turning Enterprise Investments into Measurable Business Value", "note": "Hosted by Jade Global.",
+      "panel": [
+        { "name": "Arun Menon", "org": "Jade Global" },
+        { "name": "Sushil Vishwakarma", "org": "Whirlpool Corporation" },
+        { "name": "Amod Deshpande", "org": "Allvue Systems" },
+        { "name": "Ganesh Joshi", "org": "Nilons Enterprises" }
+      ] },
     { "hall": "bhabha", "day": 1, "start": "16:00", "end": "16:15", "type": "break", "label": "Tea", "title": "Hi-Tea Break" },
     { "hall": "bhabha", "day": 1, "start": "16:15", "end": "16:30", "type": "talk", "label": "Innovation Talk", "track": "Government & Public Sector AI", "title": "Ganesh Kavach App", "speaker": { "name": "Shri Vivek Khandekar (IFS)", "role": "Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department" } },
     { "hall": "bhabha", "day": 1, "start": "16:30", "end": "17:30", "type": "panel", "label": "Panel: Agentic AI", "track": "GenAI & Agentic AI", "title": "The Rise of Autonomous Enterprises: Leaders' Strategies for GenAI & Agentic AI",
