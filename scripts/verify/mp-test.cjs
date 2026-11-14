@@ -329,6 +329,34 @@ const png = (name) => ({ name, mimeType: 'image/png', buffer: PNG });
     await ctx.close();
   }
 
+  // ---- 12. exhibitors' products come first on the marketplace (organiser, 14 Nov 2026) ----
+  {
+    await setState({ reset: true });
+    // Rows arrive newest first. Non-exhibitors are the newest, and one exhibitor has three products.
+    await setState({
+      addExhibitors: [{ id: 43, company_name: 'Voice Booth Co', booth_number: '68' }],
+      addListings: [
+        { product_name: 'Outsider Newest', company_name: 'Outsider One', company_id: 101, status: 'approved', created_at: '2026-11-14 09:00:00' },
+        { product_name: 'Voice A', company_name: 'Voice Booth Co', company_id: 102, exhibitor_id: 43, booth_number: '68', status: 'approved', created_at: '2026-11-14 08:00:00' },
+        { product_name: 'Voice B', company_name: 'Voice Booth Co', company_id: 102, exhibitor_id: 43, booth_number: '68', status: 'approved', created_at: '2026-11-14 07:00:00' },
+        { product_name: 'Voice C', company_name: 'Voice Booth Co', company_id: 102, exhibitor_id: 43, booth_number: '68', status: 'approved', created_at: '2026-11-14 06:00:00' },
+        { product_name: 'Outsider Second', company_name: 'Outsider Two', company_id: 103, status: 'approved', created_at: '2026-11-13 09:00:00' },
+        { product_name: 'Booth B12 Product', company_name: 'Daten Intelligenz', company_id: 7, exhibitor_id: 42, booth_number: 'B12', status: 'approved', created_at: '2026-11-01 09:00:00' },
+        { product_name: 'Still Pending', company_name: 'Outsider Three', company_id: 104, status: 'pending', created_at: '2026-11-14 10:00:00' },
+      ],
+    });
+    const order = ((await (await fetch(BASE + '/api/mp/listings')).json()).listings || []).map(l => l.product_name);
+    check('exhibitors come first, then everyone else; one company does not fill the top on its own',
+      JSON.stringify(order) === JSON.stringify(['Voice A', 'Booth B12 Product', 'Voice B', 'Voice C', 'Outsider Newest', 'Outsider Second']), JSON.stringify(order));
+    const { ctx, page } = await phone(false);
+    await page.goto(BASE + '/marketplace');
+    await page.waitForSelector('#listings-container .listing-card', { timeout: 15000 }).catch(() => {});
+    const cards = await page.$$eval('#listings-container .listing-card', els => els.map(e => ({ name: e.querySelector('.listing-title')?.textContent.trim(), booth: !!e.querySelector('.listing-booth-badge') })));
+    check('on a phone the cards show in that order, every exhibitor card with its Booth badge first',
+      cards.map(c => c.name).join('|') === order.join('|') && cards.slice(0, 4).every(c => c.booth) && cards.slice(4).every(c => !c.booth), JSON.stringify(cards));
+    await ctx.close();
+  }
+
   check('no page errors anywhere', errors.length === 0, errors.join(' | '));
   await browser.close();
   console.log(fails ? `\n${fails} check(s) failed` : '\nall marketplace checks passed');

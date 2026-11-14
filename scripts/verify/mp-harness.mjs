@@ -142,6 +142,9 @@ http.createServer(async (req, res) => {
         Object.assign(s.settings, b.settings || {});
         // e.g. { setListing: { id: 3, created_at: '2026-10-29 20:00:00' } }: a listing sent late at night, UTC.
         if (b.setListing) { const l = s.listings.find(x => x.id === b.setListing.id); if (l) Object.assign(l, b.setListing); }
+        // e.g. { addExhibitors: [{ id: 43, company_name: 'X', booth_number: '9' }], addListings: [{ product_name: 'Y', status: 'approved', ... }] }
+        for (const e of b.addExhibitors || []) s.exhibitors[e.id] = { contact_email: '', ...e };
+        for (const l of b.addListings || []) s.listings.push({ id: s.nextId++, view_count: 0, created_at: now(), updated_at: now(), ...l });
       }
       await Promise.all([...pending]);
       res.writeHead(200, { 'Content-Type': 'application/json' });

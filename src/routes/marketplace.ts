@@ -730,15 +730,37 @@ mp.post('/api/mp/auth/logout', async (c) => {
 const PUBLIC_LISTING_SELECT =
   'SELECT l.*, e.company_name AS exhibitor_company, e.booth_number AS exhibitor_booth FROM mp_listings l LEFT JOIN exhibitors e ON l.exhibitor_id = e.id'
 
+// Bharat AI exhibitors come first, everyone else after them (organiser, 14 Nov 2026).
+// An exhibitor's listing is one linked to an exhibitor row, or one that kept the booth
+// number it was submitted with: the same test that puts "Booth" on the card. A listing
+// from an exhibitor whose account email is not the booth email is not linked, and
+// sorts with the others until someone links it in Admin -> AI Marketplace.
+// Inside each group one company's products take turns with the others' (newest first),
+// so a company with seven products does not fill the first screen on its own.
+export const isExhibitorListing = (l: any): boolean =>
+  !!(l.exhibitor_company || l.exhibitor_booth || String(l.booth_number || '').trim())
+export const orderForBrowse = <T extends Record<string, any>>(rows: T[]): T[] => {
+  const seen = new Map<string, number>()
+  return rows
+    .map((l, i) => {
+      const key = l.exhibitor_id ? 'e' + l.exhibitor_id : l.company_id ? 'c' + l.company_id : 'n' + String(l.company_name || '').trim().toLowerCase()
+      const turn = seen.get(key) || 0
+      seen.set(key, turn + 1)
+      return { l, i, group: isExhibitorListing(l) ? 0 : 1, turn }
+    })
+    .sort((a, b) => a.group - b.group || a.turn - b.turn || a.i - b.i)
+    .map(x => x.l)
+}
+
 mp.get('/api/mp/listings', async (c) => {
   // Hardcoded: this is the PUBLIC catalogue. The status used to come from the query
   // string, so ?status=pending / ?status=rejected dumped every unreviewed listing
   // with its private contact and registration details to anonymous callers.
   // Moderators read the queue through the admin routes, which check role='admin'.
   const listings = await c.env.DB.prepare(
-    `${PUBLIC_LISTING_SELECT} WHERE l.status = ? ORDER BY l.created_at DESC`
+    `${PUBLIC_LISTING_SELECT} WHERE l.status = ? ORDER BY l.created_at DESC, l.id DESC`
   ).bind('approved').all()
-  return c.json({ listings: listings.results })
+  return c.json({ listings: orderForBrowse((listings.results || []) as any[]) })
 })
 
 mp.get('/api/mp/listings/by-slug/:companySlug/:productSlug', async (c) => {
@@ -1229,7 +1251,7 @@ const SIGNED_IN = 'marketplace.signed-in'
 // exhibitors.description holds internal import notes ("Owner: <staff name>"), so it
 // is never selected here and must never reach a page or an email.
 const INVITE_ROWS_SQL = (withUnsub: boolean) => `
-  SELECT e.id, e.company_name, e.booth_number, e.contact_email, co.id AS account_id,
+  SELECT e.id, e.company_name, e.booth_number, e.contact_email, e.event_id, co.id AS account_id,
     ((co.password_hash IS NOT NULL AND co.password_hash <> '')
       OR EXISTS (SELECT 1 FROM admin_audit a WHERE a.action = '${SIGNED_IN}' AND a.entity = 'mp_company' AND a.entity_id = CAST(co.id AS TEXT))) AS signed_in,
     (SELECT COUNT(*) FROM mp_listings l WHERE l.exhibitor_id = e.id OR (co.id IS NOT NULL AND l.company_id = co.id)) AS listing_count,
@@ -1259,10 +1281,16 @@ const inviteState = (r: any) => {
     : r.signed_in ? 'registered'
     : days !== null ? 'invited'
     : 'new'
-  // What blocks BOTH mails, then what blocks each on its own.
-  const block = !email ? 'No email address on file' : r.unsubscribed ? 'This address has unsubscribed' : r.live_count ? 'Already listing' : ''
+  // What blocks BOTH mails, then what blocks each on its own. A listing waiting for
+  // review blocks them too: both mails ask the exhibitor to list a product, and a
+  // second try at the same product is refused as a duplicate.
+  const block = !email ? 'No email address on file' : r.unsubscribed ? 'This address has unsubscribed'
+    : r.live_count ? 'Already listing' : r.listing_count ? 'Listing waiting for review' : ''
   let reason = block, link_reason = block
-  if (!block && days !== null && days < INVITE_COOLDOWN_DAYS) {
+  // The invitation names the Mumbai show (20-21 November, WTC); a Delhi 2027 exhibitor
+  // is not sent it. The sign-in link mail names no event, so it stays open to them.
+  if (!block && Number(r.event_id || 1) !== 1) reason = 'Exhibiting at another edition, not Mumbai 2026'
+  else if (!block && days !== null && days < INVITE_COOLDOWN_DAYS) {
     const d = Math.floor(days)
     reason = d === 0 ? 'Invited today' : d === 1 ? 'Invited yesterday' : `Invited ${d} days ago`
   }
@@ -1297,7 +1325,8 @@ const sendExhibitorInvite = async (c: any, row: any): Promise<boolean> => {
   // passes come from the team they list, and they get one by adding themselves.
   const team = accountId && await teamReady(c)
   const body = `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You are exhibiting at Bharat AI Innovation 2026 (20-21 November, World Trade Center, Mumbai), and your booth includes a free listing on the event's AI Marketplace, where buyers browse AI products before and during the show.</p>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.6">Your listing is public on bharataiinnovation.com and in the event app attendees use to plan who to meet, and it stays online after the show.</p>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.6">Exhibitors' products are shown first, ahead of companies that are not exhibiting. Your listing is public on bharataiinnovation.com and in the event app attendees use to plan who to meet, and it stays online after the show.</p>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.6">Buyers are planning their visits now, so please list your product before the show.</p>
     <p style="margin:0 0 12px;font-size:14px;line-height:1.6">It takes about five minutes: the button below signs you in &mdash; no password needed &mdash; then describe your product and add a logo and an image. We review every listing and email you as soon as it is live.</p>
     <p style="margin:0;font-size:14px;line-height:1.6">${accountId
       ? `Your account is under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}, so visitors can find you at the venue.`
@@ -1319,7 +1348,7 @@ const sendExhibitorSignInMail = async (c: any, row: any): Promise<boolean> => {
   // Everything the booth includes, in one list, all in the dashboard the button opens.
   // The booth contact gets no pass from this email: passes come from the team list.
   const includes = [
-    li('<strong>A free AI Marketplace listing.</strong> Describe your product; it takes about five minutes.'),
+    li('<strong>A free AI Marketplace listing.</strong> Describe your product; it takes about five minutes. Exhibitors\' products are shown first.'),
     ...(stage ? [li(`<strong>${stage.minutes ? `A ${stage.minutes}-minute` : 'An'} Innovation Talk &amp; Showcase slot.</strong> Add your stage talk: the topic and what you will showcase${team ? '' : `, and your speaker's name, photo and a short bio`}.`)] : []),
     ...(team ? [li(`<strong>Passes for your team.</strong> ${TEAM_EMAIL_LINE}`)] : []),
   ]
@@ -1329,7 +1358,7 @@ const sendExhibitorSignInMail = async (c: any, row: any): Promise<boolean> => {
     <p style="margin:4px 0 0;font-size:14px;line-height:1.6">The button signs you in to your exhibitor dashboard, where you list your product${stage ? ', add your stage talk' : ''}${team ? ' and add your team' : ''}. No password needed.</p>
     ${emailButton(await signInLink(c, accountId), 'Sign in to your exhibitor dashboard')}`
     : `<p style="margin:0 0 12px;font-size:14px;line-height:1.6">You do not need to create an account for the Bharat AI Marketplace: one is ready under this email address${booth ? `, with Booth ${htmlEsc(booth)} already on it` : ''}.</p>
-    <p style="margin:0;font-size:14px;line-height:1.6">Click the button to sign in &mdash; no password needed &mdash; and list your AI product. It takes about five minutes, and we email you as soon as the listing is live.</p>
+    <p style="margin:0;font-size:14px;line-height:1.6">Click the button to sign in &mdash; no password needed &mdash; and list your AI product. It takes about five minutes, and we email you as soon as the listing is live. Exhibitors' products are shown first on the marketplace.</p>
     ${emailButton(await signInLink(c, accountId), 'Sign in and list your product')}`
   const footer = `<p style="margin:16px 0 0;font-size:12px;color:#888">The button works for seven days. After that, choose "Email me a sign-in link" on bharataiinnovation.com/marketplace and a fresh one is sent to this address. If you would rather not receive marketplace emails, reply to this message and we will stop.</p>`
   return sendMail(c, 'exhibitor-signin', String(row.contact_email).trim(), includes.length > 1 ? 'Your exhibitor account is ready' : 'Your AI Marketplace account is ready', emailShell('Your account is ready', body + footer))
