@@ -87,7 +87,7 @@
       ] },
     { "hall": "bhabha", "day": 2, "start": "13:30", "end": "14:15", "type": "break", "label": "Lunch", "title": "Networking Lunch", "note": "The exhibition floor stays open." },
     { "hall": "bhabha", "day": 2, "start": "14:15", "end": "15:15", "type": "talk", "label": "Product Demonstration", "track": "Healthcare & Life Sciences AI", "title": "Product Demonstration and Talk", "note": "By Pramaan AI Labs." },
-    { "hall": "bhabha", "day": 2, "start": "15:15", "end": "16:15", "type": "panel", "label": "Panel: Media", "track": "Media & Entertainment AI", "title": "Content, Creativity & AI: Redefining Media, Personalization, and Digital Experiences",
+    { "hall": "bhabha", "day": 2, "start": "15:15", "end": "16:15", "type": "panel", "label": "Panel: Media", "track": "Media & Entertainment AI", "title": "Beyond Traditional Entertainment: How AI Is Reshaping the Future of Media and Digital Content",
       "panel": [
         { "name": "Rajat Nigam", "org": "JioStar India" },
         { "name": "Saurabh Kushwah", "org": "BULLET Microdrama · ZEEL" },
