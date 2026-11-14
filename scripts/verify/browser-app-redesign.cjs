@@ -295,10 +295,9 @@ const sideways = () => document.documentElement.scrollWidth - document.documentE
     check(name + ' signed out: Learn More is white, not the old near-invisible grey', /255, 255, 255/.test(s.learn), s.learn);
     const low = await page.evaluate(contrastOf, ['#hero-band']);
     check(name + ' signed out: the hero is readable', low.length === 0, low.slice(0, 4).join(' ; '));
-    await page.click('.ap-btn-primary');
-    await sleep(350);
-    check(name + ' signed out: Register Free opens the form', await page.isVisible('#registration-modal'), 'closed');
-    await page.evaluate(() => document.getElementById('registration-modal').classList.add('hidden'));
+    // 14 Nov 2026: free registration is closed; the main button goes to /register to choose a pass.
+    check(name + ' signed out: Get your pass goes to /register', await page.evaluate(() => { const b = document.querySelector('.ap-btn-primary'); return /\/register\?source=app-hero/.test(b.getAttribute('onclick') || '') && /Get your pass/.test(b.textContent); }), 'button');
+    check(name + ' signed out: no free pass form on the page', !(await page.$('#quick-visitor-reg-card')), 'there');
     if (name === 'phone') {
       check('phone signed out: Log In / Register at the top', await page.isVisible('#app-topbar .js-signin-btn'), 'hidden');
       await page.tap('#app-topbar .js-signin-btn');

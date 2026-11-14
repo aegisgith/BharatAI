@@ -131,7 +131,7 @@ const LAPTOP = { viewport: { width: 1366, height: 800 } };
     }
 
     // Every other kind of pass gets a welcome card with the renamed action where it has one, and draws.
-    for (const [badge, expects] of [['Speaker', 'Edit my profile'], ['Exhibitor', 'Lead console'], ['Media', 'Conference Schedule'], ['Academic', 'Conference Schedule'], ['Organiser', 'Conference Schedule'], ['Investor', 'Deal flow'], ['Jury', 'Jury schedule']]) {
+    for (const [badge, expects] of [['Speaker', 'Edit my profile'], ['Exhibitor', 'Lead console'], ['Media', 'Conference Schedule'], ['Academic', 'Conference Schedule'], ['Organiser', 'Conference Schedule'], ['Investor', 'Browse founders'], ['Jury', 'Jury schedule']]) {
       const { ctx, page, errors } = await asPass(browser, opts, { badge_type: badge, payment_status: 'waived' });
       const t = await page.evaluate(() => document.getElementById('role-home').innerText);
       check(screen + ', ' + badge + ': their welcome card offers ' + expects, t.includes(expects), t.slice(0, 100));

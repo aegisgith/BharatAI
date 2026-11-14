@@ -66,7 +66,7 @@ check('/app.js prints "All halls"', js.includes('${h.key || h.short}'), 'old chi
 check('/app.js has no bare "Schedule" action', !js.includes("A('Schedule',") && !js.includes("A('My schedule',") && !js.includes("A('Live schedule',"), 'found');
 
 // Words a person relies on are still on the page.
-for (const t of ['Register Free', 'Learn More', 'Download my pass', 'Guarantee both days', 'Upgrade my pass', 'Pay now', 'Invite a colleague', 'Tell your network', 'Download my LinkedIn / WhatsApp creative',
+for (const t of ['Get your pass', 'Learn More', 'Download my pass', 'Guarantee both days', 'Upgrade my pass', 'Pay now', 'Invite a colleague', 'Tell your network', 'Download my LinkedIn / WhatsApp creative',
   'Networking', 'Hub', 'Connect with fellow attendees, speakers, and exhibitors', 'Exhibition', 'Explore booths, book your exhibition space, and connect with exhibitors',
   'Your connections, messages, and meetings', 'Venue &amp;', 'World Trade Center, Cuffe Parade, Mumbai 400005', 'Hands-On Training', '>Training<', '>Workshops<', 'Intensive hands-on workshops led by industry experts',
   'My Agenda', 'Add to calendar', 'Main Site', 'Book Booth', 'Contact', 'AI Market', 'Log In / Register', 'Log Out', 'Finish your profile', 'Confirm Your Attendance']) {

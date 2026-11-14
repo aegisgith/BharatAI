@@ -29519,7 +29519,7 @@ function mainPageHTML(): string {
   <meta property="og:site_name" content="Bharat AI Innovation">
   <meta property="og:url" content="https://bharataiinnovation.com/app">
   <meta property="og:title" content="Bharat AI Innovation 2026 — Networking & Registration">
-  <meta property="og:description" content="Your pass, the schedule, the attendee and exhibitor directory and 1:1 meetings for Bharat AI Innovation 2026, India's B2B AI conference. Register free. 20–21 Nov 2026, WTC Mumbai.">
+  <meta property="og:description" content="Your pass, the schedule, the attendee and exhibitor directory and 1:1 meetings for Bharat AI Innovation 2026, India's B2B AI conference. Passes from ₹999. 20–21 Nov 2026, WTC Mumbai.">
   <meta property="og:locale" content="en_IN">
   <meta property="og:image" content="https://bharataiinnovation.com/images/og/app.jpg">
   <meta property="og:image:secure_url" content="https://bharataiinnovation.com/images/og/app.jpg">
@@ -30182,7 +30182,7 @@ function mainPageHTML(): string {
               <p class="text-gray-300 signed-out-only" id="event-desc">India&rsquo;s B2B platform for AI: the organisations running AI in production, the companies providing it and the policymakers shaping it. Two days at WTC Mumbai with 40+ speakers, 48 exhibitors, 12 tracks and 23 Innovation Talks.</p>
               <!-- Gated: see applySignedInChrome(). -->
               <div class="ap-hero-cta flex items-center gap-3 flex-wrap signed-out-only">
-                <button onclick="showRegistration(); switchAuthMode(&quot;register&quot;)" class="ap-btn ap-btn-primary flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Register Free <i class="fas fa-arrow-right text-xs"></i></button>
+                <button onclick="location.href=&quot;/register?source=app-hero&quot;" class="ap-btn ap-btn-primary flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Get your pass <i class="fas fa-arrow-right text-xs"></i></button>
                 <a href="https://bharataiinnovation.com" target="_blank" class="ap-btn ap-btn-ghost flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-300 transition no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.35);">Learn More</a>
               </div>
               <!-- Same tricolour, and the same Devanagari line, as the pass and the shareable card, so all three agree. -->
@@ -30614,8 +30614,8 @@ function mainPageHTML(): string {
 
             <!-- CTA Buttons -->
             <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button onclick="openQuickVisitorReg()" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
-                <i class="fas fa-ticket-alt mr-2"></i>Register Free — Visitor Pass
+              <button onclick="location.href=&quot;/register?source=app-passes&quot;" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
+                <i class="fas fa-ticket-alt mr-2"></i>Register and choose a pass
               </button>
               <button onclick="openPaidPassForm()" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.28);">
                 <i class="fas fa-star mr-2"></i>Get a Paid Pass
@@ -30623,72 +30623,6 @@ function mainPageHTML(): string {
               <a href="/contact#group_registration" target="_blank" class="px-6 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 transition-all text-sm">
                 <i class="fas fa-users mr-2"></i>Group rate
               </a>
-            </div>
-          </div>
-        </div>
-
-        <!-- Quick Visitor Registration Section -->
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 signed-out-only" id="quick-visitor-reg-section">
-          <div class="glass rounded-2xl p-6 md:p-8 border border-green-500/20 glow-accent" id="quick-visitor-reg-card">
-            <div class="flex items-center gap-3 mb-4">
-              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center shrink-0">
-                <i class="fas fa-id-badge text-2xl text-green-400"></i>
-              </div>
-              <div>
-                <h2 class="text-xl font-bold text-green-300">Get Your Free Visitor Pass</h2>
-                <p class="text-xs text-gray-400">Register in 30 seconds — entry not guaranteed: by slot availability on 20 and 21 Nov (a half-day slot, or none), confirmed by email</p>
-              </div>
-            </div>
-            <form id="quick-visitor-form" onsubmit="submitQuickVisitorReg(event)" class="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div><input type="text" id="qv-name" autocomplete="name" autocapitalize="words" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="email" id="qv-email" autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false" placeholder="Email Address *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="tel" id="qv-phone" autocomplete="tel" placeholder="Mobile Number *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="text" id="qv-company" autocomplete="organization" placeholder="Organization / Company *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="text" id="qv-designation" autocomplete="organization-title" placeholder="Designation / Job Title *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><input type="text" id="qv-city" autocomplete="address-level2" placeholder="City *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
-              <div><select id="qv-industry" required class="w-full px-4 py-3 rounded-xl text-sm">
-                <option value="">Select industry *</option>
-                <option>Banking & Financial Services</option>
-                <option>Insurance</option>
-                <option>IT Services & Consulting</option>
-                <option>Software & SaaS</option>
-                <option>Telecom</option>
-                <option>Manufacturing</option>
-                <option>Automotive</option>
-                <option>Pharma & Life Sciences</option>
-                <option>Healthcare & Hospitals</option>
-                <option>Retail & E-commerce</option>
-                <option>Logistics & Supply Chain</option>
-                <option>Energy & Utilities</option>
-                <option>Media & Entertainment</option>
-                <option>Education & Academia</option>
-                <option>Government & Public Sector</option>
-                <option>Consulting & Professional Services</option>
-                <option>Startup / Early stage</option>
-                <option>Venture Capital & Investment</option>
-                <option>Agriculture & Agritech</option>
-                <option>Real Estate & Construction</option>
-                <option>Aerospace & Defence</option>
-                <option>Other</option>
-              </select></div>
-              <div class="md:col-span-2 flex flex-col sm:flex-row gap-3 items-center">
-                <button type="submit" id="qv-submit-btn" class="w-full sm:w-auto px-8 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 transition-all text-sm shadow-lg shadow-primary-500/25">
-                  <i class="fas fa-check-circle mr-2"></i>Register — It's Free!
-                </button>
-                <span class="text-xs text-gray-500">By registering, you agree to receive event updates</span>
-              </div>
-            </form>
-            <div id="qv-success" class="hidden mt-4 p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-center">
-              <i class="fas fa-check-circle text-green-400 text-3xl mb-2"></i>
-              <h3 class="font-bold text-green-300 text-lg" id="qv-success-name"></h3>
-              <p class="text-sm text-gray-300 mt-1" id="qv-success-msg"></p>
-            </div>
-            <div class="mt-4 pt-4 border-t border-white/5 flex flex-wrap gap-4 items-center justify-center text-xs text-gray-500">
-              <span><i class="fas fa-store text-green-500 mr-1"></i>Exhibition Floor Access</span>
-              <span><i class="fas fa-laptop text-green-500 mr-1"></i>Product & Startup Demos</span>
-              <span><i class="fas fa-building text-green-500 mr-1"></i>Exhibition Day Activities</span>
-              <span><i class="fas fa-calendar text-green-500 mr-1"></i>20-21 Nov 2026</span>
-              <span><i class="fas fa-map-marker-alt text-green-500 mr-1"></i>WTC Mumbai</span>
             </div>
           </div>
         </div>
@@ -33328,6 +33262,8 @@ function mainPageScript(): string {
 
     // ==================== QUICK VISITOR REGISTRATION ====================
     function openQuickVisitorReg() {
+      // Free registration is closed (14 Nov 2026): anyone sent here registers on /register and chooses a pass.
+      location.href = '/register?source=app-quick'; return;
       const section = document.getElementById('quick-visitor-reg-card');
       if (section) {
         section.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -35566,7 +35502,7 @@ function mainPageScript(): string {
         document.getElementById('attendee-grid').innerHTML = human
           ? '<div class="text-center text-gray-400 py-12 col-span-full">' + human +
             (needsLogin
-              ? ' <button onclick="showRegistration()" class="underline font-semibold text-primary-600 hover:text-primary-500">Sign in or register free</button>'
+              ? ' <button onclick="showRegistration()" class="underline font-semibold text-primary-600 hover:text-primary-500">Sign in or register</button>'
               : '') + '</div>'
           : '<div class="text-center text-gray-500 py-12 col-span-full">That did not load. Please try again.</div>';
         renderPager();
