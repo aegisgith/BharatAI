@@ -565,6 +565,20 @@ mark = mail.length;
 r = await adminGet('/api/admin/campaigns/upgrade-preview?audience=senior');
 check('Preview shows the Delegate offer as the first senior Visitor gets it, and sends nothing', r.status === 200 && /Secure my Delegate Pass/.test(r.json?.html || '') && /5,898\.82/.test(r.json?.html || '') && (r.json?.html || '').includes('href="#preview"') && !(r.json?.html || '').includes('pass=premium') && r.json?.to === 'fiona@acme.example' && mail.length === mark, r.status + ' ' + (r.json?.subject || r.text.slice(0, 120)));
 {
+  // Organiser, 14 Nov 2026: the names on stage are the hook, so they come before the
+  // list of what the pass includes, and in the inbox line before the email is opened.
+  const stage = (h, pass) => h.includes('Hon&rsquo;ble Shri Eknath Shinde') && h.includes('Global EVP and CTO, Capgemini') && h.includes('Director, UIDAI') &&
+    h.indexOf('Who you will hear on stage') > 0 && h.indexOf('Who you will hear on stage') < h.indexOf('&#10003;') &&
+    /display:none[^>]*>Hear Deputy CM Eknath Shinde, five Maharashtra ministers/.test(h) &&
+    h.includes(`the <strong>${pass}</strong> includes all of it`) && h.includes('https://bharataiinnovation.com/conference"') && !h.includes('<strong>On stage:</strong>');
+  const st = await adminGet('/api/admin/campaigns/upgrade-preview?audience=students');
+  check('both offers name who is on stage, above the list of what the pass includes and in the inbox line', stage(r.json?.html || '', 'Delegate Pass') && stage(st.json?.html || '', 'Student Pass'), (r.json?.html || '').slice(0, 200));
+  if (process.env.UPGRADE_PREVIEW_DIR) {
+    writeFileSync(join(process.env.UPGRADE_PREVIEW_DIR, 'upgrade-delegate.html'), r.json?.html || '');
+    writeFileSync(join(process.env.UPGRADE_PREVIEW_DIR, 'upgrade-student.html'), st.json?.html || '');
+  }
+}
+{
   // After the rise (6 Nov 2026) the emails strike the old price through, and say it may go up again.
   const clockNow = Date.now;
   Date.now = () => Date.parse('2026-11-05T18:31:00Z');   // 00:01 IST on 6 Nov

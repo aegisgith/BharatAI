@@ -20122,6 +20122,53 @@ const EMAIL_WORKSHOPS: [string, string][] = [
 // The organiser's figure for the Innovation Stage (13 Nov 2026).
 const EMAIL_INNOVATION_TALKS = 40
 
+// Who the upgrade emails name on stage (organiser, 14 Nov 2026: "add these speakers
+// so they have a hook"). Only people the published programme lists (/conference,
+// scripts/data/schedule.json), every one in a conference session a Delegate or
+// Student Pass enters, none only at the VIP evening. Ministers, then officials by
+// government rank (Secretary, PCCF, Joint Secretary, Pardeshi/Dhavse, the rest), then
+// industry. Written by hand: take a name out the day it leaves the programme, and
+// keep EMAIL_STAGE_PREHEADER's count of ministers true.
+const EMAIL_STAGE_GROUPS: [string, [string, string][]][] = [
+  ['Ministers, Government of Maharashtra', [
+    ['Hon&rsquo;ble Shri Eknath Shinde', 'Deputy Chief Minister'],
+    ['Hon&rsquo;ble Shri Chandrakant Dada Patil', 'Higher and Technical Education'],
+    ['Hon&rsquo;ble Shri Dattatray Bharane', 'Agriculture'],
+    ['Hon&rsquo;ble Smt. Aditi Tatkare', 'Women and Child Development'],
+    ['Hon&rsquo;ble Shri Sanjay Rathod', 'Soil and Water Conservation'],
+    ['Hon&rsquo;ble Shri Ashish Nandkishore Jaiswal', 'Minister of State, Finance and Planning'],
+  ]],
+  ['Government and policymakers', [
+    ['Shri Virendra Singh (IAS)', 'Secretary, IT and AI Department, Maharashtra'],
+    ['Shri Vivek Khandekar (IFS)', 'Principal Chief Conservator of Forests, Maharashtra'],
+    ['Shri K.K. Singh', 'Joint Secretary, MeitY, Government of India'],
+    ['Shri Suhas Mapari', 'Joint Secretary, Chief Minister&rsquo;s Secretariat'],
+    ['Shri Praveen Pardeshi', 'CEO, MITRA, and Chief Economic Advisor to the Chief Minister'],
+    ['Shri Kaustubh Dhavse', 'Chief Advisor to the Chief Minister'],
+    ['Akshay Yadava', 'Director, UIDAI'],
+    ['Shri Prakash Kumar', 'Additional Director, IndiaAI Mission'],
+  ]],
+  ['Industry', [
+    ['Tarun Chugh', 'MD and CEO, Bajaj Life Insurance'],
+    ['Mukesh Jain', 'Global EVP and CTO, Capgemini'],
+    ['Yogesh Bhalla', 'CTO, DSP Mutual Fund'],
+  ]],
+]
+// The inbox line before the email is opened: the names are the reason to open it.
+const EMAIL_STAGE_PREHEADER = 'Hear Deputy CM Eknath Shinde, five Maharashtra ministers, MeitY, UIDAI and Capgemini on stage.'
+
+// The names box, high in the email. passName is the pass that includes the conference.
+function emailStageBox(passName: string, programmeHref: string): string {
+  const group = ([label, people]: [string, [string, string][]]) =>
+    `<p style="margin:10px 0 4px;font-size:11.5px;font-weight:bold;letter-spacing:0.06em;text-transform:uppercase;color:#C2410C;">${label}</p>` +
+    people.map(([n, r]) => `<p style="margin:0 0 4px;font-size:13.5px;line-height:1.5;color:#1E2140;"><strong>${n}</strong>, ${r}</p>`).join('')
+  return `<div style="margin:0 0 18px;padding:14px 16px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">` +
+    `<p style="margin:0;font-size:15px;font-weight:bold;color:#1E2140;">Who you will hear on stage, 20&ndash;21 Nov</p>` +
+    EMAIL_STAGE_GROUPS.map(group).join('') +
+    `<p style="margin:10px 0 0;font-size:13px;line-height:1.6;color:#1E2140;">With leaders from Google and PwC, and Innovation Talks from the companies building AI for India. The conference is not part of the free Visitor Pass; the <strong>${passName}</strong> includes all of it.</p>` +
+    `<p style="margin:8px 0 0;font-size:13px;"><a href="${programmeHref}" style="color:#C2410C;font-weight:bold;">See every speaker and the full programme &rarr;</a></p></div>`
+}
+
 // The upgrade email's subject test: A for an even registration number, B for odd.
 const upgradeSubjectVariant = (id: any): 'A' | 'B' => (Math.abs(Number(id) || 0) % 2 === 1 ? 'B' : 'A')
 
@@ -20306,10 +20353,10 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
   const late = latePricing()
   const save = passPriceInr(offer.pass, true) - passPriceInr(offer.pass, false)
   const saveText = save > 0 ? '&#8377;' + save.toLocaleString('en-IN') : ''
-  const preheader = academic
+  const preheader = EMAIL_STAGE_PREHEADER + ' ' + (academic
     ? (late ? 'Guaranteed entry on both days, at the student rate.' : `Guaranteed entry on both days, at the student rate. The standard price ends on ${PRICE_DEADLINE_TEXT}.`)
     : late ? 'Guarantee your place on both days, 20&ndash;21 Nov, WTC Mumbai.'
-      : `Guarantee your place on both days. The standard price ends on ${PRICE_DEADLINE_TEXT}.`
+      : `Guarantee your place on both days. The standard price ends on ${PRICE_DEADLINE_TEXT}.`)
   const priceBox =
     `<p style="margin:0 0 6px;font-size:15px;color:#1E2140;text-align:center;"><strong>${offer.pass}: ${wasPrice(offer.pass)}&#8377;${base} + ${PASS_GST_RATE}% GST</strong> (&#8377;${total} in total)</p>` +
     (!late && saveText ? `<p style="margin:0 0 4px;font-size:13.5px;line-height:1.6;color:#B45309;text-align:center;">This is the standard price, until <strong>${PRICE_DEADLINE_TEXT}</strong>. From ${PRICE_LATE_FROM_TEXT} it is ${rsPrice(offer.pass, true)} + GST: book now and save ${saveText}.</p>`
@@ -20324,11 +20371,11 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
       <div style="padding:28px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${first}</strong>,</p>
         <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#555;">Your free Visitor Pass gets you onto the exhibition floor <strong>only if a slot is free</strong> on 20 and 21 Nov. Free registration is now closed, and there is no on-spot registration at the venue, so a paid pass is the one sure way in.</p>
+        ${emailStageBox(academic ? 'Student Pass' : 'Delegate Pass', appUrl.replace(/\/app\/?$/, '') + '/conference')}
         <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#555;">${academic
           ? 'The <strong>Student Pass</strong> gives you guaranteed entry on both days at the student rate, the whole conference and one hands-on workshop:'
           : 'A <strong>Delegate Pass</strong> gives you guaranteed entry on both days, and the part of the event where the business gets done: the conference, and the people in it. It includes:'}</p>
-        <table style="width:100%;border-collapse:collapse;margin:0 0 8px;">${lines.map(item).join('')}</table>
-        <p style="margin:6px 0 20px;font-size:13.5px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;"><strong>On stage:</strong> leaders from Google, PwC, Capgemini and the Government of Maharashtra, with Innovation Talks from the companies building AI for India.</p>
+        <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">${lines.map(item).join('')}</table>
         ${priceBox}
         <div style="text-align:center;margin:16px 0 8px;">
           <a href="${href}" style="display:inline-block;padding:14px 34px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">${academic ? 'Secure my Student Pass' : 'Secure my Delegate Pass'}</a>
