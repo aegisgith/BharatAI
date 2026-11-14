@@ -59,7 +59,7 @@ check('another event is not counted', c.json.total === before + 3, c.json);
 
 // The page itself.
 const page = (await W.hit('GET', '/register')).text;
-check('/register: the form asks who they are, and shows how many have registered with the app to meet them in', page.includes('name="rf-kind"') && page.includes("fetch('/api/events/1/registered-count')") && page.includes('attendee_type: kind') && page.includes('people have already registered. See who is coming on <a href="/networking" class="ps-link">Bharat AI Connect</a>'));
+check('/register: the form asks who they are, and shows how many have registered with the app to meet them in', page.includes('name="rf-kind"') && page.includes("fetch('/api/events/1/registered-count')") && page.includes('attendee_type: kind') && page.includes('people have already registered. See who is coming on <a href="#who-is-coming" class="ps-link">Bharat AI Connect</a>'));
 check('/register: no line about one person any more', !page.includes('recent-signups') && !page.includes('registered just now'));
 check('/register: the passes wait on the screen after the form', page.includes('id="reg-choose" class="hidden"') && page.includes('Not now. Keep me on the waiting list') && page.includes('data-pass="Student Pass"'));
 

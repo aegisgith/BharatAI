@@ -163,7 +163,7 @@ const mail = state.mails[0] || { html: '' };
 check('the email carries a counted link to each report', ['djsce', 'jnu'].every(s => new RegExp('https://bharataiinnovation\\.com/r/' + s + '\\?t=l42\\.\\d+\\.[0-9a-f]{24}"').test(mail.html)), mail.html.slice(0, 100));
 check('the email carries a counted link to each recording', ['djsce', 'jnu'].every(s => new RegExp('https://bharataiinnovation\\.com/w/' + s + '\\?t=l42\\.\\d+\\.[0-9a-f]{24}"').test(mail.html)), 'watch links');
 check('no link in the email goes round the count', !/youtube\.com\/watch/.test(mail.html) && !/\/reports\/[a-z-]+\.pdf/.test(mail.html), 'a direct link is still in the email');
-check('the email asks about November and can be unsubscribed from', /Register free for November/.test(mail.html) && /unsubscribe\?e=/.test(mail.html) && !!mail.headers['List-Unsubscribe'], JSON.stringify(Object.keys(mail.headers)));
+check('the email asks about November and can be unsubscribed from', /Get your pass for November/.test(mail.html) && /unsubscribe\?e=/.test(mail.html) && !!mail.headers['List-Unsubscribe'], JSON.stringify(Object.keys(mail.headers)));
 check('the email never says RSVP', !/\bRSVP\b/i.test(mail.html), 'RSVP wording present');
 check('the send is recorded on the row', bindsFor(/UPDATE report_downloads SET email_sent_at/)[0] === 'priya@example.com', lastSql(/UPDATE report_downloads SET email_sent_at/));
 
@@ -228,7 +228,7 @@ check('asking again shows the links but does not mail twice', r.status === 200 &
 state.rowSent = null; state.mails = [];
 r = await hit('/api/reports/request', post({ ...lead, email: 'reg@example.com' }));
 await settle();
-check('a registered conference attendee is not asked to register again', state.mails.length === 1 && /You are registered for/.test(state.mails[0].html) && !/Register free for November/.test(state.mails[0].html), state.mails.length);
+check('a registered conference attendee is not asked to register again', state.mails.length === 1 && /You are registered for/.test(state.mails[0].html) && !/Get your pass for November/.test(state.mails[0].html), state.mails.length);
 check('their row carries their attendee id', bindsFor(/INSERT INTO report_downloads/).includes(7), JSON.stringify(bindsFor(/INSERT INTO report_downloads/)));
 state.ipCount = 30;
 r = await hit('/api/reports/request', post(lead, false, { 'CF-Connecting-IP': '203.0.113.9' }));
@@ -255,7 +255,7 @@ check('the send is audited', bindsFor(/INSERT INTO admin_audit/) && bindsFor(/IN
 state.mails = [];
 r = await hit('/api/admin/panels/djsanghvi-21sep/send-next-reports', post({ batch: 5 }, true));
 check('the next call finishes the list', r.json.sent === 1 && r.json.done === true && r.json.remaining === 0, r.text);
-check('someone who said no to marketing gets the reports without the November ask', state.mails.length === 1 && state.mails[0].to === 'no@djsce.ac.in' && /\/r\/djsce\?t=a6\./.test(state.mails[0].html) && !/Register free for November/.test(state.mails[0].html) && !/You are registered for/.test(state.mails[0].html) && /unsubscribe\?e=/.test(state.mails[0].html), state.mails.length ? state.mails[0].html.slice(-400) : 'no mail');
+check('someone who said no to marketing gets the reports without the November ask', state.mails.length === 1 && state.mails[0].to === 'no@djsce.ac.in' && /\/r\/djsce\?t=a6\./.test(state.mails[0].html) && !/Get your pass for November/.test(state.mails[0].html) && !/You are registered for/.test(state.mails[0].html) && /unsubscribe\?e=/.test(state.mails[0].html), state.mails.length ? state.mails[0].html.slice(-400) : 'no mail');
 r = await hit('/api/admin/panels/djsanghvi-21sep/send-next-reports', post({ batch: 5 }, true));
 check('an empty queue is done with nothing sent', r.json.done === true && r.json.sent === 0, r.text);
 reset();

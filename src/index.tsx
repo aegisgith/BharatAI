@@ -1326,7 +1326,7 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
   const upsell = isVisitor ? `
         <div style="margin-top:26px;padding-top:22px;border-top:1px solid #eee;">
           <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;text-align:center;">Coming for the conference too?</p>
-          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes, but entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, so you may be offered a half-day slot, or none; we confirm by email before the event. A Delegate pass has <strong>guaranteed entry on both days</strong> and adds every conference session and the networking lunch &mdash; and the networking app, which is where most of the value of two days actually is. Premium Delegate and VIP add a hands-on workshop.</p>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Your Visitor Pass covers the exhibition floor and select keynotes, but entry is not guaranteed: it depends on slot availability on 20 and 21 Nov, so you may be offered a half-day slot, or none; there is no on-spot registration at the venue. A Delegate pass has <strong>guaranteed entry on both days</strong> and adds every conference session and the networking lunch &mdash; and the networking app, which is where most of the value of two days actually is. Premium Delegate and VIP add a hands-on workshop.</p>
           ${roomLine}
           <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#666;text-align:center;">Here is what the app does, and why starting before you arrive matters &mdash; the people worth meeting fill their diaries early.</p>
           <table style="width:100%;border-collapse:collapse;">${netRows}</table>
@@ -1383,7 +1383,7 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
           <a href="${cardHref}" style="display:inline-block;padding:9px 20px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:12.5px;font-weight:bold;">Make my LinkedIn post</a>
         </div>
         <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
-          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk &mdash; we never ask you to upload or send an identity document.</p>
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> there is no on-spot registration. Bring your pass and a government photo ID matching the name on it. We check it at the badge desk &mdash; we never ask you to upload or send an identity document.</p>
         </div>
         ${networking}
         ${upsell}
@@ -1429,7 +1429,7 @@ const WL_BTN = (href: string, label: string, bg: string) =>
   `<a href="${href}" style="display:inline-block;padding:13px 28px;background:${bg};color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">${label}</a>`
 const WL_LINE = (k: string, v: string) =>
   `<tr><td style="padding:7px 12px 7px 0;color:#666;font-size:13px;vertical-align:top;white-space:nowrap;">${k}</td><td style="padding:7px 0;font-size:13.5px;color:#1E2140;font-weight:bold;">${v}</td></tr>`
-const WL_ID_NOTE = 'On the day, bring a government photo ID with the same name as your pass. We check it at the badge desk and never ask you to send one.'
+const WL_ID_NOTE = 'There is no on-spot registration at the venue. On the day, bring your pass and a government photo ID with the same name. We check it at the badge desk and never ask you to send one.'
 
 // The pass an email offers someone who has not paid: what they said they are on /register (0063).
 const PUSH_PASS_WHAT: Record<string, string> = {
@@ -2806,7 +2806,7 @@ const GROUP_RATE_TEXT = GROUP_RULE_TEXT.replace(/\.$/, ' at bharataiinnovation.c
 // Organiser, 28 Oct 2026: a free pass is not a promise of entry. Said in these words
 // wherever the free pass is described (register page, app, emails, the comparison
 // chart), and on the website and terms by hand.
-const FREE_ENTRY_TEXT = 'Entry on a free Visitor Pass is not guaranteed. It depends on slot availability on 20 and 21 Nov: you may be offered a half-day slot, or none. We confirm by email before the event. Every paid pass has guaranteed entry on both days.'
+const FREE_ENTRY_TEXT = 'Entry on a free Visitor Pass is not guaranteed. It depends on slot availability on 20 and 21 Nov: you may be offered a half-day slot, or none. There is no on-spot registration at the venue. Every paid pass has guaranteed entry on both days.'
 
 // ==================== FREE VISITOR PASS: THE WAITING LIST (0056, 12 Nov 2026) ====================
 //
@@ -4893,6 +4893,7 @@ async function payReminderMail(c: any, r: any, preview: boolean): Promise<{ subj
         </div>
         <p style="margin:0 0 18px;font-size:12.5px;color:#888;text-align:center;">${pass}: &#8377;${amount} including ${PASS_GST_RATE}% GST &middot; paid securely through CCAvenue</p>
         ${r.before_online ? `<div style="margin:0 0 16px;padding:13px 15px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;"><p style="margin:0;font-size:13px;line-height:1.6;color:#1E2140;"><strong>Already paid?</strong> If you paid for this pass before 4 October (on mUni Campus), do not pay again: reply to this email and we will confirm it.</p></div>` : ''}
+        <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#1E2140;"><strong>Please note:</strong> there is no on-spot registration at the venue. The pass has to be paid for before you come.</p>
         <p style="margin:0;font-size:12.5px;line-height:1.6;color:#777;">Changed your mind? No need to do anything. Questions: reply to this email or write to info@bharataiinnovation.com.</p>
       </div>
     </div></body></html>`
@@ -5559,7 +5560,7 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
         </div>
         <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">${pdf ? 'The PDF attached to this email is the same ' + doc + '.' : 'The page has a Download PDF button for an expense claim.'}</p>
         <div style="margin-top:22px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
-          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk.</p>
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> there is no on-spot registration. Bring your pass and a government photo ID matching the name on it. We check it at the badge desk.</p>
         </div>
       </div>
     </div></body></html>`
@@ -16294,7 +16295,7 @@ async function sendReportsEmail(c: any, person: any, opts: { tokenSubject: strin
   const november = noMarketing ? '' : registered
     ? `<p style="margin:0;font-size:14px;line-height:1.65;color:#444;">You are registered for <strong>Bharat AI Innovation 2026</strong> at the World Trade Center Mumbai on 20 to 21 November, where this conversation continues. See you there.</p>`
     : `<p style="margin:0 0 12px;font-size:14px;line-height:1.65;color:#444;">The conversation continues at <strong>Bharat AI Innovation 2026</strong>, World Trade Center Mumbai, 20 to 21 November: two days of conference, exhibition and business meetings. Visitor passes are free.</p>
-       <a href="https://bharataiinnovation.com/register?utm_source=email&amp;utm_medium=insights-report" style="display:inline-block;padding:12px 22px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:bold;">Register free for November</a>`
+       <a href="https://bharataiinnovation.com/register?utm_source=email&amp;utm_medium=insights-report" style="display:inline-block;padding:12px 22px;background:#1E2140;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:bold;">Get your pass for November</a>`
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:28px 12px;"><tr><td align="center">
     <table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fff;border-radius:14px;overflow:hidden;">
@@ -17187,7 +17188,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
         ${details.length ? `<p style="margin:12px 0 0;text-align:center;font-size:12.5px;"><a href="${go('complete-profile')}" style="color:#FFC46B;">Add my details first</a></p>` : ''}
       </div>`
 
-  const idNote = 'Bring a government photo ID with the same name; we check it at the badge desk and never ask you to send one.'
+  const idNote = 'There is no on-spot registration. Bring your pass and a government photo ID with the same name; we check it at the badge desk and never ask you to send one.'
   let passBlock: string
   if (kind === 'unpaid') {
     passBlock = `
@@ -17209,6 +17210,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
       <div style="margin:22px 0 0;padding:20px;border:1px solid #E3E6F5;border-radius:12px;">
         <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your Free Visitor Pass</p>
         <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">The exhibition floor and select keynotes. Keep the pass on your phone for the badge desk. ${idNote}</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">Only the exhibition floor, with guaranteed entry on both days? The <strong>Expo Pass</strong> is ${rsPrice('Expo Pass')} + GST: <a href="${go('pay', '&pass=expo')}" style="color:#C2410C;font-weight:bold;">get the Expo Pass</a>.</p>
         ${ghost(go('download-pass'), 'Download my pass')}
         <p style="margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#888;">${FREE_ENTRY_TEXT}</p>
       </div>`
@@ -17331,7 +17333,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
   if (kind === 'unpaid') lines.push(`Finish paying for your ${badge}: ${go('pay', '&pass=' + (PASS_KEY[badge] || 'delegate'))}`)
   else if (!waitlisted) lines.push(`Download your pass: ${go('download-pass')}`)
   if (waitlisted) lines.push('', WAITLIST_UPSELL, `Get a Delegate Pass: ${go('pay', '&pass=delegate')}`)
-  else if (kind === 'free') lines.push('', FREE_ENTRY_TEXT, '', `Make it the full conference with a Delegate Pass: ${go('pay', '&pass=delegate')}`)
+  else if (kind === 'free') lines.push('', FREE_ENTRY_TEXT, '', `Make it the full conference with a Delegate Pass: ${go('pay', '&pass=delegate')}`, `Only the exhibition floor, with guaranteed entry on both days? The Expo Pass, Rs ${passPriceInr('Expo Pass').toLocaleString('en-IN')} + GST: ${go('pay', '&pass=expo')}`)
   lines.push('', 'See you in Mumbai,', 'Team Bharat AI Innovation')
 
   return { subject, html, text: lines.join('\n') }
@@ -18499,7 +18501,7 @@ async function profileReminderEmailHTML(c: any, attendee: any, link: string): Pr
         </div>
         <p style="margin:12px 0 0;font-size:12px;color:#888;text-align:center;">Takes about a minute. The link signs you in automatically &mdash; no password, nothing to remember.</p>
         <div style="margin-top:24px;padding:14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;">
-          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> bring a government photo ID matching the name on your pass. We check it at the badge desk &mdash; we never ask you to upload or send an identity document, and we will never ask you for a payment over email.</p>
+          <p style="margin:0;font-size:12.5px;line-height:1.6;color:#1E2140;"><strong>On the day:</strong> there is no on-spot registration. Bring your pass and a government photo ID matching the name on it. We check it at the badge desk &mdash; we never ask you to upload or send an identity document, and we will never ask you for a payment over email.</p>
         </div>
         <div style="margin-top:18px;padding:16px;background:#F2FBF6;border:1px solid #CFEBDC;border-radius:10px;">
           <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#1E2140;">And tell us what you are here for</p>
@@ -20244,6 +20246,7 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
   ]
   const workshopList = `<ul style="margin:0 0 10px 18px;padding:0;font-size:13.5px;line-height:1.6;color:#1E2140;">${EMAIL_WORKSHOPS.map(([t, by]) => `<li style="margin:0 0 6px;"><strong>${t}</strong>${by}</li>`).join('')}</ul>`
   const premiumHref = preview ? '#preview' : href.replace('pass=delegate', 'pass=premium')
+  const expoHref = preview ? '#preview' : href.replace('pass=delegate', 'pass=expo')
   const workshopBox = academic
     ? `<div style="margin:14px 0 4px;padding:14px 16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;">` +
       `<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#1E2140;"><strong>Your workshop, included in the Student Pass.</strong> Choose one of these:</p>` + workshopList +
@@ -20271,15 +20274,15 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
     (!late && saveText ? `<p style="margin:0 0 4px;font-size:13.5px;line-height:1.6;color:#B45309;text-align:center;">This is the standard price, until <strong>${PRICE_DEADLINE_TEXT}</strong>. From ${PRICE_LATE_FROM_TEXT} it is ${rsPrice(offer.pass, true)} + GST: book now and save ${saveText}.</p>`
       : late && saveText ? `<p style="margin:0 0 4px;font-size:13.5px;line-height:1.6;color:#B45309;text-align:center;">${PRICE_ROSE_TEXT}</p>` : '')
   const ps = academic
-    ? `P.S. Free-pass entry slots are confirmed by email closer to the event, and some people will get a half-day slot or none. The Student Pass takes that uncertainty away, with a workshop seat, for &#8377;${base} + GST${!late && saveText ? `, ${saveText} less than from ${PRICE_LATE_FROM_TEXT}` : ''}.`
-    : `P.S. Free-pass entry slots are confirmed by email closer to the event, and some people will get a half-day slot or none. A Delegate Pass takes that uncertainty away${!late && saveText ? `, and costs ${saveText} less if you book by ${PRICE_DEADLINE_TEXT}` : ''}.`
+    ? `P.S. Free registration is now closed, and there is no on-spot registration at the venue; entry on a free Visitor Pass is not guaranteed. The Student Pass takes that uncertainty away, with a workshop seat, for &#8377;${base} + GST${!late && saveText ? `, ${saveText} less than from ${PRICE_LATE_FROM_TEXT}` : ''}.`
+    : `P.S. Free registration is now closed, and there is no on-spot registration at the venue; entry on a free Visitor Pass is not guaranteed. A Delegate Pass takes that uncertainty away${!late && saveText ? `, and costs ${saveText} less if you book by ${PRICE_DEADLINE_TEXT}` : ''}.`
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f5f5f5;">${preheader}</div>
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
       ${emailBrandHeader('Guarantee your place', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:28px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${first}</strong>,</p>
-        <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#555;">Your free Visitor Pass gets you onto the exhibition floor <strong>only if a slot is free</strong>. Entry on a free pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, and you may be offered a half-day slot, or none.</p>
+        <p style="margin:0 0 14px;font-size:14px;line-height:1.7;color:#555;">Your free Visitor Pass gets you onto the exhibition floor <strong>only if a slot is free</strong> on 20 and 21 Nov. Free registration is now closed, and there is no on-spot registration at the venue, so a paid pass is the one sure way in.</p>
         <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#555;">${academic
           ? 'The <strong>Student Pass</strong> gives you guaranteed entry on both days at the student rate, the whole conference and one hands-on workshop:'
           : 'A <strong>Delegate Pass</strong> gives you guaranteed entry on both days, and the part of the event where the business gets done: the conference, and the people in it. It includes:'}</p>
@@ -20293,7 +20296,7 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
         ${workshopBox}
         ${academic
           ? `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);border-radius:10px;"><strong>Bring your student ID.</strong> The badge desk checks it for the Student Pass.</p>`
-          : `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;">Need a GST invoice in your company's name? The form asks for it. Coming with colleagues? ${GROUP_RATE_TEXT.replace(', on request.', ': write to info@bharataiinnovation.com.')}</p>`}
+          : `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#1E2140;padding:12px 14px;background:#F7F8FF;border:1px solid #E3E6F5;border-radius:10px;">Only the exhibition floor? The <strong>Expo Pass</strong>, ${rsPrice('Expo Pass')} + GST, has guaranteed entry on both days: <a href="${expoHref}" style="color:#C2410C;font-weight:bold;">get the Expo Pass</a>.</p><p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;">Need a GST invoice in your company's name? The form asks for it. Coming with colleagues? ${GROUP_RATE_TEXT.replace(', on request.', ': write to info@bharataiinnovation.com.')}</p>`}
         <p style="margin:18px 0 0;font-size:13px;line-height:1.6;color:#555;font-style:italic;">${ps}</p>
       </div>
     </div>${pixel}</body></html>`
