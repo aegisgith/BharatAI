@@ -13,7 +13,7 @@ DELETE FROM sessions WHERE event_id = 1;
 INSERT INTO sessions (event_id, title, description, speaker_name, speaker_title, speaker_avatar, session_type, track, room, start_time, end_time, capacity) VALUES
 (1, 'Registration', 'Collect your badge at the registration desk.', NULL, NULL, '📋', 'break', NULL, 'Homi J. Bhabha Hall', '2026-11-20 08:30', '2026-11-20 09:30', 5000),
 (1, 'Welcome Note', NULL, 'Mr. Bhupesh Daheria', 'Trustee, Aegis Knowledge Trust; CEO, Aegis School of Data Science & AI', '🎤', 'keynote', NULL, 'Homi J. Bhabha Hall', '2026-11-20 09:30', '2026-11-20 09:35', 1000),
-(1, 'Inauguration and Chief Minister’s Keynote', NULL, 'Hon’ble Shri Devendra Fadnavis', 'Chief Minister, Government of Maharashtra', '🎤', 'keynote', NULL, 'Homi J. Bhabha Hall', '2026-11-20 09:35', '2026-11-20 10:00', 1000),
+(1, 'Inauguration and Chief Guest Keynote', 'Chief guest to be announced.', NULL, NULL, '🎤', 'keynote', NULL, 'Homi J. Bhabha Hall', '2026-11-20 09:35', '2026-11-20 10:00', 1000),
 (1, 'Keynote', NULL, 'Hon’ble Shri Chandrakant Dada Patil', 'Minister of Higher and Technical Education, Government of Maharashtra', '🎤', 'keynote', NULL, 'Homi J. Bhabha Hall', '2026-11-20 10:00', '2026-11-20 10:15', 1000),
 (1, 'Keynote', NULL, 'Hon’ble Shri Dattatray Bharane', 'Minister of Agriculture, Government of Maharashtra', '🎤', 'keynote', NULL, 'Homi J. Bhabha Hall', '2026-11-20 10:15', '2026-11-20 10:30', 1000),
 (1, 'Keynote', NULL, 'Hon’ble Smt. Aditi Tatkare', 'Minister of Women and Child Development, Government of Maharashtra', '🎤', 'keynote', NULL, 'Homi J. Bhabha Hall', '2026-11-20 10:30', '2026-11-20 10:40', 1000),

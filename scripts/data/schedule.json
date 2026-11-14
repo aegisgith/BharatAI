@@ -9,7 +9,7 @@
   "sessions": [
     { "hall": "bhabha", "day": 1, "start": "08:30", "end": "09:30", "type": "break", "label": "Registration", "title": "Registration", "note": "Collect your badge at the registration desk." },
     { "hall": "bhabha", "day": 1, "start": "09:30", "end": "09:35", "type": "keynote", "label": "Welcome", "title": "Welcome Note", "speaker": { "name": "Mr. Bhupesh Daheria", "role": "Trustee, Aegis Knowledge Trust; CEO, Aegis School of Data Science & AI" } },
-    { "hall": "bhabha", "day": 1, "start": "09:35", "end": "10:00", "type": "keynote", "label": "Inauguration", "title": "Inauguration and Chief Minister’s Keynote", "speaker": { "name": "Hon’ble Shri Devendra Fadnavis", "role": "Chief Minister, Government of Maharashtra" } },
+    { "hall": "bhabha", "day": 1, "start": "09:35", "end": "10:00", "type": "keynote", "label": "Inauguration", "title": "Inauguration and Chief Guest Keynote", "note": "Chief guest to be announced." },
     { "hall": "bhabha", "day": 1, "start": "10:00", "end": "10:15", "type": "keynote", "label": "Keynote", "speaker": { "name": "Hon’ble Shri Chandrakant Dada Patil", "role": "Minister of Higher and Technical Education, Government of Maharashtra" } },
     { "hall": "bhabha", "day": 1, "start": "10:15", "end": "10:30", "type": "keynote", "label": "Keynote", "speaker": { "name": "Hon’ble Shri Dattatray Bharane", "role": "Minister of Agriculture, Government of Maharashtra" } },
     { "hall": "bhabha", "day": 1, "start": "10:30", "end": "10:40", "type": "keynote", "label": "Keynote", "speaker": { "name": "Hon’ble Smt. Aditi Tatkare", "role": "Minister of Women and Child Development, Government of Maharashtra" } },
