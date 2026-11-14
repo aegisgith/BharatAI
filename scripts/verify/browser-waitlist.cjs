@@ -41,7 +41,7 @@ const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate P
   const card = (await page.locator('.rg-card').innerText()).replace(/\s+/g, ' ');
   check('/register: the form asks who they are and says nothing of free or waiting', (await page.locator('.rg-kind-row label').count()) === 6 && !/free|waiting list/i.test(card), card.slice(0, 300));
   check('/register: the button moves them on', (await page.locator('#rf-submit').innerText()).trim().startsWith('Continue'));
-  check('/register: the foot says free passes are full', text.includes('Free Visitor Passes are full. Not ready to pay?'));
+  check('/register: under the title, free registration is closed and no on-spot registration', (await page.locator('.rg-closed').isVisible()) && text.includes('Free registration is closed, and there is no on-spot registration at the venue.'));
   check('/register: nothing wider than the phone', await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
 
   // A real registration.
@@ -78,7 +78,7 @@ const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate P
   check('the row is on the list', Array.isArray(row) && row[0] && row[0].entry_status === 'waitlisted', JSON.stringify(row));
   const mail = await (await page.request.get(BASE + '/__mail')).json();
   const mine = mail.filter(m => (m.Recipients?.To || []).includes('asha.rao@gmail.com'));
-  check('the email that left is the waiting-list one', mine.length === 1 && /waiting list/.test(mine[0].Content.Subject), mine.map(m => m.Content.Subject).join(' | '));
+  check('the email that left says free registration is closed, not waiting list', mine.length === 1 && /Free registration is closed/.test(mine[0].Content.Subject) && !/waiting list/i.test(mine[0].Content.Subject), mine.map(m => m.Content.Subject).join(' | '));
 
   // The app, signed in by the registration.
   await page.goto(BASE + '/app', { waitUntil: 'load' });

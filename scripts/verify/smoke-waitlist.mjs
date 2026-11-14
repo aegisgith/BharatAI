@@ -35,11 +35,11 @@ check('on: registered, 201, the answer carries the mark', r.status === 201 && r.
 const asha = r.json.id;
 check('on: the row is marked', W.row(asha).entry_status === 'waitlisted');
 const wm = W.mailTo('asha.rao@gmail.com');
-check('on: one email, the waiting-list one', wm.length === 1 && /waiting list/.test(wm[0].Content.Subject), wm.map(m => m.Content.Subject));
+check('on: one email, free registration closed (14 Nov 2026: no waiting list in it)', wm.length === 1 && wm[0].Content.Subject === 'Free registration is closed: get your pass for Bharat AI Innovation 2026', wm.map(m => m.Content.Subject));
 const html = W.body(wm[0]);
-check('on: the organiser words', html.includes(WAITLIST_TEXT) && html.includes(WAITLIST_UPSELL));
-check('on: the Delegate button signs in and opens payment', /action=pay&pass=delegate&token=/.test(html) && /Get a Delegate Pass/.test(html));
-check('on: the email asks for the photo, LinkedIn and details (13 Nov 2026)', html.includes(WAITLIST_PROFILE_TEXT) && /action=complete-profile&token=/.test(html) && /Finish my profile/.test(html));
+check('on: no hope in it: no waiting list, no "we will inform you", no place for a finished profile', !/waiting list|will inform you|confirm places/i.test(html) && !html.includes(WAITLIST_TEXT) && !html.includes(WAITLIST_PROFILE_TEXT) && !/complete-profile/.test(html));
+check('on: says it plainly: closed, no on-spot registration, get the pass before coming', html.includes('Free registration is closed, and there is no on-spot registration at the venue.') && html.includes('get your pass before you come'));
+check('on: the Delegate button signs in and opens payment', /action=pay&pass=delegate&token=/.test(html) && /Get my Delegate Pass/.test(html));
 check('on: the reference, no download link', html.includes('BHAI-2026-' + String(asha).padStart(5, '0')) && !/download-pass/.test(html));
 check('on: a register.self audit row', W.rows('register.self', asha).length === 1);
 const asAsha = W.as(asha);
@@ -82,8 +82,8 @@ check('/verify: WAITING LIST, no Check in button', vp.text.includes('WAITING LIS
 const nt = await W.admin('POST', '/api/admin/attendees/' + asha + '/notify', {});
 await settle();
 const nm = W.mailTo('asha.rao@gmail.com').slice(-1)[0];
-check('account-ready email: waiting list in the subject and the body, the Delegate button, no pass download',
-  nt.status === 200 && /waiting list/.test(nm.Content.Subject) && W.body(nm).includes(WAITLIST_TEXT) && /Get a Delegate Pass/.test(W.body(nm)) && !/Download my pass/.test(W.body(nm)), nm?.Content.Subject);
+check('account-ready email: no waiting list, closed and no on-spot registration, the Delegate button, no pass download',
+  nt.status === 200 && /get your pass before you come/.test(nm.Content.Subject) && !/waiting list|will inform you|confirm places/i.test(nm.Content.Subject + W.body(nm)) && W.body(nm).includes('Free registration is closed, and there is no on-spot registration at the venue.') && /Get my Delegate Pass/.test(W.body(nm)) && !/Download my pass/.test(W.body(nm)), nm?.Content.Subject);
 
 // ---- the counts ----
 const board = await W.admin('GET', '/api/admin/events/1/board');

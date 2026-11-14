@@ -1427,43 +1427,49 @@ const WL_LINE = (k: string, v: string) =>
   `<tr><td style="padding:7px 12px 7px 0;color:#666;font-size:13px;vertical-align:top;white-space:nowrap;">${k}</td><td style="padding:7px 0;font-size:13.5px;color:#1E2140;font-weight:bold;">${v}</td></tr>`
 const WL_ID_NOTE = 'On the day, bring a government photo ID with the same name as your pass. We check it at the badge desk and never ask you to send one.'
 
-// "You are on the waiting list": sent by itself the moment they register.
+// The pass an email offers someone who has not paid: what they said they are on /register (0063).
+const PUSH_PASS_WHAT: Record<string, string> = {
+  'Delegate Pass': 'Every session on both days, the networking lunch and the full networking app, with guaranteed entry.',
+  'Student Pass': 'The conference on both days, one hands-on workshop and the student zone, with guaranteed entry. Bring your student ID.',
+  'Academic Pass': 'The conference on both days and the student zone, with guaranteed entry. Bring your faculty or institution ID.',
+}
+function pushPassFor(a: any): string {
+  const t = String(a?.attendee_type || '')
+  return t === 'student' ? 'Student Pass' : t === 'faculty' ? 'Academic Pass' : 'Delegate Pass'
+}
+
+// Sent by itself the moment someone registers while free passes are closed. Until 14 Nov 2026
+// it said "You are on the waiting list ... we will inform you" and asked for a finished profile
+// to confirm a place; the organiser: that "will give them hope and they will not buy". It now
+// says free registration is closed, there is no on-spot registration, and offers the pass that
+// fits them. They stay on the list in the database; nothing here promises them a place.
 async function waitlistEmail(c: any, attendee: any): Promise<{ subject: string; html: string }> {
   const { appUrl, go, token } = await waitlistMailLinks(c, attendee)
   const first = greetingName(attendee.name) || 'there'
   const ref = 'BHAI-2026-' + String(attendee.id).padStart(5, '0')
-  const price = priceNow('Delegate Pass')
+  const pass = pushPassFor(attendee)
+  const site = appUrl.replace(/\/app\/?$/, '')
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
-      ${emailBrandHeader('You are on the waiting list', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      ${emailBrandHeader('Get your pass before you come', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:30px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${WL_ESC(first)}</strong>,</p>
-        <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#555;">${WAITLIST_TEXT}</p>
+        <p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#555;">Thank you for your interest in Bharat AI Innovation 2026. ${NO_FREE_PUSH}</p>
         <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">
-          ${WL_LINE('Status', 'Waiting list')}
-          ${WL_LINE('Pass', 'Free Visitor Pass')}
           ${WL_LINE('Reference', ref)}
           ${WL_LINE('Dates', 'Friday 20 and Saturday 21 November 2026')}
           ${WL_LINE('Venue', 'World Trade Center, Mumbai')}
         </table>
         <div style="padding:20px;border:1px solid #CFEBDC;background:#F2FBF6;border-radius:12px;">
-          <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">${WAITLIST_UPSELL}</p>
-          <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">Every session on both days, the networking lunch and the full networking app, with guaranteed entry. ${price} + GST.</p>
-          ${WL_BTN(go('pay', '&pass=delegate'), 'Get a Delegate Pass &rarr;', '#0f7b47')}
-          <p style="margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#888;">${token ? 'The button signs you in with this email and opens the secure payment page. Your registration and reference number stay the same.' : 'Open the app, sign in with this email and choose Delegate Pass.'} Every pass compared: <a href="https://bharataiinnovation.com/passes" style="color:#555;">bharataiinnovation.com/passes</a>.</p>
-        </div>
-        <p style="margin:22px 0 6px;font-size:14px;font-weight:bold;color:#1E2140;">Finish your profile</p>
-        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">${WAITLIST_PROFILE_TEXT} Your account is ready; there is no pass to download until your place is confirmed.</p>
-        <div style="text-align:center;margin:0 0 6px;">
-          ${WL_BTN(go('complete-profile'), 'Finish my profile', '#1E2140')}
-        </div>
-        <div style="text-align:center;margin:10px 0 0;">
-          <a href="${appUrl}" style="display:inline-block;padding:10px 22px;background:#fff;color:#1E2140;text-decoration:none;border:1px solid #D5D9EA;border-radius:10px;font-weight:bold;font-size:13px;">Open the app</a>
+          <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your ${pass}</p>
+          <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">${PUSH_PASS_WHAT[pass]} ${priceNow(pass)} + GST.</p>
+          ${WL_BTN(go('pay', '&pass=' + (PASS_KEY[pass] || 'delegate')), 'Get my ' + pass + ' &rarr;', '#0f7b47')}
+          <p style="margin:12px 0 0;font-size:11.5px;line-height:1.6;color:#888;">${token ? 'The button signs you in with this email and opens the secure payment page. Your reference number stays the same.' : 'Open the app, sign in with this email and choose your pass.'} <a href="${site}/passes" style="color:#C2410C;">See every pass</a></p>
         </div>
         <p style="margin:22px 0 0;font-size:12px;line-height:1.6;color:#888;">Questions? Reply to this email. ${WL_ID_NOTE}</p>
       </div>
     </div></body></html>`
-  return { subject: 'You are on the waiting list: Free Visitor Pass, Bharat AI Innovation 2026', html }
+  return { subject: 'Free registration is closed: get your pass for Bharat AI Innovation 2026', html }
 }
 async function sendWaitlistEmail(c: any, attendee: any) {
   const apiKey = await elasticKey(c)
@@ -2819,6 +2825,11 @@ const FREE_PASS_WAITLIST_KEY = 'free_pass_waitlist'
 const ENTRY_STATUSES = ['waitlisted', 'confirmed']
 const WAITLIST_TEXT = 'Free Visitor Passes are full for now. You are on the waiting list. If the wait list gets over, we will inform you.'
 const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate Pass.'
+// 14 Nov 2026, the organiser: the waiting-list email "will give them hope and they will not
+// buy", and "no on spot registration is allowed". What an email and /register say to someone
+// who has not paid, while free passes are closed (the switch above).
+const NO_FREE_TEXT = 'Free registration is closed, and there is no on-spot registration at the venue.'
+const NO_FREE_PUSH = NO_FREE_TEXT + ' To attend on 20 and 21 Nov, get your pass before you come.'
 // What everyone on the list is asked while they wait (organiser, 13 Nov 2026: "they need to
 // complete the entire formality"): the photo, LinkedIn and the details. Admin, Waiting list,
 // Confirm takes only finished profiles unless the organiser picks everyone.
@@ -17173,7 +17184,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
   const where = '20&ndash;21 Nov at the World Trade Center, Mumbai'
   const intro = kind === 'free'
     ? (waitlisted
-      ? `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You are on the <strong>waiting list</strong> for a Free Visitor Pass for ${where}. ${WAITLIST_TEXT}`
+      ? `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. ${NO_FREE_PUSH}`
       : `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You hold a <strong>Free Visitor Pass</strong> for ${where}.`)
     : kind === 'unpaid'
       ? `Your account for <strong>Bharat AI Innovation 2026</strong> is ready. You chose the <strong>${esc(badge)}</strong>, and its payment is not complete, so for now your account holds a <strong>Free Visitor Pass</strong>.`
@@ -17213,10 +17224,9 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
   } else if (waitlisted) {
     passBlock = `
       <div style="margin:22px 0 0;padding:20px;border:1px solid #F3D9A4;background:#FFF9EC;border-radius:12px;">
-        <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your place on the waiting list</p>
-        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">${WAITLIST_TEXT} There is no pass to download yet.</p>
-        <p style="margin:0 0 12px;font-size:13.5px;font-weight:bold;color:#1E2140;">${WAITLIST_UPSELL}</p>
-        ${btn(go('pay', '&pass=delegate'), 'Get a Delegate Pass &rarr;', '#0f7b47')}
+        <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Get your ${pushPassFor(attendee)} before you come</p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">${NO_FREE_TEXT} ${PUSH_PASS_WHAT[pushPassFor(attendee)]} ${priceNow(pushPassFor(attendee))} + GST.</p>
+        ${btn(go('pay', '&pass=' + (PASS_KEY[pushPassFor(attendee)] || 'delegate')), 'Get my ' + pushPassFor(attendee) + ' &rarr;', '#0f7b47')}
       </div>`
   } else if (kind === 'free') {
     passBlock = `
@@ -17326,7 +17336,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
 </html>`
 
   const hi = first ? first + ', y' : 'Y'
-  const subject = waitlisted ? `${hi}ou are on the waiting list for a Free Visitor Pass`
+  const subject = waitlisted ? `${hi}our account is ready: get your pass before you come`
     : kind === 'free' ? `${hi}our Free Visitor Pass is ready`
     : kind === 'unpaid' ? `${hi}our account is ready - your ${badge} is one payment away`
     : `${hi}our ${passName} is ready`
@@ -17334,7 +17344,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
   // For the mailto fallback, when no mail service is configured.
   const lines = [
     `Dear ${first || 'there'},`, '',
-    waitlisted ? 'Your account for Bharat AI Innovation 2026 is ready. You are on the waiting list for a Free Visitor Pass for 20-21 Nov at the World Trade Center, Mumbai. ' + WAITLIST_TEXT
+    waitlisted ? 'Your account for Bharat AI Innovation 2026 is ready. ' + NO_FREE_PUSH
       : kind === 'free' ? 'Your account for Bharat AI Innovation 2026 is ready. You hold a Free Visitor Pass for 20-21 Nov at the World Trade Center, Mumbai.'
       : kind === 'unpaid' ? `Your account for Bharat AI Innovation 2026 is ready. You chose the ${badge}; its payment is not complete, so for now your account holds a Free Visitor Pass.`
       : `Your account for Bharat AI Innovation 2026 is ready. You are confirmed as a ${passName} holder, with guaranteed entry on both days.`,
@@ -27779,7 +27789,7 @@ ${siteHeaderHTML('/passes')}
         <h1 class="ps-title" aria-label="Register for Bharat AI Innovation 2026"><span class="ps-w ps-w--big"><span style="--i:0">Register</span></span> <span class="ps-w"><span style="--i:1">for</span></span> <span class="ps-w"><span style="--i:2">Bharat</span></span> <span class="ps-w"><span style="--i:3">AI</span></span> <span class="ps-w"><span style="--i:4">Innovation</span></span> <span class="ps-w"><span style="--i:5">2026</span></span></h1>
         <p class="ps-hi" lang="hi" style="margin:4px 0 0;font-family:Mukta,Manrope,sans-serif;font-weight:800;font-size:clamp(20px,4vw,42px);line-height:1.15;"><span style="color:#E06A00;">भारत</span> <span style="color:#000080;">एआई</span> <span style="color:#138808;">इनोवेशन</span></p>
       </div>
-      <p class="ps-sub">World Trade Center, Mumbai, 20&ndash;21 Nov 2026.<span class="hidden sm:inline"> A Delegate Pass gets you every session, the networking lunch, the networking app and guaranteed entry on both days.</span></p>
+      <p class="ps-sub">World Trade Center, Mumbai, 20&ndash;21 Nov 2026.<span class="hidden sm:inline"> A Delegate Pass gets you every session, the networking lunch, the networking app and guaranteed entry on both days.</span>${waitlist ? `<span class="rg-closed" role="note"><i class="fas fa-ticket-alt" aria-hidden="true"></i><span>${NO_FREE_TEXT} Get your pass before you come.</span></span>` : ''}</p>
     </div>
   </section>
 
@@ -27962,6 +27972,8 @@ ${siteHeaderHTML('/passes')}
           .rg-live { display: flex; align-items: flex-start; gap: 9px; margin: 14px 0 0; padding: 10px 12px; border-radius: 12px; background: #F2FAF5; font-size: 13.5px; line-height: 1.4; font-weight: 600; color: #1E5B3A; transition: opacity .3s; }
           .rg-live.hidden { display: none; }
           .rg-live--out { opacity: 0; }
+          .rg-closed { display: flex; gap: 9px; align-items: flex-start; margin: 12px 0 0; padding: 10px 14px; border-radius: 12px; border: 1px solid #FFD199; background: #FFF4E5; font-size: 15px; line-height: 1.45; font-weight: 700; color: #8A3600; }
+          .rg-closed i { margin-top: 3px; }
           .rg-live-dot { flex: 0 0 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: #17A35A; box-shadow: 0 0 0 4px rgba(23, 163, 90, 0.18); }
         </style>
         <div id="reg-choose" class="hidden">
@@ -28083,7 +28095,7 @@ ${siteHeaderHTML('/passes')}
     <section class="ps-compare" id="compare">
       <div class="ps-wrap">
         <h2 class="ps-h2">Compare passes</h2>
-        <p class="ps-lead">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. ${waitlist ? 'Free Visitor Passes are full for now: a new registration joins the waiting list.' : 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none.'} Workshops come only with Premium Delegate and VIP.</p>
+        <p class="ps-lead">Every paid pass has guaranteed entry on both days and adds the full conference and the networking app. ${waitlist ? NO_FREE_TEXT : 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none.'} Workshops come only with Premium Delegate and VIP.</p>
         ${passComparisonHTML()}
         <div class="rg-compare-go">
           <button type="button" class="ps-buy" onclick="openRegisterPaidPassModal(document.getElementById('rpp-pass-type').value || 'Delegate Pass')">Get a paid pass</button>
@@ -28102,7 +28114,7 @@ ${siteHeaderHTML('/passes')}
     <div class="ps-wrap">
       <h2 class="ps-end-title" id="ps-end-title">See you at WTC Mumbai</h2>
       <a class="ps-buy" href="#delegate" onclick="return upgradeFromSuccess('Delegate Pass')">Get a Delegate Pass, ${priceNow('Delegate Pass')} + GST</a>
-      <p>${waitlist ? 'Free Visitor Passes are full. Not ready to pay? <a href="#rg-book" class="ps-link">Fill in the form</a> and you join the waiting list.' : 'Only the exhibition floor? <a href="#rg-book" class="ps-link">Fill in the form</a> for a free Visitor Pass: entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email.'} Already registered? <a href="/app" class="ps-link">Open the app</a>.</p>
+      <p>${waitlist ? NO_FREE_TEXT + ' <a href="#rg-book" class="ps-link">Get your pass</a> before you come.' : 'Only the exhibition floor? <a href="#rg-book" class="ps-link">Fill in the form</a> for a free Visitor Pass: entry not guaranteed, by slot availability on 20 and 21 Nov, confirmed by email.'} Already registered? <a href="/app" class="ps-link">Open the app</a>.</p>
     </div>
   </section>
 </main>

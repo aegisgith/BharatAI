@@ -74,7 +74,7 @@ check('/register on: the same form, nothing of free or waiting above the button 
 check('/register on: the button is put back in its own words after a refusal', reg.includes("var rfIdleHTML = 'Continue <i") && !reg.includes("btn.innerHTML = 'Register free"));
 check('/register on: the success screen knows the mark', reg.includes("data.entry_status === 'waitlisted'") && reg.includes('id="rs-chip-pass"') && reg.includes('id="rs-up-title"'));
 check('/passes on: full for now in the lead, the question and the foot', passes.split('Free Visitor Passes are full for now').length - 1 >= 2 && passes.includes('full for now, a new registration joins the waiting list'));
-check('/register on: the foot says full, and that the form joins the waiting list', reg.includes('Free Visitor Passes are full. Not ready to pay?') && reg.includes('and you join the waiting list.'));
+check('/register on: under the title and in the foot, free registration is closed and there is no on-spot registration (14 Nov 2026)', reg.includes('class="rg-closed"') && reg.split('Free registration is closed, and there is no on-spot registration at the venue.').length - 1 >= 3 && !reg.includes('and you join the waiting list.'));
 
 // ---- 6. the admin page's own functions ----
 const adminJs = (await W.hit('GET', '/admin.js', undefined, ADMIN)).text;
