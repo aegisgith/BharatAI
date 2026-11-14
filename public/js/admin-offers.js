@@ -17,6 +17,8 @@
   // In the order to send them. always: not tied to the offers switch. upgrade: the
   // Student Pass email is the upgrade campaign's (kind 'upgrade', audience 'students').
   var AUD = {
+    // 14 Nov 2026: first, because it has a deadline (the waiting list closes 16 Nov, 5 PM).
+    waitlisted: { label: 'On the waiting list for a free pass', offer: 'free passes full: get a pass by 16 Nov, 5 PM', always: true },
     vip_delegates: { label: 'Paid Delegates and Premium Delegates', offer: 'VIP for the offer price' },
     exhibitors: { label: 'Exhibitor and Exhibition Speaker passes', offer: 'VIP at the booth price' },
     colleagues: { label: 'Paid Delegates, Premium Delegates and VIPs', offer: 'bring a colleague, 15% off' },

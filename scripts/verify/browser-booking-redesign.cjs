@@ -103,6 +103,8 @@ const fillFree = async (p, email, mobile, kind = 'corporate') => {
     'Exhibition floor access', 'Product & startup demos', 'Exhibition day activities', 'Want Full Conference Access?', 'Group Registration',
     // 14 Nov 2026: the free Visitor Pass is no longer sold; the Expo Pass column has guaranteed entry.
     'not on a free Visitor Pass: entry depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email',
+    // 14 Nov 2026: no promise of an email; there is no on-spot registration instead.
+    'Entry on a free Visitor Pass is not guaranteed. It depends on slot availability on 20 and 21 Nov: you may be offered a half-day slot, or none. We confirm by email before the event. Every paid pass has guaranteed entry on both days.',
   ]);
   // 12 Nov 2026: workshops come with the Student Pass too, so these two sentences name it.
   const meantRegRe = [/Included in the Premium Delegate and VIP passes\./, /A workshop comes only with Premium Delegate and VIP/, /Conference \+ student zone, with a student or faculty ID/, /^Exhibition floor and product demos$/, /five passes for the price of four/i, /^Ask for a group rate$/, /Delegation discounts/, /The Academic Pass needs a valid student or faculty ID/];

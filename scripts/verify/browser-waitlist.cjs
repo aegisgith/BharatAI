@@ -12,7 +12,7 @@ const BASE = 'http://localhost:' + (process.env.HARNESS_PORT || 8846);
 let fails = 0;
 const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  <- ' + d)); if (!ok) fails++; };
 const PHONE = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
-const WAITLIST_TEXT = 'Free Visitor Passes are full for now. You are on the waiting list. If the wait list gets over, we will inform you.';
+const WAITLIST_TEXT = 'Free Visitor Passes are full. You are on the waiting list, which closes on Monday 16 Nov at 5 PM: after that, no free places are given.';
 const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate Pass.';
 
 (async () => {
@@ -56,7 +56,7 @@ const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate P
   await page.click('#rf-submit');
   await page.waitForSelector('#reg-choose:not(.hidden)', { timeout: 20000 });
   const offered = await page.evaluate(() => ({ passes: [...document.querySelectorAll('#rc-tiers > li')].filter((l) => !l.hidden).map((l) => l.getAttribute('data-pass')).join(), later: document.getElementById('rc-later').textContent, success: !document.getElementById('reg-success').classList.contains('hidden') }));
-  check('saved, then the passes: Delegate first, and the last choice is the waiting list', offered.passes === 'Delegate Pass,Premium Delegate Pass,VIP Pass' && offered.later === 'Not now. Keep me on the waiting list' && !offered.success, JSON.stringify(offered));
+  check('saved, then the passes: Delegate first, and the last choice is the waiting list', offered.passes === 'Delegate Pass,Premium Delegate Pass,VIP Pass,Expo Pass' && offered.later === 'Not now. Keep me on the waiting list' && !offered.success, JSON.stringify(offered));
   await page.tap('#rc-later');
   await page.waitForSelector('#reg-success:not(.hidden)', { timeout: 20000 });
   const name = (await page.locator('#rs-name').innerText()).trim();

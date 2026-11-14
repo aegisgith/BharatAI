@@ -1556,6 +1556,9 @@ app.post('/api/admin/attendees/waitlist', async (c) => {
   if (!ids.length) return c.json({ error: 'No attendees selected.' }, 400)
   const decision = ['confirmed', 'waitlisted', 'clear'].includes(String(body.decision)) ? String(body.decision) : ''
   if (!decision) return c.json({ error: 'Say confirmed, waitlisted or clear.' }, 400)
+  if (decision === 'confirmed' && await waitlistClosed(c)) {
+    return c.json({ error: 'The waiting list closed on ' + WAITLIST_CLOSE_TEXT + ', so no free places are given from it. To let someone in, give them a pass by hand.' }, 409)
+  }
   const slot = decision === 'confirmed' ? String(body.slot || '').trim().slice(0, 80) : ''
   const value = decision === 'clear' ? null : decision
   const ph = (p: number[]) => p.map(() => '?').join(',')
@@ -2828,7 +2831,19 @@ const FREE_ENTRY_TEXT = 'Entry on a free Visitor Pass is not guaranteed. It depe
 // switch does nothing and Admin, Settings says so.
 const FREE_PASS_WAITLIST_KEY = 'free_pass_waitlist'
 const ENTRY_STATUSES = ['waitlisted', 'confirmed']
-const WAITLIST_TEXT = 'Free Visitor Passes are full for now. You are on the waiting list. If the wait list gets over, we will inform you.'
+// The waiting list closes (organiser, 14 Nov 2026: "no free passes available, all slots are full, you can upgrade
+// your pass, deadline is 16 Nov 5 PM"; chosen: the list closes, passes stay on sale). After it, Admin cannot
+// confirm anyone from the list. app_settings waitlist_close_at moves it (the suites pin it far ahead);
+// the words below name the default, so move both together.
+const WAITLIST_CLOSE_DEFAULT = '2026-11-16T17:00:00+05:30'
+const WAITLIST_CLOSE_TEXT = 'Monday 16 Nov at 5 PM'
+async function waitlistClosed(c: any): Promise<boolean> {
+  const set = String((await settingValue(c, 'waitlist_close_at').catch(() => '')) || '')
+  const t = Date.parse(set || WAITLIST_CLOSE_DEFAULT)
+  return Date.now() >= (Number.isFinite(t) ? t : Date.parse(WAITLIST_CLOSE_DEFAULT))
+}
+const WAITLIST_TEXT = 'Free Visitor Passes are full. You are on the waiting list, which closes on ' + WAITLIST_CLOSE_TEXT + ': after that, no free places are given.'
+const WAITLIST_CLOSED_TEXT = 'Free Visitor Passes are full, and the waiting list closed on ' + WAITLIST_CLOSE_TEXT + '. To attend, get a pass: there is no on-spot registration at the venue.'
 const WAITLIST_UPSELL = 'Want to be sure of entry on both days? Get a Delegate Pass.'
 // 14 Nov 2026, the organiser: the waiting-list email "will give them hope and they will not
 // buy", and "no on spot registration is allowed". What an email and /register say to someone
@@ -3560,8 +3575,10 @@ const OFFER_AUDIENCES: Record<string, { refId: number; title: string }> = {
   // to everyone, so their emails may go with the offers off.
   groups: { refId: 5, title: 'Group booking: free visitors at companies with 3 or more registered' },
   media: { refId: 6, title: 'Media & Influencer Pass: registered journalists and creators' },
+  // 14 Nov 2026: free passes are full, the waiting list closes (WAITLIST_CLOSE_TEXT).
+  waitlisted: { refId: 7, title: 'Free passes full: the waiting list closes ' + WAITLIST_CLOSE_TEXT },
 }
-const OFFER_SWITCHLESS = ['groups', 'media']
+const OFFER_SWITCHLESS = ['groups', 'media', 'waitlisted']
 const offerOpen = (audience: string) => offersActive() || OFFER_SWITCHLESS.includes(audience)
 // Company names that say nothing about a company, left out of the group email.
 const NO_COMPANY = ['', '-', '.', 'na', 'n/a', 'n.a', 'none', 'nil', 'no', 'self', 'self employed', 'self-employed', 'individual', 'freelance', 'freelancer', 'student', 'students', 'home', 'not applicable', 'nothing', 'test', 'personal', 'independent', 'unemployed', 'retired']
@@ -3641,6 +3658,15 @@ async function offerAudienceRows(c: any, audience: string, ids?: any[]): Promise
           AND badge_type = 'Visitor Pass' AND COALESCE(main_event, 1) = 1 AND ${STUDENT_RANK_SQL} = 0 AND ${co} NOT IN (${noCo})
           AND ${co} IN (SELECT ${co} FROM attendees WHERE event_id = 1 AND badge_type = 'Visitor Pass' AND COALESCE(main_event, 1) = 1 GROUP BY ${co} HAVING COUNT(*) >= ${GROUP_MIN})
           ${sc}${offerNotSentSql('groups', 'attendees.email')} ORDER BY id`).bind(...NO_COMPANY).all()
+    return (results as any[]) || []
+  }
+  if (audience === 'waitlisted') {
+    // On the waiting list for a free pass, still on a free pass, for the conference.
+    if (!(await entryStatusEnabled(c))) return []
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE event_id = 1 AND email IS NOT NULL AND TRIM(email) != ''
+          AND badge_type = 'Visitor Pass' AND entry_status = 'waitlisted' AND COALESCE(main_event, 1) = 1
+          ${sc}${offerNotSentSql('waitlisted', 'attendees.email')} ORDER BY id`).all()
     return (results as any[]) || []
   }
   if (audience === 'media') {
@@ -3743,6 +3769,19 @@ async function offerMail(c: any, audience: string, a: any, to: string, preview: 
       `<p style="margin:0;font-size:12px;line-height:1.6;color:#888;text-align:center;">Delegate, Premium Delegate or VIP, one kind of pass per booking. You pay on CCAvenue’s secure page.</p>`)
     return { subject: hello + `book your team’s passes together, up to ${top.pct}% off`, html }
   }
+  if (audience === 'waitlisted') {
+    // No hope (organiser, 14 Nov 2026): every free place is taken, the list closes, there is no
+    // on-spot registration. The pass that fits who they said they are, and the Expo Pass.
+    const pass = pushPassFor(a)
+    const html = shell('Free passes are full', payP('You registered for Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai, and you are on the waiting list for a Free Visitor Pass.') +
+      payP(`<strong>Every free place is taken.</strong> The waiting list closes on <strong>${WAITLIST_CLOSE_TEXT}</strong>: after that, no free places are given, and there is no on-spot registration at the venue.`) +
+      payP('To be there, get your pass before then. Your registration and reference number stay the same.') +
+      `<div style="text-align:center;margin:18px 0 8px;">${payButton(await signedIn('action=pay&pass=' + (PASS_KEY[pass] || 'delegate')), 'Get my ' + pass)}</div>` +
+      payP(`<strong>Your ${pass}</strong>: ${PUSH_PASS_WHAT[pass]} ${rsPrice(pass)} + GST.`) +
+      payP(`Only the exhibition floor? The <strong>Expo Pass</strong> is ${rsPrice('Expo Pass')} + GST, with guaranteed entry on both days: <a href="${await signedIn('action=pay&pass=expo')}" style="color:#C2410C;font-weight:bold;">get the Expo Pass</a>.`) +
+      `<p style="margin:0;font-size:12px;line-height:1.6;color:#888;text-align:center;">The buttons sign you in and show the sum before you pay, on CCAvenue’s secure page.</p>`)
+    return { subject: hello + 'free passes are full: get your pass by 16 Nov, 5 PM', html }
+  }
   if (audience === 'media') {
     // Registered, and their title or company says media or creator: apply for a pass.
     const html = shell('Cover Bharat AI Innovation', payP(`You are registered for Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai. Thank you.`) +
@@ -3791,6 +3830,8 @@ app.post('/api/admin/offers/send', async (c) => {
     if (audience === 'colleagues' && !colleagueHost(a)) return c.json({ skipped: true, reason: 'Holds ' + (badge || 'no pass') + ' now, not a paid Delegate, Premium Delegate or VIP Pass' })
     if (audience === 'colleagues' && !(await groupReady(c))) return c.json({ skipped: true, reason: 'Group booking is not set up yet (migration 0059)' })
     if ((audience === 'groups' || audience === 'media') && badge !== 'Visitor Pass') return c.json({ skipped: true, reason: 'Holds ' + (badge || 'no pass') + ' now' })
+    if (audience === 'waitlisted' && (badge !== 'Visitor Pass' || String(a.entry_status || '') !== 'waitlisted')) return c.json({ skipped: true, reason: 'No longer on the waiting list (holds ' + (badge || 'no pass') + ')' })
+    if (audience === 'waitlisted' && await waitlistClosed(c)) return c.json({ skipped: true, reason: 'The waiting list has closed' })
     if (audience === 'groups' && !(await groupReady(c))) return c.json({ skipped: true, reason: 'Group booking is not set up yet (migration 0059)' })
   }
   if (!validEmailSyntax(to)) return c.json({ skipped: true, reason: 'No usable email address' })
@@ -25256,7 +25297,7 @@ app.get('/startup-pitch.html', (c) => c.redirect('/', 301))
 // ==================== REGISTER PAGE (Free Visitor Pass) ====================
 
 app.get('/register', async (c) => {
-  return c.html(registerPageHTML({ waitlist: await freePassWaitlistOn(c) }))
+  return c.html(registerPageHTML({ waitlist: await freePassWaitlistOn(c), waitlistClosed: await waitlistClosed(c) }))
 })
 
 // The passes page: one readable, linkable place with every pass, its dated
@@ -27736,10 +27777,12 @@ ${sharedFooterHTML()}
 </html>`
 }
 
-function registerPageHTML(opts: { waitlist?: boolean } = {}): string {
+function registerPageHTML(opts: { waitlist?: boolean; waitlistClosed?: boolean } = {}): string {
   // Free Visitor Passes full for now (0056): the free side of the page says so, in
   // the organiser's words, and a registration joins the waiting list.
   const waitlist = !!opts.waitlist
+  // After the close (WAITLIST_CLOSE_TEXT) nobody is told they are kept on the list.
+  const closed = !!opts.waitlistClosed
   // A paid pass on the screen after the form (13 Nov 2026: the form comes first and says nothing
   // of free or paid). Pressing one opens the paid form on that pass, carrying over whatever was
   // typed into the form. The colours are the badges' on /passes.
@@ -28298,7 +28341,7 @@ function rcSetUp(kind, person) {
   });
   rows.forEach(function (li) { if (li.hidden) list.appendChild(li); });
   document.getElementById('rc-later').textContent = person && person.entry_status === 'waitlisted'
-    ? 'Not now. Keep me on the waiting list' : 'Not now. Continue with a free Visitor Pass';
+    ? '${closed ? 'Not now' : 'Not now. Keep me on the waiting list'}' : 'Not now. Continue with a free Visitor Pass';
 }
 function rcShowAll() {
   Array.prototype.slice.call(document.getElementById('rc-tiers').children).forEach(function (li) {
@@ -28390,9 +28433,9 @@ async function submitRegistration(e) {
     // Free passes full (0056): the server put them on the waiting list, and this
     // screen says so in the organiser's words, with the Delegate band under it.
     if (data.entry_status === 'waitlisted') {
-      document.getElementById('rs-name').textContent = 'You are on the waiting list, ' + data.name;
+      document.getElementById('rs-name').textContent = '${closed ? 'Free passes are full, ' : 'You are on the waiting list, '}' + data.name;
       document.getElementById('rs-chip-pass').textContent = 'Free Visitor Pass: waiting list';
-      document.getElementById('rs-sent').textContent = '${WAITLIST_TEXT} We have emailed ' + data.email + '.';
+      document.getElementById('rs-sent').textContent = '${closed ? WAITLIST_CLOSED_TEXT : WAITLIST_TEXT} We have emailed ' + data.email + '.';
       document.getElementById('rs-up-title').textContent = '${WAITLIST_UPSELL}';
       success.classList.add('rs-waitlist');
       // The first thing to do is the profile: places are confirmed for finished ones.
@@ -52495,7 +52538,7 @@ function adminPageScript(): string {
     // ============ LAST-WEEK OFFERS (Payments) ============
     // The screen is /js/admin-offers.js (one global, OffersDesk), loaded the first
     // time Payments opens; it draws itself into #offers-block.
-    var OFFERS_DESK_VERSION = '20261113b';
+    var OFFERS_DESK_VERSION = '20261114';
     var offersDeskAsset = null;
     function loadOffersDesk() {
       var host = document.getElementById('offers-block');

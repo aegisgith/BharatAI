@@ -70,6 +70,8 @@ export async function makeWorld({ appUrl = 'https://bharataiinnovation.com/app',
 
   db.run("INSERT INTO events (id, title, start_date, end_date) VALUES (1, 'Bharat AI', '2026-11-20', '2026-11-21')");
   db.run("INSERT INTO app_settings (key, value) VALUES ('app_url', ?)", [appUrl]);
+  // The waiting list closes on 16 Nov 2026 (waitlistClosed): the suites keep it open unless they test the close.
+  db.run("INSERT INTO app_settings (key, value) VALUES ('waitlist_close_at', '2099-01-01T00:00:00Z')");
   // The clock's other jobs are off, so a tick sends the two automatic emails alone.
   db.run("INSERT INTO app_settings (key, value) VALUES ('pay_remind_auto', 'off'), ('help_mail_auto', 'off')");
 
