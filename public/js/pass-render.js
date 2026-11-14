@@ -37,6 +37,9 @@
     // 12 Nov 2026: the paid Student Pass (Rs 999, one workshop), split from Academic.
     // Raspberry, not teal: the workshop desk must not take it for a Premium Delegate.
     student:  { label: 'STUDENT PASS',  hi: 'छात्र पास',          c1: '#AD1457', c2: '#880E4F', edge: 'rgba(173,20,87,0.55)',   inner: 'rgba(173,20,87,0.30)',  top: '#2a0716' },
+    // 14 Nov 2026: the paid Expo Pass (Rs 999, the exhibition floor), in place of the free Visitor Pass.
+    // Deep orange: not the blue Visitor, the gold VIP or the black-and-saffron Organiser.
+    expo:     { label: 'EXPO PASS',     hi: 'एक्सपो पास',          c1: '#BF360C', c2: '#9A2B09', edge: 'rgba(216,67,21,0.55)',   inner: 'rgba(216,67,21,0.30)',  top: '#2b0d04' },
     investor: { label: 'INVESTOR PASS', hi: 'निवेशक पास',         c1: '#C8803E', c2: '#9c5f27', edge: 'rgba(200,128,62,0.50)',  inner: 'rgba(200,128,62,0.28)', top: '#2b1a0a' },
     startup:  { label: 'STARTUP PASS',  hi: 'स्टार्टअप पास',       c1: '#7CB342', c2: '#5a8a2c', edge: 'rgba(124,179,66,0.50)',  inner: 'rgba(124,179,66,0.28)', top: '#142408' },
     staff:    { label: 'SUPPORT STAFF', hi: 'सहायक दल',           c1: '#78909C', c2: '#546E7A', edge: 'rgba(120,144,156,0.50)', inner: 'rgba(120,144,156,0.28)', top: '#141c21' }
@@ -55,6 +58,7 @@
     if (b.indexOf('academic') >= 0) return 'academic';
     // A paid Student Pass printed VISITOR PASS until this (12 Nov 2026).
     if (b.indexOf('student') >= 0) return 'student';
+    if (b.indexOf('expo') >= 0) return 'expo';
     if (b.indexOf('speaker') >= 0 || r.indexOf('speaker') >= 0) return 'speaker';
     // Badge or role, the rule the social card uses, so the two agree.
     if (b.indexOf('exhibitor') >= 0 || r.indexOf('exhibitor') >= 0) return 'exhibitor';

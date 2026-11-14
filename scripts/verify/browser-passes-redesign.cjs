@@ -71,6 +71,8 @@ const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y
   // 12 Nov 2026: the Academic Pass is for faculty now, students have the Student Pass, and the
   // chart's floor row is two rows (the floor; the Innovation Talk and Showcase).
   const meantRe = [/^Students and faculty$/, /^Bring your student or faculty ID$/, /^Exhibition floor and product demos$/, /The Academic Pass needs a valid student or faculty ID/, /^Student or faculty$/, /A student or faculty member with ID/, /One hands-on workshop comes with the Premium Delegate and VIP passes/, /five passes for the price of four/i, /A confirmed Delegate, Premium Delegate or Academic pass moves up/, /^We are a team of five or more$/, /^Ask for a group rate$/];
+  // 14 Nov 2026 (organiser): the free Visitor Pass is no longer sold; the Expo Pass (Rs 999) takes its place.
+  meantRe.push(/free Visitor Pass|Free Visitor Pass|slot availability|entry not guaranteed|Only the exhibition floor: the free/);
   const lost = [...new Set(chunks(old))].filter((c) => !nowText.includes(c) && !meant.has(c) && !meantRe.some((re) => re.test(c)));
   check('every sentence of the older page is still on the page, or was meant to go', lost.length === 0, lost.join(' || '));
   check('the copy of the older page is kept', old.includes('PRICES WENT UP ON 6 NOV') && !old.includes('passes-motion'));
@@ -106,14 +108,15 @@ const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y
     check('phone: ' + id + ' shows ' + was + ' struck through and ' + is + ' + GST', r.was === was && r.line.includes('line-through') && r.next.startsWith(is) && r.gst === '+ GST' && r.w > 0, JSON.stringify(r));
   }
   const chartPrices = await p.locator('.pcmp thead th').allInnerTexts();
-  check('phone: the chart has the six passes and today\'s prices', /Visitor\s*Free/.test(chartPrices[1]) && /Student[\s\S]*₹999/.test(chartPrices[2]) && /₹3,999/.test(chartPrices[3]) && /₹8,999/.test(chartPrices[4]) && /₹14,999/.test(chartPrices[5]) && /₹24,999/.test(chartPrices[6]), chartPrices.join(' | '));
+  check('phone: the chart has the six passes and today\'s prices, the Expo Pass first at ~~Free~~ Rs 999', /Expo[\s\S]*Free[\s\S]*₹999/.test(chartPrices[1]) && /Student[\s\S]*₹999/.test(chartPrices[2]) && /₹3,999/.test(chartPrices[3]) && /₹8,999/.test(chartPrices[4]) && /₹14,999/.test(chartPrices[5]) && /₹24,999/.test(chartPrices[6]), chartPrices.join(' | '));
   check('phone: today\'s prices are the ones that charge', cfg.passes['Delegate Pass'].base === 8999 && cfg.passes['Premium Delegate Pass'].base === 14999 && cfg.passes['VIP Pass'].base === 24999 && cfg.passes['Academic Pass'].base === 3999, JSON.stringify(cfg.passes));
 
   // What each pass says
   const list = (id) => p.locator('#' + id + ' .ps-list').innerText();
   check('phone: only Premium and VIP say workshop', /hands-on workshop/.test(await list('premium')) && /Everything in Premium/.test(await list('vip')) && !/workshop/i.test((await list('delegate'))) && /No lunch, no workshop/.test(await list('academic')));
   check('phone: VIP has the Leaders\' Evening, Day 1', /Bharat AI Leaders’ Evening, Day 1/.test(await list('vip')));
-  check('phone: the free pass says entry is not guaranteed', /Entry is not guaranteed/.test(await p.locator('#visitor').innerText()));
+  // 14 Nov 2026: the Expo Pass (Rs 999) in place of the free Visitor Pass.
+  check('phone: the Expo Pass says guaranteed entry and what it leaves out', /Guaranteed entry on both days/.test(await list('expo')) && /No conference sessions, lunch or workshop/.test(await list('expo')));
   // 13 Nov 2026: groups book online, 3 or 4 passes 15% off, 5 or more 30% off.
   check('phone: groups book online, 15% off for 3 or 4, 30% off for 5 or more', /3 or 4 passes, 15% off each; 5 or more, 30% off each/.test(await p.locator('.ps-team').innerText()));
   check('phone: the team button goes to the online group booking (13 Nov 2026)', (await p.locator('.ps-team .ps-buy').getAttribute('href')) === '/group');
@@ -129,9 +132,9 @@ const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y
   await p.waitForTimeout(900);
   const lit = await p.evaluate(() => { const e = document.querySelector('#vip'); return { target: e.matches(':target'), shadow: getComputedStyle(e).boxShadow, top: e.getBoundingClientRect().top }; });
   check('phone: a picker link goes to that pass and lights it', lit.target && lit.shadow !== 'none' && lit.top < 500 && lit.top > -20, JSON.stringify(lit));
-  await p.locator('.ps-pick-list a[href="#visitor"]').evaluate((a) => a.click());
+  await p.locator('.ps-pick-list a[href="#expo"]').evaluate((a) => a.click());
   await p.waitForTimeout(900);
-  check('phone: "Just the exhibition floor" goes to the free pass', await p.evaluate(() => document.querySelector('#visitor').matches(':target')));
+  check('phone: "Just the exhibition floor" goes to the Expo Pass', await p.evaluate(() => document.querySelector('#expo').matches(':target')));
   await p.close();
 
   // Sticky bar and sticky chart head
@@ -196,15 +199,14 @@ const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y
     await p.close();
   }
   p = await open(phone);
-  const links = await p.evaluate(() => [...document.querySelectorAll('.ps-go-list a, .ps-end a, .ps-visitor a')].map((a) => a.getAttribute('href')));
-  check('phone: the chart\'s buttons name each pass', ['/register?source=passes-compare-visitor', '/register?source=passes-compare#academic', '/register?source=passes-compare#delegate', '/register?source=passes-compare#premium', '/register?source=passes-compare#vip'].every((l) => links.includes(l)), links.join(' '));
+  const links = await p.evaluate(() => [...document.querySelectorAll('.ps-go-list a, .ps-end a, #expo a')].map((a) => a.getAttribute('href')));
+  check('phone: the chart\'s buttons name each pass', ['/register?source=passes-compare#expo', '/register?source=passes-compare#academic', '/register?source=passes-compare#delegate', '/register?source=passes-compare#premium', '/register?source=passes-compare#vip'].every((l) => links.includes(l)), links.join(' '));
   check('phone: the last button goes to the Delegate form', links.includes('/register?source=passes-foot#delegate'));
   check('phone: the app link is kept', links.includes('/app'));
-  const visitorHref = '/register?source=passes-visitor';
-  await p.locator(`.ps-visitor a[href="${visitorHref}"]`).tap();
+  await p.locator('#expo a[href="/register?source=passes-card#expo"]').tap();
   await p.waitForURL('**/register**', { timeout: 15000 });
-  await p.waitForTimeout(500);
-  check('phone: the free pass goes to the free form, with no paid form open', await p.evaluate(() => document.getElementById('reg-paid-pass-modal').classList.contains('hidden') && !!document.getElementById('reg-form')));
+  await p.waitForTimeout(800);
+  check('phone: the Expo Pass button opens the paid form on it', await p.evaluate(() => !document.getElementById('reg-paid-pass-modal').classList.contains('hidden') && document.getElementById('rpp-pass-type').value === 'Expo Pass'));
   await p.close();
   await phone.close();
 

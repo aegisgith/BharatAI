@@ -45,7 +45,8 @@
 // 12 Nov 2026 (bhai-v32): main.js?v=20261112b, because the edge had cached the old main.js under ?v=20261112.
 // 12 Nov 2026 (bhai-v33): pass-render.js?v=20261112b: the Organiser pass in black and saffron, and the
 // Student and Influencer passes printed as themselves, not VISITOR PASS.
-const VERSION = 'bhai-v37';
+// 14 Nov 2026 (bhai-v37): pass-render.js?v=20261114: the Expo Pass (Rs 999) printed as itself.
+const VERSION = 'bhai-v38';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 // The badge desk's scanner page, kept so it opens with no internet (12 Nov 2026).
@@ -76,7 +77,7 @@ const PRECACHE = [
   '/images/logo-nav.webp',             // every page's header
   '/images/icon-192.png',
   '/manifest.webmanifest',
-  '/js/pass-render.js?v=20261112b',
+  '/js/pass-render.js?v=20261114',
   '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
   '/css/style.css?v=20261105b',        // marketing shell: /, /conference, /exhibition, ...
   '/js/main.js?v=20261112b',

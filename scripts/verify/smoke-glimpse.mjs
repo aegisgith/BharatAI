@@ -64,6 +64,12 @@ person(1, 'Flagged Photo', { job_title: 'Chief Risk Officer', photo_flagged_at: 
 person(1, 'Asked Off', { job_title: 'Chief Executive Officer', company: 'Hiddenco', social_card_downloaded_at: SHARED });
 person(1, 'Panel Sharer', { job_title: 'Chief Strategy Officer', main_event: 0, social_card_downloaded_at: SHARED });
 person(1, 'Unsub Sharer', { job_title: 'Chief Growth Officer', unsubscribed_at: '2026-10-01 10:00:00', social_card_downloaded_at: SHARED });
+// 14 Nov 2026 (organiser): the public showcase names people from companies only.
+person(1, 'Dean Sharer', { job_title: 'Dean', company: 'Sri Sri University', industry: 'Education & Academia', social_card_downloaded_at: SHARED });
+person(1, 'Prof Sharer', { job_title: 'Professor of AI', company: 'Acme Labs', social_card_downloaded_at: SHARED });
+person(1, 'IIT Sharer', { job_title: 'Head of Research', company: 'IIT Bombay', social_card_downloaded_at: SHARED });
+person(1, 'Student Sharer', { job_title: 'Analyst', company: 'Somewhere', badge_type: 'Student Pass', social_card_downloaded_at: SHARED });
+person(1, 'Principal Sharer', { job_title: 'Principal Engineer', company: 'Corporate Co', social_card_downloaded_at: SHARED });
 // Did not share their card (locked at most):
 person(1, 'Vikram Secret', { job_title: 'CTO at Nokia Networks', company: 'Nokia', industry: 'Telecom', city: 'Bengaluru', networking_goals: 'hiring' });
 person(1, 'Neha Secret', { job_title: 'Director - Data Science, HDFC Bank', company: 'HDFC Bank', industry: 'Banking & Financial Services', city: 'Mumbai 400001' });
@@ -88,6 +94,8 @@ const people = r.json?.people || [], locked = r.json?.locked || [];
 const named = Object.fromEntries(people.map(p => [p.name, p]));
 check('answers 200 with no sign-in', r.status === 200 && Array.isArray(r.json?.people) && Array.isArray(r.json?.locked), r.status + ' ' + r.text.slice(0, 160));
 check('a named card carries name, photo, title, company, industry, city and goals only', people.length > 0 && people.every(p => Object.keys(p).sort().join(',') === 'city,company,goals,industry,name,photo,title'), JSON.stringify(people[0]));
+check('corporate only: a dean, a professor, an IIT and a Student Pass who shared are not named', !/Dean Sharer|Prof Sharer|IIT Sharer|Student Sharer/.test(people.map(p => p.name).join(' | ')), people.map(p => p.name).join(' | '));
+check('and a Principal Engineer at a company is', people.some(p => p.name === 'Principal Sharer'), people.map(p => p.name).join(' | '));
 check('a locked card carries title, industry, city and goals only', locked.length > 0 && locked.every(p => Object.keys(p).sort().join(',') === 'city,goals,industry,title'), JSON.stringify(locked[0]));
 check('no id and no count in the answer or its headers', !/"id"|total|count/i.test(r.text) && !Object.keys(r.h).some(k => /count|total/i.test(k)), r.text.slice(0, 120));
 check('kept by a browser for ten minutes', /public/.test(r.h['cache-control'] || '') && /max-age=600/.test(r.h['cache-control'] || ''), r.h['cache-control']);
@@ -122,8 +130,10 @@ check('seniors who shared come before sharers without a senior title', !bigP.som
 check('the locked cards are people who did not share', bigL.every(p => /^Head /.test(p.title)), bigL.map(p => p.title).join(' | '));
 
 // ---- the page ----
-const page = readFileSync(new URL('../../public/networking.html', import.meta.url), 'utf8');
+// The page and, since 14 Nov 2026, its showcase script and style, shared with /register.
+const page = ['../../public/networking.html', '../../public/js/nw-glimpse.js', '../../public/css/nw-glimpse.css'].map((f) => readFileSync(new URL(f, import.meta.url), 'utf8')).join(String.fromCharCode(10));
 check('the page asks this route for its cards', page.includes("fetch('/api/events/1/glimpse'"), 'fetch missing');
+check('the page draws only people with a photo: no locked cards (14 Nov 2026)', page.includes('var locked = [];') && page.includes('if (people.length < 4) { section.hidden = true; return; }'), 'locked drawn');
 check('the page writes names and titles as text, never as HTML', /el\('span', 'nw-pc-name', p\.name\)/.test(page) && /el\('span', 'nw-lc-title', p\.title\)/.test(page) && !/innerHTML\s*=\s*[^;]*p\.(name|title|company|city|industry)/.test(page), 'innerHTML with card text');
 check('the phone plays the app\'s own screens: list, Requested, Schedule Meeting, chat, Tell your network', ['Networking Hub', 'Requested', 'Schedule Meeting', 'Send Meeting Request', 'Type a message', 'Tell your network', 'Share to LinkedIn or WhatsApp'].every(s => page.includes(s)), 'phone screen markers');
 check('the card in the share step is drawn by the app\'s renderer', page.includes("'/js/social-card.js?v=") && page.includes('window.BhaiSocialCard') && /R\.render\(\{ name: p\.name/.test(page), 'renderer');

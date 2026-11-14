@@ -24,7 +24,7 @@ const app = await W.appFunctions(['inr', 'upgradePrice', 'upgradeStepsFor', 'upg
 const steps = (from) => JSON.parse(JSON.stringify(app.upgradeStepsFor(from)));
 const names = (from) => steps(from).map(s => s.pass).join();
 
-check('the ladder in the app is the four paid passes, cheapest first', JSON.stringify(app.UPGRADE_LADDER) === JSON.stringify(LADDER), JSON.stringify(app.UPGRADE_LADDER));
+check('the ladder in the app: the Expo Pass (14 Nov 2026), then the four paid passes, cheapest first', JSON.stringify(app.UPGRADE_LADDER) === JSON.stringify(['Expo Pass', ...LADDER]), JSON.stringify(app.UPGRADE_LADDER));
 // Before the prices arrive every pass above is listed, with no figure.
 check('before the prices load: a Delegate is offered Premium Delegate and VIP, without a figure', names('Delegate Pass') === 'Premium Delegate Pass,VIP Pass' && steps('Delegate Pass').every(s => s.up === null), JSON.stringify(steps('Delegate Pass')));
 check('before the prices load: an Academic is offered the three above it', names('Academic Pass') === 'Delegate Pass,Premium Delegate Pass,VIP Pass', names('Academic Pass'));

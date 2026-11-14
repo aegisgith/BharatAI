@@ -23,7 +23,7 @@ check('Meera, before: a pass', await meeraPass() === 200);
 const sw = await W.admin('PUT', '/api/admin/settings', { free_pass_waitlist: '1' });
 const st = await W.admin('GET', '/api/admin/waitlist');
 check('the organiser throws the switch: Settings shows it on, nobody waiting yet', sw.status === 200 && st.json.ready && st.json.on && st.json.total === 0, st.json);
-check('the public pages say so', (await W.hit('GET', '/register')).text.includes('class="rg-closed"') && (await W.hit('GET', '/passes')).text.includes('Free Visitor Passes are full for now') && (await W.hit('GET', '/api/payments/config')).json.free_pass_waitlist === true);
+check('the public pages say so', (await W.hit('GET', '/register')).text.includes('class="rg-closed"') && (await W.hit('GET', '/passes')).text.includes('Free registration is closed, and there is no on-spot registration at the venue.') && (await W.hit('GET', '/api/payments/config')).json.free_pass_waitlist === true);
 check('Meera, after the switch: still a pass', await meeraPass() === 200);
 
 // Asha registers from /register.

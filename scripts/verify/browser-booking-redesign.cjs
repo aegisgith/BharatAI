@@ -101,6 +101,8 @@ const fillFree = async (p, email, mobile, kind = 'corporate') => {
     // 13 Nov 2026, the organiser: the form comes first and says nothing of free or paid; free passes are over.
     'Get Your Free Visitor Pass', 'Register in 30 seconds', 'Exhibition floor & product demos, free · entry by time slot on 20 and 21 Nov, as available, confirmed by email',
     'Exhibition floor access', 'Product & startup demos', 'Exhibition day activities', 'Want Full Conference Access?', 'Group Registration',
+    // 14 Nov 2026: the free Visitor Pass is no longer sold; the Expo Pass column has guaranteed entry.
+    'not on a free Visitor Pass: entry depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email',
   ]);
   // 12 Nov 2026: workshops come with the Student Pass too, so these two sentences name it.
   const meantRegRe = [/Included in the Premium Delegate and VIP passes\./, /A workshop comes only with Premium Delegate and VIP/, /Conference \+ student zone, with a student or faculty ID/, /^Exhibition floor and product demos$/, /five passes for the price of four/i, /^Ask for a group rate$/, /Delegation discounts/, /The Academic Pass needs a valid student or faculty ID/];
@@ -250,11 +252,11 @@ const fillFree = async (p, email, mobile, kind = 'corporate') => {
   const free = (await sql('SELECT * FROM attendees WHERE email = ?', ['asha.free@example.com']))[0];
   check('phone: a real registration, saved before any pass is chosen', free && free.badge_type === 'Visitor Pass' && free.registration_source === 'browser-booking', JSON.stringify(free));
   const chosen = await p.evaluate(() => ({ title: document.getElementById('rc-title').textContent, step: document.querySelector('#reg-choose .rc-step').textContent, done: !!document.querySelector('#reg-choose .fa-check') || /thanks|saved/i.test(document.getElementById('reg-choose').innerText) || !!document.querySelector('.toast, #toast'), shown: [...document.querySelectorAll('#rc-tiers > li')].filter((l) => !l.hidden).map((l) => l.getAttribute('data-pass')), lead: document.querySelector('#rc-tiers .rg-tier--lead').closest('li').getAttribute('data-pass'), form: !document.getElementById('reg-form').classList.contains('hidden'), success: !document.getElementById('reg-success').classList.contains('hidden'), later: document.getElementById('rc-later').textContent }));
-  check('phone: then the pass choice, as step 2 and not a finish (no tick, no thanks, no Saved): the three passes for a company, Delegate first', chosen.title === 'Now select your pass type' && chosen.step === 'Step 2 of 2' && !chosen.done && chosen.shown.join() === 'Delegate Pass,Premium Delegate Pass,VIP Pass' && chosen.lead === 'Delegate Pass' && !chosen.form && !chosen.success, JSON.stringify(chosen));
+  check('phone: then the pass choice, as step 2 and not a finish (no tick, no thanks, no Saved): the three passes for a company, Delegate first, the Expo Pass last', chosen.title === 'Now select your pass type' && chosen.step === 'Step 2 of 2' && !chosen.done && chosen.shown.join() === 'Delegate Pass,Premium Delegate Pass,VIP Pass,Expo Pass' && chosen.lead === 'Delegate Pass' && !chosen.form && !chosen.success, JSON.stringify(chosen));
   check('phone: the last choice is to wait, in small words', /^Not now\. (Keep me on the waiting list|Continue with a free Visitor Pass)$/.test(chosen.later) && (await box(p, '#rc-later')).h >= 44, chosen.later);
   await p.tap('#rc-all');
   await p.waitForTimeout(1200);
-  check('phone: See all passes shows all five', (await p.evaluate(() => [...document.querySelectorAll('#rc-tiers > li')].filter((l) => !l.hidden && l.getAttribute('data-pass') !== 'Media').length)) === 5 && !(await shown(p, '#rc-all')));
+  check('phone: See all passes shows all six, the Expo Pass among them', (await p.evaluate(() => [...document.querySelectorAll('#rc-tiers > li')].filter((l) => !l.hidden && l.getAttribute('data-pass') !== 'Media').length)) === 6 && !(await shown(p, '#rc-all')));
   check('phone: every row has settled, nothing left half faded', await p.evaluate(() => [...document.querySelectorAll('.rg-tiers li')].filter((l) => !l.hidden).every((l) => getComputedStyle(l).opacity === '1')));
   for (const [hash, pass, was, is] of [['delegate', 'Delegate Pass', '₹4,999', '₹8,999'], ['premium', 'Premium Delegate Pass', '₹9,999', '₹14,999'], ['vip', 'VIP Pass', '₹19,999', '₹24,999'], ['academic', 'Academic Pass', '₹999', '₹3,999']]) {
     const row = p.locator(`.rg-tier[href="#${hash}"]`);

@@ -292,7 +292,7 @@ check('offers off: one pass through the link is refused', r.status === 400 && /i
 r = await hit('GET', '/passes');
 check('/passes: "Booking for three or more?" and a button, both to /group; the old five-for-four rule gone', r.text.includes('Booking for three or more?') && r.text.includes('<a href="/group" class="text-primary-400 underline">Book for your group</a>') && r.text.includes('<a class="ps-buy" href="/group">Book for your group</a>') && !/price of four/.test(r.text) && r.text.includes('Passes of one kind in one booking, paid online: 3 or 4 passes, 15% off each; 5 or more, 30% off each.'), '');
 r = await hit('GET', '/register');
-check('/register: the group section books online', /id="delegation-section"[\s\S]{0,400}href="\/group" class="rg-ghost">Book for your group/.test(r.text) && !/price of four/.test(r.text), '');
+check('/register: the group section books online', /id="delegation-section"[\s\S]{0,400}href="\/group" class="rg-ghost">Bringing a team\? Book for your group/.test(r.text) && !/price of four/.test(r.text), '');
 r = await hit('GET', '/contact');
 check('/contact: the group form opens with the notice and a link to /group, the form kept', r.text.includes('Booking 3 or more passes? Book online with up to 30% off.') && r.text.includes('href="/group"') && r.text.includes('cf-groupsize') && !/5\+ people/.test(r.text), '');
 const site = readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8'), llms = readFileSync(new URL('../../public/llms.txt', import.meta.url), 'utf8');
