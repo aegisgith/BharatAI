@@ -31,8 +31,8 @@ let r = await W.admin('GET', '/api/admin/offers');
 check('Admin lists the waiting-list audience with its count, offers off: the two still on a free pass', r.status === 200 && r.json.audiences.waitlisted === 2, JSON.stringify(r.json.audiences));
 r = await W.admin('GET', '/api/admin/offers/preview?audience=waitlisted');
 const pv = r.json || {};
-check('the preview: the subject names the deadline', r.status === 200 && /free passes are full: get your pass by 16 Nov, 5 PM$/.test(pv.subject || ''), pv.subject);
-check('it says every free place is taken, the close, no on-spot registration', /Every free place is taken/.test(pv.html) && /closes on <strong>Monday 16 Nov at 5 PM<\/strong>/.test(pv.html) && /no on-spot registration/.test(pv.html));
+check('the preview: the subject says it plainly', r.status === 200 && /we could not secure you a free pass to Bharat AI Innovation$/.test(pv.subject || ''), pv.subject);
+check('it says every free place is taken, the list is closed, no on-spot registration, with true reasons to act', /Every free place is taken, and the waiting list is now closed<\/strong>, so we could not secure you a free pass/.test(pv.html) && /no on-spot registration/.test(pv.html) && /Workshop seats are limited/.test(pv.html) && /prices went up on 6 Nov and may go up again/.test(pv.html) && !/filling fast|may get closed/i.test(pv.html));
 check('no hope in it', !/we will inform you|wait list gets over|confirm places/i.test(pv.html));
 check('it offers a pass and the Expo Pass', /Get my Delegate Pass/.test(pv.html) && /Expo Pass<\/strong> is &#8377;999 \+ GST/.test(pv.html));
 r = await W.admin('POST', '/api/admin/campaigns', { kind: 'offer', audience: 'waitlisted' });
@@ -56,11 +56,11 @@ const realNow = Date.now;
 Date.now = () => Date.parse('2026-11-16T17:01:00+05:30');
 try {
   r = await W.admin('POST', '/api/admin/attendees/waitlist', { ids: [asha], decision: 'confirmed' });
-  check('after 16 Nov 5 PM it is refused, in a sentence, and nothing changes', r.status === 409 && /waiting list closed on Monday 16 Nov at 5 PM/.test(r.json?.error || '') && W.row(asha).entry_status === 'waitlisted', r.text);
+  check('after the close it is refused, in a sentence, and nothing changes', r.status === 409 && /waiting list is closed/.test(r.json?.error || '') && W.row(asha).entry_status === 'waitlisted', r.text);
   r = await W.admin('POST', `/api/admin/offers/send?audience=waitlisted&attendee=${asha}&force=1`);
-  check('and the email is not sent any more', r.json?.skipped && /has closed/.test(r.json.reason), r.text);
+  check('and the email still goes: it is the news that the list has closed', r.json?.success === true, r.text);
   const reg = (await W.hit('GET', '/register')).text;
-  check('/register after the close: "Not now", and the closed words', reg.includes("? 'Not now' : 'Not now. Continue with a free Visitor Pass'") && reg.includes('the waiting list closed on Monday 16 Nov at 5 PM'));
+  check('/register after the close: "Not now", and the closed words', reg.includes("? 'Not now' : 'Not now. Continue with a free Visitor Pass'") && reg.includes('Free Visitor Passes are full, and the waiting list is closed.'));
 } finally { Date.now = realNow; }
 const before = (await W.hit('GET', '/register')).text;
 check('/register before it: "keep me on the waiting list"', before.includes("? 'Not now. Keep me on the waiting list' :"));
