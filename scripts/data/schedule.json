@@ -105,6 +105,7 @@
         { "name": "Dr. Shashank D. Dalvi", "org": "MGM Institute of Health Sciences" },
         { "name": "Madhvendra Singh", "org": "Electronics Sector Skill Council of India" }
       ] },
+    { "hall": "bhabha", "day": 2, "start": "17:30", "end": "18:00", "type": "keynote", "label": "Special Address", "title": "Special Address", "speaker": { "name": "Hon’ble Shri Eknath Shinde", "role": "Deputy Chief Minister, Government of Maharashtra" } },
     { "hall": "bhabha", "day": 2, "start": "18:00", "end": "18:05", "type": "keynote", "label": "Closing", "title": "Closing Note", "speaker": { "name": "Ms. Anita Ram", "role": "Head, Industry & Innovation Ecosystem Partnership" } },
 
     { "hall": "aryabhata", "day": 1, "start": "08:30", "end": "09:30", "type": "break", "label": "Registration", "title": "Registration" },
