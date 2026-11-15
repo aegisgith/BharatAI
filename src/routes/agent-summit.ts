@@ -174,8 +174,8 @@ async function startSummitOrder(c: any, a: any, passType: string): Promise<{ ord
 
 function summitHeader(title: string): string {
   return `<div style="background:#0d1013;padding:26px 30px;border-bottom:3px solid #c6ff3d;">
-    <div style="font-family:Consolas,Menlo,monospace;font-size:13px;color:#c6ff3d;letter-spacing:0;">ai-agent-summit/2027</div>
-    <div style="font-family:Arial,sans-serif;font-size:22px;font-weight:bold;color:#ffffff;margin-top:6px;">${title}</div>
+    <img src="https://bharataiinnovation.com/ai-agent-summit/images/brand/logo-horizontal-dark.png" width="220" height="32" alt="AI Agent Summit" style="display:block;border:0;width:220px;height:auto;">
+    <div style="font-family:Arial,sans-serif;font-size:22px;font-weight:bold;color:#ffffff;margin-top:16px;">${title}</div>
     <div style="font-family:Arial,sans-serif;font-size:13px;color:#a4aeb9;margin-top:4px;">${SUMMIT_WHEN}</div>
   </div>`
 }
