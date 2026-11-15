@@ -741,7 +741,7 @@
   // ---------- announcing ----------
   function whoLine(sp) { return sp.name + ([sp.role, sp.organisation].filter(Boolean).length ? ', ' + [sp.role, sp.organisation].filter(Boolean).join(', ') : ''); }
   // In a sentence the venue's name goes in brackets: "Aryabhata Theatre (Expo Hall)" (handbook §4).
-  function whereLine(s) { var h = hallByName(s.room); return s.room ? s.room + (h && h.venue_room && h.venue_room !== s.room ? ' (' + h.venue_room + ')' : '') : 'a hall we will confirm soon'; }
+  function whereLine(s) { return s.room || 'a hall we will confirm soon'; }
   function whenLine(s) { return dayLabel(s.start_time, true) + ', ' + clock(s.start_time) + ' to ' + clock(s.end_time); }
   // The people on a session as an announcement names them (13 Nov 2026): speakers shown
   // to attendees only (a hidden one has dropped out or is not confirmed), the moderator
@@ -1007,10 +1007,10 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
   function csvProgramme() {
-    var rows = [['Day', 'Starts', 'Ends', 'Hall', 'Venue room', 'Session', 'Type', 'Track', 'Speakers', 'Status', 'Team note', 'Looked after by']];
+    var rows = [['Day', 'Starts', 'Ends', 'Hall', 'Session', 'Type', 'Track', 'Speakers', 'Status', 'Team note', 'Looked after by']];
     (S.d.sessions || []).slice().sort(function (a, b) { return a.start_time < b.start_time ? -1 : 1; }).forEach(function (s) {
       var h = hallByName(s.room);
-      rows.push([String(s.start_time).slice(0, 10), String(s.start_time).slice(11, 16), String(s.end_time).slice(11, 16), s.room || '', h ? h.venue_room || '' : '', s.title, TYPE_WORD[s.session_type] || s.session_type, s.track || '',
+      rows.push([String(s.start_time).slice(0, 10), String(s.start_time).slice(11, 16), String(s.end_time).slice(11, 16), s.room || '', s.title, TYPE_WORD[s.session_type] || s.session_type, s.track || '',
         (s.links || []).map(function (l) { var sp = speakerById(l.speaker_id); return sp ? sp.name + ' (' + (ROLE_WORD[l.role] || l.role) + ')' : ''; }).filter(Boolean).concat(s.others ? [s.others] : []).join('; '), s.status, s.note || '', s.owner || '']);
     });
     downloadCsv('programme-' + istNow().slice(0, 10) + '.csv', rows);
@@ -1201,7 +1201,7 @@
     var W = d.words || words();
     var list = sharedSessions(d), hallOf = {}; (d.halls || []).forEach(function (h) { hallOf[h.name] = h; });
     var c = function (v, s) { return { v: v == null ? '' : String(v), s: s }; };
-    var head = ['Day', 'Date', 'Starts', 'Ends', 'Hall', 'Room at the venue', 'Type', 'Session', 'Speakers', 'Designation and organisation', 'Track'];
+    var head = ['Day', 'Date', 'Starts', 'Ends', 'Hall', 'Type', 'Session', 'Speakers', 'Designation and organisation', 'Track'];
     var rows = [[c(W.name + ': programme', 1)], [c([W.line || [W.when, W.venue].filter(Boolean).join(' · '), 'as of ' + dayLabel(istNow(), true), 'times are India time'].filter(Boolean).join('  |  '), 2)], [], head.map(function (h) { return c(h, 3); })];
     var lastDay = '', n = 0;
     list.forEach(function (s) {
@@ -1209,12 +1209,12 @@
       if (day !== lastDay) { lastDay = day; n = 0; rows.push([c('Day ' + (i + 1) + '  ·  ' + longDay(day), 8)].concat(head.slice(1).map(function () { return c('', 8); }))); }
       var tint = n++ % 2 === 1, body = tint ? 5 : 4, strong = tint ? 7 : 6;
       var people = peopleOf(d, s), h = hallOf[s.room] || {};
-      rows.push([c('Day ' + (i + 1), body), c(dayLabel(day, true), body), c(clock(s.start_time), strong), c(clock(s.end_time), body), c(s.room || 'To be confirmed', body), c(h.venue_room || '', body),
+      rows.push([c('Day ' + (i + 1), body), c(dayLabel(day, true), body), c(clock(s.start_time), strong), c(clock(s.end_time), body), c(s.room || 'To be confirmed', body),
         c(TYPE_WORD[s.session_type] || s.session_type, body), c(s.title, strong),
         c(people.map(function (p) { return p.name + (p.part ? ' (' + p.part + ')' : ''); }).join('\n'), body), c(people.map(function (p) { return p.line || '-'; }).join('\n'), body), c(s.track || '', body)]);
     });
     var lastRow = rows.length;
-    var prog = { name: 'Programme', cols: [8, 14, 10, 10, 22, 18, 12, 46, 30, 44, 20], rows: rows, freeze: 4, merges: ['A1:K1', 'A2:K2'], filter: 'A4:K' + lastRow, landscape: true };
+    var prog = { name: 'Programme', cols: [8, 14, 10, 10, 22, 12, 46, 30, 44, 20], rows: rows, freeze: 4, merges: ['A1:J1', 'A2:J2'], filter: 'A4:J' + lastRow, landscape: true };
     rows.forEach(function (r, i) { if (r[0] && r[0].s === 8) prog.merges.push('A' + (i + 1) + ':K' + (i + 1)); });
 
     var sHead = ['Speaker', 'Designation', 'Organisation', 'Sessions', 'When and where'];

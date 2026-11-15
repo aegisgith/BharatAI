@@ -46,24 +46,22 @@ export const SPEAKER_ROLES = ['keynote', 'speaker', 'panellist', 'moderator', 'h
 export const MIGRATION_FILE = '0054_conference_manager.sql'
 export const MIGRATION_COMMAND = 'npx wrangler d1 execute bharatai-production --remote --file=./migrations/' + MIGRATION_FILE
 
-// The halls of 20-21 Nov 2026 (organiser, 12 Nov: Kalam and Aryabhata swapped that
-// day, so Kalam is Centrum Hall A and Aryabhata the Expo Hall). The same four rows
-// 0054 seeds; shown read-only until it runs.
+// The halls of 20-21 Nov 2026, the four rows 0054 seeds; shown read-only until it runs.
+// Organiser, 15 Nov 2026: only the event's hall names are shown, never the venue's own
+// room names, so venue_room is left empty.
 export const DEFAULT_HALLS = [
-  { name: 'Homi J. Bhabha Hall', short_name: 'Bhabha Hall', venue_room: 'Peacock Hall', location: 'Ground Floor, Centre One', purpose: 'Keynotes and panels', sort_order: 1 },
-  { name: 'Kalam Theatre', short_name: 'Kalam', venue_room: 'Centrum Hall A', location: 'First Floor, Centre One', purpose: 'Panels', sort_order: 2 },
-  { name: 'Raman Theatre', short_name: 'Raman', venue_room: 'Centrum Hall B', location: 'First Floor, Centre One', purpose: 'Workshops', sort_order: 3 },
-  { name: 'Aryabhata Theatre', short_name: 'Aryabhata', venue_room: 'Expo Hall', location: 'On the exhibition floor', purpose: 'Innovation Talks', sort_order: 4 },
+  { name: 'Homi J. Bhabha Hall', short_name: 'Bhabha Hall', venue_room: '', location: 'Ground Floor, Centre One', purpose: 'Keynotes and panels', sort_order: 1 },
+  { name: 'Kalam Theatre', short_name: 'Kalam', venue_room: '', location: 'First Floor, Centre One', purpose: 'Panels', sort_order: 2 },
+  { name: 'Raman Theatre', short_name: 'Raman', venue_room: '', location: 'First Floor, Centre One', purpose: 'Workshops', sort_order: 3 },
+  { name: 'Aryabhata Theatre', short_name: 'Aryabhata', venue_room: '', location: 'On the exhibition floor', purpose: 'Innovation Talks', sort_order: 4 },
 ]
 
 // ---------- pure helpers (scripts/verify/unit-conference.mjs tests each) ----------
 
-// Both names of a hall, wherever delegates see one (organiser, 12 Nov 2026): the
-// event's name, then the venue's own, because the venue's staff know only theirs.
-// "Aryabhata Theatre · Expo Hall".
-export function hallLabel(room: any, venue: any): string {
-  const r = String(room || '').trim(), v = String(venue || '').trim()
-  return r && v && v.toLowerCase() !== r.toLowerCase() ? r + ' · ' + v : r || v
+// A hall as people see it: the event's name only (organiser, 15 Nov 2026: "remove
+// Peacock Hall ... use only" the event names). Whatever venue_room holds is not shown.
+export function hallLabel(room: any, _venue?: any): string {
+  return String(room || '').trim()
 }
 
 // A person's name reduced to what identifies them: no titles of address, no service

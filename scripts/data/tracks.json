@@ -35,10 +35,10 @@
       "about": "Using AI to raise farmers' income, in farming and in fisheries.",
       "for": "Agriculture and fisheries officials, agritech founders and researchers." },
     { "key": "Innovation Talks", "name": "Innovation Talks", "list": true,
-      "about": "Exhibitors show what they have built, in short talks back to back on the Expo Hall stage, with a few longer talks in other halls.",
+      "about": "Exhibitors show what they have built, in short talks back to back on the Aryabhata Theatre stage, with a few longer talks in other halls.",
       "for": "Anyone choosing an AI product or partner." },
     { "key": "Training Workshop", "name": "Hands-on Workshops",
-      "about": "Practical sessions in Raman Theatre (Centrum Hall B), from building enterprise AI with forward-deployed engineers to fine-tuning LLMs and speech recognition.",
+      "about": "Practical sessions in Raman Theatre, from building enterprise AI with forward-deployed engineers to fine-tuning LLMs and speech recognition.",
       "for": "Engineers and data scientists who want to build, not only listen. Seats are limited.",
       "link": { "href": "/training-workshop", "text": "About the workshops" } }
   ]

@@ -291,8 +291,9 @@ html.push(`    <button class="hall-tab" onclick="switchHall(${S.halls.length})" 
 
 S.halls.forEach((h, i) => {
   const id = `hall-${i}`
-  html.push(`<!-- ${h.name.toUpperCase()} = ${h.venue} -->`, `<div class="hall-panel${i === 0 ? ' active' : ''}" id="${id}">`)
-  html.push(indent(`<p class="hall-venue" style="font-size:0.86rem;color:var(--dark-grey);margin:0 0 1rem;">At the venue: <strong>${esc(h.venue)}</strong>${h.about ? ` &middot; ${esc(h.about)}` : ''}</p>`, 4))
+  // Only the event's hall name is shown (organiser, 15 Nov 2026), never the venue's room.
+  html.push(`<!-- ${h.name.toUpperCase()} -->`, `<div class="hall-panel${i === 0 ? ' active' : ''}" id="${id}">`)
+  if (h.about) html.push(indent(`<p class="hall-venue" style="font-size:0.86rem;color:var(--dark-grey);margin:0 0 1rem;">${esc(h.about)}</p>`, 4))
   html.push(indent(dayTabs(id), 4))
   for (const day of [1, 2]) {
     const items = S.sessions.filter((s) => s.hall === h.key && s.day === day).sort(byTime).map((s) => item(s, '', s.anchor))
@@ -347,8 +348,8 @@ const groupOf = (s) => {
   if (s.track) return s.track
   return s.type === 'keynote' ? '@keynotes' : null
 }
-// The hall as a sentence says it: "Aryabhata Theatre (Expo Hall)".
-const hallWords = (h) => `${esc(h.name)} (${esc(h.venue.split(',')[0])})`
+// The hall as a sentence says it: its event name only, "Aryabhata Theatre".
+const hallWords = (h) => esc(h.name)
 const whenWhere = (day, start, end, h) => `${DAY_SHORT[day]} · ${start ? `${start} – ${end}` : 'time to be announced'} · ${hallWords(h)}`
 const listWords = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
 

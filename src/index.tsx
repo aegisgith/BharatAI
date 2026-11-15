@@ -562,7 +562,8 @@ app.get('/api/events/:id/sessions', async (c) => {
   const track = c.req.query('track')
 
   const room = c.req.query('room')
-  // Each session also carries its hall's venue name (venue_room): delegates see both.
+  // Each session also carries its hall's venue_room; since 15 Nov 2026 only the event's
+  // hall name is shown anywhere (organiser), so it is not used for a label.
   let query = 'SELECT *' + (await venueSelectSql(c)) + ' FROM sessions WHERE event_id = ?'
   const params: any[] = [eventId]
 
@@ -3129,7 +3130,7 @@ const SHOWCASE_CAP_KEY = 'showcase_slots_cap'
 const SHOWCASE_CAP_DEFAULT = 12
 const SHOWCASE_MINUTES = 10
 const SHOWCASE_HALL = 'Aryabhata Theatre'
-const SHOWCASE_PLACE = 'the Innovation Stage: Aryabhata Theatre, in the Expo Hall'
+const SHOWCASE_PLACE = 'the Innovation Stage: Aryabhata Theatre'
 // The pass a slot gives someone who holds none worth more: the organisers' pass for
 // the Innovation Talk and Showcase stage (11 Nov 2026).
 const SHOWCASE_PASS = 'Exhibition Speaker'
@@ -18862,17 +18863,16 @@ async function italkSyncFromProgramme(c: any, talkId: number, startsAt: string |
   catch (e: any) { if (!/no such column/i.test(String(e?.message || ''))) throw e; await run(set) }
 }
 
-// The event's halls and the venue rooms they are (organiser, 11 Nov 2026), as in
-// scripts/data/schedule.json. The app's sessions use the same hall names.
+// The event's halls, as in scripts/data/schedule.json; the app's sessions use the same
+// names. Organiser, 15 Nov 2026: only these names are shown, never the venue's own room
+// names, so a hall in words is just its name.
 const ITALK_HALLS: Record<string, string> = {
-  // Kalam and Aryabhata were swapped by the organiser on 12 Nov 2026: the Expo Hall
-  // (Innovation Talks) is Aryabhata Theatre, Centrum Hall A is Kalam Theatre.
-  'Aryabhata Theatre': 'Expo Hall, on the exhibition floor',
-  'Homi J. Bhabha Hall': 'Peacock Hall, Ground Floor, Centre One',
-  'Kalam Theatre': 'Centrum Hall A, First Floor, Centre One',
-  'Raman Theatre': 'Centrum Hall B, First Floor, Centre One',
+  'Aryabhata Theatre': 'On the exhibition floor',
+  'Homi J. Bhabha Hall': 'Ground Floor, Centre One',
+  'Kalam Theatre': 'First Floor, Centre One',
+  'Raman Theatre': 'First Floor, Centre One',
 }
-const italkHallText = (h: any) => { const s = String(h || '').trim(); return ITALK_HALLS[s] ? `${s} (${ITALK_HALLS[s]})` : s }
+const italkHallText = (h: any) => String(h || '').trim()
 
 // Columns migration 0052 adds. A database without it saves everything else.
 const ITALK_0052_COLS = ['hall', 'speaker_email', 'speaker_phone']
@@ -34295,22 +34295,16 @@ function mainPageScript(): string {
     let selectedHall = 'Homi J. Bhabha Hall';
     let selectedTrack = '';
 
-    // venue: what the World Trade Center calls the room. Delegates see both names
-    // (organiser, 12 Nov 2026), because the venue's staff know only theirs. The
-    // sessions list sends venue_room from Admin -> Conference; this is the fallback.
+    // Only the event's hall names are shown (organiser, 15 Nov 2026).
     const HALLS = [
       { key: '', short: 'All halls', icon: '🗓️' },
-      { key: 'Homi J. Bhabha Hall', short: 'Bhabha Hall', icon: '🏛️', venue: 'Peacock Hall' },
-      { key: 'Kalam Theatre',       short: 'Kalam',       icon: '🎭', venue: 'Centrum Hall A' },
-      { key: 'Raman Theatre',       short: 'Raman',       icon: '🔬', venue: 'Centrum Hall B' },
-      { key: 'Aryabhata Theatre',   short: 'Aryabhata',   icon: '🚀', venue: 'Expo Hall' },
+      { key: 'Homi J. Bhabha Hall', short: 'Bhabha Hall', icon: '🏛️' },
+      { key: 'Kalam Theatre',       short: 'Kalam',       icon: '🎭' },
+      { key: 'Raman Theatre',       short: 'Raman',       icon: '🔬' },
+      { key: 'Aryabhata Theatre',   short: 'Aryabhata',   icon: '🚀' },
     ];
-    // "Aryabhata Theatre · Expo Hall": the event's name, then the venue's.
-    function hallLabel(room, venue) {
-      var r = String(room || '').trim();
-      var v = String(venue || '').trim();
-      if (!v) { for (var i = 0; i < HALLS.length; i++) if (HALLS[i].key === r && HALLS[i].venue) v = HALLS[i].venue; }
-      return r && v && v.toLowerCase() !== r.toLowerCase() ? r + ' · ' + v : (r || v);
+    function hallLabel(room) {
+      return String(room || '').trim();
     }
 
     // ---- Personal agenda (add-to-my-schedule). Stored locally so it works
@@ -37521,8 +37515,6 @@ function mainPageScript(): string {
         const talkDay = t => String(t.starts_at || '').slice(0, 10);
         const byDay = TALK_DAYS.map(d => [d, talks.filter(t => !talkUntimed(t) && talkDay(t) === d[0]).sort((a, b) => String(a.starts_at).localeCompare(String(b.starts_at)))]).filter(x => x[1].length);
         const otherTimed = talks.filter(t => !talkUntimed(t) && !TALK_DAYS.some(d => d[0] === talkDay(t)));
-        // Both names, always: the venue's staff know only the real room names (organiser, 12 Nov 2026).
-        const TALK_ROOMS = { 'Aryabhata Theatre': 'Expo Hall', 'Homi J. Bhabha Hall': 'Peacock Hall', 'Kalam Theatre': 'Centrum Hall A', 'Raman Theatre': 'Centrum Hall B' };
         const talkClock = m => ((Math.floor(m / 60) % 24) % 12 || 12) + ':' + String(m % 60).padStart(2, '0') + ' ' + (Math.floor(m / 60) % 24 >= 12 ? 'PM' : 'AM');
         const talkMin = t => { const p = String(t.starts_at || '').slice(11, 16).split(':'); return Number(p[0]) * 60 + Number(p[1]); };
         const talkSpan = items => talkClock(talkMin(items[0])) + ' – ' + talkClock(talkMin(items[items.length - 1]) + (Number(items[items.length - 1].duration_min) || 0));
@@ -37541,7 +37533,7 @@ function mainPageScript(): string {
           // Slot numbers mean nothing to an attendee: the badge is always the initials.
           const badge = initials || (t.slot_no == null ? '' : t.slot_no);
           const hall = String(t.hall || '').trim();
-          const hallText = hall ? hall + (TALK_ROOMS[hall] ? ' · ' + TALK_ROOMS[hall] : '') : '';
+          const hallText = hall;
           // Under a day heading the day is already said: show the time alone.
           const timeText = untimed ? 'Time to follow' : (talkDay(t) && String(t.time_slot).indexOf(' · ') > 0 ? String(t.time_slot).split(' · ').pop() : String(t.time_slot));
           return '<div class="glass rounded-xl p-4 hover:bg-white/[0.04] transition group">'
@@ -41503,7 +41495,7 @@ function adminPageHTML(): string {
     <div id="modal-box" class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;"></div>
   </div>
 
-  <script src="/static/conference-admin.js?v=20261113"></script>
+  <script src="/static/conference-admin.js?v=20261115"></script>
   <script src="/static/speaker-brief.js?v=20261113"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
 </body>
@@ -51754,7 +51746,7 @@ function adminPageScript(): string {
     var italkList = [];
     var italkContacts = {};
     var italkView = 'all';
-    var italkHallRooms = { 'Aryabhata Theatre': 'Expo Hall', 'Homi J. Bhabha Hall': 'Peacock Hall', 'Kalam Theatre': 'Centrum Hall A', 'Raman Theatre': 'Centrum Hall B' };
+    var italkHallRooms = { 'Aryabhata Theatre': '', 'Homi J. Bhabha Hall': '', 'Kalam Theatre': '', 'Raman Theatre': '' };
     var italkDays = [['2026-11-20', 'Fri 20 Nov', 'Day 1'], ['2026-11-21', 'Sat 21 Nov', 'Day 2']];
     var italkAskLabels = { topic: 'Topic', speaker_title: 'Designation', company: 'Company name', speaker_photo_url: 'Photo', speaker_bio: 'Short bio', speaker_phone: 'Mobile', showcase: 'What they will show' };
     var italkAuto = null;
