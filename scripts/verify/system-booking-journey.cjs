@@ -103,13 +103,11 @@ const bodyOf = (m) => m?.Content?.Body?.[0]?.Content || '';
   // ======== a visitor who moves up ========
   {
     const { ctx, page } = await phone();
-    await page.goto(BASE + '/passes', { waitUntil: 'load' });
-    await sleep(600);
-    await page.locator('#visitor .ps-ghost').scrollIntoViewIfNeeded();
-    await page.locator('#visitor .ps-ghost').tap();
-    await page.waitForURL(/\/register\?source=passes-visitor/, { timeout: 20000 }).catch(() => {});
+    // 14 Nov 2026: /passes sells the Expo Pass in place of the free button; a free link from
+    // before (an old email, a bookmark) still reaches the form.
+    await page.goto(BASE + '/register?source=passes-visitor', { waitUntil: 'load' });
     await sleep(900);
-    check('visitor: the free button on /passes reaches the form, in view', await page.isVisible('#rf-kind') && (await page.locator('#rf-kind').boundingBox()).y < 800);
+    check('visitor: an old free link reaches the form, in view', await page.isVisible('#rf-kind') && (await page.locator('#rf-kind').boundingBox()).y < 800);
     await page.tap('.rg-kind-row input[value="corporate"] + span');
     await page.fill('#rf-name', 'Ravi Kumar');
     await page.fill('#rf-email', 'ravi.visitor@example.com');
