@@ -145,5 +145,24 @@ r = await hit('/api/admin/agent-summit/passes', { headers: { Authorization: 'Bea
 check('Admin lists event 3 only: visitor, buyer, delegate', r.status === 200 && r.json?.results?.length === 3 && r.json.results.every((a) => ['Visitor Pass', 'Buyer Pass', 'Delegate Pass'].includes(a.badge_type)), r.text.slice(0, 300));
 check('Mumbai is untouched: no event-1 attendee was made', rows('SELECT COUNT(*) AS n FROM attendees WHERE event_id = 1')[0].n === 0, '');
 
+// ---- the Admin section: one answer for the dashboard, Confirm for Buyer/Investor ----
+const AUTH = { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' };
+r = await hit('/api/admin/agent-summit/overview', { headers: AUTH });
+check('the dashboard: numbers, passes, applications and partner enquiries in one answer', r.status === 200 && r.json?.sales?.registered === 3 && r.json.sales.paid === 1 && r.json.sales.review === 1 && r.json.sales.applications === 1 && r.json.sales.partners === 1 && r.json.passes.length === 3 && r.json.applications[0]?.agent === 'InvoiceBot' && r.json.partners[0]?.tier === 'Gold (Rs 5,00,000)', r.text.slice(0, 400));
+const vik = rows("SELECT id FROM attendees WHERE email = 'vikram@bigbank.example.com'")[0];
+mail = [];
+r = await hit('/api/admin/agent-summit/passes/' + vik.id + '/confirm', { method: 'POST', headers: AUTH, body: '{}' });
+await settled();
+check('confirming a Buyer Pass emails them and is recorded once', r.status === 200 && r.json?.ok === true && to('vikram@bigbank.example.com').some((m) => /Confirmed: your Buyer Pass/.test(m.Content.Subject)) && rows("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'summit.confirm'")[0].n === 1, r.text);
+r = await hit('/api/admin/agent-summit/passes/' + vik.id + '/confirm', { method: 'POST', headers: AUTH, body: '{}' });
+check('confirming again changes nothing', r.json?.already === true && rows("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'summit.confirm'")[0].n === 1, r.text);
+r = await hit('/api/admin/agent-summit/overview', { headers: AUTH });
+check('after confirming, nothing is left to confirm', r.json?.sales?.review === 0 && !!r.json.passes.find((a) => a.badge_type === 'Buyer Pass')?.confirmed_at, r.text.slice(0, 200));
+const nehaId = rows("SELECT id FROM attendees WHERE email = 'neha@agentco.example.com'")[0].id;
+r = await hit('/api/admin/agent-summit/passes/' + nehaId + '/confirm', { method: 'POST', headers: AUTH, body: '{}' });
+check('a Delegate Pass is not confirmed by hand', r.status === 400, r.text);
+r = await hit('/api/admin/agent-summit/overview');
+check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(r.status));
+
 console.log(fails ? `\n${fails} FAILED` : '\nall AI Agent Summit checks passed');
 process.exit(fails ? 1 : 0);

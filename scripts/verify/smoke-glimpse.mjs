@@ -40,7 +40,7 @@ let fails = 0;
 const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  <- ' + d)); if (!ok) fails++; };
 
 // ---- seed ----
-for (const id of [1, 3, 4]) db.run('INSERT INTO events (id, title, start_date, end_date) VALUES (?, ?, ?, ?)', [id, 'Event ' + id, '2026-11-20', '2026-11-21']);
+for (const id of [1, 4, 5]) db.run('INSERT INTO events (id, title, start_date, end_date) VALUES (?, ?, ?, ?)', [id, 'Event ' + id, '2026-11-20', '2026-11-21']);
 let nextId = 1;
 const ids = {};
 const person = (event_id, name, extra = {}) => {
@@ -83,10 +83,11 @@ db.run("INSERT INTO app_settings (key, value) VALUES ('glimpse_hide', ?)", [' ' 
 // Event 4: too few for a section. (Event 2 is Delhi 2027, which every public route refuses.)
 person(4, 'Lone One', { job_title: 'Founder' });
 person(4, 'Lone Two', { job_title: 'Director', city: 'Agra' });
-// Event 3: plenty, three of the sharers without a senior title.
-for (let i = 0; i < 15; i++) person(3, 'Big Sharer ' + i, { job_title: 'Director ' + String.fromCharCode(65 + i), social_card_downloaded_at: SHARED });
-for (let i = 0; i < 3; i++) person(3, 'Plain Sharer ' + i, { job_title: 'Associate ' + i, social_card_downloaded_at: SHARED });
-for (let i = 0; i < 10; i++) person(3, 'Big Quiet ' + i, { job_title: 'Head ' + String.fromCharCode(65 + i), city: 'City' + 'abcdefghij'[i] });
+// Event 5: plenty, three of the sharers without a senior title. (Events 2 and 3 are Delhi 2027 and the
+// AI Agent Summit 2027, whose /api/events/<id>/* routes are refused, so the fixtures use 4 and 5.)
+for (let i = 0; i < 15; i++) person(5, 'Big Sharer ' + i, { job_title: 'Director ' + String.fromCharCode(65 + i), social_card_downloaded_at: SHARED });
+for (let i = 0; i < 3; i++) person(5, 'Plain Sharer ' + i, { job_title: 'Associate ' + i, social_card_downloaded_at: SHARED });
+for (let i = 0; i < 10; i++) person(5, 'Big Quiet ' + i, { job_title: 'Head ' + String.fromCharCode(65 + i), city: 'City' + 'abcdefghij'[i] });
 
 // ---- event 1 ----
 let r = await hit('/api/events/1/glimpse');
@@ -122,8 +123,8 @@ check('goals read in plain words, buyers first', JSON.stringify(named['Ratan Kes
 r = await hit('/api/events/4/glimpse');
 check('fewer than four cards in all answers empty lists (the page hides the section)', r.status === 200 && r.json?.people?.length === 0 && r.json?.locked?.length === 0, r.text);
 
-// ---- event 3: plenty ----
-r = await hit('/api/events/3/glimpse');
+// ---- event 5: plenty ----
+r = await hit('/api/events/5/glimpse');
 const bigP = r.json?.people || [], bigL = r.json?.locked || [];
 check('never more than twelve named and six locked', bigP.length === 12 && bigL.length === 6, bigP.length + ' / ' + bigL.length);
 check('seniors who shared come before sharers without a senior title', !bigP.some(p => /Plain Sharer/.test(p.name)), bigP.map(p => p.name).join(' | '));

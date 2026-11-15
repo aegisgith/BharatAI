@@ -41495,6 +41495,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('delhi2027')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="delhi2027" title="Delhi 2027: partner and discount codes">
         <i class="fas fa-ticket w-5 text-center shrink-0"></i><span class="sidebar-label">Delhi 2027</span>
       </button>
+      <button onclick="switchSection('agentsummit')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="agentsummit" title="AI Agent Summit 2027: passes, showcase applications, partners">
+        <i class="fas fa-robot w-5 text-center shrink-0"></i><span class="sidebar-label">AI Agent Summit</span>
+      </button>
       <div class="border-t border-white/10 my-2"></div>
       <button onclick="switchSection('settings')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="settings" title="Settings">
         <i class="fas fa-cog w-5 text-center shrink-0"></i><span class="sidebar-label">Settings</span>
@@ -41571,6 +41574,7 @@ function adminPageHTML(): string {
       <div id="section-boothleads" class="section-content hidden"></div>
       <div id="section-liveqa" class="section-content hidden"></div>
       <div id="section-delhi2027" class="section-content hidden"></div>
+      <div id="section-agentsummit" class="section-content hidden"></div>
       <!-- Settings Section -->
       <div id="section-settings" class="section-content hidden"></div>
     </div>
@@ -42006,8 +42010,8 @@ function adminPageScript(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', media:'Media & Influencer Pass', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', liveqa:'Live Q&A', delhi2027:'Delhi 2027', settings:'Settings' };
-      const subtitles = { overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', media:'Requests from journalists and creators: read the answers, then approve and issue the pass, or decline', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', delhi2027:'Partner and discount codes for Delhi passes, and what each has sold', settings:'Configure email, API keys and app settings' };
+      const titles = { agentsummit:'AI Agent Summit 2027', overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', media:'Media & Influencer Pass', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', liveqa:'Live Q&A', delhi2027:'Delhi 2027', settings:'Settings' };
+      const subtitles = { agentsummit:'Event 3, Saturday 17 April 2027: passes, payments, showcase applications and partners', overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', media:'Requests from journalists and creators: read the answers, then approve and issue the pass, or decline', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', delhi2027:'Partner and discount codes for Delhi passes, and what each has sold', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -42130,6 +42134,7 @@ function adminPageScript(): string {
         case 'boothleads': loadAdminBoothLeads(); break;
         case 'liveqa': loadAdminLiveQa(); break;
         case 'delhi2027': loadAdminDelhi(); break;
+        case 'agentsummit': loadAdminSummit(); break;
         case 'badge-desk': loadBadgeDesk(); break;
         case 'settings': loadSettings(); break;
       }
@@ -42282,6 +42287,44 @@ function adminPageScript(): string {
         catch (err) { sectionError(host, 'delhi2027', { message: err.message }, 'loadAdminDelhi()'); return; }
       }
       await window.DelhiDesk.mount(host, { api: api, toast: toast, openInquiries: function (type) { inquiryFilterType = type; switchSection('inquiries'); } });
+    }
+
+    // AI Agent Summit 2027 (event 3): its own dashboard in /js/admin-summit.js (one global,
+    // SummitDesk) and /css/admin-summit.css, loaded the first time the section opens.
+    // Bump SUMMIT_DESK_VERSION on any change to either.
+    var SUMMIT_DESK_VERSION = '20261115a';
+    var summitDeskAssets = null;
+    function summitDeskLoadAssets() {
+      if (window.SummitDesk) return Promise.resolve();
+      if (summitDeskAssets) return summitDeskAssets;
+      var css = new Promise(function (resolve) {
+        if (document.querySelector('link[data-summit-desk]')) { resolve(); return; }
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/css/admin-summit.css?v=' + SUMMIT_DESK_VERSION;
+        l.setAttribute('data-summit-desk', '1');
+        l.onload = function () { resolve(); };
+        l.onerror = function () { resolve(); };
+        document.head.appendChild(l);
+      });
+      var js = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/js/admin-summit.js?v=' + SUMMIT_DESK_VERSION;
+        s.onload = function () { if (window.SummitDesk) resolve(); else reject(new Error('The AI Agent Summit screen did not start.')); };
+        s.onerror = function () { s.remove(); reject(new Error('The AI Agent Summit screen could not be downloaded. Check the connection and press Try again.')); };
+        document.head.appendChild(s);
+      });
+      summitDeskAssets = Promise.all([css, js]).catch(function (err) { summitDeskAssets = null; throw err; });
+      return summitDeskAssets;
+    }
+    async function loadAdminSummit() {
+      var host = document.getElementById('section-agentsummit');
+      if (!window.SummitDesk) {
+        if (!host.firstChild) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading...</div>';
+        try { await summitDeskLoadAssets(); }
+        catch (err) { sectionError(host, 'agentsummit', { message: err.message }, 'loadAdminSummit()'); return; }
+      }
+      await window.SummitDesk.mount(host, { api: api, toast: toast, openInquiries: function (type) { inquiryFilterType = type; switchSection('inquiries'); } });
     }
 
     // ============ AUDIENCE PROFILE ============
@@ -43630,7 +43673,7 @@ function adminPageScript(): string {
         '<span class="flex-1 text-sm text-gray-200"><b>' + Number(ds.paid || 0).toLocaleString('en-IN') + '</b> Delhi 2027 passes paid for, &#8377;' + (Number(ds.paise || 0) / 100).toLocaleString('en-IN') + ' received <span class="text-xs text-gray-500">(' + Number(ds.unpaid || 0).toLocaleString('en-IN') + ' started and not paid)</span></span>' +
         '<i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
       var ss = t.summit_sales || {};
-      var summitSalesCard = '<a href="#" onclick="openSummitPasses();return false" class="glass rounded-xl p-4 mt-3 flex items-center gap-3 no-underline hover:bg-white/5">' +
+      var summitSalesCard = '<a href="#" onclick="switchSection(&quot;agentsummit&quot;);return false" class="glass rounded-xl p-4 mt-3 flex items-center gap-3 no-underline hover:bg-white/5">' +
         '<i class="fas fa-robot text-green-400"></i>' +
         '<span class="flex-1 text-sm text-gray-200"><b>' + Number(ss.registered || 0).toLocaleString('en-IN') + '</b> AI Agent Summit 2027 registrations, <b>' + Number(ss.paid || 0).toLocaleString('en-IN') + '</b> paid online, &#8377;' + (Number(ss.paise || 0) / 100).toLocaleString('en-IN') + ' received' + (Number(ss.review || 0) ? ', <b>' + Number(ss.review) + '</b> buyer or investor passes to check' : '') + '</span>' +
         '<i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';

@@ -574,14 +574,72 @@ app.get('/api/admin/agent-summit/passes', async (c) => {
   return c.json({ results: results || [] })
 })
 
-export async function summitSales(c: any): Promise<{ registered: number; paid: number; paise: number; review: number }> {
+// A Buyer or Investor Pass confirmed by the team is an admin_audit row (action
+// 'summit.confirm'), not a column: attendees.entry_status is Mumbai's waiting list.
+const CONFIRMED_SQL = "EXISTS (SELECT 1 FROM admin_audit au WHERE au.action = 'summit.confirm' AND CAST(au.entity_id AS TEXT) = CAST(a.id AS TEXT))"
+
+export async function summitSales(c: any): Promise<{ registered: number; paid: number; paise: number; review: number; applications: number; applications_new: number; partners: number }> {
   const one = async (sql: string, ...v: any[]) => Number(((await c.env.DB.prepare(sql).bind(...v).first().catch(() => null)) as any)?.n || 0)
   return {
     registered: await one('SELECT COUNT(*) AS n FROM attendees WHERE event_id = ?', SUMMIT_EVENT_ID),
     paid: await one("SELECT COUNT(DISTINCT attendee_id) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid'", SUMMIT_EVENT_ID),
     paise: await one("SELECT COALESCE(SUM(amount_paise), 0) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid'", SUMMIT_EVENT_ID),
-    review: await one("SELECT COUNT(*) AS n FROM attendees WHERE event_id = ? AND badge_type IN ('Buyer Pass', 'Investor Pass')", SUMMIT_EVENT_ID),
+    review: await one(`SELECT COUNT(*) AS n FROM attendees a WHERE a.event_id = ? AND a.badge_type IN ('Buyer Pass', 'Investor Pass') AND NOT ${CONFIRMED_SQL}`, SUMMIT_EVENT_ID),
+    applications: await one("SELECT COUNT(*) AS n FROM inquiries WHERE inquiry_type = 'agent_showcase'"),
+    applications_new: await one("SELECT COUNT(*) AS n FROM inquiries WHERE inquiry_type = 'agent_showcase' AND status = 'new'"),
+    partners: await one(`SELECT COUNT(*) AS n FROM inquiries WHERE inquiry_type = 'sponsorship' AND subject LIKE 'AI Agent Summit 2027%'`),
   }
 }
+
+// Admin -> AI Agent Summit: everything the section shows, in one answer.
+app.get('/api/admin/agent-summit/overview', async (c) => {
+  const db = c.env.DB
+  const passes = ((await db.prepare(
+    `SELECT a.id, a.name, a.email, a.mobile, a.company, a.job_title, a.city, a.industry, a.badge_type, a.payment_status, a.registration_source, a.registration_date,
+            (SELECT o.status FROM payment_orders o WHERE o.attendee_id = a.id AND o.event_id = ? ORDER BY o.id DESC LIMIT 1) AS last_order,
+            (SELECT COALESCE(SUM(o.amount_paise), 0) FROM payment_orders o WHERE o.attendee_id = a.id AND o.event_id = ? AND o.status = 'paid') AS paid_paise,
+            (SELECT MAX(au.created_at) FROM admin_audit au WHERE au.action = 'summit.confirm' AND CAST(au.entity_id AS TEXT) = CAST(a.id AS TEXT)) AS confirmed_at
+       FROM attendees a WHERE a.event_id = ? ORDER BY a.id DESC LIMIT 3000`
+  ).bind(SUMMIT_EVENT_ID, SUMMIT_EVENT_ID, SUMMIT_EVENT_ID).all()) as any).results || []
+  const parse = (m: any) => { try { return JSON.parse(m || '{}') || {} } catch { return {} } }
+  const applications = ((((await db.prepare(
+    `SELECT id, created_at, name, email, phone, organization, subject, message, status, metadata FROM inquiries WHERE inquiry_type = 'agent_showcase' ORDER BY id DESC LIMIT 1000`
+  ).all()) as any).results || []) as any[]).map((r) => {
+    const m = parse(r.metadata)
+    return { id: r.id, created_at: r.created_at, contact: r.name, email: r.email, phone: r.phone, company: r.organization, status: r.status,
+      agent: m.agent_name || '', package: m.package_label || '', category: m.category_label || '', stage: m.stage_label || '',
+      demo_url: m.demo_url || '', website: m.website || '', summary: String(r.message || '').split('\n')[0] }
+  })
+  const partners = ((((await db.prepare(
+    `SELECT id, created_at, name, email, phone, organization, subject, status, metadata FROM inquiries WHERE inquiry_type = 'sponsorship' AND subject LIKE 'AI Agent Summit 2027%' ORDER BY id DESC LIMIT 500`
+  ).all()) as any).results || []) as any[]).map((r) => {
+    const m = parse(r.metadata)
+    return { id: r.id, created_at: r.created_at, name: r.name, email: r.email, phone: r.phone, company: r.organization, status: r.status,
+      tier: String(r.subject || '').replace(/^AI Agent Summit 2027 · Partner: /, ''), job_title: m.job_title || '' }
+  })
+  return c.json({ sales: await summitSales(c), passes, applications, partners, prices: SUMMIT_PASS_PRICES_INR })
+})
+
+// The team confirms a Buyer or Investor Pass: the person is emailed, the audit row is the record.
+app.post('/api/admin/agent-summit/passes/:id/confirm', async (c) => {
+  const id = Number(c.req.param('id'))
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ? AND event_id = ?').bind(id, SUMMIT_EVENT_ID).first() as any
+  if (!a) return c.json({ error: 'No AI Agent Summit registration with that id.' }, 404)
+  if (!/^(Buyer|Investor) Pass$/.test(String(a.badge_type || ''))) return c.json({ error: 'Only Buyer and Investor passes are confirmed by hand.' }, 400)
+  const done = await c.env.DB.prepare(`SELECT 1 AS y FROM attendees a WHERE a.id = ? AND ${CONFIRMED_SQL}`).bind(id).first()
+  if (done) return c.json({ ok: true, already: true })
+  await h.audit(c, 'summit.confirm', 'attendee', id, { pass: a.badge_type, email: a.email })
+  const esc = h.payEsc
+  const html = summitMail('Your pass is confirmed',
+    `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(a.name)}</strong>,</p>` +
+    P(`Your <strong>${esc(a.badge_type)}</strong> for ${SUMMIT_EVENT_NAME} is confirmed. It is complimentary and includes a reserved seat in the main hall, lunch, the VIP lounge and introductions to the companies you choose.`) +
+    h.payRows([['Event', SUMMIT_EVENT_NAME], ['Date', 'Saturday 17 April 2027, doors 08:30 IST'], ['Venue', 'World Trade Center, Cuffe Parade, Mumbai']]) +
+    P('In the week before the summit we will email your entry pass and the final programme, with the list of companies on stage.') +
+    `<div style="text-align:center;margin:0 0 6px;"><a href="https://bharataiinnovation.com/ai-agent-summit/ai-agent-summit-2027.ics" style="display:inline-block;padding:12px 26px;background:#c6ff3d;color:#07080a;text-decoration:none;border-radius:4px;font-weight:bold;font-size:14px;">Save the date</a></div>`)
+  const sent = h.sendEmail(c, a.email, `Confirmed: your ${a.badge_type} for ${SUMMIT_EVENT_NAME}`, h.noAppOnPhone(html), { unsubscribe: false })
+    .catch((e: any) => console.error('summit confirm email failed', a.email, e?.message))
+  try { c.executionCtx.waitUntil(sent) } catch { await sent }
+  return c.json({ ok: true })
+})
 
 export default app
