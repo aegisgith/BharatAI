@@ -66,9 +66,11 @@ export const SUMMIT_EVENT_ID = 3
 export const SUMMIT_EVENT_NAME = 'AI Agent Summit 2027'
 export const SUMMIT_WHEN = 'Saturday 17 April 2027 &bull; World Trade Center Mumbai'
 export const SUMMIT_PAGE = '/ai-agent-summit/'
-// The summit's own domain(s), served at their root by GET / below. Empty until the domain
-// is pointed at this Pages project; then add it here AND add '/' to FORCE_DYNAMIC in
-// scripts/gen-routes.mjs (today '/' is the static Mumbai home and never reaches the worker).
+// The summit's own domain is aiagentssummit.org (15 Nov 2026): a Cloudflare zone in this account,
+// attached to this Pages project (apex and www). Its home page is NOT served by this worker:
+// two URL Rewrite Rules on that zone turn '/' (and '/?utm...') into /ai-agent-summit/, so
+// bharataiinnovation.com's static home never runs through the worker. SUMMIT_HOSTS stays empty;
+// GET / below only matters if '/' is ever added to FORCE_DYNAMIC in scripts/gen-routes.mjs.
 export const SUMMIT_HOSTS: string[] = []
 
 // Whole rupees before GST, as printed on /ai-agent-summit/attend. The names are Mumbai's,

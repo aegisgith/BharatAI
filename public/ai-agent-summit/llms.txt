@@ -25,7 +25,7 @@
 - Presenting Partner 20,00,000; Platinum 10,00,000; Gold 5,00,000; Silver 2,50,000; add-ons from 1,50,000
 
 ## Pages
-- [Home](https://bharataiinnovation.com/ai-agent-summit/)
-- [Showcase your agent](https://bharataiinnovation.com/ai-agent-summit/showcase)
-- [Passes and registration](https://bharataiinnovation.com/ai-agent-summit/attend)
-- [Partner packages](https://bharataiinnovation.com/ai-agent-summit/partners)
+- [Home](https://aiagentssummit.org/)
+- [Showcase your agent](https://aiagentssummit.org/ai-agent-summit/showcase)
+- [Passes and registration](https://aiagentssummit.org/ai-agent-summit/attend)
+- [Partner packages](https://aiagentssummit.org/ai-agent-summit/partners)
