@@ -46,6 +46,21 @@ const SITE = 'https://bharataiinnovation.com'
 export const AUDIT_ACTION = 'workshop.reminder'
 const AGAIN_HOURS = 12
 
+// Automatic (organiser, 15 Nov 2026: "send automated email after 15 min of
+// registration to block the workshop"): the minute clock (POST /api/cron/tick) sends
+// "Choose your workshop" once, AUTO_AFTER_MINUTES after a workshop pass is confirmed
+// (the paid order for that pass, or the registration itself for a pass given free),
+// to anyone who still has no seat and was never sent a workshop email. Only passes
+// confirmed in the last AUTO_WITHIN_HOURS: older holders are the panel's to email.
+// Claimed in admin_audit before it goes, so two clocks send it once; a failure is
+// kept as 'workshop.reminder_error' and not retried (the panel shows them as not
+// emailed). Off when app_settings AUTO_KEY = 'off' (the panel's switch).
+export const AUTO_KEY = 'workshop_auto'
+export const AUTO_AFTER_MINUTES = 15
+const AUTO_WITHIN_HOURS = 48
+const AUTO_PER_TICK = 10
+const CRON_ALIVE_MS = 3 * 60 * 1000
+
 const all = async (c: any, sql: string, ...args: any[]) => (((await c.env.DB.prepare(sql).bind(...args).all()) as any).results || []) as any[]
 const one = async (c: any, sql: string, ...args: any[]) => (await c.env.DB.prepare(sql).bind(...args).first()) as any
 const escH = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -196,7 +211,7 @@ async function lastSent(c: any): Promise<Map<number, { at: string; kind: string;
       try { d = JSON.parse(r.detail || '{}') } catch { /* not JSON */ }
       const id = Number(r.entity_id)
       const was = out.get(id)
-      out.set(id, { at: r.created_at, kind: String(d.kind || ''), by: r.actor || '', n: (was ? was.n : 0) + 1 })
+      out.set(id, { at: r.created_at, kind: String(d.kind || ''), by: r.actor || '', auto: !!d.auto, n: (was ? was.n : 0) + 1 })
     }
   } catch { /* no audit table: nothing sent as far as anyone can tell */ }
   return out
@@ -227,7 +242,96 @@ async function context(c: any) {
   return { workshops, closes, canSwitch }
 }
 
+// ---------- automatic ----------
+
+async function setting(c: any, key: string): Promise<string> {
+  try { return String((await one(c, 'SELECT value FROM app_settings WHERE key = ?', key))?.value ?? '') } catch { return '' }
+}
+
+// Who is due: a workshop pass confirmed AUTO_AFTER_MINUTES ago or more (and within
+// AUTO_WITHIN_HOURS), no seat, never sent a workshop email of any kind.
+async function autoDue(c: any, limit: number): Promise<any[]> {
+  const tiers = hooks.tiers ? hooks.tiers() : ['Premium Delegate Pass', 'VIP Pass', 'Student Pass']
+  const marks = tiers.map(() => '?').join(', ')
+  try {
+    return await all(c, `SELECT * FROM (
+        SELECT a.id, a.event_id, a.name, a.email, a.badge_type, a.payment_status,
+          COALESCE((SELECT MAX(o.paid_at) FROM payment_orders o WHERE o.attendee_id = a.id AND o.status = 'paid' AND o.pass_type IN (${marks})), a.created_at) AS due_at
+          FROM attendees a
+         WHERE a.event_id = 1 AND a.badge_type IN (${marks})
+           AND LOWER(TRIM(COALESCE(a.payment_status, ''))) NOT IN ('pending', 'refunded')
+           AND TRIM(COALESCE(a.email, '')) <> ''
+           AND NOT EXISTS (SELECT 1 FROM workshop_seats s WHERE s.event_id = 1 AND s.attendee_id = a.id)
+           AND NOT EXISTS (SELECT 1 FROM admin_audit x WHERE x.entity = 'attendee' AND x.entity_id = CAST(a.id AS TEXT) AND x.action IN (?, ?)))
+      WHERE due_at <= datetime('now', ?) AND due_at > datetime('now', ?)
+      ORDER BY due_at LIMIT ?`,
+      ...tiers, ...tiers, AUDIT_ACTION, AUDIT_ACTION + '_error', `-${AUTO_AFTER_MINUTES} minutes`, `-${AUTO_WITHIN_HOURS} hours`, limit)
+  } catch { return [] }
+}
+
+// The minute clock's part. Never throws.
+export async function autoWorkshopReminders(c: any): Promise<any> {
+  if ((await setting(c, AUTO_KEY)).trim() === 'off') return { on: false }
+  if (!hooks.sendEmail) return { on: true, error: 'Email is not set up on this server.' }
+  const due = await autoDue(c, AUTO_PER_TICK)
+  if (!due.length) return { on: true, due: 0, sent: 0 }
+  const ctx = await context(c)
+  const where = await whereFn(c)
+  const header = hooks.emailHeader ? hooks.emailHeader('Choose your workshop', MUMBAI_WORDS.line) : ''
+  let sent = 0, failed = 0, waiting = 0
+  for (const a of due) {
+    // Nothing to choose (every workshop full or closed): not claimed, so it goes
+    // if one opens again while they are still in the window.
+    const options = choosable(ctx.workshops, String(a.badge_type || ''))
+    if (!options.length) { waiting++; continue }
+    const email = String(a.email || '').trim()
+    const claim = await c.env.DB.prepare(
+      `INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail)
+       SELECT 'scheduler', 'system', ?1, 'attendee', ?2, ?3
+        WHERE NOT EXISTS (SELECT 1 FROM admin_audit WHERE entity = 'attendee' AND entity_id = ?2 AND action IN (?1, ?4))`
+    ).bind(AUDIT_ACTION, String(a.id), JSON.stringify({ kind: 'choose', to: email, auto: true }), AUDIT_ACTION + '_error').run().catch(() => null) as any
+    if (!Number(claim?.meta?.changes)) continue
+    const claimId = claim?.meta?.last_row_id
+    let res: { ok: boolean; error?: string }
+    try {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new Error('Not a usable email address.')
+      let href = ''
+      if (hooks.signInLink) { try { href = await hooks.signInLink(c, Number(a.event_id) || 1, email.toLowerCase()) } catch { href = '' } }
+      const mail = reminderEmailHTML({ kind: 'choose', a, seat: null, options, closes: ctx.closes, canSwitch: ctx.canSwitch, header,
+        href: href || SITE + '/app?action=workshop', where, line: MUMBAI_WORDS.line })
+      res = await hooks.sendEmail(c, email, mail.subject, mail.html)
+    } catch (e: any) { res = { ok: false, error: String(e?.message || e) } }
+    if (res.ok) { sent++; continue }
+    failed++
+    await c.env.DB.prepare('UPDATE admin_audit SET action = ?, detail = ? WHERE id = ?')
+      .bind(AUDIT_ACTION + '_error', JSON.stringify({ kind: 'choose', to: email, auto: true, error: String(res.error || 'not sent').slice(0, 300) }), claimId).run().catch(() => null)
+  }
+  return { on: true, due: due.length, sent, failed, waiting }
+}
+
+// For the panel: on or off, how many went by themselves, and whether the clock knocks.
+async function autoState(c: any) {
+  let n: any = null
+  try {
+    n = await one(c, `SELECT SUM(action = ?1) AS sent, SUM(action = ?2) AS failed FROM admin_audit
+      WHERE entity = 'attendee' AND action IN (?1, ?2) AND json_extract(detail, '$.auto') = 1`, AUDIT_ACTION, AUDIT_ACTION + '_error')
+  } catch { /* no audit table */ }
+  const tick = Number(await setting(c, 'cron_last_tick')) || 0
+  return { on: (await setting(c, AUTO_KEY)).trim() !== 'off', after_minutes: AUTO_AFTER_MINUTES,
+    sent: Number(n?.sent || 0), failed: Number(n?.failed || 0), clock_running: Date.now() - tick < CRON_ALIVE_MS }
+}
+
 // ---------- routes ----------
+
+// The panel's switch. On unless somebody turned it off.
+wr.post('/api/admin/workshop-reminders/auto', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const on = b.on !== false
+  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP")
+    .bind(AUTO_KEY, on ? 'on' : 'off').run()
+  if (hooks.audit) { try { await hooks.audit(c, 'workshop.reminder_auto_switch', 'setting', AUTO_KEY, { on }) } catch { /* never fails the switch */ } }
+  return c.json({ ok: true, auto: await autoState(c) })
+})
 
 wr.get('/api/admin/workshop-reminders', async (c) => {
   const [people, sent, ctx] = await Promise.all([entitledPeople(c), lastSent(c), context(c)])
@@ -240,7 +344,7 @@ wr.get('/api/admin/workshop-reminders', async (c) => {
     kind: p.workshop_id == null ? 'choose' : 'seat',
     last: sent.get(Number(p.id)) || null,
   }))
-  return c.json({ people: list, closes: ctx.closes, can_switch: ctx.canSwitch,
+  return c.json({ people: list, closes: ctx.closes, can_switch: ctx.canSwitch, auto: await autoState(c),
     open_workshops: ctx.workshops.filter(w => w.open && w.left > 0).length,
     counts: { choose: list.filter(p => p.kind === 'choose').length, seat: list.filter(p => p.kind === 'seat').length } })
 })

@@ -24,10 +24,10 @@ const html = (i) => String((W.sent[i] || {}).bodyHtml || (W.sent[i] || {}).body_
 const ws = (id, slug, title, speaker, start, end, room, cap, open) => W.db.run(
   'INSERT INTO workshops (id, event_id, slug, title, speaker, summary, starts_at, ends_at, room, capacity, is_open, sort_order) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   [id, slug, title, speaker, '', start, end, room, cap, open, id]);
-ws(1, 'ibm-workshop', 'AI, Trust and Evolving Skills using IBM Bob', 'KrishnaKanth Naik, Program Manager, IBM Career Education', '2026-11-20 11:30', '2026-11-20 13:00', 'Raman Theatre', 100, 1);
-ws(2, 'fde-workshop', 'From Prototype to Production', 'Dr. Ashish Tendulkar', '2026-11-20 14:00', '2026-11-20 15:30', 'Raman Theatre', 100, 1);
-ws(3, 'closed-one', 'A Closed Workshop', 'Someone', '2026-11-21 10:00', '2026-11-21 11:00', 'Raman Theatre', 100, 0);
-ws(4, 'full-one', 'A Full Workshop', 'Someone Else', '2026-11-21 12:00', '2026-11-21 13:00', 'Raman Theatre', 1, 1);
+ws(1, 'ibm-workshop', 'AI, Trust and Evolving Skills using IBM Bob', 'KrishnaKanth Naik, Program Manager, IBM Career Education', '2037-11-20 11:30', '2037-11-20 13:00', 'Raman Theatre', 100, 1);
+ws(2, 'fde-workshop', 'From Prototype to Production', 'Dr. Ashish Tendulkar', '2037-11-20 14:00', '2037-11-20 15:30', 'Raman Theatre', 100, 1);
+ws(3, 'closed-one', 'A Closed Workshop', 'Someone', '2037-11-21 10:00', '2037-11-21 11:00', 'Raman Theatre', 100, 0);
+ws(4, 'full-one', 'A Full Workshop', 'Someone Else', '2037-11-21 12:00', '2037-11-21 13:00', 'Raman Theatre', 1, 1);
 const at = (id, name, email, badge, pay, company = 'Acme', event = 1) => W.db.run(
   'INSERT INTO attendees (id, event_id, name, email, company, job_title, badge_type, payment_status, main_event) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)',
   [id, event, name, email, company, 'CTO', badge, pay]);
@@ -136,6 +136,79 @@ check('the list says none is open', d.open_workshops === 0, d.open_workshops);
 // ---- the panel is on the admin page ----
 r = await W.call('GET', '/admin', undefined, { admin: false });
 check('/admin loads the panel after /admin.js', r.status === 200 && /\/admin\.js\?v=[^"]+"><\/script>\s*<script src="\/static\/workshop-reminder\.js\?v=\d+"><\/script>/.test(r.text), r.status);
+
+// ==================== automatic, 15 minutes after a workshop pass ====================
+// A fresh world. Times are relative to SQLite's own clock, as the scheduler's are.
+const V = await makeWorld({ migrated: true });
+const tick = async () => (await V.call('POST', '/api/cron/tick', { max_seconds: 1 })).json;
+const auto = () => V.rows("SELECT entity_id, action, actor, detail FROM admin_audit WHERE action LIKE 'workshop.reminder%' AND actor = 'scheduler' ORDER BY id");
+const mailsTo = (addr) => V.sent.filter(m => JSON.stringify(m).toLowerCase().includes(addr) && JSON.stringify(m).includes('choose your seat')).length;
+V.db.run("INSERT INTO workshops (id, event_id, slug, title, speaker, summary, starts_at, ends_at, room, capacity, is_open, sort_order) VALUES (1, 1, 'ibm-workshop', 'AI, Trust and Evolving Skills using IBM Bob', 'KrishnaKanth Naik', '', '2099-11-20 11:30', '2099-11-20 13:00', 'Raman Theatre', 100, 1, 1)");
+const vat = (id, email, badge, pay, created) => V.db.run(
+  `INSERT INTO attendees (id, event_id, name, email, company, job_title, badge_type, payment_status, main_event, created_at) VALUES (?, 1, ?, ?, 'Acme', 'CTO', ?, ?, 1, datetime('now', ?))`,
+  [id, 'Person ' + id, email, badge, pay, created]);
+const order = (id, aid, pass, status, paidAgo) => V.db.run(
+  `INSERT INTO payment_orders (order_id, attendee_id, event_id, pass_type, base_paise, gst_paise, amount_paise, status, paid_at) VALUES (?, ?, 1, ?, 100, 18, 118, ?, ${paidAgo ? "datetime('now', ?)" : 'NULL'})`,
+  paidAgo ? ['BAI' + id, aid, pass, status, paidAgo] : ['BAI' + id, aid, pass, status]);
+vat(301, 'paid20@example.test', 'VIP Pass', 'paid', '-2 days');   order(1, 301, 'VIP Pass', 'paid', '-20 minutes');  // a Visitor who upgraded 20 min ago: due
+vat(302, 'paid5@example.test', 'VIP Pass', 'paid', '-1 hours');   order(2, 302, 'VIP Pass', 'paid', '-5 minutes');   // paid 5 min ago: not yet
+vat(303, 'free20@example.test', 'Premium Delegate Pass', 'waived', '-20 minutes');                                     // given free 20 min ago: due
+vat(304, 'old@example.test', 'VIP Pass', 'paid', '-5 days');      order(4, 304, 'VIP Pass', 'paid', '-3 days');      // paid 3 days ago: the panel's
+vat(305, 'seat@example.test', 'VIP Pass', 'paid', '-1 hours');    order(5, 305, 'VIP Pass', 'paid', '-20 minutes');  // chose already
+V.db.run('INSERT INTO workshop_seats (event_id, attendee_id, workshop_id) VALUES (1, 305, 1)');
+vat(306, 'told@example.test', 'VIP Pass', 'paid', '-1 hours');    order(6, 306, 'VIP Pass', 'paid', '-20 minutes');  // emailed from the panel already
+V.db.run("INSERT INTO admin_audit (actor, action, entity, entity_id, detail) VALUES ('Harness', 'workshop.reminder', 'attendee', '306', '{\"kind\":\"choose\"}')");
+vat(307, 'unpaid@example.test', 'VIP Pass', 'pending', '-1 hours'); order(7, 307, 'VIP Pass', 'created', null);    // not paid
+vat(308, 'visitor@example.test', 'Visitor Pass', 'free', '-20 minutes');                                               // no workshop in the pass
+vat(309, 'student@example.test', 'Student Pass', 'paid', '-1 hours'); order(9, 309, 'Student Pass', 'paid', '-16 minutes'); // due
+vat(310, 'bad address', 'VIP Pass', 'paid', '-20 minutes');                                                             // unusable address
+
+let t = await tick();
+check('the clock reports the workshop email', t && t.workshop_mail && t.workshop_mail.on === true, t && t.workshop_mail);
+const got = auto().filter(x => x.action === 'workshop.reminder').map(x => Number(x.entity_id)).sort((a, b) => a - b);
+check('due: paid 20 min ago (an upgrade), given free 20 min ago, a Student Pass 16 min ago', JSON.stringify(got) === JSON.stringify([301, 303, 309]), got);
+check('one email each, to the right people', mailsTo('paid20@example.test') === 1 && mailsTo('free20@example.test') === 1 && mailsTo('student@example.test') === 1, V.sent.length);
+check('nobody else: paid 5 min ago, paid 3 days ago, a seat, already emailed, unpaid, a Visitor Pass', ['paid5@', 'old@', 'seat@', 'told@', 'unpaid@', 'visitor@'].every(a => mailsTo(a) === 0));
+check('an unusable address is kept as a failure, not sent', auto().some(x => x.entity_id === '310' && x.action === 'workshop.reminder_error'), auto());
+const autoMail = JSON.stringify(V.sent.find(m => JSON.stringify(m).includes('paid20@example.test')) || {});
+check('it is the "Choose your workshop" email with a signed seat-picker button', autoMail.includes('Your pass includes a workshop: choose your seat') && /action=workshop&(amp;)?token=[A-Za-z0-9_-]{16,}/.test(autoMail), autoMail.slice(0, 300));
+const n1 = V.sent.length;
+t = await tick();
+check('the next minute sends none of them again', V.sent.length === n1 && t.workshop_mail.sent === 0, t.workshop_mail);
+
+// Paid 5 minutes ago becomes due ten minutes later.
+V.db.run("UPDATE payment_orders SET paid_at = datetime('now', '-15 minutes') WHERE attendee_id = 302");
+t = await tick();
+check('15 minutes after paying, it goes', mailsTo('paid5@example.test') === 1, t.workshop_mail);
+
+// The panel shows them as emailed automatically, and the count.
+let dv = (await V.call('GET', '/api/admin/workshop-reminders')).json;
+const pv = (id) => dv.people.find(x => x.id === id);
+check('the panel marks them emailed automatically', pv(301).last && pv(301).last.auto === true && pv(301).last.kind === 'choose', pv(301));
+check('the panel counts the automatic sends and the failure', dv.auto && dv.auto.on === true && dv.auto.sent === 4 && dv.auto.failed === 1 && dv.auto.after_minutes === 15, dv.auto);
+r = await V.call('POST', '/api/admin/attendees/301/workshop-reminder', {});
+check('the panel will not send them the same email again within 12 hours', r.status === 409 && r.json.already === true, r.json);
+
+// Nothing to choose: not sent and not claimed, so it goes when a workshop opens again.
+vat(311, 'later@example.test', 'VIP Pass', 'paid', '-1 hours'); order(11, 311, 'VIP Pass', 'paid', '-20 minutes');
+V.db.run('UPDATE workshops SET is_open = 0');
+t = await tick();
+check('every workshop closed: nothing goes, nothing is claimed', mailsTo('later@example.test') === 0 && !auto().some(x => x.entity_id === '311') && t.workshop_mail.waiting === 1, t.workshop_mail);
+V.db.run('UPDATE workshops SET is_open = 1');
+t = await tick();
+check('...and it goes once one opens', mailsTo('later@example.test') === 1, t.workshop_mail);
+
+// The switch.
+r = await V.call('POST', '/api/admin/workshop-reminders/auto', { on: false }, { admin: false });
+check('nobody but an admin turns it off', r.status === 401 || r.status === 403, r.status);
+r = await V.call('POST', '/api/admin/workshop-reminders/auto', { on: false });
+check('an admin turns it off', r.status === 200 && r.json.auto.on === false, r.json);
+vat(312, 'off@example.test', 'VIP Pass', 'paid', '-1 hours'); order(12, 312, 'VIP Pass', 'paid', '-20 minutes');
+t = await tick();
+check('off: nobody is emailed', mailsTo('off@example.test') === 0 && t.workshop_mail.on === false, t.workshop_mail);
+r = await V.call('POST', '/api/admin/workshop-reminders/auto', { on: true });
+t = await tick();
+check('on again: the one who waited gets it', r.json.auto.on === true && mailsTo('off@example.test') === 1, t.workshop_mail);
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS');
 process.exit(fails ? 1 : 0);

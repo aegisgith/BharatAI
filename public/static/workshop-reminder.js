@@ -46,7 +46,7 @@
 
   // ---------- drawing ----------
   function row(p) {
-    var last = p.last ? 'Emailed ' + stamp(p.last.at) + ' (' + (KIND[p.last.kind] || p.last.kind) + ')' + (p.last.n > 1 ? ', ' + p.last.n + ' times' : '') : 'Not emailed yet';
+    var last = p.last ? 'Emailed ' + stamp(p.last.at) + ' (' + (KIND[p.last.kind] || p.last.kind) + (p.last.auto ? ', automatic' : '') + ')' + (p.last.n > 1 ? ', ' + p.last.n + ' times' : '') : 'Not emailed yet';
     var flags = [chip(p.badge_type, 'amber')];
     if (String(p.payment_status).toLowerCase() === 'waived') flags.push(chip('Complimentary'));
     if (p.unsubscribed) flags.push(chip('Unsubscribed from email', 'red'));
@@ -74,11 +74,22 @@
     };
     var list = shown();
     var n = ticked().length;
+    var au = d.auto || null;
+    var autoLine = !au ? '' : '<div class="flex flex-wrap items-center gap-2 mb-3 text-xs">' +
+      chip(au.on ? 'Automatic: on' : 'Automatic: off', au.on ? 'green' : 'red') +
+      '<span class="text-gray-400">' + (au.on
+        ? esc(au.after_minutes) + ' minutes after a Premium Delegate, VIP or Student Pass is paid for (or given free), anyone who has not chosen a workshop gets &ldquo;Choose your workshop&rdquo;, once. ' +
+          esc(au.sent) + ' sent this way' + (au.failed ? ', ' + esc(au.failed) + ' failed' : '') + '.'
+        : 'Nobody gets it by themselves. Send it from this list.') + '</span>' +
+      (au.on && !au.clock_running ? '<span class="text-red-300">The minute clock is not running, so nothing goes by itself right now.</span>' : '') +
+      '<button data-wsr="auto" data-on="' + (au.on ? '0' : '1') + '" class="' + PLAIN + '">' + (au.on ? 'Turn off' : 'Turn on') + '</button>' +
+    '</div>';
     box.innerHTML =
       '<h3 class="font-bold text-base mb-1">Email about workshops</h3>' +
       '<p class="text-xs text-gray-400 mb-3">People with no seat get <strong>Choose your workshop</strong>: every open workshop with its time, room and what to bring, and a button that signs them in to choose. ' +
         'People with a seat get <strong>Your workshop</strong>: its time and room, and what to do before the day (for IBM&rsquo;s, installing IBM Bob). Times and rooms come from the cards below. ' +
         'Preview first. Nobody is ticked for you: leave out test records, your own team, and guests who should get a personal note.</p>' +
+      autoLine +
       (d.open_workshops ? '' : '<p class="text-xs text-red-300 mb-3">Every workshop is full or closed, so &ldquo;Choose your workshop&rdquo; cannot go.</p>') +
       '<div class="flex flex-wrap gap-2 mb-3">' + tab('choose', 'No seat yet') + tab('seat', 'Have a seat') + tab('all', 'Everyone') + '</div>' +
       (list.map(row).join('') || '<p class="text-gray-500 text-sm py-2">Nobody here.</p>') +
@@ -190,6 +201,17 @@
     say(parts.join('. ') + '.', failed.length ? 'error' : 'success');
   }
 
+  // The automatic email's switch.
+  async function setAuto(on) {
+    if (!on && !global.confirm('Turn off the automatic "Choose your workshop" email? New buyers will then only get it if you send it from this list.')) return;
+    try {
+      var r = await api.post('/api/admin/workshop-reminders/auto', { on: on });
+      if (r && r.error) { say(r.error, 'error'); return; }
+      say(on ? 'Automatic email turned on' : 'Automatic email turned off');
+    } catch (e) { say(errText(e), 'error'); }
+    await load();
+  }
+
   function onClick(e) {
     var b = e.target.closest ? e.target.closest('[data-wsr]') : null;
     if (!b) return;
@@ -202,6 +224,7 @@
     if (act === 'preview') { preview(id); return; }
     if (act === 'send') { sendFromRow(id); return; }
     if (act === 'send-ticked') { sendTicked(); return; }
+    if (act === 'auto') { setAuto(b.getAttribute('data-on') === '1'); return; }
     if (act === 'close' && typeof closeModal === 'function') closeModal();
   }
 

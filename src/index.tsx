@@ -7,7 +7,7 @@ import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
-import workshopReminder, { configureWorkshopReminder } from './routes/workshop-reminder'
+import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders } from './routes/workshop-reminder'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
@@ -16895,8 +16895,11 @@ app.post('/api/cron/tick', async (c) => {
   const inquiryDigestRun = await autoInquiryDigest(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   // Innovation Talk speakers asked for whatever is missing, one a minute, when switched on.
   const talkRequests = await autoItalkRequests(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
+  // "Choose your workshop", 15 minutes after a workshop pass is confirmed, to anyone
+  // who has not chosen yet (routes/workshop-reminder.ts, switch in Admin -> Workshops).
+  const workshopMail = await autoWorkshopReminders(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests })
+  return c.json({ ...out, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests, workshop_mail: workshopMail })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -41514,7 +41517,7 @@ function adminPageHTML(): string {
   <script src="/static/conference-admin.js?v=20261115"></script>
   <script src="/static/speaker-brief.js?v=20261113"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
-  <script src="/static/workshop-reminder.js?v=20261115"></script>
+  <script src="/static/workshop-reminder.js?v=2026111502"></script>
 </body>
 </html>`
 }
