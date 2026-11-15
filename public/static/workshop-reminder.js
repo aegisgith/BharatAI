@@ -78,8 +78,8 @@
     var autoLine = !au ? '' : '<div class="flex flex-wrap items-center gap-2 mb-3 text-xs">' +
       chip(au.on ? 'Automatic: on' : 'Automatic: off', au.on ? 'green' : 'red') +
       '<span class="text-gray-400">' + (au.on
-        ? esc(au.after_minutes) + ' minutes after a Premium Delegate, VIP or Student Pass is paid for (or given free), anyone who has not chosen a workshop gets &ldquo;Choose your workshop&rdquo;, once. ' +
-          esc(au.sent) + ' sent this way' + (au.failed ? ', ' + esc(au.failed) + ' failed' : '') + '.'
+        ? esc(au.after_minutes) + ' minutes after any pass is paid for (or given free): &ldquo;Choose your workshop&rdquo; if the pass includes one and no seat is chosen, otherwise the workshop invitation (below). Once each. ' +
+          esc(au.sent) + ' &ldquo;Choose&rdquo; and ' + esc(au.invited || 0) + ' invitations sent this way' + (au.failed ? ', ' + esc(au.failed) + ' failed' : '') + '.'
         : 'Nobody gets it by themselves. Send it from this list.') + '</span>' +
       (au.on && !au.clock_running ? '<span class="text-red-300">The minute clock is not running, so nothing goes by itself right now.</span>' : '') +
       '<button data-wsr="auto" data-on="' + (au.on ? '0' : '1') + '" class="' + PLAIN + '">' + (au.on ? 'Turn off' : 'Turn on') + '</button>' +
@@ -98,14 +98,120 @@
         '<button data-wsr="clear" class="' + PLAIN + '">Clear ticks</button>' +
         '<button data-wsr="send-ticked" class="' + PRIMARY + '"' + (n ? '' : ' disabled') + '>Send to ' + n + ' ticked</button>' +
         '<span id="wsr-progress" class="text-xs text-gray-400"></span>' +
+      '</div>' +
+      inviteSection() + triesSection();
+  }
+
+  // ---------- passes without a workshop ----------
+  function inviteSection() {
+    var v = S.inv;
+    if (!v || !v.groups) return '';
+    var grp = function (k) {
+      var x = v.groups[k] || { label: k, count: 0 };
+      return '<div class="flex flex-wrap items-center gap-2 py-2 border-b border-white/5">' +
+        '<div class="flex-1 min-w-[180px] text-sm text-gray-200">' + esc(x.label) + ' <span class="text-[11px] text-gray-500">' + esc(x.count) + ' not invited yet</span></div>' +
+        '<button data-wsr="inv-preview" data-g="' + k + '" class="' + PLAIN + '"' + (x.count ? '' : ' disabled') + '>Preview</button>' +
+        '<button data-wsr="inv-send" data-g="' + k + '" class="' + PRIMARY + '"' + (x.count && v.open_workshops ? '' : ' disabled') + '>Send to ' + esc(x.count) + '</button>' +
       '</div>';
+    };
+    var runs = (v.campaigns || []).map(function (cp) {
+      return '<div class="text-[11px] text-gray-400">' + esc(cp.title) + ': ' + esc(cp.sent || 0) + ' of ' + esc(cp.total) + ' sent' +
+        (cp.failed ? ', ' + esc(cp.failed) + ' failed' : '') + ' &middot; ' + esc(cp.status) + '</div>';
+    }).join('');
+    return '<div class="mt-6 pt-4 border-t border-white/10">' +
+      '<h3 class="font-bold text-base mb-1">Invite passes without a workshop</h3>' +
+      '<p class="text-xs text-gray-400 mb-3">One email each: the open workshops with their time, room and what to bring, and a button that signs them in to book. It does not mention passes or price. ' +
+        'When someone presses <strong>Book this seat</strong>, the app shows which passes include a workshop and the price, and they appear under <strong>Tried to book</strong> below. ' +
+        'Sent one at a time, 9 am to 9 pm, likeliest buyers first (in the app lately, then senior titles). Anyone who unsubscribed is left out. Pause or resume under Settings, Bulk email.</p>' +
+      (v.open_workshops ? '' : '<p class="text-xs text-red-300 mb-2">Every workshop is full or closed, so there is nothing to invite people to.</p>') +
+      grp('free') + grp('paid') +
+      (runs ? '<div class="mt-3">' + runs + '</div>' : '') +
+    '</div>';
+  }
+
+  function triesSection() {
+    var t = S.tries;
+    if (!t || !t.counts) return '';
+    var rows = (t.people || []).map(function (p) {
+      var tone = p.now === 'Not bought yet' ? 'red' : p.now === 'Started paying' ? 'amber' : 'green';
+      return '<div class="flex flex-wrap items-center gap-3 py-2 border-b border-white/5">' +
+        '<div class="flex-1 min-w-[180px]"><div class="text-sm text-gray-200">' + esc(p.name) + '</div>' +
+          '<div class="text-[11px] text-gray-500">' + esc(p.mobile || 'No mobile') + ' &middot; ' + esc(p.email) + (p.company ? ' &middot; ' + esc(p.company) : '') + (p.job_title ? ' &middot; ' + esc(p.job_title) : '') + '</div></div>' +
+        '<div class="min-w-[160px] text-[11px] text-gray-400">' + esc((p.workshops || []).join(', ')) +
+          '<div class="text-gray-500">' + esc(stamp(p.last)) + (p.tries > 1 ? ', ' + esc(p.tries) + ' times' : '') + '</div></div>' +
+        '<div class="flex flex-wrap gap-1">' + chip(p.badge_type, 'amber') + chip(p.now, tone) + '</div>' +
+      '</div>';
+    }).join('');
+    return '<div class="mt-6 pt-4 border-t border-white/10">' +
+      '<div class="flex flex-wrap items-center justify-between gap-2 mb-1"><h3 class="font-bold text-base">Tried to book a workshop (' + esc(t.counts.tried) + ')</h3>' +
+        '<button data-wsr="tries-csv" class="' + PLAIN + '"' + ((t.people || []).length ? '' : ' disabled') + '>Download for calls (CSV)</button></div>' +
+      '<p class="text-xs text-gray-400 mb-2">People whose pass has no workshop who pressed Book this seat, latest first, with what they hold now. ' + esc(t.counts.bought) + ' have bought a workshop pass since.</p>' +
+      (rows || '<p class="text-gray-500 text-sm py-2">Nobody yet.</p>') +
+    '</div>';
+  }
+
+  async function invitePreview(group) {
+    try {
+      var r = await api.post('/api/admin/workshop-invites/preview', { group: group });
+      openModal(
+        '<div class="flex items-start justify-between gap-3 mb-3"><div class="min-w-0">' +
+          '<div class="text-xs text-gray-400">Workshop invitation &middot; as ' + esc(r.name || 'the first person') + ' would get it</div>' +
+          '<h3 class="font-bold text-base">' + esc(r.subject) + '</h3>' +
+        '</div><button data-wsr="close" class="' + PLAIN + '">Close</button></div>' +
+        '<iframe id="wsr-frame" title="Email preview" sandbox="" style="width:100%;height:60vh;border:0;border-radius:12px;background:#fff"></iframe>' +
+        '<p class="text-[11px] text-gray-500 mt-2">In the preview the button goes nowhere. The real email&rsquo;s button signs each person in at the workshops.</p>');
+      var f = $('wsr-frame');
+      if (f) f.srcdoc = r.html;
+      var mb = $('modal-box');
+      if (mb && !mb.__wsr) { mb.__wsr = true; mb.addEventListener('click', onClick); }
+    } catch (e) { say((e && e.data && e.data.error) || errText(e), 'error'); }
+  }
+
+  async function inviteSend(group) {
+    if (S.busy) return;
+    var x = (S.inv && S.inv.groups && S.inv.groups[group]) || null;
+    if (!x || !x.count) return;
+    S.busy = true;
+    try {
+      var a = await api.get('/api/admin/workshop-invites/audience?group=' + encodeURIComponent(group));
+      var ids = (a && a.ids) || [];
+      if (!ids.length) { say('Nobody left to invite in that group.', 'error'); return; }
+      if (!global.confirm('Send the workshop invitation to ' + ids.length + ' people (' + x.label + ')?\n\n' +
+        'Real email, one at a time, only between 9 am and 9 pm, likeliest buyers first. It carries on by itself on the server, even with this page closed. ' +
+        'Pause it under Settings, Bulk email. Nobody is sent two.')) return;
+      var r = await api.post('/api/admin/campaigns', { kind: 'workshop_invite', audience: group, ids: ids, title: 'Workshop invitation: ' + x.label });
+      say('Started: ' + (r.total || ids.length) + ' to send. Progress is shown here and under Settings, Bulk email.');
+    } catch (e) { say((e && e.data && e.data.error) || errText(e), 'error'); }
+    finally { S.busy = false; }
+    await load();
+  }
+
+  function triesCsv() {
+    var t = S.tries;
+    if (!t || !(t.people || []).length) return;
+    var cell = function (v) { var s = String(v == null ? '' : v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    var lines = [['Name', 'Mobile', 'Email', 'Organisation', 'Job title', 'City', 'Pass', 'Workshops tried', 'Times', 'First tried (IST)', 'Last tried (IST)', 'Now'].join(',')];
+    t.people.forEach(function (p) {
+      lines.push([p.name, p.mobile, p.email, p.company, p.job_title, p.city, p.badge_type, (p.workshops || []).join('; '), p.tries, stamp(p.first), stamp(p.last), p.now].map(cell).join(','));
+    });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/csv' }));
+    a.download = 'tried-to-book-a-workshop.csv';
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
   async function load() {
     try {
-      var d = await api.get('/api/admin/workshop-reminders');
+      var got = await Promise.all([
+        api.get('/api/admin/workshop-reminders'),
+        api.get('/api/admin/workshop-invites').catch(function () { return null; }),
+        api.get('/api/admin/workshop-tries').catch(function () { return null; })
+      ]);
+      var d = got[0];
       if (!d || d.error || !Array.isArray(d.people)) throw new Error((d && d.error) || 'The workshop email list came back in an unexpected shape.');
       S.d = d;
+      S.inv = got[1] && !got[1].error ? got[1] : null;
+      S.tries = got[2] && !got[2].error ? got[2] : null;
       var ids = {};
       d.people.forEach(function (p) { ids[p.id] = true; });
       Object.keys(S.sel).forEach(function (k) { if (!ids[k]) delete S.sel[k]; });
@@ -225,6 +331,9 @@
     if (act === 'send') { sendFromRow(id); return; }
     if (act === 'send-ticked') { sendTicked(); return; }
     if (act === 'auto') { setAuto(b.getAttribute('data-on') === '1'); return; }
+    if (act === 'inv-preview') { invitePreview(b.getAttribute('data-g')); return; }
+    if (act === 'inv-send') { inviteSend(b.getAttribute('data-g')); return; }
+    if (act === 'tries-csv') { triesCsv(); return; }
     if (act === 'close' && typeof closeModal === 'function') closeModal();
   }
 

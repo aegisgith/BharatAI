@@ -7,7 +7,7 @@ import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
-import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders } from './routes/workshop-reminder'
+import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry } from './routes/workshop-reminder'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
@@ -530,6 +530,12 @@ app.route('/', talkSelf)
 // Admin -> Workshops. routes/workshop-reminder.ts, screen public/static/workshop-reminder.js.
 configureWorkshopReminder({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader,
   workshops: (c: any) => workshopList(c), closes: (c: any) => workshopSwitchCloses(c), tiers: () => workshopTiers(),
+  pace: async (c: any) => {
+    const win = sendWindowState()
+    if (!win.open) return { status: 409, body: { paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win } }
+    const slot = await claimSendSlot(c, await sendGapSeconds(c))
+    return slot.ok ? null : { status: 429, body: { throttled: true, wait_seconds: slot.wait } }
+  },
   signInLink: async (c: any, eventId: number, email: string) => {
     const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
     let href = appUrl + '?email=' + encodeURIComponent(email) + '&action=workshop'
@@ -9378,6 +9384,13 @@ app.post('/api/workshops/choose', async (c) => {
   const me = await c.env.DB.prepare('SELECT id, name, badge_type, payment_status FROM attendees WHERE id = ?').bind(id).first() as any
   const ent = workshopEntitlement(me)
   if (!ent.ok) {
+    // "Book this seat" on a pass without a workshop: kept for the team (Admin ->
+    // Workshops, routes/workshop-reminder.ts), and the app shows which passes have one.
+    if (ent.why === 'tier') {
+      const tried = await c.req.json().catch(() => ({})) as any
+      await noteWorkshopTry(c, me, Number(tried.workshop_id))
+      return c.json({ error: 'A workshop seat comes with the Student, Premium Delegate and VIP passes.', need_pass: true }, 403)
+    }
     return c.json({ error: ent.why === 'unpaid'
       ? 'Your ' + me.badge_type + ' is not paid yet. You can choose your workshop the moment the payment goes through.'
       : 'A workshop seat comes with the Student, Premium Delegate and VIP passes.' }, 403)
@@ -20518,6 +20531,7 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'networking' ? `/api/admin/attendees/${r.attendee_id}/send-networking`
     : kind === 'waitlist_confirm' ? `/api/admin/attendees/${r.attendee_id}/send-waitlist-confirm`
     : kind === 'feedback' ? `/api/admin/attendees/${r.attendee_id}/send-feedback`
+    : kind === 'workshop_invite' ? `/api/admin/attendees/${r.attendee_id}/send-workshop-invite`
     : kind === 'offer' ? '/api/admin/offers/send'
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
@@ -20620,7 +20634,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
@@ -20655,7 +20669,9 @@ app.post('/api/admin/campaigns', async (c) => {
     const { results } = await c.env.DB.prepare(
       `SELECT id, name, email FROM attendees WHERE id IN (${placeholders}) AND email IS NOT NULL AND TRIM(email) != '' ORDER BY id`
     ).bind(...ids).all()
-    rows = (results as any[]) || []
+    // Sent in the order given (the workshop invitation puts the likeliest buyers first).
+    const at = new Map<number, number>(ids.map((v: number, i: number) => [v, i] as [number, number]))
+    rows = ((results as any[]) || []).sort((a: any, b: any) => (at.get(Number(a.id)) ?? 0) - (at.get(Number(b.id)) ?? 0))
   } else if (kind === 'offer') {
     rows = await offerAudienceRows(c, audience, body.inquiry_ids)
   } else {
@@ -20675,7 +20691,8 @@ app.post('/api/admin/campaigns', async (c) => {
     : kind === 'thankyou' ? 'Post-event thank you'
     : kind === 'profile_reminder' ? 'Complete your profile'
     : kind === 'waitlist_confirm' ? 'Waiting list: your Free Visitor Pass is confirmed'
-    : kind === 'feedback' ? 'Feedback survey' : 'Announcement')).slice(0, 160)
+    : kind === 'feedback' ? 'Feedback survey'
+    : kind === 'workshop_invite' ? 'Workshop invitation' : 'Announcement')).slice(0, 160)
   const ins = await c.env.DB.prepare(
     'INSERT INTO campaigns (kind, title, ref_id, audience, status, total, created_by) VALUES (?,?,?,?,?,?,?)'
   ).bind(kind, title, refId, audience, 'running', rows.length, who.actor).run()
@@ -34611,6 +34628,11 @@ function mainPageScript(): string {
         head = 'Your workshop seat';
         sub = 'You can choose your workshop the moment your payment goes through.';
         cta = '<button type="button" onclick="payPendingPass()" class="px-5 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:linear-gradient(135deg,#FF6B00,#FF8C38);">Pay now</button>';
+      } else if (currentUser) {
+        // Signed in on a pass without a workshop: the workshops first, and the passes
+        // that include one on the sheet that opens from Book this seat.
+        head = 'Hands-on workshops';
+        sub = 'Led by industry experts. Choose the one you want and book your seat.';
       } else {
         // A confirmed Delegate or Academic moves up for the difference; a Visitor
         // buys Premium; nobody signed in is sent to /register.
@@ -34637,6 +34659,9 @@ function mainPageScript(): string {
           else if (w.full) btn = '';
           else if (mine && !s.can_switch) btn = '';
           else btn = '<button type="button" onclick="wsTake(' + Number(w.id) + ', this)" class="px-4 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:' + teal + ';">' + (mine ? 'Switch to this one' : 'Take this seat') + '</button>';
+        } else if (currentUser && s.why === 'tier') {
+          if (!w.open) btn = '<span class="text-xs text-gray-500">Closed</span>';
+          else if (!w.full) btn = '<button type="button" onclick="wsTake(' + Number(w.id) + ', this)" class="px-4 rounded-xl text-xs font-semibold" style="min-height:44px;color:#fff;background:' + teal + ';">Book this seat</button>';
         }
         return '<div class="glass rounded-2xl p-5 border" style="border-color:' + (isMine ? teal : 'rgba(11,122,117,0.2)') + ';' + (isMine ? 'box-shadow:0 0 0 1px ' + teal + ';' : '') + '">' +
           '<h4 class="font-bold text-sm text-white mb-1">' + esc(w.title) + '</h4>' +
@@ -34660,6 +34685,11 @@ function mainPageScript(): string {
         var j = await r.json().catch(function () { return {}; });
         if (j && j.ready) { _wsState = j; _wsLoadedAt = Date.now(); }
         wsRender();
+        if (!r.ok && j && j.need_pass) {
+          var tw = ((_wsState && _wsState.workshops) || []).filter(function (x) { return x.id === id; })[0];
+          showUpgradeModal('workshop', tw ? tw.title : '');
+          return;
+        }
         if (!r.ok) { showToast(j.error || 'We could not book that seat. Please try again.', 'error'); return; }
         showToast('Your workshop seat is booked.', 'success');
       } catch (e) {
@@ -41517,7 +41547,7 @@ function adminPageHTML(): string {
   <script src="/static/conference-admin.js?v=20261115"></script>
   <script src="/static/speaker-brief.js?v=20261113"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
-  <script src="/static/workshop-reminder.js?v=2026111502"></script>
+  <script src="/static/workshop-reminder.js?v=2026111503"></script>
 </body>
 </html>`
 }

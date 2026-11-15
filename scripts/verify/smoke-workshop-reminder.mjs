@@ -8,6 +8,7 @@
 // The switch cut-off is set far ahead or far behind, never read from today's date.
 // Run after `npm run build`:  node scripts/verify/smoke-workshop-reminder.mjs
 import { makeWorld } from './conference-world.mjs';
+import { sessionCookie } from './pay-db.mjs';
 
 let fails = 0;
 const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  <- ' + (typeof d === 'string' ? d : JSON.stringify(d)).slice(0, 500))); if (!ok) fails++; };
@@ -209,6 +210,110 @@ check('off: nobody is emailed', mailsTo('off@example.test') === 0 && t.workshop_
 r = await V.call('POST', '/api/admin/workshop-reminders/auto', { on: true });
 t = await tick();
 check('on again: the one who waited gets it', r.json.auto.on === true && mailsTo('off@example.test') === 1, t.workshop_mail);
+const invitesTo = (addr) => V.sent.filter(m => JSON.stringify(m).toLowerCase().includes(addr) && JSON.stringify(m).includes('book your seat')).length;
+check('automatic, a pass without a workshop: the Visitor registered 20 min ago got the invitation, once', invitesTo('visitor@example.test') === 1 && mailsTo('visitor@example.test') === 0, V.sent.length);
+check('the panel counts automatic invitations', (await V.call('GET', '/api/admin/workshop-reminders')).json.auto.invited === 1);
+
+// ==================== passes without a workshop: the invitation, and who tried ====================
+const X = await makeWorld({ migrated: true });
+// The send window and the pace read the clock: noon in India today, moved by hand.
+const RealDate = Date;
+let fakeMs = null;
+globalThis.Date = class extends RealDate {
+  constructor(...a) { if (a.length) super(...a); else super(fakeMs ?? RealDate.now()); }
+  static now() { return fakeMs ?? RealDate.now(); }
+};
+const noonIst = () => { const d = new RealDate(); return RealDate.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 6, 30); };
+X.db.run("INSERT INTO workshops (id, event_id, slug, title, speaker, summary, starts_at, ends_at, room, capacity, is_open, sort_order) VALUES (1, 1, 'ibm-workshop', 'AI, Trust and Evolving Skills using IBM Bob', 'KrishnaKanth Naik', '', '2037-11-20 11:30', '2037-11-20 13:00', 'Raman Theatre', 100, 1, 1), (2, 1, 'llm-fine-tuning', 'LLM Fine-Tuning, Hands-On', 'Someone', '', '2037-11-20 15:45', '2037-11-20 17:45', 'Raman Theatre', 40, 1, 2)");
+const xat = (id, email, badge, pay, extra = {}) => X.db.run(
+  `INSERT INTO attendees (id, event_id, name, email, mobile, company, job_title, badge_type, payment_status, main_event, unsubscribed_at, marketing_consent, last_login_at, created_at)
+   VALUES (?, 1, ?, ?, '98200000' || ?, 'Acme', ?, ?, ?, ?, ?, ?, ?, datetime('now', '-10 days'))`,
+  [id, 'Person ' + id, email, id, extra.title || 'Engineer', badge, pay, extra.main ?? 1, extra.unsub ? '2026-11-01 00:00:00' : null, extra.consent ?? null, extra.login ?? null]);
+xat(401, 'v-old@example.test', 'Visitor Pass', 'paid');                                                        // never signed in
+xat(402, 'v-ceo@example.test', 'Visitor Pass', 'paid', { title: 'CEO' });                                      // senior, never signed in
+xat(403, 'v-active@example.test', 'Visitor Pass', 'paid', { login: new RealDate(RealDate.now() - 86400000).toISOString().slice(0, 19).replace('T', ' ') }); // in the app yesterday
+xat(404, 'v-unsub@example.test', 'Visitor Pass', 'paid', { unsub: true });                                      // unsubscribed
+xat(405, 'v-noconsent@example.test', 'Visitor Pass', 'paid', { consent: 0 });                                  // said no to email
+xat(406, 'v-panel@example.test', 'Visitor Pass', 'paid', { main: 0 });                                        // campus panel only
+xat(407, 'd-paid@example.test', 'Delegate Pass', 'paid');
+xat(408, 'e-paid@example.test', 'Expo Pass', 'paid');
+xat(409, 'd-pending@example.test', 'Delegate Pass', 'pending');                                               // not paid
+xat(410, 'vip@example.test', 'VIP Pass', 'paid');                                                              // has a workshop
+xat(411, 'not an address', 'Visitor Pass', 'paid');
+
+let iv = (await X.call('GET', '/api/admin/workshop-invites')).json;
+check('invitation groups: free Visitors (left out: unsubscribed, said no, campus panel only, no address)', iv.groups.free.count === 3, iv.groups);
+check('invitation groups: Expo, Delegate and Academic (an unpaid Delegate left out)', iv.groups.paid.count === 2, iv.groups.paid);
+let au = (await X.call('GET', '/api/admin/workshop-invites/audience?group=free')).json;
+check('likeliest buyers first: in the app lately, then a CEO, then the rest', JSON.stringify(au.ids) === JSON.stringify([403, 402, 401]), au.ids);
+r = await X.call('GET', '/api/admin/workshop-invites/audience?group=free', undefined, { admin: false });
+check('nobody but an admin reads the audience', r.status === 401 || r.status === 403, r.status);
+
+const xt0 = X.rows('SELECT COUNT(*) AS n FROM login_tokens')[0].n;
+r = await X.call('POST', '/api/admin/workshop-invites/preview', { group: 'free' });
+const ih = (r.json && r.json.html) || '';
+check('the invitation: subject and workshops', r.status === 200 && r.json.subject === 'Hands-on AI workshops on Friday 20 November: book your seat' && ih.includes('AI, Trust and Evolving Skills using IBM Bob') && ih.includes('LLM Fine-Tuning, Hands-On') && ih.includes('See the workshops and book'), r.json && r.json.subject);
+// "a free Hugging Face account" is what to bring to the fine-tuning workshop, and true.
+const ihText = ih.replace(/<[^>]+>/g, ' ').replace(/a free Hugging Face account/g, '');
+check('it says nothing untrue and names no pass or price', !/included|includes|free|your pass|premium|vip|student pass|delegate|&#8377;|₹|rs\.?\s?\d/i.test(ihText), ihText.match(/(included|includes|free|your pass|premium|vip|student pass|delegate|₹)/i));
+check('the preview mints no sign-in link and sends nothing', ih.includes('href="#preview"') && X.rows('SELECT COUNT(*) AS n FROM login_tokens')[0].n === xt0 && X.sent.length === 0);
+
+// A bulk run keeps the order it was given.
+r = await X.call('POST', '/api/admin/campaigns', { kind: 'workshop_invite', audience: 'free', ids: au.ids, title: 'Workshop invitation: Free Visitor Pass' });
+check('a workshop_invite run starts', r.status === 201 && r.json.total === 3, r.json);
+const campId = r.json.id;
+const runOrder = X.rows('SELECT attendee_id FROM campaign_recipients WHERE campaign_id = ? ORDER BY id', [campId]).map(x => x.attendee_id);
+check('its people are in the order given, not by id', JSON.stringify(runOrder) === JSON.stringify([403, 402, 401]), runOrder);
+
+// Outside 9am-9pm it waits; inside, one at a time at the pace.
+fakeMs = noonIst() + 11 * 3600000; // 11 pm in India
+r = await X.call('POST', '/api/admin/attendees/403/send-workshop-invite', {});
+check('outside the sending window: waits, sends nothing', r.status === 409 && r.json.paused === true && X.sent.length === 0, r.json);
+fakeMs = noonIst();
+X.db.run("INSERT INTO app_settings (key, value) VALUES ('profile_reminder_gap_seconds', '30') ON CONFLICT(key) DO UPDATE SET value = '30'");
+r = await X.call('POST', `/api/admin/campaigns/${campId}/pump`, { batch: 1 });
+check('the run sends the first person (the one in the app lately)', X.sent.length === 1 && JSON.stringify(X.sent[0]).includes('v-active@example.test'), r.json);
+const im = JSON.stringify(X.sent[0] || {});
+check('the button signs them in at the workshops', /action=workshop&(amp;)?token=[A-Za-z0-9_-]{16,}/.test(im));
+check('it carries the unsubscribe link', /unsubscribe/i.test(im));
+r = await X.call('POST', `/api/admin/campaigns/${campId}/pump`, { batch: 1 });
+check('the next one waits for the pace', X.sent.length === 1, r.json);
+fakeMs += 31000;
+r = await X.call('POST', `/api/admin/campaigns/${campId}/pump`, { batch: 1 });
+check('...then goes', X.sent.length === 2 && JSON.stringify(X.sent[1]).includes('v-ceo@example.test'), r.json);
+fakeMs += 31000;
+r = await X.call('POST', '/api/admin/attendees/402/send-workshop-invite', {});
+check('nobody is invited twice', r.status === 200 && r.json.skipped === true && X.sent.length === 2, r.json);
+r = await X.call('POST', '/api/admin/attendees/410/send-workshop-invite', {});
+check('a VIP Pass is not invited (it has a workshop)', r.json.skipped === true, r.json);
+r = await X.call('POST', '/api/admin/attendees/404/send-workshop-invite', {});
+check('an unsubscribed Visitor is not invited', r.json.skipped === true, r.json);
+iv = (await X.call('GET', '/api/admin/workshop-invites')).json;
+check('the panel: one free Visitor left, the run listed', iv.groups.free.count === 1 && iv.campaigns.length === 1 && iv.campaigns[0].sent === 2, iv);
+
+// "Book this seat" on a pass without a workshop.
+const asAtt = (id) => ({ admin: false, headers: { Cookie: sessionCookie('h', id) } });
+fakeMs = null;
+r = await X.call('POST', '/api/workshops/choose', { workshop_id: 1 }, asAtt(403));
+check('a Visitor pressing Book: refused with need_pass, no seat', r.status === 403 && r.json.need_pass === true && X.rows('SELECT COUNT(*) AS n FROM workshop_seats')[0].n === 0, r.json);
+r = await X.call('POST', '/api/workshops/choose', { workshop_id: 1 }, asAtt(403));
+r = await X.call('POST', '/api/workshops/choose', { workshop_id: 2 }, asAtt(403));
+r = await X.call('POST', '/api/workshops/choose', { workshop_id: 2 }, asAtt(407));
+const tries = X.rows("SELECT entity_id, detail FROM admin_audit WHERE action = 'workshop.tried' ORDER BY id");
+check('each try is kept: once per person and workshop in ten minutes', tries.length === 3 && tries.filter(x => x.entity_id === '403').length === 2, tries);
+r = await X.call('POST', '/api/workshops/choose', { workshop_id: 1 }, asAtt(409));
+check('an unpaid Delegate (no workshop in that pass either) is a try too: a lead', r.status === 403 && r.json.need_pass === true && X.rows("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'workshop.tried'")[0].n === 4, r.json);
+r = await X.call('POST', '/api/workshops/choose', { workshop_id: 1 }, asAtt(410));
+check('a VIP still books a seat as before', r.status === 200 && r.json.mine === 1, r.json);
+let tl = (await X.call('GET', '/api/admin/workshop-tries')).json;
+const t403 = tl.people.find(p => p.id === 403);
+check('the call list: who, phone, both workshops, not bought yet', tl.counts.tried === 3 && t403 && t403.mobile === '98200000403' && t403.workshops.length === 2 && t403.now === 'Not bought yet' && t403.tries === 2, tl);
+X.db.run("UPDATE attendees SET badge_type = 'Premium Delegate Pass' WHERE id = 403");
+tl = (await X.call('GET', '/api/admin/workshop-tries')).json;
+check('...and says when one has bought since', tl.people.find(p => p.id === 403).now === 'Bought a workshop pass' && tl.counts.bought === 1, tl.counts);
+r = await X.call('GET', '/api/admin/workshop-tries', undefined, { admin: false });
+check('nobody but an admin reads the call list', r.status === 401 || r.status === 403, r.status);
+globalThis.Date = RealDate;
 
 console.log(fails ? `\n${fails} FAILED` : '\nALL PASS');
 process.exit(fails ? 1 : 0);
