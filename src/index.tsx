@@ -9,6 +9,7 @@ import conference, { configureConference, draftFilterSql, venueSelectSql, fillVe
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry } from './routes/workshop-reminder'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
+import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, SUMMIT_EVENT_NAME, SUMMIT_WHEN } from './routes/agent-summit'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
 import { SENDER_DOMAIN, sendAs, sendersFor, pickSender } from './lib/senders'
@@ -546,6 +547,32 @@ configureWorkshopReminder({ sendEmail: sendAdminEmail, audit, emailHeader: email
   } })
 app.route('/', workshopReminder)
 
+// AI Agent Summit 2027 (event 3, 15 Nov 2026): pages in public/ai-agent-summit/, its passes,
+// showcase applications and partner enquiries in routes/agent-summit.ts. Closures, because
+// most of what it borrows is declared further down this file.
+configureAgentSummit({
+  audit: (...a: any[]) => (audit as any)(...a),
+  sendEmail: (...a: any[]) => (sendAdminEmail as any)(...a),
+  settingValue: (c: any, k: string) => settingValue(c, k),
+  onlinePaymentsOn: (c: any) => onlinePaymentsOn(c),
+  payLinkToken: (c: any, id: string) => payLinkToken(c, id),
+  orderFromLinkToken: (c: any, t: string) => orderFromLinkToken(c, t),
+  mobileHolder: (...a: any[]) => (mobileHolder as any)(...a),
+  emailTypo: (e: string) => emailTypo(e),
+  cleanBilling: (r: any) => cleanBilling(r),
+  saveBilling: (c: any, id: any, b: any) => saveBilling(c, id, b),
+  sanitizeSource: (v: unknown) => sanitizeRegistrationSource(v),
+  noAppOnPhone: (html: string) => noAppOnPhone(html),
+  notifyTeam: (c: any, row: any) => notifyTeamOfInquiry(c, row),
+  settledPaidTier: (a: any) => settledPaidTier(a),
+  payPage: (t: string, b: string, e?: any) => payPage(t, b, e),
+  payH1: (t: string) => payH1(t), payP: (t: string) => payP(t), payButton: (href: string, l: string) => payButton(href, l),
+  payRows: (r: [string, string][]) => payRows(r), payEsc: (v: any) => payEsc(v), rupees: (pz: number) => rupees(pz),
+  istStamp: (v: any) => istStamp(v), mobileKey: (v: unknown) => mobileKey(v), maskEmail: (e: string) => maskEmail(e),
+  consts: () => ({ PAID_TIERS, FREE_BADGE_RE, PASS_GST_RATE, PAY_ORDERS_PER_HOUR }),
+})
+app.route('/', agentSummit)
+
 // Marketplace page routes
 app.get('/marketplace', (c) => c.html(marketplacePageHTML()))
 app.get('/marketplace/faq', (c) => c.html(marketplaceFaqPageHTML()))
@@ -567,6 +594,8 @@ app.get('/marketplace/listing/:id', (c) => {
 // be listed by the directory or the app's other public routes, which all take an event id.
 // Written as a literal: this line runs before DELHI_EVENT_ID is declared.
 app.use('/api/events/2/*', (c) => c.json({ error: 'Not found' }, 404))
+// Event 3 is the AI Agent Summit 2027 (routes/agent-summit.ts): passes only, no app yet.
+app.use('/api/events/3/*', (c) => c.json({ error: 'Not found' }, 404))
 
 app.get('/api/events/:id', async (c) => {
   const id = c.req.param('id')
@@ -2749,7 +2778,7 @@ async function autoReceiptForOrder(c: any, order: any, a: any, trackingId: strin
       buyer_phone: a.mobile || '',
       // An upgrade order carries the difference, so its invoice says what the
       // difference was for.
-      item_desc: (upgradeFrom ? 'Upgrade from ' + upgradeFrom + ' to ' + order.pass_type : order.pass_type) + ' - ' + (isDelhiOrder(order) ? DELHI_EVENT_NAME : 'Bharat AI Innovation Conference & Exhibition 2026'),
+      item_desc: (upgradeFrom ? 'Upgrade from ' + upgradeFrom + ' to ' + order.pass_type : order.pass_type) + ' - ' + (isDelhiOrder(order) ? DELHI_EVENT_NAME : isSummitOrder(order) ? SUMMIT_EVENT_NAME : 'Bharat AI Innovation Conference & Exhibition 2026'),
       order_ref: order.order_id,
       payment_ref: trackingId ? 'CCAvenue ' + trackingId : '',
       paid_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
@@ -4167,10 +4196,10 @@ const payRows = (rows: [string, string][]) =>
     `<tr><td valign="top" style="padding:0 16px 8px 0;font-size:12px;color:#888;white-space:nowrap;">${k}</td>` +
     `<td valign="top" style="padding:0 0 8px;font-size:14px;color:#1E2140;font-weight:bold;word-break:break-word;">${v}</td></tr>`).join('') + `</table>`
 
-function payPage(title: string, body: string, delhi = false): string {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title} - ${delhi ? DELHI_EVENT_NAME : 'Bharat AI Innovation 2026'}</title></head>
+function payPage(title: string, body: string, delhi: boolean | 'summit' = false): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title} - ${delhi === 'summit' ? SUMMIT_EVENT_NAME : delhi ? DELHI_EVENT_NAME : 'Bharat AI Innovation 2026'}</title></head>
 <body style="margin:0;padding:24px 12px;background:#f5f5f5;font-family:Arial,sans-serif;"><div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;">
-${emailBrandHeader('', delhi ? DELHI_WHEN : '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+${emailBrandHeader('', delhi === 'summit' ? SUMMIT_WHEN : delhi ? DELHI_WHEN : '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
 <div style="padding:26px 24px 30px;">${body}</div></div></body></html>`
 }
 
@@ -4198,12 +4227,13 @@ app.get('/pay/ccavenue/:token', async (c) => {
   }
   if (order.status === 'paid') return c.redirect('/pay/result?o=' + encodeURIComponent(token), 303)
   const delhi = isDelhiOrder(order)
+  const summit = isSummitOrder(order)
   const born = Date.parse(String(order.created_at).replace(' ', 'T') + 'Z')
   const fresh = Number.isFinite(born) && Date.now() - born < PAY_LINK_MINUTES * 60000
   if (order.status !== 'created' || !fresh) {
     return c.html(payPage('Start again', payH1('This checkout has closed.') +
-      payP('A payment link is good for one attempt, for an hour. Nothing further has been charged. Please start a new payment from ' + (delhi ? 'the Delhi page.' : 'the app.')) +
-      (delhi ? payButton('/delhi-register', 'Start again') : payButton('/app', 'Open the app')), delhi), 410)
+      payP('A payment link is good for one attempt, for an hour. Nothing further has been charged. Please start a new payment from ' + (delhi ? 'the Delhi page.' : summit ? 'the AI Agent Summit page.' : 'the app.')) +
+      (delhi ? payButton('/delhi-register', 'Start again') : summit ? payButton('/ai-agent-summit/attend', 'Start again') : payButton('/app', 'Open the app')), summit ? 'summit' : delhi), 410)
   }
 
   const a = (await c.env.DB.prepare('SELECT name, email, mobile, city FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any) || {}
@@ -4226,17 +4256,17 @@ app.get('/pay/ccavenue/:token', async (c) => {
     merchant_param1: await payOrderSig(c, order.order_id, order.amount_paise),
     merchant_param2: order.pass_type,
     // So a Delhi order can be told apart in CCAvenue's own reports.
-    ...(delhi ? { merchant_param3: 'Delhi 2027' } : {}),
+    ...(delhi ? { merchant_param3: 'Delhi 2027' } : summit ? { merchant_param3: 'AI Agent Summit 2027' } : {}),
   }), cfg.workingKey)
 
   return c.html(payPage('Opening secure checkout',
     payH1('Taking you to the secure payment page') +
-    payP(`${PAID_TIERS.includes(String(order.previous_badge || '')) && Number(order.base_paise) < ((delhi ? delhiPassAmounts(order.pass_type) : passAmounts(order.pass_type))?.base || 0) ? 'Upgrade to ' : ''}${payEsc(order.pass_type)}${delhi ? ' for Delhi 2027' : ''} &middot; &#8377;${rupees(Number(order.amount_paise))} including GST`) +
+    payP(`${PAID_TIERS.includes(String(order.previous_badge || '')) && Number(order.base_paise) < ((delhi ? delhiPassAmounts(order.pass_type) : summit ? summitPassAmounts(order.pass_type) : passAmounts(order.pass_type))?.base || 0) ? 'Upgrade to ' : ''}${payEsc(order.pass_type)}${delhi ? ' for Delhi 2027' : summit ? ' for AI Agent Summit 2027' : ''} &middot; &#8377;${rupees(Number(order.amount_paise))} including GST`) +
     `<form id="f" method="post" action="${cfg.endpoint}"><input type="hidden" name="encRequest" value="${encRequest}"><input type="hidden" name="access_code" value="${payEsc(cfg.accessCode)}">` +
     `<button type="submit" style="padding:13px 24px;background:#FF6B00;color:#fff;border:0;border-radius:9px;font-size:15px;font-weight:bold;cursor:pointer;">Continue to secure payment</button>` +
-    `</form><p style="margin:14px 0 0;"><a href="${delhi ? '/delhi' : '/app'}" style="font-size:13px;color:#555;">Back to the ${delhi ? 'Delhi page' : 'app'}</a></p>` +
+    `</form><p style="margin:14px 0 0;"><a href="${delhi ? '/delhi' : summit ? '/ai-agent-summit/attend' : '/app'}" style="font-size:13px;color:#555;">Back to the ${delhi ? 'Delhi page' : summit ? 'summit page' : 'app'}</a></p>` +
     `<p style="font-size:12px;line-height:1.6;color:#888;margin:16px 0 0;">Payments are handled by CCAvenue. Card and bank details are entered on their page and never reach this site.</p>` +
-    `<script>(function(){var k="pay-sent-${order.order_id}",again=false;try{again=!!sessionStorage.getItem(k);sessionStorage.setItem(k,"1");}catch(e){}if(!again)document.getElementById("f").submit();})();</script>`, delhi))
+    `<script>(function(){var k="pay-sent-${order.order_id}",again=false;try{again=!!sessionStorage.getItem(k);sessionStorage.setItem(k,"1");}catch(e){}if(!again)document.getElementById("f").submit();})();</script>`, summit ? 'summit' : delhi))
 })
 
 // Step three: the gateway sends the buyer back here with its answer, for a
@@ -4385,6 +4415,7 @@ async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMo
 async function sendPaymentEmails(c: any, a: any, order: any, trackingId: string, paymentMode: string, unlocked: boolean,
     receipt: { invoice_no: string; url: string } | null = null, upgradeFrom = '') {
   if (isDelhiOrder(order)) return sendDelhiPaymentEmails(c, a, order, trackingId, paymentMode, unlocked, receipt, upgradeFrom)
+  if (isSummitOrder(order)) return sendSummitPaymentEmails(c, a, order, trackingId, paymentMode, unlocked, receipt, upgradeFrom)
   try {
     const amount = rupees(Number(order.amount_paise))
     const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
@@ -4462,6 +4493,7 @@ app.get('/pay/result', async (c) => {
       payButton('/app', 'Open the app')))
   }
   if (isDelhiOrder(order)) return delhiPayResult(c, order)
+  if (isSummitOrder(order)) return summitPayResult(c, order)
   if (isShowcaseOrder(order)) return showcasePayResult(c, order)
   if (isGroupOrder(order)) return groupPayResult(c, order)
   const no = payEsc(order.order_id)
@@ -4571,6 +4603,7 @@ async function pendingPaymentsJSON(c: any) {
     paidOnline = (rows.results || []).map((o: any) => ({
       ...o, badge_type: o.pass_type, amount: Number(o.amount_paise) / 100, paid_on: istStamp(o.paid_at),
       ...(isDelhiOrder(o) ? { pass_type: 'Delhi 2027: ' + o.pass_type, item_desc: o.pass_type + ' - ' + DELHI_EVENT_NAME } : {}),
+      ...(isSummitOrder(o) ? { pass_type: 'AI Agent Summit: ' + o.pass_type, item_desc: o.pass_type + ' - ' + SUMMIT_EVENT_NAME } : {}),
     }))
   }
 
@@ -5591,6 +5624,7 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
   const doc = receipt ? 'receipt' : 'invoice'
   // The description is the one thing an invoice row says about which event it is for.
   const delhiInvoice = String(v.item_desc || '').includes('Delhi 2027')
+  const summitInvoice = String(v.item_desc || '').includes(SUMMIT_EVENT_NAME)
 
   // The PDF is what a buyer's finance team files; the link stays for anyone who
   // lost the attachment. A PDF that cannot be drawn must not stop the email.
@@ -5606,7 +5640,7 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
-      ${emailBrandHeader(receipt ? 'Your payment receipt' : 'Your invoice and confirmation', delhiInvoice ? DELHI_WHEN : '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+      ${emailBrandHeader(receipt ? 'Your payment receipt' : 'Your invoice and confirmation', delhiInvoice ? DELHI_WHEN : summitInvoice ? SUMMIT_WHEN : '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
       <div style="padding:30px;">
         <p style="margin:0 0 6px;font-size:15px;color:#333;">Dear <strong>${esc(v.buyer_name)}</strong>,</p>
         <p style="margin:0 0 12px;font-size:14px;line-height:1.7;color:#333;">We acknowledge the receipt of <strong>INR ${rupees(v.total_paise)}</strong> against ${esc(paidFor)} fees.${pdf ? (receipt ? ' Please find the receipt attached for your records.' : ' Please find the tax invoice attached for your accounting purpose.') : ''}</p>
@@ -5637,12 +5671,12 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
       body: JSON.stringify({
         Recipients: copyTo.length ? { To: [v.buyer_email], BCC: copyTo } : { To: [v.buyer_email] },
         Content: {
-          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: delhiInvoice ? html : await withAppOnPhoneFor(c, html, v.buyer_email) }],
+          Body: [{ ContentType: 'HTML', Charset: 'utf-8', Content: (delhiInvoice || summitInvoice) ? html : await withAppOnPhoneFor(c, html, v.buyer_email) }],
           From: `${fromName} <${fromEmail}>`,
           ReplyTo: fromEmail,
           Subject: receipt
-            ? 'Receipt ' + v.invoice_no + ' for your payment - ' + (delhiInvoice ? DELHI_EVENT_NAME : 'Bharat AI Innovation 2026')
-            : 'Invoice ' + v.invoice_no + ' and registration confirmation - ' + (delhiInvoice ? DELHI_EVENT_NAME : 'Bharat AI Innovation 2026'),
+            ? 'Receipt ' + v.invoice_no + ' for your payment - ' + (delhiInvoice ? DELHI_EVENT_NAME : summitInvoice ? SUMMIT_EVENT_NAME : 'Bharat AI Innovation 2026')
+            : 'Invoice ' + v.invoice_no + ' and registration confirmation - ' + (delhiInvoice ? DELHI_EVENT_NAME : summitInvoice ? SUMMIT_EVENT_NAME : 'Bharat AI Innovation 2026'),
           ...(pdf ? { Attachments: [{ BinaryContent: pdf, Name: invoicePdfName(v), ContentType: 'application/pdf' }] } : {}),
         },
         Options: { TrackClicks: false, TrackOpens: false },
@@ -21110,6 +21144,8 @@ app.get('/api/admin/events/:id/board', async (c) => {
       unpaid: hasPay ? await count(`SELECT COUNT(*) AS n FROM attendees WHERE event_id = ? AND LOWER(TRIM(COALESCE(payment_status, ''))) IN ('pending', 'refunded')`, DELHI_EVENT_ID) : 0,
       paise: online ? await count(`SELECT COALESCE(SUM(amount_paise), 0) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid'`, DELHI_EVENT_ID) : 0,
     },
+    // AI Agent Summit 2027 (event 3): registrations, orders paid, money in, buyers/investors to check.
+    summit_sales: await summitSales(c),
     // The free-pass waiting list (0056): who waits, who was let in, is the switch on.
     waitlist: await waitlistCounts(c, eventId),
     booths_submitted: await count(`SELECT COUNT(*) AS n FROM booth_requests WHERE event_id = ? AND status = 'submitted'`, eventId),
@@ -22695,19 +22731,20 @@ app.post('/api/admin/inbox-submissions/:id/reread', async (c) => {
 // - deal value, follow-up day and lost reason in inquiry_pipeline (0053). Until that
 //   table exists those three are hidden and the rest works.
 // The screen itself is public/js/admin-inquiries.js (one global, InqDesk).
-const INQUIRY_TYPES = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'government', 'workshop_partner', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'other']
+const INQUIRY_TYPES = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'government', 'workshop_partner', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'agent_showcase', 'other']
 const INQUIRY_STATUSES = ['new', 'responded', 'in_progress', 'won', 'lost', 'closed', 'waitlisted']
 const INQUIRY_OPEN = ['new', 'responded', 'in_progress']
 const INQUIRY_TYPE_LABEL: Record<string, string> = {
   general: 'General', exhibition: 'Exhibition', booth_inquiry: 'Booth', sponsorship: 'Sponsorship', speaking: 'Speaking',
   government: 'Government', workshop_partner: 'Workshop partner', media: 'Media', group_registration: 'Group registration',
   pass_upgrade: 'Pass upgrade', meeting_room: 'Boardroom', other: 'Other', delhi_pass: 'Delhi free pass',
+  agent_showcase: 'AI Agent Summit showcase',
 }
 // How much a type is worth chasing before anything else is known. Money first: booths
 // and sponsorship are sold in lakhs, a group is many passes, a speaking request or a
 // question is answered rather than sold.
 const INQUIRY_TYPE_WEIGHT: Record<string, number> = {
-  sponsorship: 50, booth_inquiry: 48, exhibition: 42, group_registration: 34, government: 32, pass_upgrade: 30,
+  sponsorship: 50, booth_inquiry: 48, agent_showcase: 46, exhibition: 42, group_registration: 34, government: 32, pass_upgrade: 30,
   workshop_partner: 24, meeting_room: 22, media: 14, speaking: 10, general: 10, other: 6,
 }
 const INQUIRY_FREE_MAIL_RE = /@(gmail|googlemail|yahoo|ymail|rocketmail|hotmail|outlook|live|msn|rediffmail|icloud|me|aol|protonmail|proton|gmx)\.[a-z.]+$/i
@@ -43592,7 +43629,12 @@ function adminPageScript(): string {
         '<i class="fas fa-ticket text-green-400"></i>' +
         '<span class="flex-1 text-sm text-gray-200"><b>' + Number(ds.paid || 0).toLocaleString('en-IN') + '</b> Delhi 2027 passes paid for, &#8377;' + (Number(ds.paise || 0) / 100).toLocaleString('en-IN') + ' received <span class="text-xs text-gray-500">(' + Number(ds.unpaid || 0).toLocaleString('en-IN') + ' started and not paid)</span></span>' +
         '<i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
-      return passCard + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">' + moneyCard + todoCard + '</div>' + waitCard + delhiCard + delhiSales;
+      var ss = t.summit_sales || {};
+      var summitSalesCard = '<a href="#" onclick="openSummitPasses();return false" class="glass rounded-xl p-4 mt-3 flex items-center gap-3 no-underline hover:bg-white/5">' +
+        '<i class="fas fa-robot text-green-400"></i>' +
+        '<span class="flex-1 text-sm text-gray-200"><b>' + Number(ss.registered || 0).toLocaleString('en-IN') + '</b> AI Agent Summit 2027 registrations, <b>' + Number(ss.paid || 0).toLocaleString('en-IN') + '</b> paid online, &#8377;' + (Number(ss.paise || 0) / 100).toLocaleString('en-IN') + ' received' + (Number(ss.review || 0) ? ', <b>' + Number(ss.review) + '</b> buyer or investor passes to check' : '') + '</span>' +
+        '<i class="fas fa-chevron-right text-[10px] text-gray-600"></i></a>';
+      return passCard + '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">' + moneyCard + todoCard + '</div>' + waitCard + delhiCard + delhiSales + summitSalesCard;
     }
     // Who holds or has started a Delhi 2027 pass. They are not on the Attendees list,
     // which is Mumbai's.
@@ -43631,6 +43673,45 @@ function adminPageScript(): string {
       var link = document.createElement('a');
       link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
       link.download = 'delhi-2027-passes.csv';
+      document.body.appendChild(link); link.click(); link.remove();
+    }
+    // Who registered for the AI Agent Summit 2027 (event 3). Not on the Attendees list, which is Mumbai's.
+    async function openSummitPasses() {
+      var d;
+      try { d = await api.get('/api/admin/agent-summit/passes'); } catch (e) { d = null; }
+      if (!d || !Array.isArray(d.results)) { alert('Could not load the AI Agent Summit list. Please try again.'); return; }
+      window._summitPasses = d.results;
+      var rows = d.results.map(function (a) {
+        var paid = Number(a.paid_paise || 0) > 0;
+        var check = a.badge_type === 'Buyer Pass' || a.badge_type === 'Investor Pass';
+        return '<tr class="border-b border-white/5">' +
+          '<td class="py-2 pr-3"><div class="text-gray-200">' + deskEsc(a.name) + '</div><div class="text-[11px] text-gray-500">' + deskEsc(a.email) + ' &middot; ' + deskEsc(a.mobile) + '</div></td>' +
+          '<td class="py-2 pr-3 text-gray-400">' + deskEsc(a.company) + (a.job_title ? '<div class="text-[11px] text-gray-500">' + deskEsc(a.job_title) + '</div>' : '') + '</td>' +
+          '<td class="py-2 pr-3 text-gray-300">' + deskEsc(a.badge_type) + (check ? '<div class="text-[11px] text-amber-300">to check and confirm</div>' : '') + '</td>' +
+          '<td class="py-2 text-right ' + (paid ? 'text-green-300' : 'text-gray-400') + '">' + (paid ? '&#8377;' + (Number(a.paid_paise || 0) / 100).toLocaleString('en-IN') : (String(a.payment_status || '').toLowerCase() === 'pending' ? 'not paid' : 'free')) + '</td>' +
+        '</tr>';
+      }).join('');
+      var wrap = document.createElement('div');
+      wrap.id = 'sp-modal';
+      wrap.className = 'fixed inset-0 z-50 flex items-center justify-center p-4';
+      wrap.style.background = 'rgba(4,6,20,0.8)';
+      wrap.innerHTML = '<div class="glass rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto border border-white/10">' +
+        '<div class="flex items-center justify-between gap-3 mb-4"><h3 class="font-bold text-lg">AI Agent Summit 2027 passes</h3><div class="flex gap-2">' +
+          '<button onclick="downloadSummitPasses()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10">Download CSV</button>' +
+          '<button onclick="document.getElementById(&quot;sp-modal&quot;).remove()" class="px-3 py-1.5 rounded-lg text-xs glass hover:bg-white/10">Close</button>' +
+        '</div></div>' +
+        (rows ? '<table class="w-full text-sm">' + rows + '</table>' : '<p class="text-gray-500 text-sm py-4">Nobody has registered for the AI Agent Summit yet.</p>') +
+        '<p class="text-[11px] text-gray-500 mt-4">Paid orders and their GST invoices are under Payments, Paid online (marked AI Agent Summit). Showcase applications and partner enquiries are on Enquiries (type AI Agent Summit showcase, and Sponsorship with an AI Agent Summit subject).</p>' +
+      '</div>';
+      document.body.appendChild(wrap);
+    }
+    function downloadSummitPasses() {
+      var cols = ['name', 'email', 'mobile', 'company', 'job_title', 'city', 'industry', 'badge_type', 'payment_status', 'paid_paise', 'registration_source', 'registration_date'];
+      var cell = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+      var csv = [cols.join(',')].concat((window._summitPasses || []).map(function (a) { return cols.map(function (k) { return cell(a[k]); }).join(','); })).join(String.fromCharCode(10));
+      var link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      link.download = 'ai-agent-summit-2027-passes.csv';
       document.body.appendChild(link); link.click(); link.remove();
     }
     async function loadBoard(ev) {
@@ -52608,7 +52689,7 @@ function adminPageScript(): string {
     // own stylesheet, both loaded the first time Inquiries opens. The Overview
     // board's links name a type first (openEnquiriesOfType).
     let inquiryFilterType = '';
-    var INQ_DESK_VERSION = '20261113a';
+    var INQ_DESK_VERSION = '20261115s';
     var inqDeskAssets = null;
     function openEnquiriesOfType(type) {
       inquiryFilterType = type;
