@@ -170,7 +170,7 @@
 
     { "hall": "raman", "day": 1, "start": "08:30", "end": "09:30", "type": "break", "label": "Registration", "title": "Registration" },
     { "hall": "raman", "day": 1, "start": "09:30", "end": "11:30", "type": "elsewhere", "label": "Inauguration", "title": "Inauguration and keynotes in Homi J. Bhabha Hall", "note": "Everyone gathers in Homi J. Bhabha Hall." },
-    { "hall": "raman", "day": 1, "start": "11:30", "end": "13:00", "type": "workshop", "label": "Workshop", "track": "Training Workshop", "title": "Workshop by IBM", "note": "Topic and trainer to be announced." },
+    { "hall": "raman", "day": 1, "start": "11:30", "end": "13:00", "type": "workshop", "label": "Workshop", "track": "Training Workshop", "title": "AI, Trust and Evolving Skills using IBM Bob", "speaker": { "name": "KrishnaKanth Naik", "role": "Program Manager, IBM Career Education" }, "workshop": "ibm-workshop" },
     { "hall": "raman", "day": 1, "start": "13:00", "end": "14:00", "type": "break", "label": "Lunch", "title": "Networking Lunch" },
     { "hall": "raman", "day": 1, "start": "14:00", "end": "15:30", "type": "workshop", "label": "Workshop", "track": "Training Workshop", "title": "From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers", "speaker": { "name": "Dr. Ashish Tendulkar", "role": "Lead AI, Google" }, "workshop": "fde-workshop" },
     { "hall": "raman", "day": 1, "start": "15:30", "end": "15:45", "type": "break", "label": "Tea", "title": "Hi-Tea Break" },

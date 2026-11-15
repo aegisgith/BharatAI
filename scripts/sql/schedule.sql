@@ -74,7 +74,7 @@ INSERT INTO sessions (event_id, title, description, speaker_name, speaker_title,
 (1, 'Innovation Talk: Asmadiya Technologies', 'AI Innovation & Asmadiya products', 'Ashish Kumar Mishra', 'CEO & MD, Asmadiya Technologies', '💡', 'talk', 'Innovation Talks', 'Kalam Theatre', '2026-11-21 16:15', '2026-11-21 16:35', 1000),
 (1, 'Innovation Talk: Info Science Labs', 'Speaker to be announced.', NULL, NULL, '💡', 'talk', 'Innovation Talks', 'Kalam Theatre', '2026-11-21 16:35', '2026-11-21 16:55', 1000),
 (1, 'Registration', NULL, NULL, NULL, '📋', 'break', NULL, 'Raman Theatre', '2026-11-20 08:30', '2026-11-20 09:30', 5000),
-(1, 'Workshop by IBM', 'Topic and trainer to be announced.', NULL, NULL, '🔬', 'workshop', 'Training Workshop', 'Raman Theatre', '2026-11-20 11:30', '2026-11-20 13:00', 100),
+(1, 'AI, Trust and Evolving Skills using IBM Bob', NULL, 'KrishnaKanth Naik', 'Program Manager, IBM Career Education', '🔬', 'workshop', 'Training Workshop', 'Raman Theatre', '2026-11-20 11:30', '2026-11-20 13:00', 100),
 (1, 'Networking Lunch', NULL, NULL, NULL, '🍽️', 'break', NULL, 'Raman Theatre', '2026-11-20 13:00', '2026-11-20 14:00', 5000),
 (1, 'From Prototype to Production: Building Enterprise AI with Forward-Deployed Engineers', NULL, 'Dr. Ashish Tendulkar', 'Lead AI, Google', '🔬', 'workshop', 'Training Workshop', 'Raman Theatre', '2026-11-20 14:00', '2026-11-20 15:30', 100),
 (1, 'Hi-Tea Break', NULL, NULL, NULL, '🍵', 'break', NULL, 'Raman Theatre', '2026-11-20 15:30', '2026-11-20 15:45', 5000),
@@ -131,6 +131,7 @@ INSERT INTO sessions (event_id, title, description, speaker_name, speaker_title,
 (1, 'Innovation Talk: Assessfy', 'Improving Learning Outcomes with AI: From Assessment to Measurable Impact', 'Meghavi Shah', 'Head Alliance, Assessfy', '💡', 'talk', 'Innovation Talks', 'Aryabhata Theatre', '2026-11-21 12:38', '2026-11-21 12:48', 1000),
 (1, 'Innovation Talk: Aegis School of Data Science & AI', 'Speaker to be announced.', NULL, NULL, '💡', 'talk', 'Innovation Talks', 'Aryabhata Theatre', '2026-11-21 12:50', '2026-11-21 13:00', 1000);
 
+UPDATE workshops SET starts_at = '2026-11-20 11:30', ends_at = '2026-11-20 13:00', room = 'Raman Theatre' WHERE event_id = 1 AND slug = 'ibm-workshop';
 UPDATE workshops SET starts_at = '2026-11-20 14:00', ends_at = '2026-11-20 15:30', room = 'Raman Theatre' WHERE event_id = 1 AND slug = 'fde-workshop';
 UPDATE workshops SET starts_at = '2026-11-20 15:45', ends_at = '2026-11-20 17:15', room = 'Raman Theatre' WHERE event_id = 1 AND slug = 'llm-fine-tuning';
 UPDATE workshops SET starts_at = '2026-11-21 14:00', ends_at = '2026-11-21 15:30', room = 'Raman Theatre' WHERE event_id = 1 AND slug = 'asr-workshop';

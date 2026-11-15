@@ -395,11 +395,11 @@
             </div>
             <ul class="tw-tiles">
                 <li><a class="tw-tile" href="#ibm-workshop">
-                    <span class="tw-tile-photo"><img class="tw-logo" src="/images/logo-ibm.webp" alt="" width="320" height="320" loading="lazy" decoding="async"></span>
-                    <strong>IBM</strong>
-                    <span class="tw-tile-role">Instructor to be announced</span>
-                    <span class="tw-tile-what">Workshop by IBM</span>
-                    <span class="tw-tile-how">Fri 20 Nov, 11:30, 90 minutes</span>
+                    <span class="tw-tile-photo"><img src="/images/speaker-krishnakanth-naik.webp" alt="" width="320" height="320" loading="lazy" decoding="async"></span>
+                    <strong>KrishnaKanth Naik</strong>
+                    <span class="tw-tile-role">Program Manager, IBM Career Education</span>
+                    <span class="tw-tile-what">AI, Trust and Evolving Skills using IBM Bob</span>
+                    <span class="tw-tile-how">Hands-on, 90 minutes</span>
                 </a></li>
                 <li><a class="tw-tile" href="#fde-workshop">
                     <span class="tw-tile-photo" style="--tw-zoom:1.1"><img src="/images/speaker-ashish-tendulkar-panel.webp" alt="" width="320" height="320" loading="lazy" decoding="async"></span>
@@ -485,16 +485,72 @@
             </div>
             <article class="session-feature" id="ibm-workshop">
                 <div class="session-lead">
-                    <img class="tw-logo" src="/images/logo-ibm.webp" alt="IBM" width="180" height="180" loading="lazy" decoding="async">
+                    <img src="/images/speaker-krishnakanth-naik.webp" alt="KrishnaKanth Naik" width="180" height="180" loading="lazy" decoding="async">
                     <div>
-                        <strong>IBM</strong>
-                        <span>Instructor to be announced</span>
+                        <strong>KrishnaKanth Naik</strong>
+                        <span>Program Manager</span>
+                        <span>IBM Career Education</span>
                     </div>
                 </div>
                 <div class="session-body">
-                    <div class="session-tags"><span class="workshop-badge">Workshop</span><span class="session-format">90 minutes</span></div>
-                    <h3>Workshop by IBM</h3>
-                    <p>A 90-minute workshop by IBM on Friday 20 November, 11:30 to 13:00, in Raman Theatre. The instructor and the topic will be announced soon.</p>
+                    <div class="session-tags"><span class="workshop-badge">Hands-on</span><span class="session-format">90 minutes &middot; Intermediate</span></div>
+                    <h3>AI, Trust and Evolving Skills using IBM Bob</h3>
+                    <p>Check the security of the Skills your agentic AI uses. A workshop by IBM on Friday 20 November, 11:30 to 13:00, in Raman Theatre. You learn to use IBM Bob, IBM's AI coding assistant, see what Skills can do, and turn a GitHub repository into a Skill of your own. Then you watch how Bob behaves differently once the new Skill is added.</p>
+                    <p>The internet is full of free, open-source Skills, so you learn to check one before you trust it. A game-style storyline uses Ghidra, the NSA's tool for taking apart any program on a phone or a Windows machine: you scan a Ghidra Skill for security problems, add it to Bob, and compare Bob's answers before and after.</p>
+                    <div class="session-takeaway"><strong>Who should attend:</strong> anyone starting out with coding agents, data scientists, software developers and technical leads who want to use agentic AI Skills to get more done. Technology leaders weighing up agentic AI Skills benefit from the whole session.</div>
+                    <div class="tw-rows">
+                        <details class="tw-row">
+                            <summary>The eight modules</summary>
+                            <div class="tw-row-body">
+                                <ol class="session-agenda">
+                                    <li><strong>What is IBM Bob and how does it think? <span class="session-mins">Talk</span></strong>How Bob is built, its modes, Bobcoins and context windows, and what "trust" means for an AI assistant.</li>
+                                    <li><strong>First interaction <span class="session-mins">Lab</span></strong>Three guided prompts across Bob's Ask, Plan and Agent modes, so you learn which mode fits which job.</li>
+                                    <li><strong>AI trust: what it means and why it is hard <span class="session-mins">Talk</span></strong>Accuracy, transparency, bias and guardrails, and why an AI assistant straight out of the box is a starting point, not the finish.</li>
+                                    <li><strong>Plain Bob takes on Ghidra <span class="session-mins">Demo</span></strong>The Ghidra analysis task run with Bob as it comes. You write down what it says and note the gaps and the made-up answers.</li>
+                                    <li><strong>What are Skills and how do they work? <span class="session-mins">Talk</span></strong>What a Skill is made of (SKILL.md, trigger keywords, guardrails), how a Skill can bring in bias, Skills that switch on together, and Skills as anchors of trust.</li>
+                                    <li><strong>Trust but verify: scan the Skill with Caterpillar <span class="session-mins">Lab</span></strong>Install the Caterpillar scanner, scan the ghidra-reverse-engineer Skill (expect Grade A), scan a copy that has been tampered with on purpose (expect Grade F), and decide whether to install it.</li>
+                                    <li><strong>Bob with the checked Skill <span class="session-mins">Lab</span></strong>Install the scanned Skill in .bob/skills/, run the same Ghidra task again in a fresh task, and compare the depth, the accuracy and the signs of bias.</li>
+                                    <li><strong>Compare and take away <span class="session-mins">Discussion</span></strong>Both answers side by side in a table, a group discussion on "Which answer do you trust more, and why?", and where to go next.</li>
+                                </ol>
+                            </div>
+                        </details>
+                        <details class="tw-row">
+                            <summary>How the hands-on runs</summary>
+                            <div class="tw-row-body">
+                                <ul class="session-covers">
+                                    <li><strong>IBM Bob only.</strong> The whole workshop runs in IBM Bob on your own laptop, so install it before you come (the steps are below).</li>
+                                    <li><strong>Plain Bob, then Bob with a Skill.</strong> You give Bob the same task twice, first as it comes and then with the security-scanned Reverse-Engineer-Anything Skill, and compare the answers.</li>
+                                    <li><strong>A ready Skill as backup.</strong> You build the Skill from Ghidra's GitHub repository. If the room's network is slow, a ready-made copy of the Skill is shared in the room.</li>
+                                    <li><strong>Nobody is left behind.</strong> The workshop runs in eight short parts. If you get stuck in one, ready-made files take you on to the next.</li>
+                                </ul>
+                            </div>
+                        </details>
+                        <details class="tw-row">
+                            <summary>What you need</summary>
+                            <div class="tw-row-body">
+                                <ul class="session-covers">
+                                    <li><strong>Skills:</strong> none. No experience with coding agents, agentic Skills or security scanning is needed. Come ready to learn one AI skill you can show and talk about afterwards.</li>
+                                    <li><strong>On the day:</strong> any laptop with 8 GB RAM, Chrome or Edge, and its charger, with IBM Bob installed and signed in.</li>
+                                    <li><strong>Company laptop:</strong> check with your IT team that IBM Bob can be installed and can reach the internet. A personal laptop is safer.</li>
+                                </ul>
+                                <p style="margin-top:1rem;"><strong>Install IBM Bob before the day:</strong></p>
+                                <ol class="session-agenda">
+                                    <li><strong>Create an IBMid</strong>Make one at ibm.com/account/reg. Your work email can be your IBMid.</li>
+                                    <li><strong>Start the free trial</strong>Go to bob.ibm.com/trial: 50 Bobcoins for 30 days. Start it close to the workshop, as the 30 days begin when you sign up.</li>
+                                    <li><strong>Download and install Bob</strong>Get it from bob.ibm.com/download, for Windows 10 or later, macOS 10.13 or later, or 64-bit Linux. On a Mac, if Bob will not open the first time, go to System Settings, then Privacy &amp; Security, and click Open Anyway.</li>
+                                    <li><strong>Sign in</strong>Open Bob. It opens bob.ibm.com/login in your browser. Sign in, go back to Bob, and check your name and Bobcoin balance show at the top right.</li>
+                                    <li><strong>Make a workshop folder</strong>Make an empty folder on your desktop called aegis-workshop and open it in Bob.</li>
+                                </ol>
+                                <p style="margin-top:1rem;"><strong>5-minute readiness check:</strong> open IBM Bob and sign in. Switch between the Agent, Plan and Ask modes, then type "Hello, what can you do?". If Bob answers, you are ready. Every step, with pictures, is in the facilitator's <a href="/docs/ibm-bob-install-guide.pdf" target="_blank" rel="noopener">IBM Bob installation guide (PDF)</a>.</p>
+                            </div>
+                        </details>
+                        <details class="tw-row">
+                            <summary>About the facilitator</summary>
+                            <div class="tw-row-body">
+                                <p>KrishnaKanth Naik is an AI practitioner and Program Manager in IBM Career Education. He has over 22 years of experience in DevOps and in helping enterprises adopt Agile methods at scale, and now brings the latest IBM technologies into colleges and universities. He wrote the Forward Deployed Engineer curriculum for IBM Career Education, and has built many agentic AI use cases that help new developers and policy makers learn AI through practical work. He serves on the Board of Studies of several colleges, and is one of the youngest people to receive the Eminent Engineer Award from the Chief Minister of Karnataka.</p>
+                            </div>
+                        </details>
+                    </div>
                     <a href="/register#premium" class="btn btn-primary">Register Now <i class="fas fa-arrow-right"></i></a>
                 </div>
             </article>

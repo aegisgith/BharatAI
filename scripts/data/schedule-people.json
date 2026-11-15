@@ -95,6 +95,7 @@
     { "name": "Dr. Omprakash Mandge", "role": "Principal", "org": "MET", "photo": "images/speaker-omprakash-mandge-sq.webp", "logo": "images/org-logos/met.webp" },
 
     { "name": "Virendra Pal", "role": "AI & FinTech Expert", "org": "", "photo": "images/speaker-virendra-pal.webp" },
-    { "name": "Dr. Parijat Shukla", "role": "PhD, Iowa State University", "org": "", "photo": "images/speaker-parijat-shukla-sq.webp" }
+    { "name": "Dr. Parijat Shukla", "role": "PhD, Iowa State University", "org": "", "photo": "images/speaker-parijat-shukla-sq.webp" },
+    { "name": "KrishnaKanth Naik", "role": "Program Manager", "org": "IBM Career Education", "photo": "images/speaker-krishnakanth-naik.webp", "logo": "images/logo-ibm.webp" }
   ]
 }
