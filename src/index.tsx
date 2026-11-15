@@ -7,6 +7,7 @@ import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
+import workshopReminder, { configureWorkshopReminder } from './routes/workshop-reminder'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
@@ -523,6 +524,21 @@ app.route('/', speakerBrief)
 configureTalkSelf({ secret: (c: any) => passTokenSecret(c), audit, hallText: (h: any) => italkHallText(h),
   appUrl: async (c: any) => (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app' })
 app.route('/', talkSelf)
+
+// Workshop emails (15 Nov 2026): "choose your workshop" to paid holders with no seat,
+// "your workshop" (time, room, what to bring) to seat holders; previewed and sent from
+// Admin -> Workshops. routes/workshop-reminder.ts, screen public/static/workshop-reminder.js.
+configureWorkshopReminder({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader,
+  workshops: (c: any) => workshopList(c), closes: (c: any) => workshopSwitchCloses(c), tiers: () => workshopTiers(),
+  signInLink: async (c: any, eventId: number, email: string) => {
+    const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+    let href = appUrl + '?email=' + encodeURIComponent(email) + '&action=workshop'
+    try {
+      if (await verifiedLoginEnabled(c)) href += '&token=' + (await createLoginToken(c, eventId, email, PROFILE_LINK_TTL_MINUTES, 4)).token
+    } catch { /* the plain link opens the sign-in box on their address */ }
+    return href
+  } })
+app.route('/', workshopReminder)
 
 // Marketplace page routes
 app.get('/marketplace', (c) => c.html(marketplacePageHTML()))
@@ -41498,6 +41514,7 @@ function adminPageHTML(): string {
   <script src="/static/conference-admin.js?v=20261115"></script>
   <script src="/static/speaker-brief.js?v=20261113"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
+  <script src="/static/workshop-reminder.js?v=20261115"></script>
 </body>
 </html>`
 }

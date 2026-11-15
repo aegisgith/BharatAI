@@ -78,6 +78,7 @@ const SUITES = [
   { name: 'server: Campus Series insights reports (gated PDF, /insights form, reports email, admin pump)', args: ['smoke-reports.mjs'] },
   { name: 'server: panel email as server jobs (scheduler door, claim, stop, resume, done, failures)', args: ['smoke-mail-jobs.mjs'] },
   { name: 'server: workshop seats (who may choose, the seat limit, switching cut-off, admin, door scan)', args: ['smoke-workshops.mjs'] },
+  { name: 'integration: workshop emails on real SQLite (who is on the list, "choose" and "seat", a preview that sends and mints nothing, the signed seat-picker link, no repeat within 12 hours, closed and full workshops left out, the panel on /admin)', args: ['smoke-workshop-reminder.mjs'] },
   { name: 'server: pass QR and badge desk (signed token, verify screen states, check-in, lookup, reissue, scanner, encoder round trip)', args: ['smoke-pass-desk.mjs'] },
   { name: 'browser: badge desk scanner (fake camera, iPhone without BarcodeDetector, native reader failing, hostile QR)', args: ['browser-scan-page.mjs'] },
   { name: 'unit: the Delhi 2027 page (form rules, calendar file, facts, the tab on every page, one stylesheet version), each alone', args: ['unit-delhi.mjs'] },
