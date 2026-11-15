@@ -55,7 +55,7 @@ check('what P99Soft still owes: bio and mobile (topic, designation and photo are
 await api.post('/api/admin/innovation-talks/' + t.id + '/request-details', { to: em.email, items: gaps, to_speaker: em.source !== 'booth', save_email: false });
 const mail = W.sent[0]?.Content.Body[0].Content || '';
 check('the booth contact gets one email from register@', W.sent.length === 1 && W.sent[0].Recipients.To[0] === 'spoc@p99soft.test' && /register@/.test(W.sent[0].Content.From));
-check('it says the time and both hall names the tab shows', mail.includes('Sat 21 Nov · 12:00 – 12:08 PM') && mail.includes('Aryabhata Theatre (Expo Hall'));
+check('it says the time and the hall the tab shows (event name only)', mail.includes('Sat 21 Nov · 12:00 – 12:08 PM') && mail.includes('Aryabhata Theatre') && !mail.includes('Expo Hall'));
 check('it asks for exactly what the tab says is missing', /Two or three lines about you/.test(mail) && /Your mobile number/.test(mail) && !/The title of your talk/.test(mail) && !/Your designation/.test(mail));
 list = await reload();
 t = list.find(x => x.id === t.id);
@@ -76,15 +76,15 @@ const p = pub.find(x => x.id === t.id);
 check('the app list has it with its day, time and hall', p && p.starts_at === '2026-11-21 12:00' && p.time_slot === 'Sat 21 Nov · 12:00 – 12:08 PM' && p.hall === 'Aryabhata Theatre', p);
 check("the app list does not carry the mobile, the email or the bio", !('speaker_phone' in p) && !('speaker_email' in p) && !('speaker_bio' in p));
 const app = await W.pageBlock('/app.js', '// ==================== INNOVATION TALK & SHOWCASE ====================', '// ==================== INBOX ====================');
-check("the app's tab names both halls (Aryabhata Theatre · Expo Hall) and lists by day", app.includes("'Aryabhata Theatre': 'Expo Hall'") && app.includes('Saturday 21 November') && !app.includes('10:00 – 11:30 AM'));
+check("the app's tab names the hall alone (no venue room) and lists by day", !app.includes("'Aryabhata Theatre': 'Expo Hall'") && app.includes('Saturday 21 November') && !app.includes('10:00 – 11:30 AM'));
 
 // ---- 6 ----
 F.italkAnnounce(t.id);
-check('Announce opens the Announcements form, filled in', announceOpened === 1 && /Aryabhata Theatre \(Expo Hall\)/.test(el('af-content').value));
+check('Announce opens the Announcements form, filled in', announceOpened === 1 && /Aryabhata Theatre[.]/.test(el('af-content').value) && !/Expo Hall/.test(el('af-content').value));
 await api.post('/api/admin/announcements', { event_id: 1, title: el('af-title').value, content: el('af-content').value, announcement_type: el('af-type').value, author_name: 'Event Team', pinned: false });
 const anns = (await W.hit('GET', '/api/events/1/announcements')).json;
 const ann = (Array.isArray(anns) ? anns : anns.announcements || []).find(a => /Innovation Talk:/.test(a.title));
-check("the announcement is in the app's list with the time and both hall names", ann && ann.content.includes('Sat 21 Nov · 12:00 – 12:08 PM') && ann.content.includes('Aryabhata Theatre (Expo Hall)') && ann.title === 'Innovation Talk: AI Governance - Observability and Security', ann);
+check("the announcement is in the app's list with the time and both hall names", ann && ann.content.includes('Sat 21 Nov · 12:00 – 12:08 PM') && ann.content.includes('Aryabhata Theatre') && !ann.content.includes('Expo Hall') && ann.title === 'Innovation Talk: AI Governance - Observability and Security', ann);
 
 // ---- 7 ----
 W.sent.length = 0;

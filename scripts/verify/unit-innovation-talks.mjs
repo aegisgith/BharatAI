@@ -125,9 +125,9 @@ A.italkList = [{ id: 5, speaker_name: 'Amritesh Kumar', speaker_title: 'Product 
 A.italkAnnounce(5);
 check('Announce opens the Announcements form', opened === 1);
 check('the title is the topic', fields['af-title'].value === 'Innovation Talk: AVISA One: From Health Signals to Connected Care', fields['af-title'].value);
-check('the text names the speaker, the topic, the time and BOTH hall names', fields['af-content'].value === 'Amritesh Kumar, Product Head, Phoebetal Technologies on "AVISA One: From Health Signals to Connected Care". Fri 20 Nov · 1:10 – 1:18 PM, Aryabhata Theatre (Expo Hall).', fields['af-content'].value);
+check('the text names the speaker, the topic, the time and the hall (event name only)', fields['af-content'].value === 'Amritesh Kumar, Product Head, Phoebetal Technologies on "AVISA One: From Health Signals to Connected Care". Fri 20 Nov · 1:10 – 1:18 PM, Aryabhata Theatre.', fields['af-content'].value);
 check('the type is set back to general', fields['af-type'].value === 'general');
 A.italkAnnounce(6);
 check('a talk with no topic or time says so instead of inventing one', fields['af-title'].value === 'Innovation Talk: Shashi Bhushan' && fields['af-content'].value === 'Shashi Bhushan, Gupshup.ai. Time to be announced.', fields['af-content'].value);
-check('every hall has its real room name beside it', JSON.stringify(A.italkHallRooms) === JSON.stringify({ 'Aryabhata Theatre': 'Expo Hall', 'Homi J. Bhabha Hall': 'Peacock Hall', 'Kalam Theatre': 'Centrum Hall A', 'Raman Theatre': 'Centrum Hall B' }), A.italkHallRooms);
+check('no hall carries the venue room name (organiser, 15 Nov 2026)', JSON.stringify(A.italkHallRooms) === JSON.stringify({ 'Aryabhata Theatre': '', 'Homi J. Bhabha Hall': '', 'Kalam Theatre': '', 'Raman Theatre': '' }), A.italkHallRooms);
 done();

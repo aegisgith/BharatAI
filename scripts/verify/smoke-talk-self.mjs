@@ -24,7 +24,7 @@ const link = (id, exp = now + 86400) => T.signTalkToken('h', id, exp); // the ha
   check('it never shows an email address, who was asked, or the team’s notes', !/@|Team only/.test(r.text), r.text.slice(0, 300));
   check('nobody keeps a copy on the way', /no-store/.test(r.headers.get('cache-control') || ''));
   r = await W.call('GET', '/api/talk-self/' + (await link(8)));
-  check('another link opens the other talk, with both hall names', r.json.talk.speaker_name === 'Dr. Vishal Deo' && r.json.talk.where.startsWith('Homi J. Bhabha Hall (Peacock Hall') && r.json.talk.when.startsWith('Fri 20 Nov'), r.json.talk);
+  check('another link opens the other talk, with its hall by event name only', r.json.talk.speaker_name === 'Dr. Vishal Deo' && r.json.talk.where === 'Homi J. Bhabha Hall' && r.json.talk.when.startsWith('Fri 20 Nov'), r.json.talk);
 
   const tampered = tok7.replace(/^7\./, '8.');
   r = await W.call('GET', '/api/talk-self/' + tampered);

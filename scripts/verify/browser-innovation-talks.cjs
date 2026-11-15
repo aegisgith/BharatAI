@@ -47,8 +47,8 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     check('no old made-up session times on the page', !/10:00 – 11:30 AM|2:00 – 4:10 PM/.test(text));
     const amrRow = page.locator('tr', { hasText: 'Amritesh Kumar' });
     const amrText = await amrRow.innerText();
-    check('a row shows its time and its hall under both names', /1:10 – 1:18 PM/.test(amrText) && /Aryabhata Theatre/.test(amrText) && /Expo Hall/.test(amrText), amrText);
-    check('CGI shows Kalam Theatre with Centrum Hall A', /Kalam Theatre[\s\S]*Centrum Hall A/.test(await page.locator('tr', { hasText: 'Dr Rahul Ghodke' }).innerText()));
+    check('a row shows its time and its hall by event name only', /1:10 – 1:18 PM/.test(amrText) && /Aryabhata Theatre/.test(amrText) && !/Expo Hall/.test(amrText), amrText);
+    check('CGI shows Kalam Theatre alone', (t => /Kalam Theatre/.test(t) && !/Centrum Hall A/.test(t))(await page.locator('tr', { hasText: 'Dr Rahul Ghodke' }).innerText()));
     check('a row says what is still missing', /Bio/.test(amrText) && /Mobile/.test(amrText), amrText);
     // The day apart from the time, the day in its own colour (the team, 12 Nov 2026).
     const amrCells = await amrRow.locator('td').allInnerTexts();
@@ -103,7 +103,7 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     await page.getByRole('button', { name: 'Preview', exact: true }).click(); // not "Preview the email" beside the switch
     const previewed = await until(async () => /Sat 21 Nov/.test(await page.frameLocator('#italk-ask-frame').locator('body').innerText()), 6000);
     const pv = previewed ? await page.frameLocator('#italk-ask-frame').locator('body').innerText() : '';
-    check('Preview shows the email: the time, both hall names, the ask and the note', previewed && /Aryabhata Theatre \(Expo Hall/.test(pv) && /Two or three lines about you/.test(pv) && /slides by 18 Nov/.test(pv), pv.slice(0, 300));
+    check('Preview shows the email: the time, the hall, the ask and the note', previewed && /Aryabhata Theatre/.test(pv) && !/Expo Hall/.test(pv) && /Two or three lines about you/.test(pv) && /slides by 18 Nov/.test(pv), pv.slice(0, 300));
     check('Preview sends nothing', (await sentMail()).length === 0);
     await page.locator('#italk-ask-send').click();
     const went = await until(async () => (await sentMail()).length === 1, 6000);
@@ -116,7 +116,7 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     await page.locator('#italk-row-' + p99 + ' button[aria-label="Announce"]').click();
     await until(() => page.locator('#af-content').isVisible(), 5000);
     const annText = await page.locator('#af-content').inputValue();
-    check('Announce opens the Announcements form with the talk, the time and both hall names', /Vineet Upadhayay/.test(annText) && /Sat 21 Nov · 12:00 – 12:08 PM/.test(annText) && /Aryabhata Theatre \(Expo Hall\)/.test(annText), annText);
+    check('Announce opens the Announcements form with the talk, the time and the hall', /Vineet Upadhayay/.test(annText) && /Sat 21 Nov · 12:00 – 12:08 PM/.test(annText) && /Aryabhata Theatre/.test(annText) && !/Expo Hall/.test(annText), annText);
     await page.locator('#af-form button[type=submit]').click();
     const posted = await until(async () => (await dbq("SELECT COUNT(*) AS n FROM announcements WHERE content LIKE '%Expo Hall%'"))[0].n === 1, 6000);
     check('Create saves it as an announcement', posted);
@@ -138,7 +138,7 @@ const appCookie = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; co
     const shown = await until(async () => /Friday 20 November/.test(await box.innerText()), 15000);
     const app = shown ? await box.innerText() : '';
     check('phone: the talks are listed under "Friday 20 November" and "Saturday 21 November"', shown && /Saturday 21 November/.test(app), app.slice(0, 300));
-    check('phone: each card names both halls (Aryabhata Theatre · Expo Hall)', /Aryabhata Theatre · Expo Hall/.test(app) && /Kalam Theatre · Centrum Hall A/.test(app));
+    check('phone: each card names its hall by event name only', /Aryabhata Theatre/.test(app) && /Kalam Theatre/.test(app) && !/Expo Hall|Centrum Hall/.test(app));
     check('phone: under a day the card shows the time alone', /1:10 – 1:18 PM/.test(app) && !/Fri 20 Nov · 1:10/.test(app));
     check('phone: talks with no time are under "Speakers announced", times to follow', /Speakers announced/.test(app) && /Times to follow/.test(app));
     check('phone: no old made-up session times', !/10:00 – 11:30 AM|2:00 – 4:10 PM|Morning Session|Afternoon Session/.test(app));

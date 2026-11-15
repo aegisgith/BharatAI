@@ -130,7 +130,7 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     await page.click('[data-cm="spk-filter"][data-k="all"]');
     const sh = page.locator('.cm-card', { hasText: 'Shailesh Dhuri' });
     await sh.locator('[data-cm="announce"]').click();
-    check('Announce opens with the words written: name, day, time and both hall names', await until(async () => ((await page.locator('#cm-a-content').inputValue().catch(() => '')) || '').includes('Homi J. Bhabha Hall (Peacock Hall)')));
+    check('Announce opens with the words written: name, day, time and the hall (event name only)', await until(async () => { const v = (await page.locator('#cm-a-content').inputValue().catch(() => '')) || ''; return v.includes('Homi J. Bhabha Hall') && !v.includes('Peacock Hall'); }));
     check('...and the headline names them', (await page.locator('#cm-a-title').inputValue()).includes('Shailesh Dhuri'));
     await page.check('#cm-a-pin');
     await page.click('#cm-a-post');
@@ -174,7 +174,7 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     check('the list finds a session by a word in its title, keeping the search box', await until(async () => (await page.locator('.cm-table tbody tr').count()) === 1) && (await page.locator('[data-cm-input="q"]').inputValue()) === 'Inclusion', await page.locator('.cm-table tbody tr').count());
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-cm="csv-programme"]')]);
     const csv = require('fs').readFileSync(await dl.path(), 'utf8');
-    check('the programme CSV has every session, with the venue’s hall names', /^﻿?Day,Starts,Ends,Hall,Venue room,Session/.test(csv) && csv.includes('Peacock Hall') && csv.split('\r\n').length === 7, csv.slice(0, 200));
+    check('the programme CSV has every session, with no venue room column', /^﻿?Day,Starts,Ends,Hall,Session/.test(csv) && !csv.includes('Peacock Hall') && csv.split('\r\n').length === 7, csv.slice(0, 200));
     await page.click('[data-cm="view"][data-k="board"]');
     await page.click('[data-cm="day"][data-k="2026-11-20"]');
     const [sheet] = await Promise.all([ctx.waitForEvent('page'), page.click('[data-cm="runsheet"]')]);
@@ -216,7 +216,7 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     const aerr = []; ap.on('pageerror', e => aerr.push(String(e)));
     await ap.goto(BASE + '/app', { waitUntil: 'domcontentloaded' });
     check('app: its page code loads', await until(() => ap.evaluate(() => typeof speakerSlotsHtml === 'function' && typeof hallLabel === 'function'), 20000));
-    check('app: a hall reads with both names', await ap.evaluate(() => hallLabel('Raman Theatre') === 'Raman Theatre · Centrum Hall B' && hallLabel('Aryabhata Theatre') === 'Aryabhata Theatre · Expo Hall' && hallLabel('Kalam Theatre') === 'Kalam Theatre · Centrum Hall A'));
+    check('app: a hall reads by its event name only', await ap.evaluate(() => hallLabel('Raman Theatre') === 'Raman Theatre' && hallLabel('Aryabhata Theatre', 'Expo Hall') === 'Aryabhata Theatre' && hallLabel('Kalam Theatre') === 'Kalam Theatre'));
     const slot = await ap.evaluate(() => {
       window.__ran = 0;
       const d = document.createElement('div');
@@ -225,7 +225,7 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
       return { text: d.textContent, imgs: d.querySelectorAll('img').length };
     });
     await sleep(200);
-    check('app: a speaker’s profile says their part, the day, the time and both hall names', slot.text.includes('Moderator') && slot.text.includes('Fri 20 Nov, 4:00 pm to 4:30 pm') && slot.text.includes('Aryabhata Theatre · Expo Hall') && slot.text.includes('On the exhibition floor'), slot.text);
+    check('app: a speaker’s profile says their part, the day, the time and the hall', slot.text.includes('Moderator') && slot.text.includes('Fri 20 Nov, 4:00 pm to 4:30 pm') && slot.text.includes('Aryabhata Theatre') && !slot.text.includes('Expo Hall') && slot.text.includes('On the exhibition floor'), slot.text);
     check('app: a title typed in Admin is shown as text, never run', slot.imgs === 0 && slot.text.includes('<img') && (await ap.evaluate(() => window.__ran)) === 0);
     const cardHtml = await ap.evaluate(() => {
       const d = document.createElement('div');
@@ -236,10 +236,10 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     await sleep(200);
     check('app: a schedule card shows Admin’s words as text, never as page code', cardHtml.imgs === 0 && cardHtml.bold === 0 && (await ap.evaluate(() => window.__ran)) === 0 && cardHtml.text.includes('<b>Asha</b>'), cardHtml);
     await ap.evaluate(() => switchTab('schedule'));
-    check('app: the Conference Schedule’s hall tabs carry the venue’s names', await until(async () => ((await ap.locator('#sched-hall-tabs').textContent()) || '').includes('Peacock Hall') && ((await ap.locator('#sched-hall-tabs').textContent()) || '').includes('Expo Hall'), 10000));
+    check('app: the Conference Schedule’s hall tabs carry the event names only', await until(async () => { const t = (await ap.locator('#sched-hall-tabs').textContent()) || ''; return t.includes('Homi J. Bhabha Hall') && !t.includes('Peacock Hall') && !t.includes('Expo Hall'); }, 10000));
     check('app: the published sessions are listed, the draft is not', await until(async () => { const t = (await ap.locator('#sched-sessions-list').textContent()) || ''; return t.includes('AI Democratizing') && !t.includes('Agentic AI in Lending'); }, 10000));
     await ap.evaluate(() => { selectedHall = ''; loadSchedule(); });
-    check('app: with All halls, each card names its hall both ways', await until(async () => ((await ap.locator('#sched-sessions-list').textContent()) || '').includes('Homi J. Bhabha Hall · Peacock Hall'), 10000));
+    check('app: with All halls, each card names its hall by event name only', await until(async () => { const t = (await ap.locator('#sched-sessions-list').textContent()) || ''; return t.includes('Homi J. Bhabha Hall') && !t.includes('Peacock Hall'); }, 10000));
     const aw = await ap.evaluate(() => document.documentElement.scrollWidth);
     check('app: the schedule is no wider than the phone', aw <= 391, 'scrollWidth ' + aw);
     check('app: no page errors', aerr.length === 0, aerr);

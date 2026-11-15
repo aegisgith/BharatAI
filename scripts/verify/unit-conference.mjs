@@ -90,7 +90,7 @@ const mail = C.slotEmailHTML({ name: 'Dr. Asha <b>Rao</b>', email: 'a@b.c' }, [
   { title: 'AI & <script>alert(1)</script>', start_time: '2026-11-20 14:00', end_time: '2026-11-20 15:00', room: 'Homi J. Bhabha Hall', my_role: 'moderator', hall: { venue_room: 'Peacock Hall', location: 'Ground Floor, Centre One' } },
 ], 'Please reach 30 minutes early.', '<div>HEADER</div>');
 check('the subject names the day, the time and the hall', mail.subject === 'Your session at Bharat AI Innovation 2026: Friday 20 November, 2:00 pm, Homi J. Bhabha Hall', mail.subject);
-check('the email names the hall and the room at the venue, and how to find it', mail.html.includes('Homi J. Bhabha Hall · Peacock Hall') && mail.html.includes('Ground Floor, Centre One'));
+check('the email names the hall by its event name only, and how to find it', mail.html.includes('Homi J. Bhabha Hall') && !mail.html.includes('Peacock Hall') && mail.html.includes('Ground Floor, Centre One'));
 check('the email says their part and both times', mail.html.includes('Moderator') && mail.html.includes('2:00 pm') && mail.html.includes('3:00 pm'));
 check('the email greets them by first name, without the title', mail.html.includes('Dear Asha'));
 check('nothing typed in Admin can run in the email', !mail.html.includes('<script>') && mail.html.includes('&lt;script&gt;') && !mail.html.includes('<b>Rao</b>'));
@@ -100,15 +100,13 @@ const two = C.slotEmailHTML({ name: 'X' }, [mail && { title: 'A', start_time: '2
 check('two sessions: the subject says two, and a missing hall says so plainly', two.subject === 'Your 2 sessions at Bharat AI Innovation 2026' && two.html.includes('Hall to be confirmed'), two.subject);
 
 // ---- both names of a hall (organiser, 12 Nov 2026) ----
-check('a hall is shown by both names, the event’s first', C.hallLabel('Aryabhata Theatre', 'Expo Hall') === 'Aryabhata Theatre · Expo Hall');
-check('a hall with no venue name, or the same name twice, is shown once', C.hallLabel('Board Room', '') === 'Board Room' && C.hallLabel('Expo Hall', 'expo hall') === 'Expo Hall' && C.hallLabel('', 'Peacock Hall') === 'Peacock Hall');
+check('a hall is shown by its event name only, whatever the venue calls it (organiser, 15 Nov 2026)', C.hallLabel('Aryabhata Theatre', 'Expo Hall') === 'Aryabhata Theatre' && C.hallLabel('Board Room', '') === 'Board Room' && C.hallLabel('', 'Peacock Hall') === '');
 const filled = C.fillVenues([{ room: 'Raman Theatre' }, { room: 'Elsewhere' }, { room: 'Aryabhata Theatre', venue_room: 'Kept' }]);
-check('a session list without the halls table still gets each venue name', filled[0].venue_room === 'Centrum Hall B' && !filled[1].venue_room && filled[2].venue_room === 'Kept', filled);
-check('Aryabhata is the Expo Hall and Kalam is Centrum Hall A (organiser, 12 Nov: swapped; "Expo Hall", not "Expo Stage")', C.DEFAULT_HALLS.find(h => h.name === 'Aryabhata Theatre').venue_room === 'Expo Hall' && C.DEFAULT_HALLS.find(h => h.name === 'Kalam Theatre').venue_room === 'Centrum Hall A');
+check('a session list without the halls table gets no venue room name (none is shown since 15 Nov)', !filled[0].venue_room && !filled[1].venue_room && filled[2].venue_room === 'Kept', filled);
 
 // ---- the lists the screen offers ----
 check('every session type the app already knows, and no new one', C.SESSION_TYPES.join() === 'keynote,talk,panel,workshop,ceremony,exhibition,networking,break');
-check('the four halls of 20-21 Nov with their venue rooms', C.DEFAULT_HALLS.map(h => h.name + '=' + h.venue_room).join('; ') === 'Homi J. Bhabha Hall=Peacock Hall; Kalam Theatre=Centrum Hall A; Raman Theatre=Centrum Hall B; Aryabhata Theatre=Expo Hall');
+check('the four halls of 20-21 Nov, with no venue room names', C.DEFAULT_HALLS.map(h => h.name + '=' + h.venue_room).join('; ') === 'Homi J. Bhabha Hall=; Kalam Theatre=; Raman Theatre=; Aryabhata Theatre=');
 check('the migration command names the file and the production database', C.MIGRATION_COMMAND.includes('bharatai-production --remote') && C.MIGRATION_COMMAND.includes('0054_conference_manager.sql'));
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');

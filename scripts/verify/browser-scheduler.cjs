@@ -158,7 +158,7 @@ const BH = 'Homi J. Bhabha Hall';
     const prog = XLSX.utils.sheet_to_json(wb.Sheets.Programme, { header: 1, defval: '' });
     const hc = prog.find(r => r[7] === 'AI in Healthcare');
     check('it opens as a workbook with Programme and Speakers sheets', wb.SheetNames.join() === 'Programme,Speakers' && prog[0][0] === 'Bharat AI Innovation 2026: programme', wb.SheetNames);
-    check('the new panel is in it: time, both hall names, the three speakers, the moderator marked', hc && hc[2] === '11:00 am' && hc[4] === BH && hc[5] === 'Peacock Hall' && /Dr\. Priya Menon/.test(hc[8]) && /Neha Gupta \(Moderator\)/.test(hc[8]) && /Chief Medical Officer, Apollo Hospitals/.test(hc[9]), hc);
+    check('the new panel is in it: time, the hall, the three speakers, the moderator marked', hc && hc[2] === '11:00 am' && hc[4] === BH && !hc.includes('Peacock Hall') && /Dr\. Priya Menon/.test(hc[7]) && /Neha Gupta \(Moderator\)/.test(hc[7]) && /Chief Medical Officer, Apollo Hospitals/.test(hc[8]), hc);
     check('no email or mobile is in the workbook', !/priya@apollo|98200 ?77777|kk@example/.test(xl.toString('latin1')));
     check('the menu closes after a choice', !(await page.locator('#cm-dl[open]').count()));
     await page.locator('#cm-dl summary').click();

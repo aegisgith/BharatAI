@@ -97,7 +97,7 @@ const before = W.sent.length;
 r = await W.call('POST', '/api/cron/tick', {}, { admin: false, headers: { Authorization: 'Bearer h-admin' } });
 const mail = W.sent.slice(before).find(m => /Innovation Talk/.test(JSON.stringify(m)));
 const body = mail ? JSON.stringify(mail) : '';
-check('the clock writes to the talk\'s speaker once, naming his time and both hall names', r.json.talk_requests.sent === 1 && /amritesh@phoebetal\.test/.test(body) && body.includes(AR + ' (Expo Hall') && /A clear photo of you/.test(body), r.json.talk_requests);
+check('the clock writes to the talk\'s speaker once, naming his time and the hall by its event name', r.json.talk_requests.sent === 1 && /amritesh@phoebetal\.test/.test(body) && body.includes(AR) && !body.includes('Expo Hall') && /A clear photo of you/.test(body), r.json.talk_requests);
 check('it asks for the photo, bio and mobile he is missing, not the topic he has sent', /Two or three lines about you/.test(body) && /Your mobile number/.test(body) && !/The title of your talk/.test(body));
 globalThis.Date = Real;
 

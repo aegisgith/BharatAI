@@ -86,7 +86,7 @@ const sp = { id: 1, name: 'Mr. Saurabh Kushwah', email: 'saurabh@example.test' }
 const m = B.briefEmailHTML({ sp, slots: [slot], note: 'Please reach the hall 30 minutes early.\nSlides: 16:9.', header: '<div>HEAD</div>', words: WORDS, update: false, passHref: 'https://bharataiinnovation.com/app?email=x&action=download-pass&token=t1', passName: 'Speaker' });
 check('subject: day, time and the hall by both names', m.subject === 'Your session at Bharat AI Innovation 2026: Saturday 21 November, 3:15 pm, Homi J. Bhabha Hall (Peacock Hall)', m.subject);
 check('greets them by first name without the title', m.html.includes('Dear Saurabh,'));
-check('says their role, time and the hall card with both names', m.html.includes('Panellist') && m.html.includes('Saturday 21 November, 3:15 pm to 4:15 pm') && m.html.includes('Homi J. Bhabha Hall · Peacock Hall'));
+check('says their role, time and the hall card with both names', m.html.includes('Panellist') && m.html.includes('Saturday 21 November, 3:15 pm to 4:15 pm') && m.html.includes('Homi J. Bhabha Hall') && !m.html.includes('Homi J. Bhabha Hall · Peacock Hall'));
 check('names the moderator and the other panellists with organisations', m.html.includes('Mukesh Jain (Capgemini)') && m.html.includes('Simon David Hunter (Asian Screen Institute, Singapore)') && m.html.includes('Rajat Nigam (JioStar India)'));
 check('no co-panellist’s email is in it', !m.html.includes('simon@example.test') && !m.html.includes('mukesh@example.test'));
 check('the pass button links to their pass', m.html.includes('Show my Speaker pass') && m.html.includes('action=download-pass&amp;token=t1'));
@@ -114,7 +114,7 @@ const own = B.briefEmailHTML({ sp, slots: [slot], note: '', header: '', words: W
   subject: 'Your panel on 21 November', greeting: 'Dear Mr. Kushwah,', opening: 'Thank you for joining the Media panel.\nWe are delighted.' });
 check('their subject replaces the usual one', own.subject === 'Your panel on 21 November', own.subject);
 check('their greeting and opening replace the usual ones, line breaks kept', own.html.includes('Dear Mr. Kushwah,') && !own.html.includes('Dear Saurabh,') && own.html.includes('Thank you for joining the Media panel.\nWe are delighted.') && !own.html.includes('Here is everything for your day'));
-check('edited words never drop the programme: session, hall, panel and pass are still there', own.html.includes('Homi J. Bhabha Hall · Peacock Hall') && own.html.includes('Rajat Nigam (JioStar India)') && own.html.includes('Show my Speaker pass'));
+check('edited words never drop the programme: session, hall, panel and pass are still there', own.html.includes('Homi J. Bhabha Hall') && own.html.includes('Rajat Nigam (JioStar India)') && own.html.includes('Show my Speaker pass'));
 const blank = B.briefEmailHTML({ sp, slots: [slot], note: '', header: '', words: WORDS, update: false, passHref: '', passName: 'Speaker', subject: '   ', greeting: '', opening: '\n\n' });
 check('an empty box means the usual words', blank.subject === m.subject && blank.html.includes('Dear Saurabh,') && blank.html.includes('Here is everything for your day'));
 const evilOwn = B.briefEmailHTML({ sp, slots: [slot], note: '', header: '', words: WORDS, update: false, passHref: '', passName: 'Speaker', greeting: '<b onmouseover=x>Hi</b>', opening: '<script>alert(1)</script><a href="javascript:x">y</a>' });

@@ -72,7 +72,7 @@ const linkFor = async (id, exp) => (await fetch(BASE + '/__link?id=' + id + (exp
     const lp = await lctx.newPage();
     const lerr = []; lp.on('pageerror', e => lerr.push(String(e)));
     await lp.goto(BASE + '/app/my-talk?t=' + (await linkFor(8)), { waitUntil: 'domcontentloaded' });
-    check('laptop: the other talk, with its time and both hall names', await until(async () => { const t = (await lp.locator('.ts-facts').textContent()) || ''; return t.includes('Fri 20 Nov') && t.includes('Homi J. Bhabha Hall (Peacock Hall'); }));
+    check('laptop: the other talk, with its time and its hall', await until(async () => { const t = (await lp.locator('.ts-facts').textContent()) || ''; return t.includes('Fri 20 Nov') && t.includes('Homi J. Bhabha Hall') && !t.includes('Peacock Hall'); }));
     check('laptop: the form sits in a readable column', (await lp.locator('#ts-form').evaluate(e => e.getBoundingClientRect().width)) <= 620);
     check('laptop: no page errors', lerr.length === 0, lerr);
     await lctx.close();

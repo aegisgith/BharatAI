@@ -105,7 +105,7 @@ check('send: one email, to the address typed (lower case)', r.status === 200 && 
 check('send: from register@bharataiinnovation.com', /register@bharataiinnovation\.com/.test(m.Content.From), m.Content.From);
 check('send: no unsubscribe footer on an email about their own talk', !/Unsubscribe/i.test(html) && !(m.Content.Headers && m.Content.Headers['List-Unsubscribe']));
 check('send: to a booth contact it says "Hello" and asks them to pass it on', /Hello,/.test(html) && /pass this on to them/.test(html) && !/Dear Amritesh/.test(html));
-check('send: it tells them the time and BOTH hall names', html.includes('Fri 20 Nov · 1:10 – 1:18 PM') && html.includes('Aryabhata Theatre (Expo Hall, on the exhibition floor)'));
+check('send: it tells them the time and the hall by its event name only', html.includes('Fri 20 Nov · 1:10 – 1:18 PM') && html.includes('Aryabhata Theatre') && !html.includes('Expo Hall'));
 check('send: it lists only what was ticked, with the reason, and the extra note', /Two or three lines about you/.test(html) && /Your mobile number/.test(html) && !/A clear photo of you/.test(html) && html.includes('Please send your slides by 18 Nov.'));
 check('send: it never blames anyone and asks for a reply', /Just reply to this email/.test(html) && !/(our|the) (app|system|website) (had|has) (a )?(problem|error)/i.test(html));
 let a2 = W.talk('id = ?', amr.id);

@@ -41,7 +41,7 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     const own = await page.locator('#cm-a-content').inputValue();
     check('...naming who else is on the panel, the typed name too', own.includes('Also on the panel:') && own.includes('Ratan Kumar Kesh'), own);
     check('...and who moderates it, with their role and organisation', own.includes('Moderated by Shailesh Dhuri, Chief Executive Officer, Decimal Point Analytics.'), own);
-    check('...with the day, time and both hall names', own.includes('Fri 20 Nov 2026, 2:00 pm to 3:00 pm, Homi J. Bhabha Hall (Peacock Hall).'), own);
+    check('...with the day, time and the hall', own.includes('Fri 20 Nov 2026, 2:00 pm to 3:00 pm, Homi J. Bhabha Hall.'), own);
     check('...and never themselves twice', own.split('Tarun Chugh').length === 2, own);
 
     // ---- the whole panel instead ----
@@ -52,7 +52,7 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     const t = await page.locator('#cm-a-title').inputValue();
     const c = await page.locator('#cm-a-content').inputValue();
     check('the headline says it is a panel, the day and its title', t === 'Panel discussion on Fri 20 Nov: AI Democratizing and Driving Financial Inclusion', t);
-    check('the message has the title, day, time and both hall names', c.startsWith('"AI Democratizing and Driving Financial Inclusion"\nFri 20 Nov 2026, 2:00 pm to 3:00 pm, Homi J. Bhabha Hall (Peacock Hall).'), c);
+    check('the message has the title, day, time and the hall', c.startsWith('"AI Democratizing and Driving Financial Inclusion"\nFri 20 Nov 2026, 2:00 pm to 3:00 pm, Homi J. Bhabha Hall.'), c);
     check('the moderator, with role and organisation', c.includes('Moderator:\n• Shailesh Dhuri, Chief Executive Officer, Decimal Point Analytics'), c);
     check('every panellist, one per line, with role and organisation', c.includes('Panellists:\n• Tarun Chugh, MD & CEO, Bajaj Life Insurance\n• Ratan Kumar Kesh'), c);
     await page.fill('#cm-a-content', c + '\n\nSeats are first come, first served.');

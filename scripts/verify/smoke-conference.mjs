@@ -33,7 +33,7 @@ const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (o
   check('hidden speakers are in Admin’s list, marked hidden', d.speakers.find(s => s.id === 5)?.is_published === 0);
   check('no clashes in this agenda', d.clashes.room.length === 0 && d.clashes.speaker.length === 0, d.clashes);
   const pub0 = await W.call('GET', '/api/events/1/sessions', undefined, { admin: false });
-  check('before 0054: attendees get each session’s hall by its venue name too (Peacock Hall)', pub0.status === 200 && pub0.json.every(x => x.room !== 'Homi J. Bhabha Hall' || x.venue_room === 'Peacock Hall') && pub0.json.some(x => x.venue_room === 'Peacock Hall'), pub0.json.map(x => x.room + '/' + x.venue_room));
+  check('before 0054: attendees get no venue room name (event hall names only since 15 Nov)', pub0.status === 200 && pub0.json.every(x => !x.venue_room), pub0.json.map(x => x.room + '/' + x.venue_room));
 
   // ---- speakers: what is refused, in plain words ----
   const bad = async (body, words, code = 400) => { const r = await W.call('POST', '/api/admin/speakers', body); check(`refused: ${words}`, r.status === code && String(r.json?.error || '').toLowerCase().includes(words.toLowerCase()), r); };
@@ -172,7 +172,7 @@ const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (o
 
   // ---- the slot email ----
   r = await W.call('POST', '/api/admin/speakers/4/slot-email', { preview: true, note: 'Come early.' });
-  check('the preview is the email: subject with day, time and hall', r.status === 200 && r.json.subject === 'Your session at Bharat AI Innovation 2026: Saturday 21 November, 11:00 am, Aryabhata Theatre' && r.json.html.includes('Aryabhata Theatre · Expo Hall') && r.json.html.includes('Come early.'), r.json?.subject);
+  check('the preview is the email: subject with day, time and hall', r.status === 200 && r.json.subject === 'Your session at Bharat AI Innovation 2026: Saturday 21 November, 11:00 am, Aryabhata Theatre' && r.json.html.includes('Aryabhata Theatre') && !r.json.html.includes('Expo Hall') && r.json.html.includes('Come early.'), r.json?.subject);
   r = await W.call('POST', '/api/admin/speakers/4/slot-email', { note: '' });
   check('with no email on file it is not sent, and says why', r.status === 409 && /no email address/i.test(r.json.error) && W.sent.length === 0, r);
   r = await W.call('POST', '/api/admin/speakers/' + asha + '/slot-email', { note: 'Please reach 30 minutes early.' });
