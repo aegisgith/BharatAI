@@ -1019,15 +1019,14 @@
         /* --- Campus Series and venue, shortened --- */
         /* --- Partners (the organiser, 16 Nov 2026; rebuilt the same evening after
            "very avg, not aligning with overall design" and "simple red text...
-           quite bad"). The site's own vocabulary: a section header with the accent
-           word, then cards built like the value tiles: a caption on top, with the
+           quite bad"). The site's own vocabulary: cards built like the value tiles,
+           with no heading (the organiser had it removed): a caption on top, with the
            role as a small indigo tag in the body face, and the logo stage below
            (the organiser, on the first cards: the tag goes ON TOP of the logo, in
            a different font, not the saffron; then "remove names of companies", so
            the logo alone names the partner). The ASL mark is drawn on black, so
            its stage is black with a glow in its own red. --- */
         .partners { background: #fff; }
-        .partners .section-header { margin-bottom: 2rem; }
         .ptiles { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; max-width: 1040px; }
         .ptile {
             display: flex; flex-direction: column; border-radius: 18px; overflow: hidden;
@@ -1196,12 +1195,8 @@
     </div>
 
     <!-- ===== PARTNERS (the organiser, 16 Nov 2026) ===== -->
-    <section class="section-pad-sm partners" id="partners">
+    <section class="section-pad-sm partners" id="partners" aria-label="Partners">
         <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">Built with our <span class="accent">partners</span></h2>
-                <p class="section-subtitle">The organisations behind the AI, the assessments and the panels at Bharat AI Innovation 2026.</p>
-            </div>
             <ul class="ptiles">
                 <li class="ptile ptile-dark reveal">
                     <div class="ptile-cap"><span class="ptile-role">AI Partner</span></div>
