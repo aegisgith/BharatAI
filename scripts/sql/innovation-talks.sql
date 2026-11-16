@@ -337,3 +337,7 @@ WHERE event_id = 1 AND speaker_name = 'Taranjiet Kaur Oberai' AND company = 'Joy
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
 SELECT 1, 48, 'Morning', 'To be announced', 'Vyom Patel', 'Teenage Works', 'Teen V1: World''s Most Affordable Voice Model', 'confirmed', 'Co-Founder & CTO', '', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Vyom Patel' AND company = 'Teenage Works');
+
+INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
+SELECT 1, 49, 'Morning', 'To be announced', 'Shri Ravi Ranjan Singh', 'Department of Agriculture & Farmers Welfare, Government of India', 'BharatVistaar', 'confirmed', 'Director, Digital', '', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Shri Ravi Ranjan Singh' AND company = 'Department of Agriculture & Farmers Welfare, Government of India');

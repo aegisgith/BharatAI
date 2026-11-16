@@ -154,7 +154,11 @@
         { "name": "Parag Dabhade", "org": "Agriculture Department, Government of Maharashtra" },
         { "name": "Manish K. Prahlad", "org": "Verdant Impact" },
         { "name": "Dr. Omprakash Mandge", "org": "MET" },
-        { "name": "Dr. Santosh Vyas", "org": "Kemin Animal Nutrition & Health" }
+        { "name": "Dr. Santosh Vyas", "org": "Kemin Animal Nutrition & Health" },
+      {
+        "name": "Shri Ravi Ranjan Singh",
+        "org": "Department of Agriculture & Farmers Welfare, Govt of India"
+      }
       ] },
     { "hall": "aryabhata", "day": 2, "start": "12:00", "end": "12:20", "type": "talk", "label": "Innovation Talk", "company": "Nu10 Technologies" },
     { "hall": "aryabhata", "day": 2, "start": "12:20", "end": "12:40", "type": "talk", "label": "Innovation Talk", "company": "Tudip Technologies" },

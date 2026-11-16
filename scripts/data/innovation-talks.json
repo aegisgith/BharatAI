@@ -472,5 +472,14 @@
     "topic": "Teen V1: World's Most Affordable Voice Model",
     "photo": "",
     "slug": "vyom-patel"
+  },
+  {
+    "name": "Shri Ravi Ranjan Singh",
+    "title": "Director, Digital",
+    "company": "Department of Agriculture & Farmers Welfare, Government of India",
+    "topic": "BharatVistaar",
+    "photo": "",
+    "slug": "ravi-ranjan-singh",
+    "government": 4
   }
 ]
