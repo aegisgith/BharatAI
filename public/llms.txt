@@ -70,70 +70,91 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 <!-- speakers:start (made by scripts/gen-speakers.mjs from the app's speakers (one line each): change them in Admin → Conference, not here) -->
 ## Confirmed speakers
 
-- **Hon’ble Shri Eknath Shinde** — Deputy Chief Minister of Maharashtra (special address, 21 Nov, 5:30 pm)
-- **Hon'ble Shri Chandrakant Dada Patil** — Minister of Higher & Technical Education, Government of Maharashtra
-- **Hon'ble Shri Dattatray Bharane** — Minister of Agriculture, Government of Maharashtra
-- **Hon'ble Shri Ashish Nandkishore Jaiswal** — Minister of State for Finance, Planning, Agriculture, Assistance and Rehabilitation, Government of Maharashtra
-- **Shri Virendra Singh (IAS)** — Secretary, Electronics, Information Technology and Artificial Intelligence Department, Government of Maharashtra
+- **Hon’ble Shri Eknath Shinde** — Deputy Chief Minister, Government of Maharashtra (Special Address)
+- **Hon’ble Shri Chandrakant Dada Patil** — Minister, Higher & Technical Education, Government of Maharashtra (Keynote Address)
+- **Hon’ble Shri Dattatray Bharane** — Minister, Agriculture, Government of Maharashtra (Keynote Address)
+- **Hon’ble Smt. Aditi Tatkare** — Minister, Women & Child Development, Government of Maharashtra (Keynote Address)
+- **Hon’ble Shri Sanjay Rathod** — Minister, Soil & Water Conservation, Government of Maharashtra (Keynote Address)
+- **Hon’ble Shri Ashish Nandkishore Jaiswal** — Minister of State, Finance, Planning, Agriculture, Assistance & Rehabilitation, Government of Maharashtra (Minister of State)
+- **Shri Virendra Singh (IAS)** — Secretary, Electronics, Information Technology & Artificial Intelligence Department, Government of Maharashtra (AI in Governance)
 - **Shri Bhim Singh** — Secretary and CEO, State Rural Development Agency, Government of Chhattisgarh
 - **Shri Vivek Khandekar (IFS)** — Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department
-- **Shri. K.K. Singh** — Joint Secretary, Ministry of Electronics & Information Technology (MeitY), Government of India
-- **Shri Sudeep Shrivastava** — Joint Secretary, MeitY; COO, IndiaAI Mission
-- **Shri Suhas Mapari** — Joint Secretary, Chief Minister's Secretariat; Additional CEO, Vision Management Unit for Viksit Maharashtra 2047, Government of Maharashtra
-- **Shri Praveen Pardeshi** — CEO, MITRA / Chief Economic Advisor to CM Maharashtra
-- **Shri Kaustubh Dhavse** — Chief Advisor to the Chief Minister (Investments, Infrastructure, Technology and Strategy), Government of Maharashtra
+- **Shri. K.K. Singh** — Joint Secretary, MeitY, Ministry of Electronics & Information Technology, Govt of India (National AI Policy)
+- **Shri Sudeep Shrivastava** — Joint Secretary, MeitY; COO, IndiaAI Mission, Ministry of Electronics & Information Technology, Government of India (IndiaAI Mission)
+- **Shri Suhas Mapari** — Joint Secretary, Chief Minister's Secretariat, Additional CEO, Vision Management Unit for Viksit Maharashtra 2047, Government of Maharashtra (Viksit Maharashtra 2047)
+- **Shri Praveen Pardeshi** — CEO, MITRA | Chief Economic Advisor to CM Maharashtra, Maharashtra Institution for Transformation, Govt of Maharashtra (Maharashtra AI Strategy)
+- **Shri Kaustubh Dhavse** — Chief Advisor to the Chief Minister, Investments, Infrastructure, Technology & Strategy, Government of Maharashtra (Investments & Infrastructure)
 - **Shri Bhanudas Palwe (IAS)** — Commissioner of Fisheries, Government of Maharashtra
-- **Dr. Kunal Khemnar (IAS)** — Joint Chief Executive Officer, Maharashtra Industrial Development Corporation (MIDC)
-- **Shri Ravi Ranjan Singh** — Director, Digital, Department of Agriculture & Farmers Welfare, Government of India
-- **Akshay Yadava** — Director, Unique Identification Authority of India (UIDAI)
-- **Shri Prakash Kumar** — Additional Director, Ministry of Electronics & Information Technology, Government of India; IndiaAI Mission
-- **Bhupesh Daheria** — CEO, Aegis School of Data Science & Artificial Intelligence
+- **Dr. Kunal Khemnar (IAS)** — Joint Chief Executive Officer, Maharashtra Industrial Development Corporation (MIDC) (Industrial Development)
+- **Shri Ravi Ranjan Singh** — Director, Digital, Department of Agriculture & Farmers Welfare, Government of India (AI in Agriculture)
+- **Akshay Yadava** — Director, Unique Identification Authority of India (UIDAI) (Digital Identity)
+- **Shri Prakash Kumar** — Additional Director, Ministry of Electronics & Information Technology, Government of India, IndiaAI Mission (AI Policy)
+- **Dr. Abhijit Gangopadhyay** — Dean, Aegis School of Data Science & AI; Former Dean, IIM & TISS (AI Education)
+- **Bhupesh Daheria** — CEO, Aegis School of Data Science & AI, Trustee, Aegis Knowledge Trust (AI Talent)
 - **Shri Sachin Itkar** — Vice President, Maharashtra Economic Development Council (MEDC)
-- **Sudhir Kumar Rai** — Director, Data Science, Trellix
-- **Simon David Hunter** — President, Asian Screen Institute (ASI), Singapore; former President, New York Film Academy (NYFA)
-- **Saurabh Kushwah** — Co-Founder & Chief Product and Technology Officer, BULLET Microdrama, ZEEL (panel: Beyond Traditional Entertainment, Day 2)
-- **Pramod Prakash** — Chief Technology Officer, Zee Entertainment Enterprises (panel: Beyond Traditional Entertainment, Day 2)
-- **Ms. Surbhi Gupta** — Chief Digital Officer, Birla Opus Paints
-- **Mahalakshmi AV** — Head of Sales, West and South India, AWS (Amazon Web Services)
-- **Arun Menon** — Chief Operating Officer and Chief Technology & Strategy Officer, Jade Global (panel: Beyond Pilots, hosted by Jade Global, Day 1)
-- **Sushil Vishwakarma** — Director, Integrated Technology & Innovation Leader, Whirlpool Corporation (panel: Beyond Pilots, hosted by Jade Global, Day 1)
-- **Amod Deshpande** — Head of India, Engineering & Operations, Allvue Systems (panel: Beyond Pilots, hosted by Jade Global, Day 1)
-- **Ganesh Joshi** — AVP – IT & Chief Information Officer, Nilons Enterprises Pvt. Ltd. (panel: Beyond Pilots, hosted by Jade Global, Day 1)
-- **Raveesh Dewan** — President & CEO, Joget Inc.
-- **Shallu Kaushik** — Chief Digital Officer, Tata Capital
-- **Dr. Pawan Chawla** — Senior VP & CISO, Tata AIA Life Insurance
-- **Abhay Tewari** — MD & CEO, Star Union Dai-ichi Life Insurance
-- **Nilesh Shah** — Managing Director, Kotak Mahindra Asset Management
-- **Reny Varghese** — Chief Operating Officer, Zynova Shalby Hospitals
-- **Dr. Vivek Mohanrao Bhoite** — Subject Matter Specialist, KVK Baramati, ICAR-ATARI
-- **Manish K. Prahlad** — Co-Founder and CEO, Verdant Impact (panel: Transforming Indian Agriculture with AI, Day 2)
-- **Dr. Ashish Tendulkar** — Lead AI, Google
-- **Shailesh Dhuri** — CEO, Decimal Point Analytics
-- **Mukesh Jain** — Global EVP & CTO, Capgemini
-- **Pravin Kumar** — Chief Market Information Security Officer & Data Protection Officer, National Payments Corporation of India (NPCI)
-- **Manish Agrawal** — President & Chief Operating Officer, Comviva
-- **Yogesh Bhalla** — Chief Technology Officer, DSP Mutual Fund
-- **Ramanarayana Parhi** — VP & CIO, Alkem Laboratories
-- **Ratan Kumar Kesh** — Executive Director & COO, Bandhan Bank
-- **Sandeep Kumar** — CIO, Go Digit Insurance
-- **Dr. Rajul Gajjar** — Former Vice Chancellor, Gujarat Technological University
-- **Soly Thomas** — Deputy CEO & Chief Digital Officer, Canara HSBC Life Insurance
-- **Tarun Chugh** — MD & CEO, Bajaj Life Insurance Company
-- **Jagbir Singh** — CTIO, Vodafone Idea Limited
-- **Vishal Rally** — Chief Revenue Officer, Tata Tele Business Services
-- **Ashutosh Agrawal** — Group CEO, Globe Teleservices
-- **Akhil Gupta** — Founder, NoBroker.com
-- **Dheeraj Sinha** — EVP & Global Chief Information Officer, Sun Pharma
-- **Abhay Sharma** — Partner & Practice Leader, IBM
+- **Tarun Chugh** — MD & CEO, Bajaj Life Insurance Company (AI in Insurance)
+- **Simon David Hunter** — President, Asian Screen Institute (ASI), Singapore, Former President, New York Film Academy (NYFA) (AI in Film & Media)
+- **Saurabh Kushwah** — Co-Founder & Chief Product and Technology Officer, BULLET Microdrama · ZEEL (AI in Media)
+- **Pramod Prakash** — Chief Technology Officer, Zee Entertainment Enterprises (AI in Media)
+- **Ms. Surbhi Gupta** — Chief Digital Officer, Birla Opus Paints (AI for Bharat)
+- **Mahalakshmi AV** — Head of Sales, West and South India, AWS (Enterprise AI)
+- **Arun Menon** — Chief Operating Officer and Chief Technology & Strategy Officer, Jade Global (Enterprise AI)
+- **Sushil Vishwakarma** — Director, Integrated Technology & Innovation Leader, Whirlpool Corporation (Enterprise AI)
+- **Amod Deshpande** — Head of India, Engineering & Operations, Allvue Systems (Enterprise AI)
+- **Ganesh Joshi** — AVP – IT & Chief Information Officer, Nilons Enterprises (Enterprise AI)
+- **Raveesh Dewan** — President & CEO, Joget Inc. (GenAI & Agentic AI)
+- **Shallu Kaushik** — Chief Digital Officer, Tata Capital (AI in Insurance)
+- **Dr. Pawan Chawla** — Senior VP & CISO, Tata AIA Life Insurance (AI in Insurance)
+- **Abhay Tewari** — MD & CEO, Star Union Dai-ichi Life Insurance (AI in Insurance)
+- **Nilesh Shah** — Managing Director, Kotak Mahindra Asset Management (AI in BFSI)
+- **Dr. Vivek Mohanrao Bhoite** — Subject Matter Specialist, KVK Baramati, ICAR-ATARI (AI in Agriculture)
+- **Yogesh Bhalla** — Chief Technology Officer, DSP Mutual Fund (AI in Asset Management)
+- **Shailesh Dhuri** — Chief Executive Officer, Decimal Point Analytics (AI in Finance)
+- **Dr. Ashish Tendulkar** — Lead AI, Google (AI Research)
+- **Mukesh Jain** — Global EVP & CTO, Capgemini (AI at Scale)
+- **Manish Agrawal** — President & Chief Operating Officer, Comviva (AI in Telecom)
+- **Rinoo Rajesh** — President of PMI Pune (AI Project Management)
+- **Ramanarayana Parhi** — VP & CIO, Alkem Laboratories (AI in Pharma)
+- **Ratan Kumar Kesh** — Executive Director & COO, Bandhan Bank (AI in Banking)
+- **Sandeep Kumar** — CIO, Go Digit Insurance (AI in Insurance)
+- **Parag Dabhade** — Chief Technology Officer, AI & Agritech Innovation Center, Govt of Maharashtra (AgriTech AI)
+- **Joy Chakraborty** — Deputy Chief Executive Officer, P. D. Hinduja National Hospital & Medical Research Centre (Healthcare AI)
+- **Rahul Molasi** — DGM L&OD; Head CoE, Digital, Managerial and Learning Analytics, Sun Pharma (AI in Pharma)
+- **Abdul Hai Mattoo** — CVP & Head of Training, Axis Max Life Insurance (AI in Insurance)
+- **Dr. Rajul Gajjar** — Former Vice Chancellor, Gujarat Technological University (AI in Education)
+- **Soly Thomas** — Deputy CEO & Chief Digital Officer, Canara HSBC Life Insurance (AI in Banking)
+- **Jagbir Singh** — Chief Technology & Information Officer, Vodafone Idea Limited (AI in Telecom)
+- **Vishal Rally** — Chief Revenue Officer, Tata Tele Business Services (AI for Business)
+- **Akhil Gupta** — Founder, NoBroker.com (AI in PropTech)
+- **Dheeraj Sinha** — EVP & Global Chief Information Officer, Sun Pharma (AI in Pharma)
+- **Abhay Sharma** — Partner & Practice Leader, IBM (Enterprise AI)
+- **Pravin Kumar** — Chief Market Information Security Officer & Data Protection Officer, National Payments Corporation of India (NPCI) (AI Governance)
+- **Sudhir Kumar Rai** — Director, Data Science, Trellix (AI in Cybersecurity)
 - **Dr. Lakshmi Mohan** — Pro Vice Chancellor, ITM Skills University (Education Panel)
 - **Dr. Manpreet Singh Manna** — Founding Executive Director, GCC School (Education Panel)
 - **Dr. Priyesh Gandhi** — Provost (Vice Chancellor), Sigma University (Education Panel)
 - **Dr. Shashank D Dalvi** — Vice Chancellor, MGM Institute of Health Sciences (Education Panel)
 - **Raju Haldankar** — President, Chetana's Institute of Management & Research (Education Panel)
+- **Amita Madhvani** — Founder, Ram Madhvani Films
 - **Dr. Saurabh N. Mehta** — Chief Academic Officer & Professor, Vidyalankar Institute of Technology, Mumbai (Education Panel)
-- **Dr. Parijat Shukla** — PhD in Machine Learning, Iowa State University (Automatic Speech Recognition workshop)
-- **Virendra Pal** — AI & FinTech Expert; alumnus, Aegis School of Data Science and AI (LLM Fine-Tuning workshop)
-- **KrishnaKanth Naik** — Program Manager, IBM Career Education (IBM workshop: AI, Trust and Evolving Skills using IBM Bob)
+- **Sankalp Rawal** — screenwriter, director, and performance poet
+- **Dr. Parijat Shukla** — PhD, Iowa State University (Speech Recognition)
+- **Abhishek Talwar** — Co-Founder, Biplo World
+- **Virendra Pal** — AI & FinTech Expert (LLM Fine-Tuning)
+- **Rohini Ramnathan** — Chief Content Officer, Fever Network
+- **KrishnaKanth Naik** — Program Manager, IBM Career Education (IBM Bob Workshop)
+- **Vishal Deo** — Scientist, Indian Council of Medical Research -
+- **Ashutosh Agrawal** — Group CEO, Globe Teleservices (AI in Telecom)
+- **Reny Varghese** — Chief Operating Officer, Zynova Shalby Hospitals
+- **Mr. Namit Sharma** — Chief Executive Officer, Arre Studios (Content, Creativity & AI: Redefining Media, Personalization, and Digital Experiences)
+- **Dr. Santosh Vyas** — Director - Research & Development, Kemin Industries South Asia Pvt Ltd (AI in Agriculture)
+- **Ashwani Kumar** — Senior Director of Engineering, AI Platform, Nielsen (Enterprise AI)
+- **Khushan Shah** — Chief Technology and Product Officer, Fynd (GenAI & Agentic AI)
+- **Rajat Nigam** — Head of Technology and Media Operations, JioStar India
+- **Arindam Ghosh** — Chief Distribution Officer & Joint President, Star Union Dai-ichi Life Insurance (AI in Insurance)
+- **Fal Ghancha** — Founder and CTO, 72 Street AI; Co-Founder, ApexCXOs, 72 Street AI (Trustworthy AI)
+- **Kiran Nambiar** — CEO & Co-founder, MyFi (AI Democratizing and Driving Financial Inclusion)
+
 <!-- speakers:end -->
 
 <!-- exhibitors:start (generated by scripts/gen-exhibitor-logos.mjs: edit the list there, not here) -->
