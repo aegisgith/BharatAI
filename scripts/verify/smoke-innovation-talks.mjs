@@ -105,7 +105,7 @@ check('send: one email, to the address typed (lower case)', r.status === 200 && 
 check('send: from register@bharataiinnovation.com', /register@bharataiinnovation\.com/.test(m.Content.From), m.Content.From);
 check('send: no unsubscribe footer on an email about their own talk', !/Unsubscribe/i.test(html) && !(m.Content.Headers && m.Content.Headers['List-Unsubscribe']));
 check('send: to a booth contact it says "Hello" and asks them to pass it on', /Hello,/.test(html) && /pass this on to them/.test(html) && !/Dear Amritesh/.test(html));
-check('send: it tells them the time and the hall by its event name only', html.includes('Fri 20 Nov · 1:10 – 1:18 PM') && html.includes('Aryabhata Theatre') && !html.includes('Expo Hall'));
+check('send: it tells them the time and the hall by its event name only', html.includes('Fri 20 Nov · 2:21 – 2:28 PM') && html.includes('Aryabhata Theatre') && !html.includes('Expo Hall'));
 check('send: it lists only what was ticked, with the reason, and the extra note', /Two or three lines about you/.test(html) && /Your mobile number/.test(html) && !/A clear photo of you/.test(html) && html.includes('Please send your slides by 18 Nov.'));
 check('send: it never blames anyone and asks for a reply', /Just reply to this email/.test(html) && !/(our|the) (app|system|website) (had|has) (a )?(problem|error)/i.test(html));
 let a2 = W.talk('id = ?', amr.id);
@@ -121,7 +121,7 @@ r = await W.as('POST', url, { to: 'other@phoebetal.test', items: ['topic'], save
 check("save_email never replaces an email already on the talk", W.talk('id = ?', amr.id).speaker_email === 'amritesh@phoebetal.test');
 // A talk with nothing set: the email says the time and stage will follow.
 const vin = W.talk("speaker_name = 'Vineet Upadhayay'");
-W.db.run("UPDATE innovation_talks SET topic = '<img src=x onerror=alert(1)>', hall = '' WHERE id = ?", [vin.id]);
+W.db.run("UPDATE innovation_talks SET topic = '<img src=x onerror=alert(1)>', hall = '', starts_at = NULL, time_slot = 'To be announced' WHERE id = ?", [vin.id]);
 W.sent.length = 0;
 r = await W.as('POST', '/api/admin/innovation-talks/' + vin.id + '/request-details', { to: 'v@p99.test', items: ['topic'] });
 const vh = W.sent[0].Content.Body[0].Content;
@@ -145,7 +145,7 @@ check('nothing was sent or changed without the password', W.talk('id = ?', amr.i
 const O = await talksWorld({ with0052: false });
 const oid = O.talk("speaker_name = 'Amritesh Kumar'").id;
 r = await O.hit('GET', '/api/events/1/innovation-talks');
-check('before 0052: the public list still works (no hall)', r.status === 200 && r.json.length === 48 && !('hall' in r.json[0]) && 'speaker_title' in r.json[0], r.status);
+check('before 0052: the public list still works (no hall)', r.status === 200 && r.json.length === 49 && !('hall' in r.json[0]) && 'speaker_title' in r.json[0], r.status);
 r = await O.as('PATCH', '/api/admin/innovation-talks/' + oid, { hall: 'Aryabhata Theatre', topic: 'Changed', starts_at: '2026-11-20 13:10', duration_min: 8 });
 check('before 0052: an edit saves the rest and says hall was not saved', r.status === 200 && JSON.stringify(r.json.not_saved) === '["hall"]' && O.talk('id = ?', oid).topic === 'Changed' && O.talk('id = ?', oid).time_slot === 'Fri 20 Nov · 1:10 – 1:18 PM', r.json);
 r = await O.as('PATCH', '/api/admin/innovation-talks/' + oid, { speaker_email: 'a@b.test' });
