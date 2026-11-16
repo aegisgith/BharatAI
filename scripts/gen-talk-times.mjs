@@ -1,3 +1,6 @@
+// RETIRED on 16 Nov 2026: the app (Admin -> Innovation Talks and Admin -> Conference) holds the talks' times now and
+// scripts/data/schedule.json is written FROM the app by scripts/pull-programme.mjs, so reading it back into SQL
+// would go in a circle. Kept for its history; do not run it on production.
 // The Innovation Talks' times and hall, for the app (12 Nov 2026).
 //
 // The agenda (scripts/data/schedule.json, from the organiser's Drive workbook) gives

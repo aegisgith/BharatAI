@@ -1316,6 +1316,7 @@
             <!-- Speakers Grid: three rows show, the first 9 (phone) or 18; "See all" opens the rest -->
             <div class="speakers-grid-wrapper" role="region" aria-label="Confirmed Speakers">
                 <div class="speakers-grid" id="spkGrid" data-show="9,18">
+                    <!-- speakers:start (made by scripts/gen-speakers.mjs from the app's speakers (everyone who is not a minister; the ministers above are written by hand): change them in Admin → Conference, not here) -->
 
                     <!-- Shri Virendra Singh (IAS) -->
                     <div class="speaker-card reveal reveal-delay-2" style="text-align:center;align-items:center;">
@@ -1904,6 +1905,7 @@
                         <span class="speaker-topic" style="margin-top:0.5rem;">IBM Bob Workshop</span>
                     </div>
 
+                    <!-- speakers:end -->
                 </div>
             </div>
             <button type="button" class="show-all" data-show-all="spkGrid" data-more="See all speakers" data-less="Show fewer speakers" aria-expanded="false" hidden><span class="show-label">See all speakers</span><span class="chev" aria-hidden="true"></span></button>

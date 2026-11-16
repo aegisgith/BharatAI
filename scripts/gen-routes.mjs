@@ -25,7 +25,10 @@ const ROUTES = '_routes.json'
 // Routes the Hono Worker MUST keep handling even though a same-named static
 // file exists. /contact and /register are app routes; their marketing stubs
 // were intentionally not copied, but guard here in case they reappear.
-const FORCE_DYNAMIC = new Set(['/contact', '/register'])
+// /conference is drawn by the Worker from the app's programme (src/routes/site-live.ts,
+// 16 Nov 2026): the static file is its template and its fallback. /conference.html
+// stays static, as every other page does.
+const FORCE_DYNAMIC = new Set(['/contact', '/register', '/conference'])
 
 // Directories whose files the Worker must serve, never Pages directly. The
 // Campus Series insights reports (public/reports/*.pdf) are given out only

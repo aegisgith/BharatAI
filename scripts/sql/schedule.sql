@@ -1,3 +1,7 @@
+-- FROZEN on 16 Nov 2026: a test fixture only (scripts/verify/conference-world.mjs seeds the real agenda from it).
+-- NEVER run this on production: it deletes every session of event 1 and reinserts the agenda of 16 Nov 2026,
+-- losing everything the team has done since in Admin -> Conference, which is the only source of the programme now.
+-- gen-schedule.mjs no longer writes it.
 -- The conference schedule in the app, from scripts/data/schedule.json.
 -- Written by scripts/gen-schedule.mjs: edit the JSON and re-run, never this file.
 --

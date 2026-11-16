@@ -4,6 +4,8 @@
   "scripts": {
     "dev": "vite",
     "css": "tailwindcss -c tailwind.config.cjs -i src/styles/tailwind.css -o public/css/tailwind.css --minify",
+    "prebuild": "node scripts/sync-programme.mjs --ci-only",
+    "sync:programme": "node scripts/sync-programme.mjs",
     "build": "npm run css && vite build",
     "postbuild": "node scripts/gen-routes.mjs && node scripts/check-no-counts.mjs && node scripts/check-inline-js.mjs",
     "preview": "wrangler pages dev dist",

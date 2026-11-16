@@ -6,6 +6,7 @@ import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
+import siteLive from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief } from './routes/talk-brief'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
@@ -522,6 +523,8 @@ app.get('/api/admin/events/:id/senders', async (c) => {
 // an admin. It also owns POST/PUT/DELETE /api/admin/sessions.
 configureConference({ sendEmail: sendAdminEmail, audit, changedFields, emailHeader: emailBrandHeader, actor: (c: any) => adminActor(c).actor, syncTalk: italkSyncFromProgramme, issueSpeakerPass })
 app.route('/', conference)
+// /conference drawn live from the app's programme (16 Nov 2026): src/routes/site-live.ts.
+app.route('/', siteLive)
 // Speaker briefs (12 Nov 2026): each speaker's sessions, panel and pass in one email,
 // previewed and sent from Admin -> Conference; routes/speaker-brief.ts, screen
 // public/static/speaker-brief.js. The pass button signs them in at their pass.

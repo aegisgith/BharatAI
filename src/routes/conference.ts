@@ -41,6 +41,17 @@ export function configureConference(h: Hooks) { hooks = { ...hooks, ...h } }
 
 const conf = new Hono<{ Bindings: any }>()
 
+// Every write to the programme, a speaker or a hall asks the website to rebuild itself
+// (pokeSiteBuild, below: a Pages deploy hook, at most once in ten minutes, only when the
+// secret is set). /conference is drawn live from D1 anyway; this refreshes the home page's
+// speakers, llms.txt and the committed pages.
+for (const path of ['/api/admin/sessions', '/api/admin/sessions/*', '/api/admin/speakers', '/api/admin/speakers/*', '/api/admin/halls', '/api/admin/halls/*', '/api/admin/events/:id/conference/*']) {
+  conf.use(path, async (c, next) => {
+    await next()
+    if (c.req.method !== 'GET' && c.res && c.res.status < 300) siteChanged(c)
+  })
+}
+
 export const SESSION_TYPES = ['keynote', 'talk', 'panel', 'workshop', 'ceremony', 'exhibition', 'networking', 'break']
 export const SPEAKER_ROLES = ['keynote', 'speaker', 'panellist', 'moderator', 'host', 'chair']
 export const MIGRATION_FILE = '0054_conference_manager.sql'
@@ -488,7 +499,7 @@ export async function hallsFor(c: any, eventId: number, isReady: boolean) {
 
 // The event's Innovation Talks (the organisers' own rows and exhibitors' timed ones),
 // or none where the table or the event has none.
-async function talksFor(c: any, eventId: number): Promise<any[]> {
+export async function talksFor(c: any, eventId: number): Promise<any[]> {
   try { return await all(c, 'SELECT * FROM innovation_talks WHERE event_id = ? ORDER BY starts_at IS NULL, starts_at, slot_no, id', eventId) }
   catch { return [] }
 }
@@ -1359,6 +1370,69 @@ conf.post('/api/admin/speakers/:id/slot-email', async (c) => {
   await audit(c, 'speaker.slot_email', 'speaker', id, { name: sp.name, to: sp.email, sessions: slots.map((s: any) => s.id) })
   return c.json({ success: true, to: sp.email })
 })
+
+// ---------- for the website (16 Nov 2026) ----------
+//
+// The programme as the website draws it: the event, its halls, every published session
+// with the speakers it names (saved links or the typed line), the published speakers
+// and the Innovation Talks. Public, because every word of it is on the website; never
+// an email, a mobile, a draft or a hidden speaker. scripts/pull-programme.mjs saves it
+// as scripts/data/programme.json at build time, and src/routes/site-live.ts draws
+// /conference from it on every request, so a change in Admin is on the website within
+// a minute (the answer is cached for 60 seconds).
+export async function siteLiveOn(c: any): Promise<boolean> {
+  try { const r = await one(c, "SELECT value FROM app_settings WHERE key = 'site_live_conference'"); return String(r?.value || '').trim().toLowerCase() === 'on' } catch { return false }
+}
+export async function publicProgramme(c: any, eventId: number) {
+  const r = await conferenceReady(c)
+  const [event, speakers, halls, talks] = await Promise.all([
+    one(c, 'SELECT id, title, venue, start_date, end_date FROM events WHERE id = ?', eventId),
+    all(c, 'SELECT id, slug, name, role, organisation, topic, photo_url, bio, linkedin_url, is_featured, is_published, sort_order FROM speakers WHERE event_id = ? AND is_published = 1 ORDER BY sort_order, id', eventId),
+    hallsFor(c, eventId, r.halls),
+    talksFor(c, eventId),
+  ])
+  const sessions = (await sessionsWithSpeakers(c, eventId, speakers, r)).filter((s: any) => s.status !== 'draft')
+  return {
+    generated_at: new Date().toISOString(),
+    // Whether the website follows the app yet (app_settings.site_live_conference = 'on',
+    // set by the organiser's SQL of 16 Nov 2026 once the app held the website's agenda).
+    live: await siteLiveOn(c),
+    event: event ? { id: Number(event.id), title: event.title, venue: event.venue || '', start_date: event.start_date, end_date: event.end_date } : { id: eventId },
+    halls: halls.filter((h: any) => Number(h.is_active) !== 0).map((h: any) => ({ name: h.name, short_name: h.short_name || '', location: h.location || '', purpose: h.purpose || '', sort_order: Number(h.sort_order) || 0 })),
+    sessions: sessions.map((s: any) => ({ id: Number(s.id), title: s.title, description: s.description || '', session_type: s.session_type, track: s.track || '', room: s.room || '',
+      start_time: s.start_time, end_time: s.end_time, speaker_name: s.speaker_name || '', speaker_title: s.speaker_title || '',
+      links: (s.links || []).map((l: any) => ({ speaker_id: Number(l.speaker_id), role: l.role || '' })) })),
+    speakers: speakers.map((sp: any) => ({ id: Number(sp.id), slug: sp.slug, name: sp.name, role: sp.role || '', organisation: sp.organisation || '', topic: sp.topic || '', photo_url: sp.photo_url || '',
+      bio: sp.bio || '', linkedin_url: sp.linkedin_url || '', is_featured: Number(sp.is_featured) || 0, is_published: 1, sort_order: Number(sp.sort_order) || 0 })),
+    talks: talks.filter((t: any) => (t.status || 'confirmed') !== 'cancelled').map((t: any) => ({ id: Number(t.id), company: t.company || '', speaker_name: t.speaker_name || '', speaker_title: t.speaker_title || '',
+      topic: t.topic || '', starts_at: t.starts_at || null, duration_min: Number(t.duration_min) || null, hall: t.hall || '', photo_url: t.speaker_photo_url || '', status: t.status || 'confirmed' })),
+  }
+}
+conf.get('/api/events/:id/programme', async (c) => {
+  const eventId = Number(c.req.param('id')) || 1
+  const p = await publicProgramme(c, eventId)
+  return c.json(p, 200, { 'Cache-Control': 'public, max-age=60' })
+})
+
+// A change to the programme or a speaker asks Cloudflare Pages to rebuild the website,
+// when a deploy hook is set (secret SITE_BUILD_HOOK: Pages -> Settings -> Builds -> Deploy
+// hooks, saved with `npx wrangler pages secret put SITE_BUILD_HOOK`). The build pulls the
+// programme and rewrites the home page's speakers, llms.txt and the committed
+// /conference. At most one build every ten minutes (app_settings.site_build_asked),
+// because a team editing a panel saves many times; /conference itself is live anyway.
+export const SITE_BUILD_GAP_MS = 10 * 60 * 1000
+export async function pokeSiteBuild(c: any): Promise<boolean> {
+  const hook = String(c.env?.SITE_BUILD_HOOK || '').trim()
+  if (!/^https:\/\/api\.cloudflare\.com\/client\/v4\/pages\/webhooks\/deploy_hooks\//.test(hook)) return false
+  try {
+    const last = await one(c, "SELECT value FROM app_settings WHERE key = 'site_build_asked'")
+    if (last && Date.now() - Number(last.value || 0) < SITE_BUILD_GAP_MS) return false
+    await c.env.DB.prepare("INSERT INTO app_settings (key, value) VALUES ('site_build_asked', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(String(Date.now())).run()
+    const r = await fetch(hook, { method: 'POST' })
+    return r.ok
+  } catch { return false }
+}
+const siteChanged = (c: any) => { try { c.executionCtx.waitUntil(pokeSiteBuild(c)) } catch { /* no execution context in a test */ } }
 
 // ---------- for the attendee app (index.tsx reads these) ----------
 
