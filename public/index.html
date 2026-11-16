@@ -1027,6 +1027,7 @@
            the logo alone names the partner). The ASL mark is drawn on black, so
            its stage is black with a glow in its own red. --- */
         .partners { background: #fff; }
+        .partners[hidden] { display: none !important; }
         .ptiles { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; max-width: 1040px; }
         .ptile {
             display: flex; flex-direction: column; border-radius: 18px; overflow: hidden;
@@ -1195,7 +1196,8 @@
     </div>
 
     <!-- ===== PARTNERS (the organiser, 16 Nov 2026) ===== -->
-    <section class="section-pad-sm partners" id="partners" aria-label="Partners">
+    <!-- Hidden for now (the organiser, 16 Nov 2026): drop the hidden attribute to show the cards again. -->
+    <section class="section-pad-sm partners" id="partners" aria-label="Partners" hidden>
         <div class="container">
             <ul class="ptiles">
                 <li class="ptile ptile-dark reveal">
