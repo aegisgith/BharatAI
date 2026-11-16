@@ -339,5 +339,8 @@ SELECT 1, 48, 'Morning', 'To be announced', 'Vyom Patel', 'Teenage Works', 'Teen
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Vyom Patel' AND company = 'Teenage Works');
 
 INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, speaker_photo_url, notes)
-SELECT 1, 49, 'Morning', 'To be announced', 'Shri Ravi Ranjan Singh', 'Department of Agriculture & Farmers Welfare, Government of India', 'BharatVistaar', 'confirmed', 'Director, Digital', '', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
+SELECT 1, 49, 'Morning', 'To be announced', 'Shri Ravi Ranjan Singh', 'Department of Agriculture & Farmers Welfare, Government of India', 'BharatVistaar', 'confirmed', 'Director, Digital', '/images/talks/ravi-ranjan-singh.webp', 'Imported from the Innovation Talk sheet, 12 Oct 2026'
 WHERE NOT EXISTS (SELECT 1 FROM innovation_talks WHERE event_id = 1 AND speaker_name = 'Shri Ravi Ranjan Singh' AND company = 'Department of Agriculture & Farmers Welfare, Government of India');
+
+UPDATE innovation_talks SET speaker_photo_url = '/images/talks/ravi-ranjan-singh.webp'
+WHERE event_id = 1 AND speaker_name = 'Shri Ravi Ranjan Singh' AND company = 'Department of Agriculture & Farmers Welfare, Government of India' AND COALESCE(speaker_photo_url, '') = '';
