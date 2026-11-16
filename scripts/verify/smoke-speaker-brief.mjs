@@ -153,7 +153,7 @@ check('a missing session has none', r.status === 404);
 
 // ---- the admin page loads the screen ----
 r = await W.call('GET', '/admin', undefined, { admin: false });
-check('the admin page loads speaker-brief.js after conference-admin.js and BEFORE admin.js (other screens may sit between)', r.status === 200 && /conference-admin\.js\?v=[^"]+"><\/script>\s*<script src="\/static\/speaker-brief\.js\?v=\d+"><\/script>/.test(r.text) && r.text.indexOf('/static/speaker-brief.js?v=') < r.text.indexOf('/admin.js?v='), r.status);
+check('the admin page loads speaker-brief.js after conference-admin.js and BEFORE admin.js (other screens may sit between)', r.status === 200 && /conference-admin\.js\?v=[^"]+"><\/script>\s*<script src="\/static\/speaker-brief\.js\?v=\w+"><\/script>/.test(r.text) && r.text.indexOf('/static/speaker-brief.js?v=') < r.text.indexOf('/admin.js?v='), r.status);
 
 // ---- add email and mobile from the list (16 Nov 2026), and a CC ----
 W.db.run("INSERT INTO attendees (event_id, name, email, mobile, badge_type, payment_status, main_event, company, job_title) VALUES (1, 'Tarun Chugh', 'tarun@example.test', '9820000002', 'Delegate Pass', 'paid', 1, 'Bajaj Life Insurance', 'MD & CEO')");

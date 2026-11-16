@@ -15,7 +15,7 @@
 (function (global) {
   'use strict';
 
-  var V = '20261116';
+  var V = '20261116b';
   var S = { d: null, filter: 'todo', sel: {}, busy: false, one: null, pv: 0, timer: null, noteSaved: '', lastFocus: null, wired: false, usual: { subject: '', greeting: '', opening: '' }, noteAtOpen: '', contact: null, ccSaved: '' };
   var STATUS = {
     ready: { word: 'Not sent yet', cls: 'is-ready' },

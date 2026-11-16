@@ -41698,7 +41698,7 @@ function adminPageHTML(): string {
   </div>
 
   <script src="/static/conference-admin.js?v=20261115"></script>
-  <script src="/static/speaker-brief.js?v=20261116"></script>
+  <script src="/static/speaker-brief.js?v=20261116b"></script>
   <script src="/static/talk-brief.js?v=20261116"></script>
   <script src="/static/event-week.js?v=20261116"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
