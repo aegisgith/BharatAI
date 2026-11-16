@@ -224,5 +224,30 @@ const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (o
   check('with no drafts, attendees see every session', pub.json.length === timed);
 }
 
+// ================= Speaker pass holders who are not on the speakers list (16 Nov 2026) =================
+{
+  const W = await makeWorld();
+  W.db.run("INSERT INTO attendees (event_id, name, email, mobile, company, job_title, badge_type, payment_status, main_event) VALUES (1, 'Arindam Ghosh', 'arindam@example.test', '98765 43210', 'Star Union Dai-ichi Life Insurance', 'Chief Distribution Officer', 'Speaker', 'waived', 1)");
+  // Shailesh Dhuri is speaker 3; a pass under another email is still him.
+  W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, main_event) VALUES (1, 'Dr. Shailesh Dhuri', 'another@example.test', 'Speaker', 'waived', 1)");
+  W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, main_event) VALUES (1, 'Visitor Person', 'visitor@example.test', 'Visitor Pass', 'paid', 1)");
+  const d = (await W.call('GET', '/api/admin/events/1/conference')).json;
+  check('a Speaker pass holder with no speaker profile is offered to the screen, with their title and organisation', d.pass_holders.length === 1 && d.pass_holders[0].name === 'Arindam Ghosh' && d.pass_holders[0].job_title === 'Chief Distribution Officer' && d.pass_holders[0].company === 'Star Union Dai-ichi Life Insurance', d.pass_holders);
+  check('a pass under another email for someone already listed is matched by name, not offered; a Visitor Pass is not a speaker', !d.pass_holders.some(a => /Dhuri|Visitor/.test(a.name)));
+  const aid = d.pass_holders[0].id;
+  const anon = await W.call('POST', '/api/admin/speakers/from-attendee/' + aid, {}, { admin: false });
+  check('nobody but an admin puts them on the list', (anon.status === 401 || anon.status === 403) && !W.rows("SELECT id FROM speakers WHERE name = 'Arindam Ghosh'").length, anon.status);
+  const r = await W.call('POST', '/api/admin/speakers/from-attendee/' + aid, {});
+  const sp = W.rows('SELECT * FROM speakers WHERE id = ?', [r.json.id])[0];
+  check('one call puts them on the speakers list with their title, organisation, email and mobile, shown to attendees', r.status === 201 && sp && sp.name === 'Arindam Ghosh' && sp.role === 'Chief Distribution Officer' && sp.organisation === 'Star Union Dai-ichi Life Insurance' && sp.email === 'arindam@example.test' && sp.phone === '9876543210' && sp.is_published === 1 && sp.slug === 'arindam-ghosh', { status: r.status, sp });
+  const again = await W.call('POST', '/api/admin/speakers/from-attendee/' + aid, {});
+  check('a second call hands back the same profile, never a twin', again.status === 200 && again.json.existed && again.json.id === r.json.id && W.rows("SELECT id FROM speakers WHERE name = 'Arindam Ghosh'").length === 1, again.json);
+  const d2 = (await W.call('GET', '/api/admin/events/1/conference')).json;
+  check('they are then on the list with their Speaker pass, and no longer offered', d2.speakers.some(s => s.id === r.json.id && s.pass && s.pass.badge_type === 'Speaker') && d2.pass_holders.length === 0, d2.pass_holders);
+  check('the app lists them: published, with a slug of their own', W.rows("SELECT is_published, slug FROM speakers WHERE name = 'Arindam Ghosh'")[0]?.is_published === 1);
+  const gone = await W.call('POST', '/api/admin/speakers/from-attendee/999999', {});
+  check('an attendee who is not there is refused in plain words', gone.status === 404 && /not on the list/.test(gone.json.error), gone.json);
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

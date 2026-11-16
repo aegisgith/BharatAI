@@ -537,6 +537,25 @@ export async function sessionsWithSpeakers(c: any, eventId: number, speakers: an
   })
 }
 
+// People holding a Speaker pass with no speaker row under their email or name: the
+// team adds speakers through Attendees too, and someone who registered on the site
+// can be given the pass there. Until they are on the list, Conference cannot find
+// them, so the screen offers them (16 Nov 2026).
+async function speakerPassHolders(c: any, eventId: number, speakers: any[]) {
+  let rows: any[] = []
+  try {
+    rows = await all(c, "SELECT id, name, email, mobile, company, job_title, linkedin_url, avatar_url, registration_source, created_at FROM attendees WHERE event_id = ? AND badge_type = 'Speaker' ORDER BY id DESC LIMIT 300", eventId)
+  } catch { return [] }
+  const emails = new Set(speakers.map((s: any) => String(s.email || '').trim().toLowerCase()).filter(Boolean))
+  const names = new Set(speakers.map((s: any) => normName(s.name)).filter(Boolean))
+  return rows.filter((a: any) => a.name && !emails.has(String(a.email || '').trim().toLowerCase()) && !names.has(normName(a.name))).map((a: any) => ({
+    id: Number(a.id), name: a.name, email: /@no-email\.invalid$/i.test(String(a.email || '')) ? '' : String(a.email || ''), mobile: a.mobile || '',
+    company: a.company || '', job_title: a.job_title || '', linkedin_url: a.linkedin_url || '',
+    photo_url: /^\/api\/uploads\//.test(String(a.avatar_url || '')) ? a.avatar_url : '',
+    source: a.registration_source || '', created_at: a.created_at || null,
+  }))
+}
+
 // ---------- the one read the screen makes ----------
 
 conf.get('/api/admin/events/:id/conference', async (c) => {
@@ -583,6 +602,8 @@ conf.get('/api/admin/events/:id/conference', async (c) => {
     owner: speakerOwners.get(Number(s.id))?.name || '',
   }))
 
+  const passHolders = await speakerPassHolders(c, eventId, speakers)
+
   const byId = new Map(speakers.map((s: any) => [Number(s.id), s]))
   const clashes = findClashes(sessions.map((s: any) => ({
     id: s.id, title: s.title, room: s.room, session_type: s.session_type, start_time: s.start_time, end_time: s.end_time, status: s.status,
@@ -606,7 +627,7 @@ conf.get('/api/admin/events/:id/conference', async (c) => {
 
   return c.json({
     ready: r, migration: MIGRATION_FILE, command: MIGRATION_COMMAND,
-    event, days, event_days: eventDays, halls, speakers: outSpeakers, sessions, clashes,
+    event, days, event_days: eventDays, halls, speakers: outSpeakers, pass_holders: passHolders, sessions, clashes,
     issues, free, windows: Object.fromEntries(days.map(d => [d, dayWindow(sessions, d)])),
     talks: { total: talks.length, on_programme: linked.size, unplaced },
     events, words: wordsFor(event),
@@ -779,6 +800,41 @@ conf.post('/api/admin/speakers', async (c) => {
   await audit(c, 'speaker.create', 'speaker', id, { name: set.name, organisation: set.organisation || '', published: set.is_published })
   await saveOwnerFrom(c, 'speaker', Number(id), b, set.name)
   return c.json({ success: true, id, slug }, 201)
+})
+
+// A Speaker pass holder put on the speakers list from their attendee row: name,
+// designation, organisation, email, mobile, LinkedIn and the photo they uploaded.
+// Someone already listed under that email or name is handed back, never twinned.
+conf.post('/api/admin/speakers/from-attendee/:attendeeId', async (c) => {
+  const aid = Number(c.req.param('attendeeId'))
+  const a = await one(c, 'SELECT id, event_id, name, email, mobile, company, job_title, linkedin_url, avatar_url, badge_type FROM attendees WHERE id = ?', aid)
+  if (!a) return c.json({ error: 'That attendee is not on the list any more.' }, 404)
+  const eventId = Number(a.event_id) || 1
+  const email = /@no-email\.invalid$/i.test(String(a.email || '')) ? '' : String(a.email || '').trim().toLowerCase()
+  if (email) {
+    const dup = await one(c, 'SELECT id, name FROM speakers WHERE event_id = ? AND LOWER(email) = ?', eventId, email)
+    if (dup) return c.json({ success: true, id: dup.id, existed: true, name: dup.name })
+  }
+  const same = await one(c, 'SELECT id, name FROM speakers WHERE event_id = ? AND LOWER(TRIM(name)) = ?', eventId, String(a.name || '').trim().toLowerCase())
+  if (same) return c.json({ success: true, id: same.id, existed: true, name: same.name })
+  const phone = String(a.mobile || '').replace(/[^\d+]/g, '')
+  const li = String(a.linkedin_url || '').trim()
+  const photo = String(a.avatar_url || '')
+  const { set, error } = speakerFields({
+    name: String(a.name || '').trim(), role: a.job_title || '', organisation: a.company || '', email,
+    phone: phone.replace(/\D/g, '').length >= 10 ? phone : '', linkedin_url: /^https:\/\/([a-z]+\.)?linkedin\.com\//i.test(li) ? li : '',
+    photo_url: /^\/api\/uploads\//.test(photo) ? photo : '', is_published: 1,
+  })
+  if (error) return c.json({ error }, 400)
+  if (!set.name) return c.json({ error: 'That attendee has no name to list.' }, 400)
+  set.sort_order = Number((await one(c, 'SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM speakers WHERE event_id = ?', eventId))?.n || 1)
+  const slug = await uniqueSlug(c, eventId, set.name)
+  const cols = ['event_id', 'slug', ...Object.keys(set)]
+  const res = await c.env.DB.prepare('INSERT INTO speakers (' + cols.join(', ') + ') VALUES (' + cols.map(() => '?').join(', ') + ')')
+    .bind(eventId, slug, ...Object.values(set)).run()
+  const id = res.meta.last_row_id
+  await audit(c, 'speaker.create', 'speaker', id, { name: set.name, organisation: set.organisation || '', published: 1, from_attendee: aid })
+  return c.json({ success: true, id, slug, name: set.name }, 201)
 })
 
 conf.put('/api/admin/speakers/:id', async (c) => {

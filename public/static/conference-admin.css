@@ -170,6 +170,8 @@ textarea.cm-in { min-height: 76px; resize: vertical; line-height: 1.5; }
 .cm-photo-pick:focus-visible { outline: 3px solid var(--cm-brand); outline-offset: 3px; }
 .cm-photo.is-drop { outline: 2px dashed var(--cm-brand); outline-offset: 8px; border-radius: 12px; background: var(--cm-brand-soft); }
 .cm-ava.is-busy { color: var(--cm-sub); font-size: 22px; }
+.cm-card.is-holder { border-style: dashed; border-color: #F7C8A6; background: #FFFAF6; }
+.cm-pick-item.is-holder span { color: var(--cm-warn); }
 .cm-preview { width: 100%; height: 420px; border: 1px solid #E4E7F2; border-radius: 12px; background: #fff; }
 
 /* ---- the scheduler (12 Nov 2026): attention, free time, drag, the tray, another event ---- */

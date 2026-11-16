@@ -201,6 +201,32 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     await until(() => page.locator('#cm-drawer.is-open').count());
     await page.keyboard.press('Escape');
     check('Escape closes the drawer', await until(async () => (await page.locator('#cm-drawer.is-open').count()) === 0));
+
+    // ---- people given a Speaker pass in Attendees who are not on the speakers list (16 Nov) ----
+    const made = await page.evaluate(async () => {
+      const a = await api.post('/api/admin/attendees', { event_id: 1, name: 'Arindam Ghosh', email: 'arindam@example.test', company: 'Star Union Dai-ichi Life Insurance', job_title: 'Chief Distribution Officer', badge_type: 'Speaker', payment_status: 'waived' });
+      const b = await api.post('/api/admin/attendees', { event_id: 1, name: 'Rohini Ramnathan', email: 'rohini@example.test', company: 'Fever FM', job_title: 'CCO', badge_type: 'Speaker', payment_status: 'waived' });
+      return [a, b];
+    });
+    check('two people are given a Speaker pass in Attendees', made.every(x => x && !x.error), made);
+    await page.evaluate(() => ConfDesk.load());
+    await until(() => page.locator('.cm-stats').isVisible(), 10000);
+    await page.click('[data-cm="tab"][data-k="speakers"]');
+    check('the Speakers tab says they hold a Speaker pass but are not on the list', await until(async () => (await page.locator('.cm-banner.is-warn', { hasText: '2 people hold a Speaker pass' }).count()) === 1, 10000));
+    await page.fill('[data-cm-input="spkq"]', 'Arind');
+    check('searching the name finds them, with a button to add them', await until(async () => (await page.locator('.cm-card.is-holder', { hasText: 'Arindam Ghosh' }).count()) === 1));
+    await page.locator('.cm-card.is-holder [data-cm="from-attendee"]').click();
+    check('one click puts them on the speakers list with their title and their pass', await until(async () => { const c = page.locator('.cm-card:not(.is-holder)', { hasText: 'Arindam Ghosh' }); if ((await c.count()) !== 1) return false; const t = await c.textContent(); return t.includes('Chief Distribution Officer') && t.includes('Speaker'); }, 10000));
+    await page.fill('[data-cm-input="spkq"]', '');
+    check('the note now counts one', await until(async () => (await page.locator('.cm-banner.is-warn', { hasText: '1 person holds a Speaker pass' }).count()) === 1));
+    await page.click('[data-cm="new-session"]');
+    await until(() => page.locator('#cm-drawer.is-open').count());
+    await page.fill('#cm-s-pick', 'Rohini');
+    check('typing a pass holder’s name in a session offers to add them', await until(async () => (await page.locator('.cm-pick-item.is-holder', { hasText: 'Rohini Ramnathan' }).count()) === 1));
+    await page.locator('.cm-pick-item.is-holder').click();
+    check('they are on the speakers list and in the session', await until(async () => (await page.locator('.cm-person', { hasText: 'Rohini Ramnathan' }).count()) === 1, 10000));
+    await page.keyboard.press('Escape');
+    await until(async () => (await page.locator('#cm-drawer.is-open').count()) === 0);
     check('laptop: no page errors', errors.length === 0, errors);
     await ctx.close();
 

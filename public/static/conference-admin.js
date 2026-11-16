@@ -480,9 +480,15 @@
     if (!q) { box.innerHTML = ''; return; }
     var chosen = {}; ED.people.forEach(function (p) { chosen[p.speaker_id] = 1; });
     var hits = (S.d.speakers || []).filter(function (sp) { return !chosen[sp.id] && [sp.name, sp.organisation, sp.role].join(' ').toLowerCase().indexOf(q) >= 0; }).slice(0, 8);
+    // People with a Speaker pass who are not on the speakers list yet: one click puts
+    // them on the list and in this session.
+    var holders = (S.d.pass_holders || []).filter(function (a) { return [a.name, a.company, a.job_title].join(' ').toLowerCase().indexOf(q) >= 0; }).slice(0, 5)
+      .map(function (a) { return Object.assign({ _holder: true }, a); });
+    hits = hits.concat(holders);
     ED.hits = hits;
     ED.pickIdx = Math.min(ED.pickIdx, Math.max(0, hits.length));
     box.innerHTML = '<div class="cm-pick-list" role="listbox">' + hits.map(function (sp, i) {
+      if (sp._holder) return '<div class="cm-pick-item is-holder' + (i === ED.pickIdx ? ' is-active' : '') + '" role="option" data-cm="pick-holder" data-id="' + sp.id + '">' + ava(sp) + '<div><b>' + esc(sp.name) + '</b><span>' + esc([sp.job_title, sp.company].filter(Boolean).join(', ')) + ' · Has a Speaker pass, not on the speakers list yet: add them</span></div></div>';
       return '<div class="cm-pick-item' + (i === ED.pickIdx ? ' is-active' : '') + '" role="option" data-cm="pick" data-id="' + sp.id + '">' + ava(sp) + '<div><b>' + esc(sp.name) + '</b><span>' + esc([sp.role, sp.organisation].filter(Boolean).join(', ')) + (sp.slots ? ' · ' + sp.slots + ' session' + (sp.slots === 1 ? '' : 's') : '') + '</span></div></div>';
     }).join('') +
       '<div class="cm-pick-item' + (ED.pickIdx === hits.length ? ' is-active' : '') + '" data-cm="pick-new"><span class="cm-ava"><i class="fas fa-plus"></i></span><div><b>Add "' + esc(ED.pickQ.trim()) + '" as a new speaker</b><span>With their designation, organisation, email and mobile</span></div></div></div>';
@@ -584,6 +590,11 @@
   function initialSort(n) { return String(n || '').replace(/^(hon[’']?ble|shri\.?|smt\.?|dr\.?|mr\.?|ms\.?|mrs\.?|prof\.?)\s+/gi, '').trim().toLowerCase(); }
   function speakersView() {
     var all = S.d.speakers || [];
+    var holders = S.d.pass_holders || [], hq = S.spkQ.trim().toLowerCase();
+    var holderHit = function (a) { return [a.name, a.job_title, a.company, a.email].join(' ').toLowerCase().indexOf(hq) >= 0; };
+    // On their own chip, every one of them; elsewhere, those the search names.
+    var holderList = S.spk === 'passonly' ? holders.filter(function (a) { return !hq || holderHit(a); }) : (hq ? holders.filter(holderHit) : []);
+    if (S.spk === 'passonly' && !holders.length) S.spk = 'all';
     var pub = all.filter(function (x) { return Number(x.is_published) === 1; });
     var count = function (fn) { return pub.filter(fn).length; };
     var chips = [
@@ -591,14 +602,16 @@
       ['notann', 'Not announced', count(function (x) { return x.slots && !x.announced; })], ['noemail', 'No email', count(function (x) { return !x.email; })],
       ['nophoto', 'No photo', count(function (x) { return !x.photo_url; })], ['featured', 'Featured', count(function (x) { return Number(x.is_featured); })],
       ['hidden', 'Hidden', all.length - pub.length],
-    ].map(function (c) { return '<button type="button" class="cm-pill ' + (S.spk === c[0] ? 'is-on' : '') + '" data-cm="spk-filter" data-k="' + c[0] + '">' + c[1] + '<small>' + c[2] + '</small></button>'; }).join('');
+    ].concat(holders.length ? [['passonly', 'Speaker pass, not on the list', holders.length]] : []).map(function (c) { return '<button type="button" class="cm-pill ' + (S.spk === c[0] ? 'is-on' : '') + '" data-cm="spk-filter" data-k="' + c[0] + '">' + c[1] + '<small>' + c[2] + '</small></button>'; }).join('');
     var bar = '<div class="cm-bar cm-no-print"><input class="cm-search" type="search" placeholder="Search name, organisation, topic, email" value="' + esc(S.spkQ) + '" data-cm-input="spkq" aria-label="Search speakers">' +
       '<select class="cm-select" data-cm-input="spksort" aria-label="Sort"><option value="order"' + (S.spkSort === 'order' ? ' selected' : '') + '>In list order</option><option value="name"' + (S.spkSort === 'name' ? ' selected' : '') + '>By name</option><option value="org"' + (S.spkSort === 'org' ? ' selected' : '') + '>By organisation</option></select>' + ownerFilter() +
       '<span class="cm-spacer"></span><button type="button" class="cm-btn" data-cm="csv-speakers"><i class="fas fa-file-csv"></i>CSV</button></div>' +
       '<div class="cm-bar cm-no-print"><div class="cm-pills">' + chips + '</div></div>';
-    var list = spkFilterList();
-    if (!list.length) return bar + '<div class="cm-empty"><i class="fas fa-microphone-lines"></i>' + (S.spkQ ? 'No speaker matches "' + esc(S.spkQ) + '".' : S.owner ? 'No speaker here is ' + (S.owner === '__none' ? 'without an owner' : esc(S.owner) + '’s') + '.' : 'Nobody here.') + '</div>';
-    return bar + '<div class="cm-grid">' + list.map(speakerCard).join('') + '</div>';
+    var list = S.spk === 'passonly' ? [] : spkFilterList();
+    var note = holders.length && S.spk !== 'passonly' ? '<div class="cm-banner is-warn cm-no-print"><b>' + holders.length + (holders.length === 1 ? ' person holds' : ' people hold') + ' a Speaker pass but ' + (holders.length === 1 ? 'is' : 'are') + ' not on the speakers list</b>, so they cannot be put on a session or shown in the app. <button type="button" class="cm-btn is-small" data-cm="spk-filter" data-k="passonly"><i class="fas fa-user-plus"></i>See them</button></div>' : '';
+    var addAll = S.spk === 'passonly' && holderList.length > 1 ? '<div class="cm-bar cm-no-print"><span class="cm-help">Each one gets a speaker profile from their registration: name, designation, organisation, email, mobile and photo.</span><span class="cm-spacer"></span><button type="button" class="cm-btn is-small" data-cm="from-attendee-all"><i class="fas fa-user-plus"></i>Add everyone</button></div>' : '';
+    if (!list.length && !holderList.length) return bar + note + '<div class="cm-empty"><i class="fas fa-microphone-lines"></i>' + (S.spkQ ? 'No speaker matches "' + esc(S.spkQ) + '".' : S.owner ? 'No speaker here is ' + (S.owner === '__none' ? 'without an owner' : esc(S.owner) + '’s') + '.' : 'Nobody here.') + '</div>';
+    return bar + note + addAll + '<div class="cm-grid">' + list.map(speakerCard).join('') + holderList.map(holderCard).join('') + '</div>';
   }
   function speakerCard(sp) {
     var pub = Number(sp.is_published) === 1;
@@ -1671,6 +1684,9 @@
       $('cm-s-end').value = hhmm(m); liveCheck();
     },
     pick: function (el) { addPerson(Number(el.getAttribute('data-id'))); },
+    'pick-holder': function (el) { addHolder(Number(el.getAttribute('data-id'))); },
+    'from-attendee': function (el) { fromAttendee(Number(el.getAttribute('data-id'))); },
+    'from-attendee-all': function () { fromAttendeeAll(); },
     'pick-new': function () { openNewSpeaker(ED ? ED.pickQ.trim() : ''); },
     'new-in-session': function () { openNewSpeaker(''); },
     'save-new-speaker': function () { saveNewSpeaker(); },
@@ -1734,7 +1750,50 @@
   }
   async function refreshSpeakers() {
     var d = await api.get('/api/admin/events/' + eid() + '/conference');
-    if (d && Array.isArray(d.speakers)) S.d.speakers = d.speakers;
+    if (d && Array.isArray(d.speakers)) { S.d.speakers = d.speakers; S.d.pass_holders = d.pass_holders || []; }
+  }
+  // ---------- Speaker pass holders who are not on the speakers list ----------
+  function holderById(id) { var l = (S.d && S.d.pass_holders) || []; for (var i = 0; i < l.length; i++) if (Number(l[i].id) === Number(id)) return l[i]; return null; }
+  async function listHolder(attendeeId) {
+    var r = await api.post('/api/admin/speakers/from-attendee/' + attendeeId, {});
+    await refreshSpeakers();
+    return r;
+  }
+  // From the session's speaker search: on the list, then in this session.
+  async function addHolder(attendeeId) {
+    var a = holderById(attendeeId); if (!a || !ED) return;
+    var box = $('cm-s-pick-list'); if (box) box.innerHTML = '<div class="cm-pick-list"><div class="cm-pick-item"><span class="cm-ava"><i class="fas fa-spinner fa-spin"></i></span><div><b>Adding ' + esc(a.name) + ' to the speakers list…</b></div></div></div>';
+    try {
+      var r = await listHolder(attendeeId);
+      addPerson(Number(r.id));
+      say(a.name + (r.existed ? ' was already on the speakers list, and is now in this session.' : ' is on the speakers list and in this session.'));
+    } catch (e) { say(errText(e), 'error'); pickList(); }
+  }
+  // From their card on the Speakers tab.
+  async function fromAttendee(attendeeId) {
+    var a = holderById(attendeeId); if (!a) return;
+    try {
+      var r = await listHolder(attendeeId);
+      if (S.spk === 'passonly' && !(S.d.pass_holders || []).length) S.spk = 'all';
+      body();
+      say(a.name + (r.existed ? ' was already on the speakers list.' : ' is on the speakers list. Their card is under Everyone.'));
+    } catch (e) { say(errText(e), 'error'); }
+  }
+  async function fromAttendeeAll() {
+    var all = (S.d.pass_holders || []).slice(); if (!all.length) return;
+    if (!confirm('Put all ' + all.length + ' of them on the speakers list?\n\nEach one gets a speaker profile from their registration and shows in the app’s speaker list. You can hide anyone afterwards.')) return;
+    var n = 0, bad = [];
+    for (var i = 0; i < all.length; i++) { try { await api.post('/api/admin/speakers/from-attendee/' + all[i].id, {}); n++; } catch (e) { bad.push(all[i].name); } }
+    await refreshSpeakers();
+    S.spk = 'all'; body();
+    say(n + ' added to the speakers list.' + (bad.length ? ' Could not add: ' + bad.join(', ') : ''), bad.length ? 'error' : 'success');
+  }
+  function holderCard(a) {
+    return '<div class="cm-card is-holder">' +
+      '<div class="cm-who">' + ava(a) + '<div style="min-width:0"><b>' + esc(a.name) + '</b><span class="r">' + esc([a.job_title, a.company].filter(Boolean).join(', ') || 'No title yet') + '</span></div></div>' +
+      '<div><span class="cm-chip is-warn"><i class="fas fa-id-badge"></i>Speaker pass, not on the speakers list</span>' + (a.email ? '' : '<span class="cm-chip is-bad"><i class="fas fa-envelope"></i>No email</span>') + '</div>' +
+      '<div class="cm-help">Registered' + (a.created_at ? ' ' + esc(dayLabel(a.created_at, true)) : '') + '. Until they are on the list they cannot be put on a session or shown in the app.</div>' +
+      '<div class="cm-actions"><button type="button" class="cm-btn is-primary is-small" data-cm="from-attendee" data-id="' + a.id + '"><i class="fas fa-user-plus"></i>Add to the speakers list</button></div></div>';
   }
   async function saveNewSpeaker() {
     var name = val('cm-n-name').trim(), email = val('cm-n-email').trim(), err = $('cm-n-err');
@@ -1896,7 +1955,7 @@
         var n = (ED.hits || []).length;
         if (ev.key === 'ArrowDown') { ED.pickIdx = Math.min(n, ED.pickIdx + 1); pickList(); ev.preventDefault(); }
         else if (ev.key === 'ArrowUp') { ED.pickIdx = Math.max(0, ED.pickIdx - 1); pickList(); ev.preventDefault(); }
-        else if (ev.key === 'Enter') { ev.preventDefault(); if (ED.pickIdx < n) addPerson(Number(ED.hits[ED.pickIdx].id)); else if (ED.pickQ.trim()) openNewSpeaker(ED.pickQ.trim()); }
+        else if (ev.key === 'Enter') { ev.preventDefault(); if (ED.pickIdx < n) { var hit = ED.hits[ED.pickIdx]; if (hit._holder) addHolder(Number(hit.id)); else addPerson(Number(hit.id)); } else if (ED.pickQ.trim()) openNewSpeaker(ED.pickQ.trim()); }
         return;
       }
       // Alt + arrows move a session without a mouse; with Shift, up and down change its length.
