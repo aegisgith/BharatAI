@@ -1033,18 +1033,21 @@
             border-bottom: 1px solid var(--light);
         }
         .ptile-stage img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
+        /* Assessfy's and Jade's files carry a white box; multiply makes it vanish on the stage. */
+        .ptile:not(.ptile-dark) .ptile-stage img { mix-blend-mode: multiply; }
         .ptile-dark .ptile-stage {
             background: radial-gradient(90% 80% at 50% 110%, rgba(214,32,40,0.5) 0%, rgba(214,32,40,0) 65%), #000;
             border-bottom-color: #000; padding: 0.6rem 0.9rem;
         }
         .ptile-cap { padding: 0.85rem 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.55rem; align-items: flex-start; flex: 1; }
         .ptile-cap b { display: block; font-family: var(--font-display); font-weight: 700; font-size: 0.98rem; line-height: 1.2; color: var(--charcoal); }
-        .ptile-cap .speaker-topic { line-height: 1.35; border-radius: 12px; }
+        .ptile-cap .speaker-topic { line-height: 1.35; border-radius: 12px; font-size: 0.64rem; letter-spacing: 0.04em; }
         @media (min-width: 900px) {
             .ptiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem; }
             .ptile-stage { height: 128px; padding: 1.1rem 1.5rem; }
             .ptile-cap { padding: 1rem 1.15rem 1.15rem; }
             .ptile-cap b { font-size: 1.05rem; }
+            .ptile-cap .speaker-topic { font-size: 0.7rem; letter-spacing: 0.06em; }
         }
         #venue .venue-images img:nth-child(2) { display: none; }
         @media (min-width: 900px) { #venue .venue-images img:nth-child(2) { display: block; } }
