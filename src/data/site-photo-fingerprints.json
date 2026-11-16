@@ -1337,7 +1337,7 @@
 },
 {
 "file":"public/images/sched/ravi-ranjan-singh.webp",
-"fp":"00fc06380e1809580b7808d800d8007c007c003c027e049f04be42b6a32e7320:fc3ff01ff01ff00ff00ff01ff01ff01ff81ff01ff81ff00ff00ffb9ffdbffdbf"
+"fp":"00fc06380e18095c0b7c08dc00dc007c007c003c027e049f04be42b6a3346320:fc3ff81ff01ff00ff00ff01ff01ff01ff81ff01ff81ff00ff00ffb9ffdbffdbf"
 },
 {
 "file":"public/images/sched/reny-varghese.webp",
@@ -1742,6 +1742,10 @@
 {
 "file":"public/images/speaker-ratan-kumar-kesh-bandhan.webp",
 "fp":"00f0043c0c3e0c3f223f691f64bf60bf643f705f719f070b091b0b1f0a5e02fc:fc7ffa1ff71ff71ff01ff00ffe1ffc1ff81ff80ffc07e081c081c103f107f91f"
+},
+{
+"file":"public/images/speaker-ravi-ranjan-singh-sq.webp",
+"fp":"00e006300e18095809780cd800d8007800700038027f049f04be02b6a3267320:fc3ff81ff01ff00ff00ff01ff01ff01ff81ff01ff81ff00ff00ffb9ffdbffdbf"
 },
 {
 "file":"public/images/speaker-reny-varghese-sq.webp",
