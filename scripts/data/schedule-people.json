@@ -90,7 +90,7 @@
 
     { "name": "Shekar Sivasubramanian", "role": "CEO", "org": "Wadhwani Institute for Artificial Intelligence", "logo": "images/org-logos/wadhwani-ai.webp" },
     { "name": "Dr. Sameer Agarwal", "role": "Executive Vice President", "org": "Molecule AI", "photo": "images/speaker-sameer-agarwal-sq.webp", "logo": "images/org-logos/molecule-ai.webp" },
-    { "name": "Manish K. Prahlad", "role": "Co-Founder and CEO", "org": "Verdant Impact", "logo": "images/org-logos/verdant-impact.webp" },
+    { "name": "Manish K. Prahlad", "role": "Co-Founder and CEO", "org": "Verdant Impact", "logo": "images/org-logos/verdant-impact.webp", "photo": "images/speaker-manish-prahlad-sq.webp" },
     { "name": "Dr. Omprakash Mandge", "role": "Principal", "org": "MET", "photo": "images/speaker-omprakash-mandge-sq.webp", "logo": "images/org-logos/met.webp" },
 
     { "name": "Virendra Pal", "role": "AI & FinTech Expert", "org": "", "photo": "images/speaker-virendra-pal.webp" },
