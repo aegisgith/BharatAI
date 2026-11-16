@@ -8,6 +8,7 @@ import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQ
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry } from './routes/workshop-reminder'
+import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, SUMMIT_EVENT_NAME, SUMMIT_WHEN } from './routes/agent-summit'
 import { signinPayIntent } from './lib/signin-pay'
@@ -166,6 +167,9 @@ const UNSUB_FOOTER = (url: string) =>
 async function sendAdminEmail(c: any, to: string, subject: string, html: string,
     opts: { unsubscribe?: boolean; from?: { email: string; name: string } | null } = {}):
     Promise<{ ok: true } | { ok: false; error: string }> {
+  // A guest registered with a mobile number only (routes/team-guests.ts) has a stand-in
+  // address that can never receive mail.
+  if (isNoEmail(to)) return { ok: false, error: NO_EMAIL_ERROR }
   const g = async (k: string) => ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
   const key = await elasticKey(c)
   if (!key) return { ok: false, error: 'Email service is not configured (no API key in Settings).' }
@@ -481,6 +485,15 @@ async function sessionAttendee(c: any): Promise<{ id: number; email: string; nam
 configureMarketplace({ sendEmail: sendAdminEmail, isEventAdmin: isAdminRequest, audit, ensureDelegate: ensureExhibitorDelegate, attendeeOf: sessionAttendee,
   issueTeamPass, releaseTeamPass, teamMobileHolder, passToken: (c: any, id: number) => signPassToken(c, id) })
 app.route('/', mp)
+// A guest with only a mobile number (16 Nov 2026): the organising team registers them in
+// the app and sends the pass link from their own WhatsApp; routes/team-guests.ts, screen
+// public/static/team-guest.js, the guest's page /pass/<token>. Lambdas, because some of
+// these are consts declared further down.
+configureTeamGuests({ me: (c: any) => verifyAttendeeSession(c), mobileHolder: (c: any, e: number, m: unknown) => mobileHolder(c, e, m),
+  columns: (c: any) => attendeeColumns(c), passToken: (c: any, id: number) => signPassToken(c, id),
+  readPassToken: (c: any, tok: string) => verifyPassToken(c, tok), audit,
+  lunch: (b: string) => LUNCH_BY_PASS[b], validEmail: (e: string) => validEmailSyntax(e) })
+app.route('/', teamGuests)
 
 // Who an admin email may be sent from (13 Nov 2026): the event's own address, or one of
 // the organising team (Organiser pass) on our own domain; lib/senders.ts has the rules.
@@ -1748,6 +1761,7 @@ function sourceLabel(source: unknown): string {
   if (panel) return `Campus panel - ${panel.hostShort}`
   if (raw.startsWith('campus:')) return 'Campus panel - ' + raw.slice('campus:'.length)
   if (raw.startsWith('ref:')) return 'Invited by an attendee'
+  if (raw.startsWith('team:')) return 'Guest of the team (pass on WhatsApp)'
   const known: Record<string, string> = {
     networking_app: 'Networking app',
     website: 'Website',
@@ -1782,7 +1796,8 @@ async function mainEventClause(c: any, alias: string = ''): Promise<string> {
 async function suppressionClause(c: any, alias: string = ''): Promise<string> {
   const cols = await attendeeColumns(c)
   if (!cols.has('unsubscribed_at')) return ''
-  return ` AND ${alias}unsubscribed_at IS NULL AND (${alias}marketing_consent IS NULL OR ${alias}marketing_consent = 1)`
+  // ...and nobody whose address is a stand-in for a mobile-only guest (team-guests.ts).
+  return ` AND ${alias}unsubscribed_at IS NULL AND (${alias}marketing_consent IS NULL OR ${alias}marketing_consent = 1) AND ${NO_EMAIL_SQL(alias)}`
 }
 
 app.get('/unsubscribe', async (c) => {
@@ -8962,6 +8977,7 @@ const mobileKey = (v: unknown): string => {
 const maskEmail = (email: string): string => {
   const [user, domain] = String(email || '').split('@')
   if (!user || !domain) return 'another email'
+  if (isNoEmail(email)) return 'a pass our team sent on WhatsApp'
   return user.slice(0, Math.min(2, user.length - 1)) + '•••@' + domain
 }
 
@@ -8988,6 +9004,10 @@ async function mobileChangeHolder(c: any, id: any, mobile: unknown) {
 }
 
 const mobileTakenReply = (email: string) => {
+  if (isNoEmail(email)) {
+    const message = 'This mobile number already has a pass that our team sent on WhatsApp. Open the pass link in that message, or reply to the person who sent it.'
+    return { error: message, message, code: 'mobile_guest_pass' }
+  }
   const message = 'This mobile number is already registered with ' + maskEmail(email) +
     '. Please sign in with that email instead, or use your own mobile number.'
   return { error: message, message, code: 'mobile_registered' }
@@ -17452,7 +17472,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
   const id = c.req.param('id')
   const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first() as any
   if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
-  if (!attendee.email) return c.json({ error: 'Attendee has no email' }, 400)
+  if (!attendee.email || isNoEmail(attendee.email)) return c.json({ error: attendee.email ? NO_EMAIL_ERROR : 'Attendee has no email' }, 400)
 
   const mail = await notifyEmail(c, attendee)
 
@@ -18158,7 +18178,7 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
   const id = c.req.param('id')
   const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first() as any
   if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
-  if (!attendee.email) return c.json({ error: 'Attendee has no email' }, 400)
+  if (!attendee.email || isNoEmail(attendee.email)) return c.json({ error: attendee.email ? NO_EMAIL_ERROR : 'Attendee has no email' }, 400)
 
   const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
   const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
@@ -18806,7 +18826,7 @@ app.post('/api/admin/attendees/:id/send-profile-reminder', async (c) => {
   const id = c.req.param('id')
   const attendee = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first() as any
   if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
-  if (!attendee.email) return c.json({ error: 'Attendee has no email' }, 400)
+  if (!attendee.email || isNoEmail(attendee.email)) return c.json({ error: attendee.email ? NO_EMAIL_ERROR : 'Attendee has no email' }, 400)
 
   const gaps = attendeeProfileGaps(attendee)
   if (!gaps.length) return c.json({ skipped: true, reason: 'Profile is already complete' })
@@ -20701,7 +20721,7 @@ app.post('/api/admin/campaigns', async (c) => {
     if (!ids.length) return c.json({ error: 'No valid attendee ids.' }, 400)
     const placeholders = ids.map(() => '?').join(',')
     const { results } = await c.env.DB.prepare(
-      `SELECT id, name, email FROM attendees WHERE id IN (${placeholders}) AND email IS NOT NULL AND TRIM(email) != '' ORDER BY id`
+      `SELECT id, name, email FROM attendees WHERE id IN (${placeholders}) AND email IS NOT NULL AND TRIM(email) != '' AND ${NO_EMAIL_SQL()} ORDER BY id`
     ).bind(...ids).all()
     // Sent in the order given (the workshop invitation puts the likeliest buyers first).
     const at = new Map<number, number>(ids.map((v: number, i: number) => [v, i] as [number, number]))
@@ -21207,7 +21227,7 @@ app.post('/api/admin/events/:id/broadcast', async (c) => {
     // unsubscribes and marketing consent.
     const sc = (announcement_type || 'urgent') === 'urgent' ? '' : await suppressionClause(c)
     const r = await c.env.DB.prepare(
-      `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != '' ${who}${mc}${sc} ORDER BY id`
+      `SELECT id, name, email FROM attendees WHERE event_id = ? AND email IS NOT NULL AND email != '' AND ${NO_EMAIL_SQL()} ${who}${mc}${sc} ORDER BY id`
     ).bind(eventId).all()
     recipients = (r.results as any[]) || []
   }
@@ -32746,6 +32766,7 @@ function mainPageScript(): string {
         +   item('fa-user-edit', 'Edit my profile', 'Name, organisation, LinkedIn, what you are here for', 'closeAccountMenu(); openEditProfile();')
         +   item('fa-camera', 'Change my photo', '', 'changeMyPhoto()')
         +   item('fa-id-badge', 'My pass', 'Keep it on your phone', 'closeAccountMenu(); generateDelegatePass();')
+        +   (isTeamMember() ? item('fa-user-plus', 'Register a guest', 'Only their mobile? Send the pass on WhatsApp', 'closeAccountMenu(); openTeamGuest();') : '')
         +   item('fa-share-alt', 'Share my badge', 'Post it on LinkedIn or WhatsApp', 'closeAccountMenu(); openSocialCard();')
         +   (appOnPhoneOffered() ? item('fa-mobile-alt', 'Save the app on my phone', 'Your pass one tap away', 'closeAccountMenu(); saveAppOnPhone();') : '')
         +   item('fa-chart-pie', 'My connections and meetings', '', 'closeAccountMenu(); switchTab(&quot;myprofile&quot;);')
@@ -32753,6 +32774,18 @@ function mainPageScript(): string {
         + '<div class="py-2" style="border-top:1px solid #E4E7F4;">'
         +   item('fa-sign-out-alt', 'Log out', '', 'logoutUser()')
         + '</div>';
+    }
+
+    function isTeamMember() {
+      return !!(currentUser && String(currentUser.badge_type || '') === 'Organiser');
+    }
+    function openTeamGuest() {
+      if (window.TeamGuest) { window.TeamGuest.open(); return; }
+      const s = document.createElement('script');
+      s.src = '/static/team-guest.js?v=20261116';
+      s.onload = function () { if (window.TeamGuest) window.TeamGuest.open(); };
+      s.onerror = function () { s.remove(); showToast('Could not open it. Check your internet and try again.', 'error'); };
+      document.head.appendChild(s);
     }
 
     function toggleAccountMenu(e) {

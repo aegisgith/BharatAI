@@ -1,0 +1,79 @@
+/* The guest's pass page (/pass/<token>), 16 Nov 2026. Phone first: one column, the
+   pass as large as the screen allows, one button. */
+:root {
+  --gp-bg: #F5F6FB;
+  --gp-ink: #1E2140;
+  --gp-muted: #4A5070;
+  --gp-line: #E4E7F4;
+  --gp-card: #FFFFFF;
+  --gp-act: #C84F00;
+  --gp-act-ink: #FFFFFF;
+  --gp-err: #B42318;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--gp-bg);
+  color: var(--gp-ink);
+  font-family: Inter, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+}
+.gp {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 16px 16px calc(32px + env(safe-area-inset-bottom));
+}
+.gp-head { display: flex; justify-content: center; padding: 4px 0 12px; }
+.gp-logo { height: 40px; width: auto; }
+.gp-title {
+  font-family: Montserrat, Inter, Arial, sans-serif;
+  font-size: 22px;
+  line-height: 1.25;
+  margin: 0 0 4px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.gp-when { margin: 0 0 16px; text-align: center; color: var(--gp-muted); font-size: 14px; }
+.gp-card {
+  background: var(--gp-card);
+  border: 1px solid var(--gp-line);
+  border-radius: 16px;
+  padding: 12px;
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gp-img { display: block; width: 100%; max-width: 400px; height: auto; border-radius: 14px; }
+.gp-img[hidden] { display: none; }
+.gp-wait { margin: 0; color: var(--gp-muted); text-align: center; }
+.gp-wait[hidden] { display: none; }
+.gp-err { color: var(--gp-err); font-weight: 600; }
+.gp-btn {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  margin: 16px 0 8px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--gp-act);
+  color: var(--gp-act-ink);
+  font: 700 17px Inter, Arial, sans-serif;
+  cursor: pointer;
+}
+.gp-btn[hidden] { display: none; }
+.gp-btn:focus-visible { outline: 3px solid #FFB066; outline-offset: 2px; }
+.gp-hint { margin: 0 0 8px; text-align: center; color: var(--gp-muted); font-size: 14px; }
+.gp-hint[hidden] { display: none; }
+.gp-steps {
+  margin: 16px 0 0;
+  padding: 14px 16px 14px 36px;
+  background: var(--gp-card);
+  border: 1px solid var(--gp-line);
+  border-radius: 12px;
+  font-size: 15px;
+}
+.gp-steps li + li { margin-top: 6px; }
+.gp-foot { margin: 16px 0 0; text-align: center; color: var(--gp-muted); font-size: 14px; }

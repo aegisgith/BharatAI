@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { conferenceReady, hallsFor, hallLabel, dayLabel, clock, MUMBAI_WORDS } from './conference'
+import { NO_EMAIL_SQL } from './team-guests'
 
 // ==================== WORKSHOP EMAILS (15 Nov 2026) ====================
 //
@@ -86,7 +87,7 @@ export const TRY_ACTION = 'workshop.tried'
 const INVITE_WHERE = `a.event_id = 1 AND COALESCE(a.main_event, 1) = 1
   AND a.unsubscribed_at IS NULL AND (a.marketing_consent IS NULL OR a.marketing_consent = 1)
   AND LOWER(TRIM(COALESCE(a.payment_status, ''))) NOT IN ('pending', 'refunded')
-  AND TRIM(COALESCE(a.email, '')) <> ''`
+  AND TRIM(COALESCE(a.email, '')) <> '' AND ${NO_EMAIL_SQL('a.')}`
 
 const all = async (c: any, sql: string, ...args: any[]) => (((await c.env.DB.prepare(sql).bind(...args).all()) as any).results || []) as any[]
 const one = async (c: any, sql: string, ...args: any[]) => (await c.env.DB.prepare(sql).bind(...args).first()) as any
@@ -245,7 +246,7 @@ async function entitledPeople(c: any, onlyId: number | null = null) {
     FROM attendees a
     WHERE a.event_id = 1 AND a.badge_type IN (${marks})
       AND LOWER(TRIM(COALESCE(a.payment_status, ''))) NOT IN ('pending', 'refunded')
-      AND TRIM(COALESCE(a.email, '')) <> ''${onlyId != null ? ' AND a.id = ?' : ''}
+      AND TRIM(COALESCE(a.email, '')) <> '' AND ${NO_EMAIL_SQL('a.')}${onlyId != null ? ' AND a.id = ?' : ''}
     ORDER BY a.name COLLATE NOCASE`, ...tiers, ...(onlyId != null ? [onlyId] : []))
 }
 
@@ -307,6 +308,7 @@ async function autoDue(c: any, kind: 'choose' | 'invite', limit: number): Promis
   const action = kind === 'invite' ? INVITE_ACTION : AUDIT_ACTION
   const who = kind === 'invite' ? INVITE_WHERE
     : `a.event_id = 1 AND LOWER(TRIM(COALESCE(a.payment_status, ''))) NOT IN ('pending', 'refunded') AND TRIM(COALESCE(a.email, '')) <> ''
+       AND ${NO_EMAIL_SQL('a.')}
        AND NOT EXISTS (SELECT 1 FROM workshop_seats s WHERE s.event_id = 1 AND s.attendee_id = a.id)`
   try {
     return await all(c, `SELECT * FROM (
