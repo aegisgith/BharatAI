@@ -1027,7 +1027,8 @@
            the logo alone names the partner). The ASL mark is drawn on black, so
            its stage is black with a glow in its own red. --- */
         .partners { background: #fff; }
-        .ptiles { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; max-width: 1040px; }
+        .ptiles { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; max-width: 1120px; }
+        .ptile:last-child:nth-child(odd) { grid-column: 1 / -1; }
         .ptile {
             display: flex; flex-direction: column; border-radius: 18px; overflow: hidden;
             background: #fff; border: 1px solid var(--light);
@@ -1053,7 +1054,8 @@
             color: var(--indigo); background: var(--light); border: 1px solid rgba(26,35,126,0.14); border-radius: 12px; padding: 0.22rem 0.6rem;
         }
         @media (min-width: 900px) {
-            .ptiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem; }
+            .ptiles { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1.1rem; }
+            .ptile:last-child:nth-child(odd) { grid-column: auto; }
             .ptile-stage { height: 128px; padding: 1.1rem 1.5rem; }
             .ptile-cap { padding: 1rem 1.15rem 0.9rem; }
             .ptile-role { font-size: 0.7rem; }
@@ -1213,6 +1215,10 @@
                 <li class="ptile reveal reveal-delay-3">
                     <div class="ptile-cap"><span class="ptile-role">Panel Host Partner</span></div>
                     <div class="ptile-stage"><img width="212" height="93" loading="lazy" decoding="async" src="images/exhibitors/jade-global.webp" alt="Jade Global"></div>
+                </li>
+                <li class="ptile reveal reveal-delay-4">
+                    <div class="ptile-cap"><span class="ptile-role">Workshop Partner</span></div>
+                    <div class="ptile-stage"><img width="118" height="96" loading="lazy" decoding="async" src="images/logo-ibm.webp" alt="IBM"></div>
                 </li>
             </ul>
         </div>
