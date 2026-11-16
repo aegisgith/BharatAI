@@ -526,7 +526,11 @@ export function renderConference(S, { tracks = [], pictures = () => ({}) } = {})
 
 // ---- the speaker grids: /conference, the home page, the Event's JSON-LD, llms.txt ----
 
-export const isMinister = (sp) => /\bminister\b/i.test(String(sp.role || '')) || /^hon[’'`]?ble\b/i.test(String(sp.name || ''))
+// A minister's role OPENS with the title (Minister, Minister of State, Deputy Chief
+// Minister, Chief Minister). The word elsewhere is not one: "Joint Secretary, Chief
+// Minister's Secretariat" and "Chief Advisor to the Chief Minister" are officers and
+// belong in the speakers' grid at their rank (the organiser, 16 Nov 2026).
+export const isMinister = (sp) => /^(?:(?:deputy\s+)?chief\s+|union\s+|cabinet\s+|state\s+)?minister\b/i.test(String(sp.role || '').trim()) || /^hon[’'`]?ble\b/i.test(String(sp.name || ''))
 const isGovernment = (sp) => isMinister(sp) || /\b(government|govt|ministry|department|dept|directorate|secretariat|commission|authority|niti|uidai|ias|ifs|ips|office of the)\b/i.test(String(sp.organisation || '') + ' ' + String(sp.role || '') + ' ' + String(sp.name || ''))
 const siteFile = (url) => String(url || '').replace(/^\//, '')
 
