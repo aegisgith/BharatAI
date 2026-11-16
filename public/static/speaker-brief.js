@@ -15,8 +15,8 @@
 (function (global) {
   'use strict';
 
-  var V = '20261116b';
-  var S = { d: null, filter: 'todo', sel: {}, busy: false, one: null, pv: 0, timer: null, noteSaved: '', lastFocus: null, wired: false, usual: { subject: '', greeting: '', opening: '' }, noteAtOpen: '', contact: null, ccSaved: '' };
+  var V = '20261116c';
+  var S = { d: null, filter: 'todo', sel: {}, busy: false, one: null, pv: 0, timer: null, noteSaved: '', lastFocus: null, wired: false, usual: { subject: '', greeting: '', opening: '' }, noteAtOpen: '', contact: null, ccSaved: '', fromSaved: '', senders: null, outside: [] };
   var STATUS = {
     ready: { word: 'Not sent yet', cls: 'is-ready' },
     changed: { word: 'Changed since sent', cls: 'is-changed' },
@@ -63,6 +63,36 @@
   }
   function byId(id) { var l = (S.d && S.d.speakers) || []; for (var i = 0; i < l.length; i++) if (l[i].id === Number(id)) return l[i]; return null; }
   function sendable(s) { return s.status === 'ready' || s.status === 'changed'; }
+  // "Send from": the event's address (value '') or one of the organising team on our
+  // domain (GET /api/admin/events/:id/senders). An address saved earlier that is no
+  // longer on the list stays visible, marked, so the organiser sees why a send fails.
+  function fromOptions(cur) {
+    var seen = false;
+    var html = (S.senders || []).map(function (s) {
+      var v = s.default ? '' : s.email; if (v === cur) seen = true;
+      var label = s.default ? 'The event’s address (' + s.email + ')' : (s.person || s.name) + ' (' + s.email + ')';
+      return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label) + '</option>';
+    }).join('');
+    if (cur && !seen) html += '<option value="' + esc(cur) + '" selected>' + esc(cur) + ' (not on the team list now)</option>';
+    return html;
+  }
+  function fromField(id, cur, kind, o) {
+    o = o || {};
+    var out = o.outside && S.outside && S.outside.length
+      ? ' <span class="sb-help">Not on the list: ' + S.outside.map(function (x) { return esc(x.name) + ' (' + esc(String(x.reason || '').replace(/\.$/, '')) + ')'; }).join('; ') + '.</span>' : '';
+    if ((S.senders || []).length < 2 && !cur) return '<span class="sb-help">The event’s address.</span>' + out;
+    return '<select id="' + id + '" class="sb-in' + (o.inline ? ' is-inline' : '') + '" data-sb-input="' + kind + '"' + (o.disabled ? ' disabled' : '') + '>' + fromOptions(cur) + '</select>' + out;
+  }
+  async function loadSenders() {
+    if (S.senders !== null) return;
+    try { var sd = await api.get('/api/admin/events/' + eid() + '/senders'); S.senders = (sd && sd.senders) || []; S.outside = (sd && sd.outside) || []; }
+    catch (e) { S.senders = []; S.outside = []; } // briefs still go, from the event's address
+  }
+  function fromWord(v) {
+    if (!v) return 'the event’s address';
+    var l = S.senders || []; for (var i = 0; i < l.length; i++) if (l[i].email === v) return (l[i].person || l[i].name) + ' (' + v + ')';
+    return v;
+  }
   function ensureCss() {
     if ($('sb-css')) return;
     var l = document.createElement('link'); l.id = 'sb-css'; l.rel = 'stylesheet'; l.href = '/static/speaker-brief.css?v=' + V;
@@ -120,7 +150,8 @@
     try {
       S.d = await api.get('/api/admin/events/' + eid() + '/speaker-briefs');
       if (S.d && S.d.error) throw new Error(S.d.error);
-      S.noteSaved = S.d.note || ''; S.ccSaved = S.d.cc || '';
+      S.noteSaved = S.d.note || ''; S.ccSaved = S.d.cc || ''; S.fromSaved = S.d.from || '';
+      await loadSenders();
       var keep = {}; Object.keys(S.sel).forEach(function (k) { var s = byId(k); if (s && sendable(s)) keep[k] = 1; }); S.sel = keep;
       if (!$('sb-list').hidden) drawList();
     } catch (e) {
@@ -142,6 +173,7 @@
     var noteDirty = ($('sb-note') ? $('sb-note').value : S.noteSaved) !== S.noteSaved;
     var noteVal = $('sb-note') ? $('sb-note').value : S.noteSaved;
     var ccVal = $('sb-cc') ? $('sb-cc').value : S.ccSaved; noteDirty = noteDirty || ccVal !== S.ccSaved;
+    var fromVal = $('sb-from') ? $('sb-from').value : S.fromSaved; noteDirty = noteDirty || fromVal !== S.fromSaved;
     box.innerHTML = head('Speaker briefs', 'sb-title', 'One email per speaker: their session, their panel and their pass. Preview any one before it goes.') +
       '<div class="sb-body">' +
       '<div class="sb-card">' +
@@ -151,6 +183,9 @@
         '<label for="sb-cc" class="sb-lbl">Copy every brief to (CC)</label>' +
         '<p class="sb-help">A colleague who should see each brief, or a speaker’s office. Up to 5 addresses, with commas. The sheet for one speaker can change it for that email.</p>' +
         '<input id="sb-cc" class="sb-in" type="text" maxlength="400" data-sb-input="note" placeholder="colleague@bharataiinnovation.com, office@example.com" value="' + esc(ccVal) + '">' +
+        '<label for="sb-from" class="sb-lbl">Send from</label>' +
+        '<p class="sb-help">Who the speaker sees the brief from; their reply goes to that address. A brief sent as a team member is also copied to the event’s address. The sheet for one speaker can change it for that email.</p>' +
+        fromField('sb-from', fromVal, 'note', { outside: true }) +
         '<div class="sb-row"><button type="button" class="sb-btn" data-sb="save-note"' + (noteDirty ? '' : ' disabled') + ' id="sb-note-save"><i class="fas fa-floppy-disk"></i>Save for every brief</button>' +
         '<span class="sb-help" id="sb-note-state">' + (noteDirty ? 'Not saved yet.' : (S.noteSaved ? 'Saved.' : 'Nothing saved yet: briefs go without it.')) + '</span></div>' +
       '</div>' +
@@ -235,7 +270,8 @@
     box.innerHTML = head('Speaker brief', 'sb-one-title') + '<div class="sb-body"><p class="sb-help"><i class="fas fa-spinner fa-spin"></i> Making the preview…</p></div>';
     focusIn(box);
     try {
-      var r = await api.post('/api/admin/speakers/' + id + '/brief', { preview: true });
+      var both = await Promise.all([api.post('/api/admin/speakers/' + id + '/brief', { preview: true }), loadSenders()]);
+      var r = both[0];
       if (S.one !== Number(id)) return;
       drawOne(id, r);
     } catch (e) {
@@ -255,12 +291,14 @@
     box.innerHTML = head('Brief for ' + (r.name || 'this speaker'), 'sb-one-title') +
       '<div class="sb-body">' +
       '<div class="sb-meta">' +
-        '<div><span class="sb-k">To</span> ' + (r.to ? esc(r.to) + ', from the event’s address' : '<b class="sb-bad">No email address yet.</b> Add it below, or copy the details for WhatsApp.') +
+        '<div><span class="sb-k">To</span> ' + (r.to ? esc(r.to) : '<b class="sb-bad">No email address yet.</b> Add it below, or copy the details for WhatsApp.') +
           ' <button type="button" class="sb-link" data-sb="one-contact">' + (r.to ? 'Change' : 'Add email &amp; mobile') + '</button></div>' +
         '<div class="sb-card sb-contact" id="sb-one-contact"' + (r.to ? ' hidden' : '') + '>' +
           '<div class="sb-row"><input id="sb-one-ct-email" class="sb-in" type="email" maxlength="200" placeholder="Email address" value="' + esc(r.to || '') + '">' +
           '<input id="sb-one-ct-mobile" class="sb-in" type="tel" maxlength="30" placeholder="Mobile (for their pass)" value="' + esc((byId(id) || {}).phone || '') + '"></div>' +
           '<div class="sb-row"><button type="button" class="sb-btn is-small is-primary" data-sb="one-contact-save" data-id="' + id + '"><i class="fas fa-floppy-disk"></i>Save</button><span class="sb-help" id="sb-one-ct-state"></span></div></div>' +
+        '<div><span class="sb-k">From</span> ' + fromField('sb-one-from', r.from || '', 'one-from', { inline: true, disabled: !r.to }) +
+          (r.from_error ? ' <b class="sb-bad">' + esc(r.from_error) + '</b>' : '') + '</div>' +
         '<div><span class="sb-k">CC</span> <input id="sb-one-cc" class="sb-in is-inline" type="text" maxlength="400" placeholder="Copy to: assistant@example.com, colleague@…" value="' + esc(r.cc || '') + '"' + (r.to ? '' : ' disabled') + '> <span class="sb-help">Up to 5, with commas.</span></div>' +
         '<div><span class="sb-k">Status</span> <span class="sb-status ' + st.cls + '">' + esc(st.word) + (r.last && r.last.at ? ' ' + esc(stamp(r.last.at)) : '') + '</span>' +
           (r.update ? ' <span class="sb-help">The subject starts with “Updated:”.</span>' : '') + '</div>' +
@@ -327,13 +365,15 @@
     var box = $('sb-one'); var protocol = box && box.dataset.protocol === '1';
     var sp = byId(id);
     var name = sp ? sp.name : 'this speaker';
-    if (!confirm((protocol ? 'This is a minister. ' : '') + 'Send this email to ' + name + ' now?')) return;
+    var frEl = $('sb-one-from');
+    if (!confirm((protocol ? 'This is a minister. ' : '') + 'Send this email to ' + name + ' now, from ' + fromWord(frEl ? frEl.value : '') + '?')) return;
     var btn = $('sb-one-send'); if (btn) btn.disabled = true;
     try {
       var body = wordsOf(); body.anyway = protocol;
       var ccEl = $('sb-one-cc'); if (ccEl) body.cc = ccEl.value;
+      if (frEl) body.from = frEl.value;
       var r = await api.post('/api/admin/speakers/' + id + '/brief', body);
-      say((r.kind === 'update' ? 'Update sent to ' : 'Brief sent to ') + r.to + (r.cc && r.cc.length ? ', copied to ' + r.cc.join(', ') : '') + '.');
+      say((r.kind === 'update' ? 'Update sent to ' : 'Brief sent to ') + r.to + (r.from ? ' from ' + r.from : '') + (r.cc && r.cc.length ? ', copied to ' + r.cc.join(', ') : '') + '.');
       hideOne(true);
       if (S.d) await load();
       refreshDesk();
@@ -347,11 +387,12 @@
     var n = ids.length;
     var note = $('sb-note') ? $('sb-note').value : S.noteSaved;
     var ccNow = $('sb-cc') ? $('sb-cc').value : S.ccSaved;
-    if (note !== S.noteSaved || ccNow !== S.ccSaved) {
-      if (!confirm('Your note or CC has changes that are not saved. Save them and use them in these briefs?')) return;
+    var fromNow = $('sb-from') ? $('sb-from').value : S.fromSaved;
+    if (note !== S.noteSaved || ccNow !== S.ccSaved || fromNow !== S.fromSaved) {
+      if (!confirm('Your note, CC or Send from has changes that are not saved. Save them and use them in these briefs?')) return;
       if (!(await saveNote())) return;
     }
-    if (!confirm('Send the speaker brief to ' + n + ' speaker' + (n === 1 ? '' : 's') + ' now? Each gets their own email from the event’s address.')) return;
+    if (!confirm('Send the speaker brief to ' + n + ' speaker' + (n === 1 ? '' : 's') + ' now? Each gets their own email from ' + fromWord(S.fromSaved) + '.')) return;
     S.busy = true; drawList();
     var ok = 0, bad = [];
     for (var i = 0; i < ids.length; i++) {
@@ -377,11 +418,12 @@
   async function saveNote() {
     var el = $('sb-note'); if (!el) return false;
     try {
-      var cc = $('sb-cc');
-      var r = await api.put('/api/admin/speaker-briefs/note', { note: el.value, cc: cc ? cc.value : S.ccSaved });
+      var cc = $('sb-cc'), fr = $('sb-from');
+      var r = await api.put('/api/admin/speaker-briefs/note', { note: el.value, cc: cc ? cc.value : S.ccSaved, from: fr ? fr.value : S.fromSaved });
       if (r && r.error) throw new Error(r.error);
-      S.noteSaved = r.note || ''; S.ccSaved = r.cc || ''; if (S.d) { S.d.note = S.noteSaved; S.d.cc = S.ccSaved; }
-      el.value = S.noteSaved; if (cc) cc.value = S.ccSaved;
+      S.noteSaved = r.note || ''; S.ccSaved = r.cc || ''; S.fromSaved = r.from || '';
+      if (S.d) { S.d.note = S.noteSaved; S.d.cc = S.ccSaved; S.d.from = S.fromSaved; }
+      el.value = S.noteSaved; if (cc) cc.value = S.ccSaved; if (fr) fr.value = S.fromSaved;
       noteState();
       say('Saved. Every brief now carries it.');
       return true;
@@ -389,8 +431,8 @@
   }
   function noteState() {
     var el = $('sb-note'), b = $('sb-note-save'), s = $('sb-note-state'); if (!el) return;
-    var cc = $('sb-cc');
-    var dirty = el.value !== S.noteSaved || (!!cc && cc.value !== S.ccSaved);
+    var cc = $('sb-cc'), fr = $('sb-from');
+    var dirty = el.value !== S.noteSaved || (!!cc && cc.value !== S.ccSaved) || (!!fr && fr.value !== S.fromSaved);
     if (b) b.disabled = !dirty;
     if (s) s.textContent = dirty ? 'Not saved yet.' : (S.noteSaved ? 'Saved.' : 'Nothing saved yet: briefs go without it.');
   }

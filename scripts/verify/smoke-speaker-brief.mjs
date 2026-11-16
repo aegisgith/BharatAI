@@ -189,5 +189,36 @@ check('a bad CC on a send is refused before anything goes', r.status === 400 && 
 const lastTwo = W.rows("SELECT detail FROM admin_audit WHERE action = 'speaker.brief' ORDER BY id DESC LIMIT 2").map(x => JSON.parse(x.detail).cc);
 check('the audit rows remember the CC', JSON.stringify(lastTwo) === '[[],["one@example.test"]]', lastTwo);
 
+// ---- send from one of the organising team (organiser, 13 Nov 2026) ----
+W.db.run("INSERT INTO attendees (event_id, name, email, badge_type) VALUES (1, 'Anita Ram', 'anita.r@bharataiinnovation.com', 'Organiser')");
+W.db.run("INSERT INTO attendees (event_id, name, email, badge_type) VALUES (1, 'Rohit Outside', 'rohit.o@gmail.com', 'Organiser')");
+let d3 = await list();
+check('no Send from saved yet: briefs go from the event’s address', d3.from === '', d3.from);
+r = await W.call('PUT', '/api/admin/speaker-briefs/note', { note: 'x', from: 'rohit.o@gmail.com' });
+check('a team member off our domain cannot be saved as Send from', r.status === 400 && /not on the list/.test(r.json.error || ''), r.json);
+r = await W.call('PUT', '/api/admin/speaker-briefs/note', { note: 'Reach the hall 30 minutes early.', from: 'Anita.R@BharatAIInnovation.com' });
+d3 = await list();
+check('a team member on our domain saves as Send from (lowercased); the list carries it', r.status === 200 && r.json.from === 'anita.r@bharataiinnovation.com' && d3.from === 'anita.r@bharataiinnovation.com', r.json);
+r = await W.call('POST', '/api/admin/speakers/3/brief', { preview: true });
+check('the preview says who it goes from', r.status === 200 && r.json.from === 'anita.r@bharataiinnovation.com' && /Anita Ram/.test(r.json.from_name) && !r.json.from_error, r.json);
+nSend = W.sent.length;
+r = await W.call('POST', '/api/admin/speakers/3/brief', { cc: '' });
+let m3 = W.sent[nSend] || {};
+check('a send goes From the team member, with a blind copy to the event’s address', r.status === 200 && r.json.from === 'anita.r@bharataiinnovation.com' && /Anita Ram/.test(m3.Content?.From || '') && /anita\.r@bharataiinnovation\.com/.test(m3.Content?.From || '') && (m3.Recipients?.BCC || []).length === 1 && JSON.stringify(m3.Recipients?.To) === '["shailesh@example.test"]', { from: m3.Content?.From, rc: m3.Recipients });
+nSend = W.sent.length;
+r = await W.call('POST', '/api/admin/speakers/3/brief', { cc: '', from: '' });
+m3 = W.sent[nSend] || {};
+check('the sheet can send one from the event’s address instead (no blind copy)', r.status === 200 && r.json.from === '' && !/anita/i.test(m3.Content?.From || '') && !(m3.Recipients?.BCC || []).length, { from: m3.Content?.From, rc: m3.Recipients });
+nSend = W.sent.length;
+r = await W.call('POST', '/api/admin/speakers/3/brief', { from: 'someone@bharataiinnovation.com' });
+check('a send from an address not on the list is refused before anything goes', r.status === 400 && W.sent.length === nSend, r.status);
+W.db.run("UPDATE attendees SET badge_type = 'Delegate Pass' WHERE email = 'anita.r@bharataiinnovation.com'");
+r = await W.call('POST', '/api/admin/speakers/3/brief', { preview: true });
+check('once the saved sender leaves the team, the preview still opens and says why', r.status === 200 && r.json.from === 'anita.r@bharataiinnovation.com' && /not on the list/.test(r.json.from_error || ''), r.json);
+r = await W.call('POST', '/api/admin/speakers/3/brief', {});
+check('...and a send is refused until another is picked', r.status === 400 && W.sent.length === nSend, r.status);
+const lastFrom = W.rows("SELECT detail FROM admin_audit WHERE action = 'speaker.brief' ORDER BY id DESC LIMIT 2").map(x => JSON.parse(x.detail).from);
+check('the audit rows remember who each went from', JSON.stringify(lastFrom) === '["","anita.r@bharataiinnovation.com"]', lastFrom);
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

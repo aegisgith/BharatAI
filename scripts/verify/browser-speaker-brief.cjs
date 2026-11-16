@@ -58,9 +58,9 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     await shailesh.locator('[data-sb="open"]').click();
     check('the preview sheet opens over the list', await until(() => page.locator('#sb-one .sb-preview').isVisible()));
     const frame = page.frameLocator('#sb-one-preview');
-    check('the preview is the real email: panel, both hall names, the saved note', await until(async () => {
+    check('the preview is the real email: panel, the event\u2019s hall name only (15 Nov 2026), the saved note', await until(async () => {
       const t = await frame.locator('body').textContent();
-      return t.includes('Tarun Chugh (Bajaj Life Insurance)') && t.includes('Ratan Kumar Kesh (Bandhan Bank)') && t.includes('Homi J. Bhabha Hall · Peacock Hall') && t.includes('Please reach the hall 30 minutes');
+      return t.includes('Tarun Chugh (Bajaj Life Insurance)') && t.includes('Ratan Kumar Kesh (Bandhan Bank)') && t.includes('Homi J. Bhabha Hall') && !t.includes('Peacock Hall') && t.includes('Please reach the hall 30 minutes');
     }));
     check('the subject is in a box you can change', (await page.inputValue('#sb-one-subj')).startsWith('Your session at Bharat AI Innovation 2026: Friday 20 November'));
     check('so are the greeting and the opening words', (await page.inputValue('#sb-one-greet')) === 'Dear Shailesh,' && (await page.inputValue('#sb-one-open')).startsWith('Thank you for speaking'));

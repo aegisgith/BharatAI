@@ -525,7 +525,7 @@ app.route('/', conference)
 // Speaker briefs (12 Nov 2026): each speaker's sessions, panel and pass in one email,
 // previewed and sent from Admin -> Conference; routes/speaker-brief.ts, screen
 // public/static/speaker-brief.js. The pass button signs them in at their pass.
-configureSpeakerBrief({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader, issueSpeakerPass,
+configureSpeakerBrief({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader, issueSpeakerPass, pickSender: pickAdminSender,
   passLink: async (c: any, eventId: number, email: string) => {
     const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
     let href = appUrl + '?email=' + encodeURIComponent(email) + '&action=download-pass'
@@ -41698,7 +41698,7 @@ function adminPageHTML(): string {
   </div>
 
   <script src="/static/conference-admin.js?v=20261115"></script>
-  <script src="/static/speaker-brief.js?v=20261116b"></script>
+  <script src="/static/speaker-brief.js?v=20261116c"></script>
   <script src="/static/talk-brief.js?v=20261116"></script>
   <script src="/static/event-week.js?v=20261116"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
