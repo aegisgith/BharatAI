@@ -46087,7 +46087,28 @@ function adminPageScript(): string {
       select.addEventListener('blur', () => { setTimeout(() => { if (activeInlineEdit && activeInlineEdit.cell === cell) save(); }, 150); });
     }
 
-    const ROLE_OPTIONS = ['Visitor Pass','Exhibitor','Star Rating','Finalist Startup','Finalist Enterprise','Delegate Pass (paid)','Premium Delegate Pass (paid)','VIP Pass (paid)','VIP Guest (CTO/CIO/other)','Investor','Jury Morning','Jury Evening','Jury Whole Day','Speaker','Family & Friends Guest'];
+    // The one list of roles: Add Attendee, Edit Attendee and the inline multi-select all
+    // read it (three hand-typed copies had to be kept in step by hand before 16 Nov 2026).
+    // 'Delegate Pass (complimentary)' and 'Media / Journalist' joined that day (the
+    // organiser: "there is no pass for Media/journalist in role and delegate (free/waive
+    // off)"). A role that names a pass sets the Badge box to that pass (roleSetsPass), and
+    // the complimentary delegate sets Payment to waived; both boxes stay in view, so the
+    // admin can still change them before saving. Roles that are not a pass (Exhibitor,
+    // Jury, Speaker, Investor) leave the badge alone: those passes have rules of their own.
+    const ROLE_OPTIONS = ['Visitor Pass','Exhibitor','Star Rating','Finalist Startup','Finalist Enterprise','Delegate Pass (paid)','Delegate Pass (complimentary)','Premium Delegate Pass (paid)','VIP Pass (paid)','VIP Guest (CTO/CIO/other)','Investor','Jury Morning','Jury Evening','Jury Whole Day','Speaker','Media / Journalist','Family & Friends Guest'];
+    const ROLE_PASS = { 'Delegate Pass (paid)': 'Delegate Pass', 'Delegate Pass (complimentary)': 'Delegate Pass', 'Premium Delegate Pass (paid)': 'Premium Delegate Pass', 'VIP Pass (paid)': 'VIP Pass', 'VIP Guest (CTO/CIO/other)': 'VIP Guest', 'Media / Journalist': 'Media Pass' };
+    // A person's role as stored, even one no longer on the list, so opening Edit and saving
+    // never swaps it for the first option.
+    function roleOptionsFor(role) { return role && ROLE_OPTIONS.indexOf(role) < 0 ? [role].concat(ROLE_OPTIONS) : ROLE_OPTIONS; }
+    function roleSetsPass(role, badgeId, paymentId) {
+      var pass = ROLE_PASS[role];
+      var badge = document.getElementById(badgeId);
+      if (!pass || !badge) return;
+      if (Array.prototype.some.call(badge.options, function (o) { return o.value === pass; })) badge.value = pass;
+      if (badgeId === 'na-badge') naPassChanged(badge.value);
+      var pay = paymentId ? document.getElementById(paymentId) : null;
+      if (pay && role === 'Delegate Pass (complimentary)') pay.value = 'waived';
+    }
 
     function inlineMultiSelect(cell, id, field, currentVal) {
       if (activeInlineEdit && activeInlineEdit.cell === cell) return;
@@ -46393,8 +46414,8 @@ function adminPageScript(): string {
             </div>
             <div class="grid grid-cols-3 gap-3">
               <div><label class="text-xs text-gray-400 mb-1 block">Role</label>
-                <select id="na-role" class="w-full px-3 py-2 rounded-lg text-sm">
-                  \${['Visitor Pass','Exhibitor','Star Rating','Finalist Startup','Finalist Enterprise','Delegate Pass (paid)','Premium Delegate Pass (paid)','VIP Pass (paid)','VIP Guest (CTO/CIO/other)','Investor','Jury Morning','Jury Evening','Jury Whole Day','Speaker','Family & Friends Guest'].map(r=>'<option value="'+r+'">'+r+'</option>').join('')}
+                <select id="na-role" onchange="roleSetsPass(this.value, 'na-badge')" class="w-full px-3 py-2 rounded-lg text-sm">
+                  \${ROLE_OPTIONS.map(r=>'<option value="'+r+'">'+r+'</option>').join('')}
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Badge Type</label>
                 <select id="na-badge" onchange="naPassChanged(this.value)" class="w-full px-3 py-2 rounded-lg text-sm">
@@ -46533,8 +46554,8 @@ function adminPageScript(): string {
             </div>
             <div class="grid grid-cols-3 gap-3">
               <div><label class="text-xs text-gray-400 mb-1 block">Role</label>
-                <select id="ea-role" class="w-full px-3 py-2 rounded-lg text-sm">
-                  \${['Visitor Pass','Exhibitor','Star Rating','Finalist Startup','Finalist Enterprise','Delegate Pass (paid)','Premium Delegate Pass (paid)','VIP Pass (paid)','VIP Guest (CTO/CIO/other)','Investor','Jury Morning','Jury Evening','Jury Whole Day','Speaker','Family & Friends Guest'].map(r=>'<option value="'+r+'" '+(a.role===r?'selected':'')+'>'+r+'</option>').join('')}
+                <select id="ea-role" onchange="roleSetsPass(this.value, 'ea-badge', 'ea-payment-status')" class="w-full px-3 py-2 rounded-lg text-sm">
+                  \${roleOptionsFor(a.role).map(r=>'<option value="'+r+'" '+(a.role===r?'selected':'')+'>'+r+'</option>').join('')}
                 </select></div>
               <div><label class="text-xs text-gray-400 mb-1 block">Badge</label>
                 <select id="ea-badge" class="w-full px-3 py-2 rounded-lg text-sm">
