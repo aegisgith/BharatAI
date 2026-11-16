@@ -1020,10 +1020,12 @@
         /* --- Partners (the organiser, 16 Nov 2026; rebuilt the same evening after
            "very avg, not aligning with overall design" and "simple red text...
            quite bad"). The site's own vocabulary: a section header with the accent
-           word, then cards built like the value tiles, a logo stage on top and a
-           caption below with the name in the display face and the role as the
-           saffron pill the speaker cards use. The ASL mark is drawn on black, so
-           its stage is black with a glow in its own red. --- */
+           word, then cards built like the value tiles: a caption on top, with the
+           role as a small indigo tag in the body face and the name in the display
+           face under it, and the logo stage below (the organiser, on the first
+           cards: the tag and name go ON TOP of the logo, in a different font, and
+           not the saffron). The ASL mark is drawn on black, so its stage is black
+           with a glow in its own red. --- */
         .partners { background: #fff; }
         .partners .section-header { margin-bottom: 2rem; }
         .ptiles { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; max-width: 1040px; }
@@ -1036,25 +1038,28 @@
         .ptile:hover { transform: translateY(-4px); box-shadow: 0 2px 4px rgba(13,15,30,0.05), 0 22px 44px -22px rgba(26,35,126,0.45); }
         .ptile-stage {
             display: grid; place-items: center; height: 104px; padding: 0.9rem 1.1rem;
-            background: radial-gradient(120% 110% at 50% 0%, #fff 0%, var(--off-white) 100%);
-            border-bottom: 1px solid var(--light);
+            background: radial-gradient(120% 110% at 50% 100%, #fff 0%, var(--off-white) 100%);
+            border-top: 1px solid var(--light);
         }
         .ptile-stage img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
         /* Assessfy's and Jade's files carry a white box; multiply makes it vanish on the stage. */
         .ptile:not(.ptile-dark) .ptile-stage img { mix-blend-mode: multiply; }
         .ptile-dark .ptile-stage {
             background: radial-gradient(90% 80% at 50% 110%, rgba(214,32,40,0.5) 0%, rgba(214,32,40,0) 65%), #000;
-            border-bottom-color: #000; padding: 0.6rem 0.9rem;
+            border-top-color: #000; padding: 0.6rem 0.9rem;
         }
-        .ptile-cap { padding: 0.85rem 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.55rem; align-items: flex-start; flex: 1; }
+        .ptile-cap { padding: 0.9rem 0.9rem 0.95rem; display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; flex: 1; }
         .ptile-cap b { display: block; font-family: var(--font-display); font-weight: 700; font-size: 0.98rem; line-height: 1.2; color: var(--charcoal); }
-        .ptile-cap .speaker-topic { line-height: 1.35; border-radius: 12px; font-size: 0.64rem; letter-spacing: 0.04em; }
+        .ptile-role {
+            display: inline-block; font-family: var(--font-body); font-size: 0.64rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.35;
+            color: var(--indigo); background: var(--light); border: 1px solid rgba(26,35,126,0.14); border-radius: 12px; padding: 0.22rem 0.6rem;
+        }
         @media (min-width: 900px) {
             .ptiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem; }
             .ptile-stage { height: 128px; padding: 1.1rem 1.5rem; }
             .ptile-cap { padding: 1rem 1.15rem 1.15rem; }
             .ptile-cap b { font-size: 1.05rem; }
-            .ptile-cap .speaker-topic { font-size: 0.7rem; letter-spacing: 0.06em; }
+            .ptile-role { font-size: 0.7rem; }
         }
         #venue .venue-images img:nth-child(2) { display: none; }
         @media (min-width: 900px) { #venue .venue-images img:nth-child(2) { display: block; } }
@@ -1201,20 +1206,20 @@
             </div>
             <ul class="ptiles">
                 <li class="ptile ptile-dark reveal">
+                    <div class="ptile-cap"><span class="ptile-role">AI Partner</span><b>Aegis Superintelligence Lab</b></div>
                     <div class="ptile-stage"><img width="720" height="230" loading="lazy" decoding="async" src="images/org-logos/aegis-superintelligence-lab.webp" alt="Aegis Superintelligence Lab (ASL)"></div>
-                    <div class="ptile-cap"><b>Aegis Superintelligence Lab</b><span class="speaker-topic">AI Partner</span></div>
                 </li>
                 <li class="ptile reveal reveal-delay-1">
+                    <div class="ptile-cap"><span class="ptile-role">Assessment OS Partner &amp; Panel Host</span><b>Assessfy</b></div>
                     <div class="ptile-stage"><img width="336" height="145" loading="lazy" decoding="async" src="images/exhibitors/assessfy.webp" alt="Assessfy"></div>
-                    <div class="ptile-cap"><b>Assessfy</b><span class="speaker-topic">Assessment OS Partner &amp; Panel Host</span></div>
                 </li>
                 <li class="ptile reveal reveal-delay-2">
+                    <div class="ptile-cap"><span class="ptile-role">Partner AI Centre of Excellence</span><b>Aegis School of Data Science and AI</b></div>
                     <div class="ptile-stage"><img width="260" height="96" loading="lazy" decoding="async" src="images/logo-aegis.webp" alt="Aegis School of Data Science and AI"></div>
-                    <div class="ptile-cap"><b>Aegis School of Data Science and AI</b><span class="speaker-topic">Partner AI Centre of Excellence</span></div>
                 </li>
                 <li class="ptile reveal reveal-delay-3">
+                    <div class="ptile-cap"><span class="ptile-role">Panel Host Partner</span><b>Jade Global</b></div>
                     <div class="ptile-stage"><img width="212" height="93" loading="lazy" decoding="async" src="images/exhibitors/jade-global.webp" alt="Jade Global"></div>
-                    <div class="ptile-cap"><b>Jade Global</b><span class="speaker-topic">Panel Host Partner</span></div>
                 </li>
             </ul>
         </div>
