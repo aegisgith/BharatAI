@@ -95,3 +95,12 @@ body.sb-lock { overflow: hidden; }
 .sb-words-head { margin-top: 0; justify-content: space-between; }
 .sb-words-head .sb-lbl { margin: 0; font-size: 15px; }
 .sb-btn[hidden] { display: none; }
+
+/* Add email & mobile, and CC (16 Nov 2026) */
+.sb-link{background:none;border:0;padding:0;margin-left:6px;color:#C84F00;font:inherit;font-size:12px;font-weight:700;cursor:pointer;text-decoration:underline}
+.sb-link:hover{color:#9a3d00}
+.sb-contact{margin:6px 0 8px}
+.sb-contact .sb-row{flex-wrap:wrap;gap:6px;align-items:center}
+.sb-contact .sb-in{flex:1 1 160px;min-width:140px}
+.sb-found{font-size:12.5px;color:#444;margin:0 0 6px}
+.sb-in.is-inline{display:inline-block;width:min(100%,360px);vertical-align:middle}

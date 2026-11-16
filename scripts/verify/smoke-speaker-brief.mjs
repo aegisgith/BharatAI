@@ -153,7 +153,41 @@ check('a missing session has none', r.status === 404);
 
 // ---- the admin page loads the screen ----
 r = await W.call('GET', '/admin', undefined, { admin: false });
-check('the admin page loads speaker-brief.js after conference-admin.js and BEFORE admin.js', r.status === 200 && /conference-admin\.js\?v=[^"]+"><\/script>\s*<script src="\/static\/speaker-brief\.js\?v=\d+"><\/script>\s*<script src="\/admin\.js\?v=/.test(r.text), r.status);
+check('the admin page loads speaker-brief.js after conference-admin.js and BEFORE admin.js (other screens may sit between)', r.status === 200 && /conference-admin\.js\?v=[^"]+"><\/script>\s*<script src="\/static\/speaker-brief\.js\?v=\d+"><\/script>/.test(r.text) && r.text.indexOf('/static/speaker-brief.js?v=') < r.text.indexOf('/admin.js?v='), r.status);
+
+// ---- add email and mobile from the list (16 Nov 2026), and a CC ----
+W.db.run("INSERT INTO attendees (event_id, name, email, mobile, badge_type, payment_status, main_event, company, job_title) VALUES (1, 'Tarun Chugh', 'tarun@example.test', '9820000002', 'Delegate Pass', 'paid', 1, 'Bajaj Life Insurance', 'MD & CEO')");
+let d2 = await list();
+check('a speaker with no email is offered their own registration (same name): email, mobile, company', by(d2, 2).found?.length === 1 && by(d2, 2).found[0].email === 'tarun@example.test' && by(d2, 2).found[0].mobile === '9820000002' && by(d2, 2).found[0].company === 'Bajaj Life Insurance', by(d2, 2).found);
+check('a speaker with an email is offered nothing; no CC saved yet', by(d2, 3).found.length === 0 && d2.cc === '', d2.cc);
+r = await W.call('PUT', '/api/admin/speakers/2', { email: 'Tarun@Example.test', phone: '98200 00002' });
+d2 = await list();
+check('saving the email and mobile makes the row ready, lowercased, digits only', r.status === 200 && by(d2, 2).status === 'ready' && by(d2, 2).email === 'tarun@example.test' && by(d2, 2).phone === '9820000002' && by(d2, 2).found.length === 0, by(d2, 2));
+r = await W.call('PUT', '/api/admin/speakers/2', { email: 'not-an-address' });
+check('a wrong address is refused', r.status === 400, r.status);
+r = await W.call('PUT', '/api/admin/speaker-briefs/note', { note: 'Reach the hall 30 minutes early.', cc: 'copy@example.test, Second@Example.test, copy@example.test' });
+d2 = await list();
+check('"copy every brief to" saves (lowercased, no repeats) and the list carries it', r.status === 200 && r.json.cc === 'copy@example.test, second@example.test' && d2.cc === 'copy@example.test, second@example.test', r.json);
+r = await W.call('PUT', '/api/admin/speaker-briefs/note', { note: 'x', cc: 'a@b.c, nope' });
+check('a bad CC is refused', r.status === 400 && /not an email address/.test(r.json.error), r.json);
+r = await W.call('POST', '/api/admin/speakers/3/brief', { preview: true });
+check('the preview shows the CC it would carry', r.status === 200 && r.json.cc === 'copy@example.test, second@example.test', r.json.cc);
+let nSend = W.sent.length;
+r = await W.call('POST', '/api/admin/speakers/3/brief', {});
+let rc = (W.sent[nSend] || {}).Recipients || {};
+check('a send with no CC box carries the saved CC to the mail service, To unchanged', r.status === 200 && JSON.stringify(r.json.cc) === '["copy@example.test","second@example.test"]' && JSON.stringify(rc.To) === '["shailesh@example.test"]' && JSON.stringify(rc.CC) === '["copy@example.test","second@example.test"]', rc);
+nSend = W.sent.length;
+r = await W.call('POST', '/api/admin/speakers/3/brief', { cc: 'one@example.test; shailesh@example.test' });
+rc = (W.sent[nSend] || {}).Recipients || {};
+check('the sheet’s own CC replaces it for that email, and never copies the recipient', r.status === 200 && JSON.stringify(rc.CC) === '["one@example.test"]', rc);
+nSend = W.sent.length;
+r = await W.call('POST', '/api/admin/speakers/3/brief', { cc: '' });
+rc = (W.sent[nSend] || {}).Recipients || {};
+check('an empty CC box sends with no copy', r.status === 200 && !rc.CC, rc);
+r = await W.call('POST', '/api/admin/speakers/3/brief', { cc: 'bad address' });
+check('a bad CC on a send is refused before anything goes', r.status === 400 && W.sent.length === nSend + 1, r.status);
+const lastTwo = W.rows("SELECT detail FROM admin_audit WHERE action = 'speaker.brief' ORDER BY id DESC LIMIT 2").map(x => JSON.parse(x.detail).cc);
+check('the audit rows remember the CC', JSON.stringify(lastTwo) === '[[],["one@example.test"]]', lastTwo);
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

@@ -15,8 +15,8 @@
 (function (global) {
   'use strict';
 
-  var V = '20261113';
-  var S = { d: null, filter: 'todo', sel: {}, busy: false, one: null, pv: 0, timer: null, noteSaved: '', lastFocus: null, wired: false, usual: { subject: '', greeting: '', opening: '' }, noteAtOpen: '' };
+  var V = '20261116';
+  var S = { d: null, filter: 'todo', sel: {}, busy: false, one: null, pv: 0, timer: null, noteSaved: '', lastFocus: null, wired: false, usual: { subject: '', greeting: '', opening: '' }, noteAtOpen: '', contact: null, ccSaved: '' };
   var STATUS = {
     ready: { word: 'Not sent yet', cls: 'is-ready' },
     changed: { word: 'Changed since sent', cls: 'is-changed' },
@@ -120,7 +120,7 @@
     try {
       S.d = await api.get('/api/admin/events/' + eid() + '/speaker-briefs');
       if (S.d && S.d.error) throw new Error(S.d.error);
-      S.noteSaved = S.d.note || '';
+      S.noteSaved = S.d.note || ''; S.ccSaved = S.d.cc || '';
       var keep = {}; Object.keys(S.sel).forEach(function (k) { var s = byId(k); if (s && sendable(s)) keep[k] = 1; }); S.sel = keep;
       if (!$('sb-list').hidden) drawList();
     } catch (e) {
@@ -141,12 +141,16 @@
     var nSel = Object.keys(S.sel).length;
     var noteDirty = ($('sb-note') ? $('sb-note').value : S.noteSaved) !== S.noteSaved;
     var noteVal = $('sb-note') ? $('sb-note').value : S.noteSaved;
+    var ccVal = $('sb-cc') ? $('sb-cc').value : S.ccSaved; noteDirty = noteDirty || ccVal !== S.ccSaved;
     box.innerHTML = head('Speaker briefs', 'sb-title', 'One email per speaker: their session, their panel and their pass. Preview any one before it goes.') +
       '<div class="sb-body">' +
       '<div class="sb-card">' +
         '<label for="sb-note" class="sb-lbl">What every speaker should know</label>' +
         '<p class="sb-help">Goes at the end of every brief. For example: what time to arrive, where the speaker lounge is, slides (format and by when), a contact number on the day.</p>' +
         '<textarea id="sb-note" class="sb-in" rows="3" maxlength="1500" data-sb-input="note" data-sb-first placeholder="Please reach the hall 30 minutes before your session.">' + esc(noteVal) + '</textarea>' +
+        '<label for="sb-cc" class="sb-lbl">Copy every brief to (CC)</label>' +
+        '<p class="sb-help">A colleague who should see each brief, or a speaker’s office. Up to 5 addresses, with commas. The sheet for one speaker can change it for that email.</p>' +
+        '<input id="sb-cc" class="sb-in" type="text" maxlength="400" data-sb-input="note" placeholder="colleague@bharataiinnovation.com, office@example.com" value="' + esc(ccVal) + '">' +
         '<div class="sb-row"><button type="button" class="sb-btn" data-sb="save-note"' + (noteDirty ? '' : ' disabled') + ' id="sb-note-save"><i class="fas fa-floppy-disk"></i>Save for every brief</button>' +
         '<span class="sb-help" id="sb-note-state">' + (noteDirty ? 'Not saved yet.' : (S.noteSaved ? 'Saved.' : 'Nothing saved yet: briefs go without it.')) + '</span></div>' +
       '</div>' +
@@ -177,6 +181,7 @@
     return '<li class="sb-item' + (S.sel[sp.id] ? ' is-sel' : '') + '">' + box + ava(sp) +
       '<div class="sb-who"><div class="sb-name">' + esc(sp.name) + '</div>' +
         '<div class="sb-org">' + esc([sp.role, sp.organisation].filter(Boolean).join(', ')) + '</div>' +
+        contactHTML(sp) +
         (slots ? '<ul class="sb-slots">' + slots + '</ul>' : '') +
         '<div class="sb-tags"><span class="sb-status ' + st.cls + '">' + esc(st.word) + when + '</span>' + pass +
           (sp.status === 'changed' && sp.last ? '<span class="sb-help">Last sent ' + esc(stamp(sp.last.at)) + '</span>' : '') + '</div>' +
@@ -185,6 +190,41 @@
         '<button type="button" class="sb-btn is-small" data-sb="open" data-id="' + sp.id + '"' + (sp.slots.length ? '' : ' disabled title="Give them a session first"') + '><i class="fas fa-eye"></i>Preview</button>' +
         '<button type="button" class="sb-btn is-small" data-sb="copy" data-id="' + sp.id + '"' + (sp.slots.length ? '' : ' disabled') + '><i class="fas fa-clipboard-list"></i>Copy for WhatsApp</button>' +
       '</div></li>';
+  }
+
+  // The address the brief goes to, and a form to add or change it and the mobile (it
+  // goes on their pass). Registrations under the same name are offered, never assumed.
+  function contactHTML(sp) {
+    var open = S.contact === sp.id;
+    var line = '<div class="sb-org sb-contact-line">' + (sp.email ? esc(sp.email) + (sp.phone ? ' · ' + esc(sp.phone) : '') : '<b class="sb-bad">No email address</b>') +
+      ' <button type="button" class="sb-link" data-sb="contact" data-id="' + sp.id + '">' + (sp.email ? 'Change' : 'Add email &amp; mobile') + '</button></div>';
+    if (!open) return line;
+    var found = (sp.found || []).map(function (f) {
+      return '<div class="sb-found">Registered as <b>' + esc(f.email) + '</b>' + (f.mobile ? ' · ' + esc(f.mobile) : '') + (f.company || f.job_title ? ' · ' + esc([f.job_title, f.company].filter(Boolean).join(', ')) : '') +
+        ' <button type="button" class="sb-btn is-small" data-sb="use-found" data-id="' + sp.id + '" data-email="' + esc(f.email) + '" data-mobile="' + esc(f.mobile) + '">Use this</button></div>';
+    }).join('');
+    return line + '<div class="sb-card sb-contact" id="sb-contact-' + sp.id + '">' + found +
+      '<div class="sb-row"><input id="sb-ct-email-' + sp.id + '" class="sb-in" type="email" maxlength="200" placeholder="Email address" value="' + esc(sp.email || '') + '" data-sb-first>' +
+      '<input id="sb-ct-mobile-' + sp.id + '" class="sb-in" type="tel" maxlength="30" placeholder="Mobile (for their pass)" value="' + esc(sp.phone || '') + '"></div>' +
+      '<div class="sb-row"><button type="button" class="sb-btn is-small is-primary" data-sb="contact-save" data-id="' + sp.id + '"><i class="fas fa-floppy-disk"></i>Save</button>' +
+      '<button type="button" class="sb-btn is-small" data-sb="contact-cancel">Cancel</button><span class="sb-help" id="sb-ct-state-' + sp.id + '"></span></div></div>';
+  }
+  // Saves the email and mobile on the speaker's record (the PUT the Speakers page uses),
+  // then redraws: the row becomes "Not sent yet" and the sheet gets its To.
+  async function saveContact(id, emailEl, mobileEl, stateEl, inSheet) {
+    var email = emailEl ? emailEl.value.trim() : '', mobile = mobileEl ? mobileEl.value.trim() : '';
+    if (!email && !mobile) { if (stateEl) stateEl.textContent = 'Type an email address.'; return; }
+    var body = {}; if (email) body.email = email; if (mobile) body.phone = mobile;
+    if (stateEl) stateEl.textContent = 'Saving…';
+    try {
+      var r = await api.put('/api/admin/speakers/' + id, body);
+      if (r && r.error) throw new Error(r.error);
+      S.contact = null;
+      say('Saved.');
+      await load();
+      if (inSheet && S.one === Number(id)) open(id);
+      refreshDesk();
+    } catch (e) { if (stateEl) stateEl.textContent = errText(e); else say(errText(e), 'error'); }
   }
 
   // ---------- one speaker ----------
@@ -215,7 +255,13 @@
     box.innerHTML = head('Brief for ' + (r.name || 'this speaker'), 'sb-one-title') +
       '<div class="sb-body">' +
       '<div class="sb-meta">' +
-        '<div><span class="sb-k">To</span> ' + (r.to ? esc(r.to) + ', from the event’s address' : '<b class="sb-bad">No email address yet.</b> Add it on their page in Speakers, or copy the details for WhatsApp.') + '</div>' +
+        '<div><span class="sb-k">To</span> ' + (r.to ? esc(r.to) + ', from the event’s address' : '<b class="sb-bad">No email address yet.</b> Add it below, or copy the details for WhatsApp.') +
+          ' <button type="button" class="sb-link" data-sb="one-contact">' + (r.to ? 'Change' : 'Add email &amp; mobile') + '</button></div>' +
+        '<div class="sb-card sb-contact" id="sb-one-contact"' + (r.to ? ' hidden' : '') + '>' +
+          '<div class="sb-row"><input id="sb-one-ct-email" class="sb-in" type="email" maxlength="200" placeholder="Email address" value="' + esc(r.to || '') + '">' +
+          '<input id="sb-one-ct-mobile" class="sb-in" type="tel" maxlength="30" placeholder="Mobile (for their pass)" value="' + esc((byId(id) || {}).phone || '') + '"></div>' +
+          '<div class="sb-row"><button type="button" class="sb-btn is-small is-primary" data-sb="one-contact-save" data-id="' + id + '"><i class="fas fa-floppy-disk"></i>Save</button><span class="sb-help" id="sb-one-ct-state"></span></div></div>' +
+        '<div><span class="sb-k">CC</span> <input id="sb-one-cc" class="sb-in is-inline" type="text" maxlength="400" placeholder="Copy to: assistant@example.com, colleague@…" value="' + esc(r.cc || '') + '"' + (r.to ? '' : ' disabled') + '> <span class="sb-help">Up to 5, with commas.</span></div>' +
         '<div><span class="sb-k">Status</span> <span class="sb-status ' + st.cls + '">' + esc(st.word) + (r.last && r.last.at ? ' ' + esc(stamp(r.last.at)) : '') + '</span>' +
           (r.update ? ' <span class="sb-help">The subject starts with “Updated:”.</span>' : '') + '</div>' +
         (passLine ? '<div><span class="sb-k">Pass</span> ' + passLine + '</div>' : '') +
@@ -285,8 +331,9 @@
     var btn = $('sb-one-send'); if (btn) btn.disabled = true;
     try {
       var body = wordsOf(); body.anyway = protocol;
+      var ccEl = $('sb-one-cc'); if (ccEl) body.cc = ccEl.value;
       var r = await api.post('/api/admin/speakers/' + id + '/brief', body);
-      say((r.kind === 'update' ? 'Update sent to ' : 'Brief sent to ') + r.to + '.');
+      say((r.kind === 'update' ? 'Update sent to ' : 'Brief sent to ') + r.to + (r.cc && r.cc.length ? ', copied to ' + r.cc.join(', ') : '') + '.');
       hideOne(true);
       if (S.d) await load();
       refreshDesk();
@@ -299,8 +346,9 @@
     if (!ids.length) return;
     var n = ids.length;
     var note = $('sb-note') ? $('sb-note').value : S.noteSaved;
-    if (note !== S.noteSaved) {
-      if (!confirm('Your note has changes that are not saved. Save them and use them in these briefs?')) return;
+    var ccNow = $('sb-cc') ? $('sb-cc').value : S.ccSaved;
+    if (note !== S.noteSaved || ccNow !== S.ccSaved) {
+      if (!confirm('Your note or CC has changes that are not saved. Save them and use them in these briefs?')) return;
       if (!(await saveNote())) return;
     }
     if (!confirm('Send the speaker brief to ' + n + ' speaker' + (n === 1 ? '' : 's') + ' now? Each gets their own email from the event’s address.')) return;
@@ -329,10 +377,11 @@
   async function saveNote() {
     var el = $('sb-note'); if (!el) return false;
     try {
-      var r = await api.put('/api/admin/speaker-briefs/note', { note: el.value });
+      var cc = $('sb-cc');
+      var r = await api.put('/api/admin/speaker-briefs/note', { note: el.value, cc: cc ? cc.value : S.ccSaved });
       if (r && r.error) throw new Error(r.error);
-      S.noteSaved = r.note || ''; if (S.d) S.d.note = S.noteSaved;
-      el.value = S.noteSaved;
+      S.noteSaved = r.note || ''; S.ccSaved = r.cc || ''; if (S.d) { S.d.note = S.noteSaved; S.d.cc = S.ccSaved; }
+      el.value = S.noteSaved; if (cc) cc.value = S.ccSaved;
       noteState();
       say('Saved. Every brief now carries it.');
       return true;
@@ -340,7 +389,8 @@
   }
   function noteState() {
     var el = $('sb-note'), b = $('sb-note-save'), s = $('sb-note-state'); if (!el) return;
-    var dirty = el.value !== S.noteSaved;
+    var cc = $('sb-cc');
+    var dirty = el.value !== S.noteSaved || (!!cc && cc.value !== S.ccSaved);
     if (b) b.disabled = !dirty;
     if (s) s.textContent = dirty ? 'Not saved yet.' : (S.noteSaved ? 'Saved.' : 'Nothing saved yet: briefs go without it.');
   }
@@ -381,7 +431,13 @@
     open: function (el) { open(el.getAttribute('data-id')); },
     copy: function (el) { copyFor(el.getAttribute('data-id')); },
     'send-one': function (el) { sendOne(el.getAttribute('data-id')); },
-    'reset-words': function () { if (S.one != null) resetWords(S.one); }
+    'reset-words': function () { if (S.one != null) resetWords(S.one); },
+    contact: function (el) { var id = Number(el.getAttribute('data-id')); S.contact = S.contact === id ? null : id; drawList(); var f = $('sb-ct-email-' + id); if (f) f.focus(); },
+    'contact-cancel': function () { S.contact = null; drawList(); },
+    'use-found': function (el) { var id = el.getAttribute('data-id'); var e = $('sb-ct-email-' + id), m = $('sb-ct-mobile-' + id); if (e) e.value = el.getAttribute('data-email') || ''; if (m && !m.value) m.value = el.getAttribute('data-mobile') || ''; if (e) e.focus(); },
+    'contact-save': function (el) { var id = el.getAttribute('data-id'); saveContact(id, $('sb-ct-email-' + id), $('sb-ct-mobile-' + id), $('sb-ct-state-' + id), false); },
+    'one-contact': function () { var f = $('sb-one-contact'); if (f) { f.hidden = !f.hidden; if (!f.hidden && $('sb-one-ct-email')) $('sb-one-ct-email').focus(); } },
+    'one-contact-save': function (el) { saveContact(el.getAttribute('data-id'), $('sb-one-ct-email'), $('sb-one-ct-mobile'), $('sb-one-ct-state'), true); }
   };
   function wire(r) {
     r.addEventListener('click', function (ev) {

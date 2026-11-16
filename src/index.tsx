@@ -167,7 +167,7 @@ const UNSUB_FOOTER = (url: string) =>
 // copy, so everything sent in a team member's name is still on record in one place
 // (lib/senders.ts sendAs has the rules).
 async function sendAdminEmail(c: any, to: string, subject: string, html: string,
-    opts: { unsubscribe?: boolean; from?: { email: string; name: string } | null } = {}):
+    opts: { unsubscribe?: boolean; from?: { email: string; name: string } | null; cc?: string[] } = {}):
     Promise<{ ok: true } | { ok: false; error: string }> {
   // A guest registered with a mobile number only (routes/team-guests.ts) has a stand-in
   // address that can never receive mail.
@@ -190,7 +190,8 @@ async function sendAdminEmail(c: any, to: string, subject: string, html: string,
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': key },
       body: JSON.stringify({
-        Recipients: env.bcc.length ? { To: [to], BCC: env.bcc } : { To: [to] },
+        // opts.cc (16 Nov 2026): the copies a speaker brief asks for; never the recipient twice.
+        Recipients: { To: [to], ...(opts.cc && opts.cc.length ? { CC: opts.cc.filter(x => x !== to) } : {}), ...(env.bcc.length ? { BCC: env.bcc } : {}) },
         Content: {
           Body: [{ ContentType: 'HTML', Content: finalHtml, Charset: 'utf-8' }],
           From: env.from,
@@ -41697,7 +41698,7 @@ function adminPageHTML(): string {
   </div>
 
   <script src="/static/conference-admin.js?v=20261115"></script>
-  <script src="/static/speaker-brief.js?v=20261113"></script>
+  <script src="/static/speaker-brief.js?v=20261116"></script>
   <script src="/static/talk-brief.js?v=20261116"></script>
   <script src="/static/event-week.js?v=20261116"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>

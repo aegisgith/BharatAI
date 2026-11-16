@@ -28,7 +28,7 @@ import { adminReady, conferenceReady, sessionsWithSpeakers, hallsFor, wordsFor, 
 // GET /api/sessions/:id/calendar.ics is public: a published session's own details.
 
 type Hooks = {
-  sendEmail?: (c: any, to: string, subject: string, html: string) => Promise<{ ok: boolean; error?: string }>
+  sendEmail?: (c: any, to: string, subject: string, html: string, opts?: { cc?: string[] }) => Promise<{ ok: boolean; error?: string }>
   audit?: (c: any, action: string, entity?: string, entityId?: any, detail?: any) => Promise<void>
   emailHeader?: (title: string, subtitle: string) => string
   issueSpeakerPass?: (c: any, x: { eventId: number; name: string; email: string; mobile: string; company: string; designation: string; linkedin: string; avatarUrl: string }) =>
@@ -43,6 +43,22 @@ const brief = new Hono<{ Bindings: any }>()
 const SITE = 'https://bharataiinnovation.com'
 export const NOTE_KEY = 'speaker_brief_note'
 export const AUDIT_ACTION = 'speaker.brief'
+export const CC_KEY = 'speaker_brief_cc'
+
+// "a@x.com, b@y.com" (or a list) -> the addresses, lowercased, without repeats or the
+// recipient; at most 5. The organiser asked for a CC on 16 Nov 2026.
+export function parseCc(v: any, except = ''): { list: string[]; error?: string } {
+  const raw = Array.isArray(v) ? v : String(v == null ? '' : v).split(/[,;\s]+/)
+  const list: string[] = []
+  for (const x of raw) {
+    const e = String(x || '').trim().toLowerCase()
+    if (!e) continue
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return { list: [], error: `"${e}" is not an email address.` }
+    if (e !== except && !list.includes(e)) list.push(e)
+  }
+  if (list.length > 5) return { list: [], error: 'At most 5 CC addresses.' }
+  return { list }
+}
 
 const all = async (c: any, sql: string, ...args: any[]) => (((await c.env.DB.prepare(sql).bind(...args).all()) as any).results || []) as any[]
 const one = async (c: any, sql: string, ...args: any[]) => (await c.env.DB.prepare(sql).bind(...args).first()) as any
@@ -295,13 +311,36 @@ const lastOf = (m: Map<number, any>, id: number) => { const v = m.get(id); retur
 async function savedNote(c: any): Promise<string> {
   try { return String((await one(c, 'SELECT value FROM app_settings WHERE key = ?', NOTE_KEY))?.value || '') } catch { return '' }
 }
+async function savedCc(c: any): Promise<string[]> {
+  try { return parseCc(String((await one(c, 'SELECT value FROM app_settings WHERE key = ?', CC_KEY))?.value || '')).list } catch { return [] }
+}
+
+// For a speaker with no email: attendee rows under the same name (their own
+// registration), offered on the list as the address to use, never taken for granted.
+async function foundByName(c: any, eventId: number, names: string[]): Promise<Map<string, any[]>> {
+  const out = new Map<string, any[]>()
+  if (!names.length) return out
+  try {
+    const rows = await all(c, "SELECT id, name, email, mobile, company, job_title FROM attendees WHERE event_id = ? AND trim(COALESCE(email, '')) <> '' AND email NOT LIKE '%@no-email.invalid'", eventId)
+    const want = new Set(names.map(normName))
+    for (const r of rows) {
+      const k = normName(r.name)
+      if (!want.has(k)) continue
+      const l = out.get(k) || []
+      if (l.length < 3) l.push({ attendee_id: Number(r.id), email: String(r.email).trim().toLowerCase(), mobile: String(r.mobile || '').trim(), company: String(r.company || ''), job_title: String(r.job_title || '') })
+      out.set(k, l)
+    }
+  } catch { /* no attendees table in a bare world */ }
+  return out
+}
 
 // ---------- routes ----------
 
 brief.get('/api/admin/events/:id/speaker-briefs', async (c) => {
   const eventId = Number(c.req.param('id')) || 1
   const list = await speakersWithSlots(c, eventId)
-  const [sent, passes, note] = await Promise.all([lastSent(c, list.map(x => Number(x.sp.id))), passesOf(c, eventId), savedNote(c)])
+  const [sent, passes, note, cc] = await Promise.all([lastSent(c, list.map(x => Number(x.sp.id))), passesOf(c, eventId), savedNote(c), savedCc(c)])
+  const found = await foundByName(c, eventId, list.filter(x => !String(x.sp.email || '').trim()).map(x => String(x.sp.name || '')))
   const speakers = list.map(({ sp, slots }) => {
     const fp = briefFingerprint(slots)
     const protocol = isProtocol(sp)
@@ -309,6 +348,7 @@ brief.get('/api/admin/events/:id/speaker-briefs', async (c) => {
     const email = String(sp.email || '').trim().toLowerCase()
     return {
       id: Number(sp.id), name: sp.name, role: sp.role || '', organisation: sp.organisation || '', photo_url: sp.photo_url || '', email,
+      phone: String(sp.phone || ''), found: email ? [] : (found.get(normName(sp.name)) || []),
       is_published: Number(sp.is_published ?? 1), protocol, fp,
       status: briefStatus({ slots, email, protocol, last, fp }),
       last, slot_email_at: sent.get(Number(sp.id))?.slot_email_at || null,
@@ -318,17 +358,21 @@ brief.get('/api/admin/events/:id/speaker-briefs', async (c) => {
   })
   const counts: Record<string, number> = {}
   for (const s of speakers) counts[s.status] = (counts[s.status] || 0) + 1
-  return c.json({ event_id: eventId, speakers, counts, note })
+  return c.json({ event_id: eventId, speakers, counts, note, cc: cc.join(', ') })
 })
 
 // The note every brief carries (arrival time, speaker lounge, slides, contact on the day).
 brief.put('/api/admin/speaker-briefs/note', async (c) => {
   const b = await c.req.json().catch(() => ({})) as any
   const note = String(b.note == null ? '' : b.note).replace(/\r\n/g, '\n').trim().slice(0, 1500)
-  await c.env.DB.prepare('INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP')
-    .bind(NOTE_KEY, note).run()
-  if (hooks.audit) { try { await hooks.audit(c, 'speaker.brief_note', 'setting', NOTE_KEY, { length: note.length }) } catch { /* never fails the save */ } }
-  return c.json({ success: true, note })
+  // "Copy every brief to": the CC every send carries unless the sheet says otherwise.
+  const cc = 'cc' in b ? parseCc(b.cc) : { list: await savedCc(c) }
+  if (cc.error) return c.json({ error: cc.error }, 400)
+  const put = 'INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP'
+  await c.env.DB.prepare(put).bind(NOTE_KEY, note).run()
+  if ('cc' in b) await c.env.DB.prepare(put).bind(CC_KEY, cc.list.join(', ')).run()
+  if (hooks.audit) { try { await hooks.audit(c, 'speaker.brief_note', 'setting', NOTE_KEY, { length: note.length, cc: cc.list }) } catch { /* never fails the save */ } }
+  return c.json({ success: true, note, cc: cc.list.join(', ') })
 })
 
 // Preview ({ preview: true }) or send one speaker's brief. { anyway: true } is needed
@@ -350,6 +394,9 @@ brief.post('/api/admin/speakers/:id/brief', async (c) => {
   const last = lastOf(await lastSent(c, [id]), id)
   const update = b.update == null ? !!(last && last.fp !== fp) : !!b.update
   const email = String(sp.email || '').trim().toLowerCase()
+  // Copies: the sheet's CC box for this one email, else "copy every brief to".
+  const cc = b.cc != null ? parseCc(b.cc, email) : { list: (await savedCc(c)).filter(x => x !== email) }
+  if (cc.error) return c.json({ error: cc.error }, 400)
   const passes = await passesOf(c, eventId)
   const have = email ? passes.get(email) : null
   const passName = have && have.badge_type && !/visitor/i.test(have.badge_type) ? String(have.badge_type).replace(/\s*pass$/i, '') : 'Speaker'
@@ -364,7 +411,7 @@ brief.post('/api/admin/speakers/:id/brief', async (c) => {
 
   if (b.preview) {
     const mail = briefEmailHTML({ sp, slots, note, header, words, update, passHref: email ? '#preview' : '', passName, ...wording })
-    return c.json({ to: email, subject: mail.subject, html: mail.html, text, note, update, protocol, fp, name: sp.name, usual, edited,
+    return c.json({ to: email, cc: cc.list.join(', '), subject: mail.subject, html: mail.html, text, note, update, protocol, fp, name: sp.name, usual, edited,
       status: briefStatus({ slots, email, protocol, last, fp }), last,
       pass: have ? { badge_type: have.badge_type, will_change: /visitor/i.test(have.badge_type || '') } : (email ? { badge_type: null, will_create: true } : null) })
   }
@@ -384,14 +431,14 @@ brief.post('/api/admin/speakers/:id/brief', async (c) => {
   let href = ''
   if (hooks.passLink) { try { href = await hooks.passLink(c, eventId, email) } catch { href = '' } }
   const mail = briefEmailHTML({ sp, slots, note, header, words, update, passHref: href, passName: sentName, ...wording })
-  const sent = await hooks.sendEmail(c, email, mail.subject, mail.html)
+  const sent = await hooks.sendEmail(c, email, mail.subject, mail.html, cc.list.length ? { cc: cc.list } : undefined)
   if (!sent.ok) return c.json({ error: sent.error || 'The email did not go.' }, 502)
   if (hooks.audit) {
     try { await hooks.audit(c, AUDIT_ACTION, 'speaker', id, { name: sp.name, to: email, fp, kind: update ? 'update' : 'first', sessions: slots.map((s: any) => s.id), pass: passInfo ? passInfo.pass : null,
-      edited, subject: mail.subject }) }
+      edited, subject: mail.subject, cc: cc.list }) }
     catch { /* the audit log never fails a send */ }
   }
-  return c.json({ success: true, to: email, kind: update ? 'update' : 'first', fp, pass: passInfo, subject: mail.subject, edited })
+  return c.json({ success: true, to: email, cc: cc.list, kind: update ? 'update' : 'first', fp, pass: passInfo, subject: mail.subject, edited })
 })
 
 // A published session as a calendar file, for the brief's "Outlook or Apple" link.
