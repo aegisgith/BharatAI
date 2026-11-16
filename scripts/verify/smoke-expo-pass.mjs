@@ -24,6 +24,11 @@ check('the config lists the Expo Pass at Rs 999 + GST', cfg.status === 200 && cf
 W.db.exec(readFileSync(new URL('../../migrations/0056_free_pass_waitlist.sql', import.meta.url), 'utf8'));
 const asha = W.person(501, { badge_type: 'Visitor Pass', payment_status: 'paid' });
 W.db.run("UPDATE attendees SET entry_status = 'waitlisted' WHERE id = ?", [asha]);
+{
+  const refused = await W.hit('GET', '/api/my-pass-token?id=' + asha, undefined, W.as(asha));
+  const msg = String(refused.json && refused.json.message || '');
+  check('on the waiting list the refusal names the Expo Pass as the way to a QR today (16 Nov 2026)', refused.status !== 200 && /Expo Pass \(Rs [\d,]+ \+ GST\)/.test(msg) && /Get the Expo Pass/.test(msg), [refused.status, msg.slice(0, 200)]);
+}
 let r = await W.buy(asha, 'Expo Pass');
 check('the order is Rs 999 + GST, and it is paid', r.start?.status === 201 && r.order?.base_paise === want.base && r.order.amount_paise === want.total && r.order.status === 'paid', r.order || r.start?.json);
 const a = W.who(asha);

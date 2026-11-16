@@ -3037,6 +3037,10 @@ function passPriceInr(passType: string, late = latePricing()): number {
 }
 // "&#8377;4,999", for the printed copies.
 const rsPrice = (passType: string, late = latePricing()): string => '&#8377;' + passPriceInr(passType, late).toLocaleString('en-IN')
+// On the free-pass waiting list (organiser, 16 Nov 2026: 177 people registered after
+// the free pass closed and had no pass, and the app only said "we will inform you"):
+// the way to a pass today, said wherever the waiting list is.
+const waitlistExpoText = (): string => 'The Expo Pass (Rs ' + passPriceInr('Expo Pass').toLocaleString('en-IN') + ' + GST) gets you in on both days with a QR today; a Delegate Pass adds the full conference.'
 // The organiser, 6 Nov 2026: now the deadline has passed, show the old price struck
 // through beside the new one, and say it may rise again. Both figures come from the
 // tables that charged them, so the struck price is one people really could pay.
@@ -6910,7 +6914,7 @@ app.get('/api/my-pass-token', async (c) => {
   } catch { /* a failed read never blocks a pass */ }
   // On the waiting list (free passes full, 0056): no pass until the organisers confirm.
   if (await entryWaitlistedById(c, me)) {
-    return c.json({ error: 'waitlisted', message: 'You are on the waiting list for a Free Visitor Pass, so there is no pass to download yet. If the wait list gets over, we will inform you. ' + WAITLIST_UPSELL }, 403)
+    return c.json({ error: 'waitlisted', message: 'You are on the waiting list for a Free Visitor Pass, so there is no pass to download yet. ' + waitlistExpoText() + ' Tap Get the Expo Pass on your pass card. ' + WAITLIST_UPSELL }, 403)
   }
   return c.json({ token: await signPassToken(c, me) })
 })
@@ -10525,6 +10529,50 @@ async function autoMeetingReminders(c: any): Promise<any> {
     await audit(c, 'meeting.reminded', 'meeting', m.id, { at: m.meeting_time }, { actor: 'automatic', kind: 'system' })
     sent++
     if (sent >= 40) break
+  }
+  return { sent }
+}
+
+// A meeting request nobody has answered for two days (16 Nov 2026: ten were waiting, the
+// oldest since 18 Oct): one nudge to the person asked, from the minute clock, never twice
+// (the claim is an app_settings row), never for a meeting whose time has passed.
+const MEETING_NUDGE_AFTER_HOURS = 48
+async function autoMeetingNudges(c: any): Promise<any> {
+  const { results } = await c.env.DB.prepare(
+    `SELECT m.id, m.title, m.meeting_time, m.duration_minutes, m.location, m.created_at,
+            a.name AS from_name, a.company AS from_company, a.job_title AS from_job_title,
+            b.name AS to_name, b.email AS to_email
+       FROM meetings m JOIN attendees a ON a.id = m.requester_id JOIN attendees b ON b.id = m.requestee_id
+      WHERE m.status = 'pending' AND m.created_at <= datetime('now', ?)
+        AND NOT EXISTS (SELECT 1 FROM app_settings s WHERE s.key = 'meeting_nudge:' || m.id)
+      ORDER BY m.created_at LIMIT 40`
+  ).bind('-' + MEETING_NUDGE_AFTER_HOURS + ' hours').all() as any
+  let sent = 0
+  for (const m of (results || []) as any[]) {
+    const at = Date.parse(String(m.meeting_time || '').replace(' ', 'T').slice(0, 16) + ':00+05:30')
+    if (Number.isFinite(at) && at < Date.now()) continue
+    const claim = await c.env.DB.prepare(
+      "INSERT OR IGNORE INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))"
+    ).bind('meeting_nudge:' + m.id, new Date().toISOString()).run()
+    if (Number(claim?.meta?.changes || 0) !== 1) continue
+    const when = formatMeetingTime(m.meeting_time)
+    const who = [m.from_job_title, m.from_company].filter(Boolean).map(escEmail).join(', ')
+    const html = networkingEmailHTML({
+      title: 'A meeting request is waiting for you',
+      greeting: netFirstName(m.to_name),
+      lead: `<strong>${escEmail(m.from_name)}</strong>${who ? ' &mdash; ' + who : ''} asked to meet you at the conference and is still waiting for an answer. Accept or decline in the app, so you both arrive knowing where you stand.`,
+      detail: netDetailBox([
+        ['What', escEmail(m.title || 'Meeting')],
+        ['When', escEmail(when)],
+        ['How long', `${Math.max(1, parseInt(m.duration_minutes, 10) || 15)} minutes`],
+        ['Where', escEmail(m.location || 'To be agreed')],
+      ]),
+      cta: 'Accept or decline',
+      ctaUrl: await networkingAppUrl(c, '#inbox'),
+    })
+    await notifyNetworking(c, m.to_email, 'Still waiting: ' + netPlain(m.from_name, 60) + ' asked to meet you - ' + when, html)
+    await audit(c, 'meeting.nudged', 'meeting', m.id, { asked_on: m.created_at, meeting_time: m.meeting_time }, { actor: 'automatic', kind: 'system' })
+    sent++
   }
   return { sent }
 }
@@ -17008,6 +17056,7 @@ app.post('/api/cron/tick', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
   // Meetings starting in the next quarter hour, first of all: they cannot wait.
   const meetingReminders = await autoMeetingReminders(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
+  const meetingNudges = await autoMeetingNudges(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   // Reminders to people who stopped paying part-way go first: they take a moment,
   // and the mail jobs below may hold this call for up to 50 s.
   const payReminders = await autoRemindToPay(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
@@ -17029,7 +17078,7 @@ app.post('/api/cron/tick', async (c) => {
   // who has not chosen yet (routes/workshop-reminder.ts, switch in Admin -> Workshops).
   const workshopMail = await autoWorkshopReminders(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests, talk_sessions: talkSessions, workshop_mail: workshopMail })
+  return c.json({ ...out, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, meeting_nudges: meetingNudges, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests, talk_sessions: talkSessions, workshop_mail: workshopMail })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -17524,7 +17573,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
   if (gaps.length) lines.push(`Add your photo and details: ${go('complete-profile')}`)
   if (kind === 'unpaid') lines.push(`Finish paying for your ${badge}: ${go('pay', '&pass=' + (PASS_KEY[badge] || 'delegate'))}`)
   else if (!waitlisted) lines.push(`Download your pass: ${go('download-pass')}`)
-  if (waitlisted) lines.push('', WAITLIST_UPSELL, `Get a Delegate Pass: ${go('pay', '&pass=delegate')}`)
+  if (waitlisted) lines.push('', waitlistExpoText(), `Get the Expo Pass: ${go('pay', '&pass=expo')}`, `Get a Delegate Pass: ${go('pay', '&pass=delegate')}`)
   else if (kind === 'free') lines.push('', FREE_ENTRY_TEXT, '', `Make it the full conference with a Delegate Pass: ${go('pay', '&pass=delegate')}`, `Only the exhibition floor, with guaranteed entry on both days? The Expo Pass, Rs ${passPriceInr('Expo Pass').toLocaleString('en-IN')} + GST: ${go('pay', '&pass=expo')}`)
   lines.push('', 'See you in Mumbai,', 'Team Bharat AI Innovation')
 
@@ -30442,6 +30491,7 @@ function mainPageHTML(): string {
                      shows Pay now before it, and a free pass its guarantee after it. -->
                 <button type="button" id="pcc-pay-btn" onclick="payPendingPass()" class="hidden px-4 mr-2 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-credit-card mr-1.5"></i>Pay now</button>
                 <button type="button" id="pcc-download-btn" onclick="generateDelegatePass()" class="px-4 mr-2 mb-2 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-download mr-1.5"></i>Download my pass</button>
+                <button type="button" id="pcc-expo-btn" onclick="openUpgradeFor(&quot;Expo Pass&quot;, &quot;waitlist&quot;)" class="hidden px-4 mr-2 mb-2 rounded-xl text-xs font-semibold bg-primary-600 hover:bg-primary-500 text-white transition" style="min-height:44px;"><i class="fas fa-ticket mr-1"></i>Get the Expo Pass &middot; Rs ${passPriceInr('Expo Pass').toLocaleString('en-IN')}</button>
                 <button type="button" id="pcc-guarantee-btn" onclick="showUpgradeModal(&quot;passcard&quot;)" class="hidden px-4 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-arrow-up mr-1.5"></i>Guarantee both days</button>
                 <button type="button" id="pcc-upgrade-btn" onclick="showUpgradeModal(&quot;passcard&quot;)" class="hidden px-4 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-arrow-up mr-1.5"></i>Upgrade my pass</button>
               </div>
@@ -33378,7 +33428,24 @@ function mainPageScript(): string {
       if (!note) return;
       note.textContent = status === 404
         ? 'There is no account for ' + email + ' yet. Check the address, or register.'
-        : 'This sign-in link has expired. Tap Sign In and we will email you a fresh code.';
+        : 'This sign-in link has expired. We can email you a fresh one now.';
+      // One tap, not a form to work out (16 Nov 2026: 44 expired links in a week).
+      if (status !== 404 && email) {
+        var again = document.createElement('button');
+        again.type = 'button';
+        again.id = 'signin-new-link';
+        again.className = 'mt-2 px-4 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white transition';
+        again.style.minHeight = '44px';
+        again.textContent = 'Send me a new link';
+        again.onclick = function () {
+          var form = document.getElementById('signin-form');
+          if (!form) return;
+          again.disabled = true;
+          if (form.requestSubmit) form.requestSubmit(); else form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+        };
+        note.appendChild(document.createElement('br'));
+        note.appendChild(again);
+      }
       note.classList.remove('hidden');
     }
 
@@ -34178,11 +34245,14 @@ function mainPageScript(): string {
       if (gBtn) gBtn.classList.toggle('hidden', !visitor);
       const dlBtn = document.getElementById('pcc-download-btn');
       if (dlBtn) dlBtn.classList.toggle('hidden', waitlisted);
+      // Free passes full: the Expo Pass is the way to a QR today (organiser, 16 Nov 2026).
+      const eBtn = document.getElementById('pcc-expo-btn');
+      if (eBtn) eBtn.classList.toggle('hidden', !waitlisted);
       const stateEl = document.getElementById('pcc-pass-state');
       if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : waitlisted ? ' is on the waiting list' : visitor ? ' is a free pass: entry not guaranteed' : ' is ready';
       document.getElementById('pcc-pass-note').textContent = pending
         ? (payNow ? 'It is issued the moment your payment goes through. Pay now to finish.' : 'It will be issued as soon as your payment is confirmed.')
-        : waitlisted ? (Date.now() >= Date.parse(window.__WL_CLOSE || '${WAITLIST_CLOSE_DEFAULT}') ? '${WAITLIST_CLOSED_TEXT} ${WAITLIST_UPSELL}' : '${WAITLIST_TEXT} ${WAITLIST_PROFILE_SHORT} ${WAITLIST_UPSELL}')
+        : waitlisted ? (Date.now() >= Date.parse(window.__WL_CLOSE || '${WAITLIST_CLOSE_DEFAULT}') ? '${WAITLIST_CLOSED_TEXT} ${waitlistExpoText()}' : '${WAITLIST_TEXT} ${waitlistExpoText()} ${WAITLIST_PROFILE_SHORT}')
         : visitor ? 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. Every paid pass has guaranteed entry on both days.'
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
@@ -38752,6 +38822,11 @@ function mainPageScript(): string {
         if (!adminAttendee && !tokenErr && await showSavedPass(user)) return;
         if (!adminAttendee) trackStep('pass', 'fail', 'QR not prepared: ' + String(tokenErr || 'no answer').slice(0, 50));
         showToast(tokenErr || 'Could not prepare the QR code for your pass. Check your connection and try again.', 'error');
+        // On the waiting list: the Expo Pass button on the pass card is the way forward.
+        if (/waiting list/i.test(String(tokenErr || ''))) {
+          var expoBtn = document.getElementById('pcc-expo-btn');
+          if (expoBtn) { expoBtn.classList.remove('hidden'); try { expoBtn.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e2) {} }
+        }
         return;
       }
 
