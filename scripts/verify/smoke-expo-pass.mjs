@@ -16,12 +16,13 @@ const W = await makeUpgradeWorld();
 W.at(LATE);
 
 // ---- the price ----
+// The waiting-list column must exist before the first request: the worker remembers a missing one for a minute.
+W.db.exec(readFileSync(new URL('../../migrations/0056_free_pass_waitlist.sql', import.meta.url), 'utf8'));
 const cfg = await W.hit('GET', '/api/payments/config');
 const want = paise(999);
 check('the config lists the Expo Pass at Rs 999 + GST', cfg.status === 200 && cfg.json.passes?.['Expo Pass']?.base === 999 && cfg.json.passes['Expo Pass'].total === want.total / 100, cfg.json.passes?.['Expo Pass']);
 
 // ---- a free Visitor on the waiting list buys it ----
-W.db.exec(readFileSync(new URL('../../migrations/0056_free_pass_waitlist.sql', import.meta.url), 'utf8'));
 const asha = W.person(501, { badge_type: 'Visitor Pass', payment_status: 'paid' });
 W.db.run("UPDATE attendees SET entry_status = 'waitlisted' WHERE id = ?", [asha]);
 {
