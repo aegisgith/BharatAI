@@ -17,16 +17,16 @@ const { check, done } = checker();
 // ================= with migration 0052 =================
 const W = await talksWorld({ times: true });
 const all = W.rows('SELECT * FROM innovation_talks WHERE event_id = 1');
-check('the 48 real talks are loaded from scripts/sql/innovation-talks.sql (Dr. K. Mahesh left on 13 Nov 2026)', all.length === 48, all.length);
+check('the 49 real talks are loaded from scripts/sql/innovation-talks.sql (Dr. K. Mahesh left on 13 Nov 2026; Shri Ravi Ranjan Singh joined on 16 Nov)', all.length === 49, all.length);
 const timed = all.filter(t => t.starts_at);
-check('the time SQL gives 21 talks a day and a time', timed.length === 21, timed.length);
+check('the time SQL (the 13 Nov agenda) gives 32 talks a day and a time', timed.length === 32, timed.length);
 check('every timed talk has words and a hall', timed.every(t => / · /.test(t.time_slot) && t.hall), timed.filter(t => !t.hall || !/ · /.test(t.time_slot)).map(t => t.speaker_name));
 const amr = W.talk("speaker_name = 'Amritesh Kumar'");
-check('Phoebetal: Fri 20 Nov · 1:10 – 1:18 PM in Aryabhata Theatre', amr.time_slot === 'Fri 20 Nov · 1:10 – 1:18 PM' && amr.hall === 'Aryabhata Theatre' && amr.starts_at === '2026-11-20 13:10' && amr.duration_min === 8, amr);
+check('Phoebetal: Fri 20 Nov · 2:21 – 2:28 PM in Aryabhata Theatre', amr.time_slot === 'Fri 20 Nov · 2:21 – 2:28 PM' && amr.hall === 'Aryabhata Theatre' && amr.starts_at === '2026-11-20 14:21' && amr.duration_min === 7, amr);
 const cgi = W.talk("company = 'CGI'");
 check('CGI is in Kalam Theatre at 3:20 PM, not the Expo Hall', cgi.hall === 'Kalam Theatre' && cgi.time_slot === 'Fri 20 Nov · 3:20 – 3:40 PM', [cgi.hall, cgi.time_slot]);
-check('NoBroker and the Forest Department are left without a hall (the agenda puts them in the main halls)', !W.talk("company = 'NoBroker'").hall && !W.talk("company = 'Maharashtra Forest Department'").hall);
-check('every other talk is in Aryabhata Theatre', all.filter(t => !['CGI', 'NoBroker', 'Maharashtra Forest Department'].includes(t.company)).every(t => W.talk('id = ?', t.id).hall === 'Aryabhata Theatre'));
+check('NoBroker and the Forest Department are in the main halls, not on the Expo stage (the 13 Nov agenda)', W.talk("company = 'NoBroker'").hall !== 'Aryabhata Theatre' && W.talk("company = 'Maharashtra Forest Department'").hall !== 'Aryabhata Theatre', [W.talk("company = 'NoBroker'").hall, W.talk("company = 'Maharashtra Forest Department'").hall]);
+check('every talk with a hall is in Aryabhata Theatre or Kalam Theatre, most on the Expo stage', all.every(t => !W.talk('id = ?', t.id).hall || ['Aryabhata Theatre', 'Kalam Theatre'].includes(W.talk('id = ?', t.id).hall)) && all.filter(t => W.talk('id = ?', t.id).hall === 'Aryabhata Theatre').length >= 26, all.map(t => W.talk('id = ?', t.id).hall));
 // Production spells one company differently from the list ("Origin AI" vs "Origins AI").
 const gaurav = W.talk("speaker_name = 'Gaurav Jha'");
 W.db.run("UPDATE innovation_talks SET company = 'Origin AI', starts_at = NULL, time_slot = 'To be announced' WHERE id = ?", [gaurav.id]);

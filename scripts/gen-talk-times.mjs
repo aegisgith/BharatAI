@@ -45,7 +45,8 @@ export const slotLabel = (date, start, end) => {
 const hallOf = (key) => { const h = S.halls.find((x) => x.key === key); if (!h) throw new Error(`unknown hall: ${key}`); return h }
 const hallName = (key) => {
   const venue = String(hallOf(key).venue || '')
-  const hit = NAME_OF_ROOM.find(([room]) => venue.startsWith(room))
+  // schedule.json from the app (16 Nov 2026) carries the hall's event name and no room: go by the name then.
+  const hit = NAME_OF_ROOM.find(([room]) => venue.startsWith(room)) || NAME_OF_ROOM.find(([, name]) => name === String(hallOf(key).name || ''))
   if (!hit) throw new Error(`hall ${key}: its venue "${venue}" does not start with a room this script knows`)
   return hit[1]
 }

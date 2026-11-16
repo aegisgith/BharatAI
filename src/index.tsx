@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
-import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
+import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots, syncTalkSessions, talkRemoved } from './routes/conference'
 import siteLive from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief } from './routes/talk-brief'
@@ -17022,11 +17022,14 @@ app.post('/api/cron/tick', async (c) => {
   const inquiryDigestRun = await autoInquiryDigest(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   // Innovation Talk speakers asked for whatever is missing, one a minute, when switched on.
   const talkRequests = await autoItalkRequests(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
+  // The Innovation Talk sessions follow the talks list (a speaker changed on the exhibitor's
+  // dashboard or the speaker's own page reaches the programme within a minute).
+  const talkSessions = await syncTalkSessions(c, 1).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   // "Choose your workshop", 15 minutes after a workshop pass is confirmed, to anyone
   // who has not chosen yet (routes/workshop-reminder.ts, switch in Admin -> Workshops).
   const workshopMail = await autoWorkshopReminders(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests, workshop_mail: workshopMail })
+  return c.json({ ...out, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests, talk_sessions: talkSessions, workshop_mail: workshopMail })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -19127,6 +19130,7 @@ app.post('/api/admin/innovation-talks', async (c) => {
   }
   try {
     const result = await insert(row)
+    await syncTalkSessions(c, Number(row.event_id) || 1).catch(() => null)
     return c.json({ success: true, id: result.meta.last_row_id })
   } catch (e: any) {
     // An INSERT names a missing column differently: "table ... has no column named hall".
@@ -19135,6 +19139,7 @@ app.post('/api/admin/innovation-talks', async (c) => {
     const older: Record<string, any> = {}
     for (const k of ['event_id', 'slot_no', 'session_type', 'time_slot', 'speaker_name', 'company', 'topic', 'status', 'notes']) if (row[k] !== undefined) older[k] = row[k]
     const result = await insert(older)
+    await syncTalkSessions(c, Number(row.event_id) || 1).catch(() => null)
     return c.json({ success: true, id: result.meta.last_row_id, not_saved: Object.keys(row).filter(k => !(k in older)) })
   }
 })
@@ -19150,8 +19155,11 @@ app.patch('/api/admin/innovation-talks/:id', async (c) => {
     return c.env.DB.prepare(`UPDATE innovation_talks SET ${keys.map(k => `${k} = ?`).join(', ')} WHERE id = ?`).bind(...keys.map(k => v[k]), id).run()
   }
   if (Object.keys(values).length === 0) return c.json({ error: 'No valid fields' }, 400)
+  // The programme's session for this talk follows it (speaker, topic): src/routes/conference.ts.
+  const follow = async () => { const t = await c.env.DB.prepare('SELECT event_id FROM innovation_talks WHERE id = ?').bind(id).first().catch(() => null); await syncTalkSessions(c, Number(t?.event_id) || 1).catch(() => null) }
   try {
     await update(values)
+    await follow()
     return c.json({ success: true })
   } catch (e: any) {
     if (!/no such column/i.test(String(e?.message || ''))) throw e
@@ -19161,6 +19169,7 @@ app.patch('/api/admin/innovation-talks/:id', async (c) => {
     for (const k of notSaved) delete rest[k]
     if (!Object.keys(rest).length) return c.json({ error: 'Hall, email and mobile can be saved once migration 0052 has been run.' }, 409)
     await update(rest)
+    await follow()
     return c.json({ success: true, not_saved: notSaved })
   }
 })
@@ -19168,7 +19177,11 @@ app.patch('/api/admin/innovation-talks/:id', async (c) => {
 // Delete an innovation talk
 app.delete('/api/admin/innovation-talks/:id', async (c) => {
   const id = c.req.param('id')
+  // Its session on the programme (if it names this speaker) is left with no speaker, so the
+  // speaker's brief and the website stop saying they present: src/routes/conference.ts.
+  const gone = await c.env.DB.prepare('SELECT * FROM innovation_talks WHERE id = ?').bind(id).first().catch(() => null)
   await c.env.DB.prepare('DELETE FROM innovation_talks WHERE id = ?').bind(id).run()
+  if (gone) await talkRemoved(c, gone).catch(() => null)
   return c.json({ success: true })
 })
 

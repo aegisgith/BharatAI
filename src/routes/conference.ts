@@ -573,7 +573,9 @@ conf.get('/api/admin/events/:id/conference', async (c) => {
   const eventId = Number(c.req.param('id')) || 1
   forgetNotYet()
   const r = await adminReady(c)
-  const [event, speakers, halls, talks, events, team, sessionOwners, speakerOwners] = await Promise.all([
+  // The Innovation Talk sessions follow the talks list before the screen reads them.
+  await syncTalkSessions(c, eventId).catch(() => null)
+  const [event, speakers0, halls, talks, events, team, sessionOwners, speakerOwners] = await Promise.all([
     one(c, 'SELECT id, title, venue, start_date, end_date FROM events WHERE id = ?', eventId),
     all(c, 'SELECT id, slug, name, role, organisation, topic, photo_url, bio, email, phone, linkedin_url, is_featured, is_published, sort_order, updated_at FROM speakers WHERE event_id = ? ORDER BY sort_order, id', eventId),
     hallsFor(c, eventId, r.halls),
@@ -582,6 +584,8 @@ conf.get('/api/admin/events/:id/conference', async (c) => {
     // The organising team (Organiser pass holders) and who looks after what.
     organiserTeam(c.env.DB), ownersOf(c.env.DB, 'session'), ownersOf(c.env.DB, 'speaker'),
   ])
+  // A speaker with no photo of their own shows the photo on their pass.
+  const speakers = await withAttendeePhotos(c, eventId, speakers0)
   const sessions = await sessionsWithSpeakers(c, eventId, speakers, r)
   for (const s of sessions) s.owner = sessionOwners.get(Number(s.id))?.name || ''
   // Rooms a session names that no hall row has, so nothing scheduled goes missing.
@@ -1371,6 +1375,102 @@ conf.post('/api/admin/speakers/:id/slot-email', async (c) => {
   return c.json({ success: true, to: sp.email })
 })
 
+// ---------- the talks list drives the Innovation Talk sessions (16 Nov 2026) ----------
+//
+// The organiser: Raveesh Dewan was taken off the Joget talk in Admin -> Innovation Talks
+// (Anoop Nair presents it now), but the programme's "Innovation Talk: Joget" session, its
+// saved speaker link and so his speaker brief still named him. The talks list is the
+// source for who presents a talk: every "Innovation Talk..." session takes its speaker
+// (and topic) from the confirmed talk it belongs to (linkTalks), and a talk cancelled on
+// that list leaves its session with no speaker. Runs on every Admin -> Conference read,
+// after every talk save, and once a minute from the clock, so nothing waits for a person.
+export async function syncTalkSessions(c: any, eventId: number): Promise<{ changed: number }> {
+  const r = await conferenceReady(c)
+  const [talks, sessions, speakers] = await Promise.all([
+    talksFor(c, eventId),
+    all(c, "SELECT id, title, description, speaker_name, speaker_title, session_type FROM sessions WHERE event_id = ? AND title LIKE 'Innovation Talk%'", eventId),
+    all(c, SPEAKER_COLS, eventId),
+  ])
+  if (!sessions.length || !talks.length) return { changed: 0 }
+  const isOff = (t: any) => String(t.status || 'confirmed').toLowerCase() === 'cancelled'
+  const live = talks.filter((t: any) => !isOff(t))
+  const bySession = new Map<number, any>()
+  for (const [tid, sid] of linkTalks(sessions, live)) if (!bySession.has(sid)) bySession.set(sid, live.find((t: any) => Number(t.id) === tid))
+  const cancelledSessions = new Set<number>([...linkTalks(sessions.filter((s: any) => !bySession.has(Number(s.id))), talks.filter(isOff)).values()])
+  const index = new Map<string, any>()
+  for (const sp of speakers) { const k = normName(sp.name); if (k && !index.has(k)) index.set(k, sp) }
+  let changed = 0
+  for (const s of sessions) {
+    const t = bySession.get(Number(s.id))
+    let want: { speaker_name: string | null; speaker_title: string | null; description?: string | null } | null = null
+    if (t) {
+      const name = String(t.speaker_name || '').trim()
+      if (!name) continue
+      const sp = index.get(normName(name))
+      const title = sp ? [sp.role_title, sp.organisation].filter(Boolean).join(', ') : [t.speaker_title, t.company].filter(Boolean).join(', ')
+      want = { speaker_name: sp ? sp.name : name, speaker_title: title || null }
+      if (String(t.topic || '').trim()) want.description = String(t.topic).trim()
+      else if (/to be announced/i.test(String(s.description || ''))) want.description = null
+    } else if (cancelledSessions.has(Number(s.id)) && s.speaker_name) {
+      want = { speaker_name: null, speaker_title: null, description: 'Speaker to be announced.' }
+    }
+    if (!want) continue
+    const sameDesc = want.description === undefined || String(want.description || '') === String(s.description || '')
+    if (normName(want.speaker_name) === normName(s.speaker_name) && String(want.speaker_title || '') === String(s.speaker_title || '') && sameDesc) continue
+    const set: Record<string, any> = { speaker_name: want.speaker_name, speaker_title: want.speaker_title }
+    if (want.description !== undefined) set.description = want.description
+    await c.env.DB.prepare('UPDATE sessions SET ' + Object.keys(set).map(k => k + ' = ?').join(', ') + ' WHERE id = ?').bind(...Object.values(set), s.id).run()
+    if (r.links) {
+      await c.env.DB.prepare('DELETE FROM session_speakers WHERE session_id = ?').bind(s.id).run()
+      const sp = want.speaker_name ? index.get(normName(want.speaker_name)) : null
+      if (sp) await c.env.DB.prepare("INSERT OR IGNORE INTO session_speakers (session_id, speaker_id, role, sort_order) VALUES (?, ?, 'speaker', 0)").bind(s.id, sp.id).run()
+    }
+    changed++
+  }
+  return { changed }
+}
+
+// A talk deleted from the Innovation Talks list: its session (if it names that speaker)
+// is left with no speaker, so the speaker's brief and the website stop saying they present.
+export async function talkRemoved(c: any, talk: any): Promise<boolean> {
+  if (!talk) return false
+  const eventId = Number(talk.event_id) || 1
+  const sessions = await all(c, "SELECT id, title, speaker_name FROM sessions WHERE event_id = ? AND title LIKE 'Innovation Talk%'", eventId)
+  const sid = linkTalks(sessions, [talk]).get(Number(talk.id))
+  const s = sid ? sessions.find((x: any) => Number(x.id) === sid) : null
+  if (!s || !s.speaker_name || normName(s.speaker_name) !== normName(talk.speaker_name)) return false
+  await c.env.DB.prepare("UPDATE sessions SET speaker_name = NULL, speaker_title = NULL, description = 'Speaker to be announced.' WHERE id = ?").bind(s.id).run()
+  if ((await conferenceReady(c)).links) await c.env.DB.prepare('DELETE FROM session_speakers WHERE session_id = ?').bind(s.id).run()
+  return true
+}
+
+// A speaker with no photo of their own, but a pass under their email (or their name)
+// with a profile photo: that photo, wherever the speaker is shown (Admin, the website,
+// the programme). Organiser, 16 Nov 2026: "reny varghese photo is not visible in the
+// session details, but it is visible here in attendee list". Read-time only: a photo
+// chosen in Admin wins the moment it is set.
+export async function withAttendeePhotos(c: any, eventId: number, speakers: any[]): Promise<any[]> {
+  const has = (sp: any) => /^(\/|https?:\/\/)/.test(String(sp.photo_url || ''))
+  const missing = speakers.filter(sp => !has(sp))
+  if (!missing.length) return speakers
+  const emails = [...new Set(missing.map(sp => String(sp.email || '').trim().toLowerCase()).filter(Boolean))]
+  let rows: any[] = []
+  try {
+    const where = ["badge_type IN ('Speaker', 'Organiser')", ...(emails.length ? ['LOWER(TRIM(email)) IN (' + emails.map(() => '?').join(',') + ')'] : [])].join(' OR ')
+    rows = await all(c, "SELECT id, name, email, avatar_url FROM attendees WHERE event_id = ? AND avatar_url LIKE '/api/uploads/%' AND (" + where + ')', eventId, ...emails)
+  } catch { return speakers }
+  if (!rows.length) return speakers
+  const byEmail = new Map(rows.map((a: any) => [String(a.email || '').trim().toLowerCase(), a]))
+  const byName = new Map<string, any[]>()
+  for (const a of rows) { const k = normName(a.name); if (!k) continue; if (!byName.has(k)) byName.set(k, []); byName.get(k)!.push(a) }
+  return speakers.map(sp => {
+    if (has(sp)) return sp
+    const same = byName.get(normName(sp.name)) || []
+    const a = byEmail.get(String(sp.email || '').trim().toLowerCase()) || (same.length === 1 ? same[0] : null)
+    return a ? { ...sp, photo_url: a.avatar_url, photo_from_pass: true } : sp
+  })
+}
+
 // ---------- for the website (16 Nov 2026) ----------
 //
 // The programme as the website draws it: the event, its halls, every published session
@@ -1385,12 +1485,14 @@ export async function siteLiveOn(c: any): Promise<boolean> {
 }
 export async function publicProgramme(c: any, eventId: number) {
   const r = await conferenceReady(c)
-  const [event, speakers, halls, talks] = await Promise.all([
+  const [event, speakers0, halls, talks] = await Promise.all([
     one(c, 'SELECT id, title, venue, start_date, end_date FROM events WHERE id = ?', eventId),
-    all(c, 'SELECT id, slug, name, role, organisation, topic, photo_url, bio, linkedin_url, is_featured, is_published, sort_order FROM speakers WHERE event_id = ? AND is_published = 1 ORDER BY sort_order, id', eventId),
+    all(c, 'SELECT id, slug, name, role, organisation, topic, photo_url, bio, email, linkedin_url, is_featured, is_published, sort_order FROM speakers WHERE event_id = ? AND is_published = 1 ORDER BY sort_order, id', eventId),
     hallsFor(c, eventId, r.halls),
     talksFor(c, eventId),
   ])
+  // The email is read only to find the photo on the speaker's pass; it is never answered.
+  const speakers = await withAttendeePhotos(c, eventId, speakers0)
   const sessions = (await sessionsWithSpeakers(c, eventId, speakers, r)).filter((s: any) => s.status !== 'draft')
   return {
     generated_at: new Date().toISOString(),

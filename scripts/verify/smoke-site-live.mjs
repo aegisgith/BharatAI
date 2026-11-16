@@ -68,6 +68,36 @@ check('...is on the speaker grid at once, with initials until a photo is chosen'
 r = await W.call('GET', '/api/events/1/programme', undefined, anon);
 check('the programme says it is live, and names the new speaker', r.json.live === true && r.json.speakers.some((s) => s.name === 'Dr. Asha Rao'));
 
+// ---- the talks list drives the Innovation Talk sessions (Raveesh Dewan, 16 Nov 2026) ----
+W.db.run("INSERT INTO sessions (event_id, title, description, speaker_name, speaker_title, session_type, room, start_time, end_time, capacity) VALUES (1, 'Innovation Talk: Acme', 'Speaker to be announced.', 'Tarun Chugh', 'MD & CEO, Bajaj Life Insurance', 'talk', 'Aryabhata Theatre', '2026-11-21 15:00', '2026-11-21 15:20', 1000)");
+const acme = W.rows("SELECT id FROM sessions WHERE title = 'Innovation Talk: Acme'")[0].id;
+W.db.run("INSERT INTO session_speakers (session_id, speaker_id, role, sort_order) VALUES (?, 2, 'speaker', 0)", [acme]);
+W.db.run("INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, starts_at, duration_min) VALUES (1, 1, 'Afternoon', 'Sat 21 Nov · 3:00 – 3:20 PM', 'Dr. Saurabh N. Mehta', 'Acme Pvt Ltd', 'Robots at work', 'confirmed', 'Director', '2026-11-21 15:00', 20)");
+r = await W.call('GET', '/api/admin/events/1/conference');
+const acmeS = r.json.sessions.find((s) => s.id === acme);
+check('an Innovation Talk session takes its speaker and topic from the talks list the moment Admin reads it', acmeS && acmeS.speaker_name === 'Dr. Saurabh N. Mehta' && acmeS.links.map((l) => l.speaker_id).join() === '4' && acmeS.description === 'Robots at work', acmeS && [acmeS.speaker_name, acmeS.links, acmeS.description]);
+check('the old speaker’s link is gone, so their brief no longer lists the talk', !W.rows('SELECT 1 FROM session_speakers WHERE session_id = ? AND speaker_id = 2', [acme]).length);
+r = await W.call('GET', '/conference', undefined, anon);
+check('...and the website names the talk’s speaker', /Innovation Talk: Acme<\/h4>[\s\S]{0,700}Dr\. Saurabh N\. Mehta/.test(r.text), (r.text.match(/Innovation Talk: Acme[\s\S]{0,400}/) || [''])[0]);
+const talkId = W.rows("SELECT id FROM innovation_talks WHERE company = 'Acme Pvt Ltd'")[0].id;
+r = await W.call('DELETE', '/api/admin/innovation-talks/' + talkId);
+check('the talk deleted in Admin -> Innovation Talks', r.status === 200, r);
+const afterDel = W.rows('SELECT speaker_name, speaker_title, description FROM sessions WHERE id = ?', [acme])[0];
+check('...leaves its session with no speaker and no link', afterDel.speaker_name === null && afterDel.speaker_title === null && afterDel.description === 'Speaker to be announced.' && !W.rows('SELECT 1 FROM session_speakers WHERE session_id = ?', [acme]).length, afterDel);
+r = await W.call('POST', '/api/admin/innovation-talks', { event_id: 1, speaker_name: 'Dr. Saurabh N. Mehta', company: 'Acme Pvt Ltd', topic: 'Robots again', starts_at: '2026-11-21 15:00', duration_min: 20, hall: 'Aryabhata Theatre' });
+check('a talk added back in Admin', r.status === 200 && r.json.success, r);
+check('...is on its session at once', W.rows('SELECT speaker_name FROM sessions WHERE id = ?', [acme])[0].speaker_name === 'Dr. Saurabh N. Mehta');
+
+// ---- a speaker's photo from their pass (Reny Varghese, Vishal Deo, 16 Nov 2026) ----
+W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, main_event, avatar_url) VALUES (1, 'Tarun Chugh', 'tarun@example.test', 'Speaker', 'waived', 1, '/api/uploads/avatars/77-1.jpg')");
+r = await W.call('GET', '/api/events/1/programme', undefined, anon);
+const tc = r.json.speakers.find((s) => s.name === 'Tarun Chugh');
+check('a speaker with no photo of their own shows the photo on their Speaker pass, found by name', tc && tc.photo_url === '/api/uploads/avatars/77-1.jpg' && !('email' in tc), tc);
+r = await W.call('GET', '/api/admin/events/1/conference');
+check('...in Admin too (the session dialog lists speakers from here)', r.json.speakers.find((s) => s.id === 2)?.photo_url === '/api/uploads/avatars/77-1.jpg', r.json.speakers.find((s) => s.id === 2));
+r = await W.call('GET', '/conference', undefined, anon);
+check('...and on the website', /Tarun Chugh[\s\S]{0,300}/.test(r.text) && r.text.includes('src="/api/uploads/avatars/77-1.jpg"'));
+
 // ---- a broken database never breaks the page ----
 const goodDB = W.env.DB;
 W.env.DB = { prepare() { return { bind() { return this; }, async first() { throw new Error('boom'); }, async all() { throw new Error('boom'); }, async run() { throw new Error('boom'); } }; } };

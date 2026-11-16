@@ -38,9 +38,9 @@ W.db.run("INSERT INTO exhibitors (id, event_id, company_name, contact_email, boo
 
 // ---- 1 + 2 ----
 let list = await reload();
-check('the tab loads all 48 talks, 21 with a time', list.length === 48 && list.filter(F.italkTimed).length === 21, list.length);
+check('the tab loads all 49 talks, 32 with a time (the 13 Nov agenda)', list.length === 49 && list.filter(F.italkTimed).length === 32, [list.length, list.filter(F.italkTimed).length]);
 let t = list.find(x => x.speaker_name === 'Vineet Upadhayay');
-check('P99Soft has no time yet: "time" is missing', t && F.italkMissing(t).indexOf('time') === 0, t && F.italkMissing(t));
+check('P99Soft has its time (Sat 21 Nov), so "time" is not among what is missing', t && F.italkMissing(t).indexOf('time') === -1, t && F.italkMissing(t));
 const body = F.italkReadForm(formOf(t, { day: '2026-11-21', start: '12:00', end: '12:08', hall: 'Aryabhata Theatre' }), t);
 await api.patch('/api/admin/innovation-talks/' + t.id, body);
 list = await reload();
