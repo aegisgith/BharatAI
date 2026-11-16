@@ -7,7 +7,7 @@ import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
-import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry } from './routes/workshop-reminder'
+import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql } from './routes/workshop-reminder'
 import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, SUMMIT_EVENT_NAME, SUMMIT_WHEN } from './routes/agent-summit'
@@ -1431,7 +1431,7 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
           <a href="${appUrl}" style="display:inline-block;padding:13px 32px;background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Open the app</a>
         </div>
         <p style="margin:14px 0 0;font-size:12px;color:#888;text-align:center;">Sign in with this email address &mdash; we will send you a one-time code, no password needed.</p>`}
-        ${opts.receipt && workshopTiers().includes(String(attendee.badge_type || '')) ? `
+        ${opts.receipt && workshopInPass(attendee) ? `
         <div style="margin-top:22px;padding:16px;background:#EEF8F7;border:1px solid rgba(11,122,117,0.3);border-radius:10px;">
           <p style="margin:0 0 5px;font-size:14px;font-weight:bold;color:#0B7A75;">Choose your workshop</p>
           <p style="margin:0 0 12px;font-size:12.5px;line-height:1.65;color:#555;">Your pass includes one hands-on workshop. Seats are limited and go first come, first served, so take yours now: it takes a few seconds in the app.</p>
@@ -3139,6 +3139,10 @@ function payRefusal(a: any, passType = ''): string | null {
   if (!badge || FREE_BADGE_RE.test(badge)) return null
   if (PAID_TIERS.includes(badge)) {
     if (status === 'pending' || status === 'refunded') return null
+    // A Delegate Pass given a workshop on 16 Nov 2026: Premium Delegate would add nothing.
+    if (status === 'paid' && passType === 'Premium Delegate Pass' && isWorkshopBonus(a)) {
+      return 'Your Delegate Pass already includes one workshop, so the Premium Delegate Pass would add nothing. You can move up to the VIP Pass for the difference from your pass card in the app.'
+    }
     if (status === 'paid' && upgradeStep(badge, passType) > 0) return null
     // The step up is promised only to a pass that was paid for: a complimentary
     // one ('waived') is refused every pass here, so it is not told it may move up.
@@ -3791,7 +3795,7 @@ async function offerMail(c: any, audience: string, a: any, to: string, preview: 
     const usual = passPriceInr('VIP Pass') - passPriceInr(badge)
     const html = shell('Move up to VIP', payP(`Your <strong>${payEsc(badge)}</strong> for Bharat AI Innovation 2026 is confirmed. Thank you.`) +
       payP(`Until ${OFFERS_LAST_DAY_TEXT}, you can move up to the <strong>VIP Pass</strong> for <strong>&#8377;${step.toLocaleString('en-IN')} + GST</strong>${usual > step ? ` (the usual difference is &#8377;${usual.toLocaleString('en-IN')})` : ''}. The VIP Pass adds:`) +
-      li([...vipAdds, ...(badge === 'Delegate Pass' ? ['One hands-on workshop, seat chosen in the app'] : [])]) +
+      li([...vipAdds, ...(badge === 'Delegate Pass' && !isWorkshopBonus(a) ? ['One hands-on workshop, seat chosen in the app'] : [])]) +
       `<div style="text-align:center;margin:18px 0 8px;">${payButton(await signedIn('action=pay&pass=vip'), 'Move up to VIP')}</div>` +
       `<p style="margin:0;font-size:12px;line-height:1.6;color:#888;text-align:center;">The button signs you in and shows the sum before you pay, on CCAvenue’s secure page.</p>`)
     return { subject: hello + 'move up to VIP before Bharat AI Innovation', html }
@@ -9350,10 +9354,14 @@ async function workshopSwitchCloses(c: any): Promise<string> {
   return Number.isFinite(istWallClock(v)) ? v : WORKSHOP_SWITCH_CLOSES_DEFAULT
 }
 
+// A workshop in this pass: the tiers, or a Delegate Pass given one on 16 Nov 2026
+// (BONUS_IDS in routes/workshop-reminder.ts). Paid or not is the caller's rule.
+const workshopInPass = (a: any): boolean => workshopTiers().includes(String(a?.badge_type || '')) || isWorkshopBonus(a)
+
 // Who may hold a seat, and why not when they may not.
 function workshopEntitlement(a: any): { ok: boolean; why: string } {
   if (!a) return { ok: false, why: 'signin' }
-  if (!workshopTiers().includes(String(a.badge_type || ''))) return { ok: false, why: 'tier' }
+  if (!workshopInPass(a)) return { ok: false, why: 'tier' }
   if (['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())) return { ok: false, why: 'unpaid' }
   return { ok: true, why: '' }
 }
@@ -9486,7 +9494,7 @@ app.get('/api/admin/workshops', async (c) => {
   const marks = tiers.map(() => '?').join(', ')
   const unchosen = ((await c.env.DB.prepare(
     `SELECT a.id, a.name, a.email, a.mobile, a.company, a.badge_type FROM attendees a
-      WHERE a.event_id = 1 AND a.badge_type IN (${marks})
+      WHERE a.event_id = 1 AND (a.badge_type IN (${marks}) OR ${workshopBonusSql('a.')})
         AND LOWER(COALESCE(a.payment_status, '')) NOT IN ('pending', 'refunded')
         AND a.id NOT IN (SELECT attendee_id FROM workshop_seats WHERE event_id = 1)
       ORDER BY a.name`
@@ -17354,7 +17362,7 @@ async function notifyEmail(c: any, attendee: any, opts: { preview?: boolean } = 
         <p style="margin:0 0 6px;font-size:16px;font-weight:bold;color:#1E2140;">Your ${esc(passName)}</p>
         <p style="margin:0 0 14px;font-size:13px;line-height:1.65;color:#555;">Keep it on your phone for the badge desk. ${idNote}</p>
         ${btn(go('download-pass'), 'Download my pass', '#1E2140')}
-        ${workshopTiers().includes(badge) ? `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;">Your pass includes one hands-on workshop. Seats go first come, first served: <a href="${go('workshop')}" style="color:#0B7A75;font-weight:bold;">choose my workshop</a>.</p>` : ''}
+        ${workshopInPass({ id: attendee.id, badge_type: badge }) ? `<p style="margin:14px 0 0;font-size:13px;line-height:1.6;color:#555;">Your pass includes one hands-on workshop. Seats go first come, first served: <a href="${go('workshop')}" style="color:#0B7A75;font-weight:bold;">choose my workshop</a>.</p>` : ''}
         ${diff ? `<p style="margin:14px 0 0;font-size:12.5px;line-height:1.6;color:#777;">Want ${next!.adds}? Move up to ${next!.pass.replace(/ Pass$/, '')} for the difference, &#8377;${diff.toLocaleString('en-IN')} + GST. <a href="${go('pay', '&pass=' + PASS_KEY[next!.pass])}" style="color:#A67C00;font-weight:bold;">Move up</a></p>` : ''}
       </div>`
   }
@@ -34660,6 +34668,7 @@ function mainPageScript(): string {
       if (!force && _wsState && Date.now() - _wsLoadedAt < 30000) { wsRender(); return; }
       try { _wsState = await api.get('/api/workshops'); _wsLoadedAt = Date.now(); } catch (e) { _wsState = null; }
       wsRender();
+      if (workshopBonusHeld(currentUser ? String(currentUser.badge_type || '') : '')) renderPassUpgradeLine();
     }
     function wsWhen(w) {
       if (!w.starts_at) return 'Day and time to be announced';
@@ -34923,7 +34932,11 @@ function mainPageScript(): string {
       var at = UPGRADE_LADDER.indexOf(from);
       if (!from || at < 0) return [];
       return UPGRADE_LADDER.slice(at + 1).map(function (p) { return { pass: p, up: upgradePrice(from, p) }; })
-        .filter(function (s) { return !_ppPrices || s.up; });
+        .filter(function (s) { return !_ppPrices || s.up; })
+        .filter(function (s) { return !(s.pass === 'Premium Delegate Pass' && workshopBonusHeld(from)); });
+    }
+    function workshopBonusHeld(from) {
+      return from === 'Delegate Pass' && !!(_wsState && _wsState.ready && _wsState.entitled);
     }
     // What the pass adds to the one already held, in a line.
     function upgradeAdds(from, to) {
@@ -34938,7 +34951,7 @@ function mainPageScript(): string {
         : ', the networking lunch, one hands-on workshop, ' + vip);
       if (to === 'Delegate Pass') return 'Adds the networking lunch and the conference kit';
       if (to === 'Premium Delegate Pass') return (from === 'Academic Pass' || academicSeat) ? (academicSeat ? 'Adds the networking lunch and the conference kit' : 'Adds the networking lunch, the conference kit and one hands-on workshop') : 'Adds one hands-on workshop';
-      if (from === 'Premium Delegate Pass') return 'Adds ' + vip;
+      if (from === 'Premium Delegate Pass' || workshopBonusHeld(from)) return 'Adds ' + vip;
       return ((from === 'Academic Pass' || academicSeat) ? (academicSeat ? 'Adds the networking lunch, ' : 'Adds the networking lunch, one hands-on workshop, ') : 'Adds one hands-on workshop, ') + vip;
     }
     // The steps a confirmed paid pass is offered, inside the upgrade modal: one

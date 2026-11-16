@@ -82,12 +82,46 @@ const CRON_ALIVE_MS = 3 * 60 * 1000
 export const INVITE_PASSES = ['Visitor Pass', 'Expo Pass', 'Delegate Pass', 'Academic Pass']
 export const INVITE_ACTION = 'workshop.invite'
 export const TRY_ACTION = 'workshop.tried'
+
+// The Delegate Pass bonus (organiser, 16 Nov 2026, four days out: "give access to
+// workshop to delagtes as well. also pre price increase thos who bough delegation give
+// them workshop access as well. and send them notification"). Agreed with them the same
+// hour: one workshop for everyone who held a Delegate Pass then, bought before or after
+// the 6 Nov price rise or given free. The Delegate Pass on sale still has no workshop
+// (that is the Premium Delegate Pass), so no public page changed.
+//   - The holders are listed by attendee id, read from production at 12:40 pm IST on 16 Nov.
+//     A date rule would also let in someone made a Delegate later by a group booking or
+//     by hand. The pass must still be a Delegate Pass, not unpaid or refunded
+//     (workshopEntitlement in index.tsx). Anyone else: Admin -> Workshops seats anyone.
+//   - They are on the "Choose your workshop" list and never sent the invitation again.
+//   - The notice is the "Choose your workshop" email in their own words (reminderEmailHTML),
+//     sent once by the minute clock (autoWorkshopReminders), 9am to 9pm India, on the
+//     same switch, to nobody who unsubscribed (the panel can still send to them).
+//   - index.tsx refuses them the Premium Delegate step (it would add nothing) and the
+//     app leaves it out of their "Move up" list.
+export const BONUS_PASS = 'Delegate Pass'
+export const BONUS_IDS: ReadonlySet<number> = new Set([
+  39, 79, 210, 352, 510, 565, 574, 704, 734, 753, 769, 770, 806, 819, 880, 927, 1613, 1634, 1658, 2118, 2119,
+  2751, 2752, 2781, 2824, 2870, 2943, 2944, 2952, 3002, 3012, 3027, 3030, 3039, 3076, 3078, 3079, 3088, 3455,
+  3483, 3496, 3498, 3510, 3511, 3513, 3520, 3524, 3535, 3537, 3558, 3564, 3567, 3571, 3573, 3574, 3579, 3597,
+  3599, 3601, 3605, 3621, 3623, 3624, 3784, 3786, 3788, 3796, 3805, 3840, 3852, 3862, 3938, 3945, 3952, 3953,
+  3958, 3966,
+])
+// A Delegate Pass on the list (row with id and badge_type). Paid or not is the caller's rule.
+export const isWorkshopBonus = (a: any): boolean =>
+  String(a?.badge_type || '').trim() === BONUS_PASS && BONUS_IDS.has(Number(a?.id))
+// The same in SQL, for a row aliased p ('a.').
+export const workshopBonusSql = (p = 'a.'): string =>
+  `(${p}badge_type = '${BONUS_PASS}' AND ${p}id IN (${[...BONUS_IDS].join(', ') || '0'}))`
+const BONUS_HOURS_IST = { from: 9, to: 21 }
+const bonusHour = (nowMs = Date.now()) => { const h = new Date(nowMs + 5.5 * 3600000).getUTCHours(); return h >= BONUS_HOURS_IST.from && h < BONUS_HOURS_IST.to }
+
 // Who may be sent the invitation: the conference (not campus-panel-only), nobody who
 // unsubscribed or said no to email, a pass without a workshop that is not unpaid.
 const INVITE_WHERE = `a.event_id = 1 AND COALESCE(a.main_event, 1) = 1
   AND a.unsubscribed_at IS NULL AND (a.marketing_consent IS NULL OR a.marketing_consent = 1)
   AND LOWER(TRIM(COALESCE(a.payment_status, ''))) NOT IN ('pending', 'refunded')
-  AND TRIM(COALESCE(a.email, '')) <> '' AND ${NO_EMAIL_SQL('a.')}`
+  AND TRIM(COALESCE(a.email, '')) <> '' AND ${NO_EMAIL_SQL('a.')} AND NOT ${workshopBonusSql('a.')}`
 
 const all = async (c: any, sql: string, ...args: any[]) => (((await c.env.DB.prepare(sql).bind(...args).all()) as any).results || []) as any[]
 const one = async (c: any, sql: string, ...args: any[]) => (await c.env.DB.prepare(sql).bind(...args).first()) as any
@@ -160,8 +194,8 @@ export function oneDay(list: Workshop[]): string {
 const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
 const count = (n: number) => NUMBER_WORDS[n] || String(n)
 
-export function reminderSubject(kind: Kind, w: Workshop | null, options: Workshop[] = []): string {
-  if (kind === 'choose') return 'Your pass includes a workshop: choose your seat'
+export function reminderSubject(kind: Kind, w: Workshop | null, options: Workshop[] = [], bonus = false): string {
+  if (kind === 'choose') return bonus ? 'We have added a workshop to your Delegate Pass: choose your seat' : 'Your pass includes a workshop: choose your seat'
   if (kind === 'invite') {
     const day = oneDay(options)
     return `Hands-on AI workshops${day ? ' on ' + day : ''}: book your seat`
@@ -175,7 +209,8 @@ export function reminderSubject(kind: Kind, w: Workshop | null, options: Worksho
 export function reminderEmailHTML(x: { kind: Kind; a: any; seat: Workshop | null; options: Workshop[]; closes: string; canSwitch: boolean;
     header: string; href: string; where: (room: string) => string; line: string }): { subject: string; html: string } {
   const { kind, a, seat } = x
-  const subject = reminderSubject(kind, seat, x.options)
+  const bonus = isWorkshopBonus(a)
+  const subject = reminderSubject(kind, seat, x.options, bonus)
   const pass = String(a.badge_type || 'pass')
   const row = (k: string, v: string) => `<tr><td style="color:#6b7280;padding:2px 14px 2px 0;vertical-align:top;white-space:nowrap">${k}</td><td style="padding:2px 0">${v}</td></tr>`
   const card = (w: Workshop, withBring: boolean) => {
@@ -205,7 +240,10 @@ export function reminderEmailHTML(x: { kind: Kind; a: any; seat: Workshop | null
       button('See the workshops and book') +
       p('<span style="font-size:13px;color:#555">Seats in each workshop are limited.</span>')
   } else if (kind === 'choose') {
-    body = p(`Your ${escH(pass)} includes one hands-on workshop, and you have not chosen yours yet. Seats go first come, first served. Choosing takes a few seconds in the app.`) +
+    body = (bonus
+      ? p('Good news: we have added one hands-on workshop to your Delegate Pass, at no extra cost.') +
+        p('Pick the one you want below. Seats go first come, first served, and choosing takes a few seconds in the app.')
+      : p(`Your ${escH(pass)} includes one hands-on workshop, and you have not chosen yours yet. Seats go first come, first served. Choosing takes a few seconds in the app.`)) +
       x.options.map(w => card(w, true)).join('') +
       button('Choose my workshop') +
       (x.canSwitch && x.closes ? p(`<span style="font-size:13px;color:#555">You can change your choice until ${escH(closesText(x.closes))}.</span>`) : '')
@@ -236,15 +274,15 @@ export function reminderEmailHTML(x: { kind: Kind; a: any; seat: Workshop | null
 
 // ---------- reading ----------
 
-// Who has a workshop in their pass: the tiers, not unpaid or refunded (the app's own
-// rule, workshopEntitlement in index.tsx), with an email address.
+// Who has a workshop in their pass: the tiers and the Delegate Pass bonus, not unpaid
+// or refunded (the app's own rule, workshopEntitlement in index.tsx), with an email address.
 async function entitledPeople(c: any, onlyId: number | null = null) {
   const tiers = hooks.tiers ? hooks.tiers() : ['Premium Delegate Pass', 'VIP Pass', 'Student Pass']
   const marks = tiers.map(() => '?').join(', ')
   return await all(c, `SELECT a.id, a.event_id, a.name, a.email, a.company, a.job_title, a.badge_type, a.payment_status, a.unsubscribed_at,
       (SELECT s.workshop_id FROM workshop_seats s WHERE s.event_id = 1 AND s.attendee_id = a.id) AS workshop_id
     FROM attendees a
-    WHERE a.event_id = 1 AND a.badge_type IN (${marks})
+    WHERE a.event_id = 1 AND (a.badge_type IN (${marks}) OR ${workshopBonusSql('a.')})
       AND LOWER(TRIM(COALESCE(a.payment_status, ''))) NOT IN ('pending', 'refunded')
       AND TRIM(COALESCE(a.email, '')) <> '' AND ${NO_EMAIL_SQL('a.')}${onlyId != null ? ' AND a.id = ?' : ''}
     ORDER BY a.name COLLATE NOCASE`, ...tiers, ...(onlyId != null ? [onlyId] : []))
@@ -323,11 +361,30 @@ async function autoDue(c: any, kind: 'choose' | 'invite', limit: number): Promis
   } catch { return [] }
 }
 
+// The Delegate Pass bonus holders still to be told (BONUS_IDS): paid or given free, no
+// seat, never sent a workshop email of this kind, not unsubscribed. No time window:
+// every one of them is told once.
+async function bonusDue(c: any, limit: number): Promise<any[]> {
+  if (limit <= 0 || !bonusHour()) return []
+  try {
+    return await all(c, `SELECT a.id, a.event_id, a.name, a.email, a.badge_type, a.payment_status FROM attendees a
+       WHERE a.event_id = 1 AND ${workshopBonusSql('a.')}
+         AND LOWER(TRIM(COALESCE(a.payment_status, ''))) NOT IN ('pending', 'refunded')
+         AND a.unsubscribed_at IS NULL
+         AND TRIM(COALESCE(a.email, '')) <> '' AND ${NO_EMAIL_SQL('a.')}
+         AND NOT EXISTS (SELECT 1 FROM workshop_seats s WHERE s.event_id = 1 AND s.attendee_id = a.id)
+         AND NOT EXISTS (SELECT 1 FROM admin_audit x WHERE x.entity = 'attendee' AND x.entity_id = CAST(a.id AS TEXT) AND x.action IN (?, ?))
+       ORDER BY a.id LIMIT ?`, AUDIT_ACTION, AUDIT_ACTION + '_error', limit)
+  } catch { return [] }
+}
+
 // The minute clock's part. Never throws.
 export async function autoWorkshopReminders(c: any): Promise<any> {
   if ((await setting(c, AUTO_KEY)).trim() === 'off') return { on: false }
   if (!hooks.sendEmail) return { on: true, error: 'Email is not set up on this server.' }
-  const choose = await autoDue(c, 'choose', AUTO_PER_TICK)
+  const fresh = await autoDue(c, 'choose', AUTO_PER_TICK)
+  const bonus = await bonusDue(c, AUTO_PER_TICK - fresh.length)
+  const choose = [...fresh, ...bonus]
   const invite = await autoDue(c, 'invite', AUTO_PER_TICK - choose.length)
   if (!choose.length && !invite.length) return { on: true, due: 0, sent: 0 }
   const ctx = await context(c)
@@ -349,7 +406,7 @@ export async function autoWorkshopReminders(c: any): Promise<any> {
       `INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail)
        SELECT 'scheduler', 'system', ?1, 'attendee', ?2, ?3
         WHERE NOT EXISTS (SELECT 1 FROM admin_audit WHERE entity = 'attendee' AND entity_id = ?2 AND action IN (?1, ?4))`
-    ).bind(action, String(a.id), JSON.stringify({ kind, to: email, auto: true }), action + '_error').run().catch(() => null) as any
+    ).bind(action, String(a.id), JSON.stringify({ kind, to: email, auto: true, ...(isWorkshopBonus(a) ? { bonus: true } : {}) }), action + '_error').run().catch(() => null) as any
     if (!Number(claim?.meta?.changes)) continue
     const claimId = claim?.meta?.last_row_id
     let res: { ok: boolean; error?: string }
@@ -364,7 +421,7 @@ export async function autoWorkshopReminders(c: any): Promise<any> {
     if (res.ok) { if (kind === 'invite') invited++; else sent++; continue }
     failed++
     await c.env.DB.prepare('UPDATE admin_audit SET action = ?, detail = ? WHERE id = ?')
-      .bind(action + '_error', JSON.stringify({ kind, to: email, auto: true, error: String(res.error || 'not sent').slice(0, 300) }), claimId).run().catch(() => null)
+      .bind(action + '_error', JSON.stringify({ kind, to: email, auto: true, ...(isWorkshopBonus(a) ? { bonus: true } : {}), error: String(res.error || 'not sent').slice(0, 300) }), claimId).run().catch(() => null)
   }
   return { on: true, due: due.length, sent, invited, failed, waiting }
 }
@@ -591,13 +648,16 @@ wr.get('/api/admin/workshop-tries', async (c) => {
   const list = ids.map(id => {
     const p = people.get(id) || {}, x = by.get(id)!
     const pay = String(p.payment_status || '').trim().toLowerCase()
+    // A Delegate Pass bonus holder did not buy one: given it (BONUS_IDS), not a sales call.
+    const given = isWorkshopBonus({ id, badge_type: p.badge_type }) && !['pending', 'refunded'].includes(pay)
     const now = seats.has(id) ? 'Has a seat'
+      : given ? 'Workshop added to their pass'
       : tiers.includes(String(p.badge_type || '')) ? (pay === 'pending' ? 'Started paying' : 'Bought a workshop pass')
       : 'Not bought yet'
     return { id, name: p.name || '', email: p.email || '', mobile: p.mobile || '', company: p.company || '', job_title: p.job_title || '', city: p.city || '',
-      badge_type: p.badge_type || '', tries: x.n, first: x.first, last: x.last, workshops: x.workshops, now }
+      badge_type: p.badge_type || '', tries: x.n, first: x.first, last: x.last, workshops: x.workshops, now, given }
   }).sort((a, b) => (a.last < b.last ? 1 : -1))
-  return c.json({ people: list, counts: { tried: list.length, bought: list.filter(p => p.now !== 'Not bought yet' && p.now !== 'Started paying').length } })
+  return c.json({ people: list, counts: { tried: list.length, bought: list.filter(p => !p.given && p.now !== 'Not bought yet' && p.now !== 'Started paying').length } })
 })
 
 export default wr

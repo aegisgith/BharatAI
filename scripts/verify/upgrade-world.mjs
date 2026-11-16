@@ -106,8 +106,10 @@ export async function makeUpgradeWorld() {
     const team = js.match(/var TEAM_PASSES_APP = \[[^\]]*\];/);
     if (!team) throw new Error('/app.js has no TEAM_PASSES_APP');
     const box = vm.createContext({ Number, Math, String, Array, Object, JSON });
-    const helpers = ['offerSteps', 'offersEnd'].filter(n => !names.includes(n));
-    vm.runInContext('var _ppPrices = null, _ppGst = 18, _ppOffers = null;\n' + ladder[0] + '\n' + team[0] + '\n' + [...helpers, ...names].map(src).join('\n'), box);
+    // workshopBonusHeld reads _wsState (the /api/workshops answer): a Delegate Pass
+    // given a workshop on 16 Nov 2026 is not offered Premium Delegate.
+    const helpers = ['offerSteps', 'offersEnd', 'workshopBonusHeld'].filter(n => !names.includes(n));
+    vm.runInContext('var _ppPrices = null, _ppGst = 18, _ppOffers = null, _wsState = null;\n' + ladder[0] + '\n' + team[0] + '\n' + [...helpers, ...names].map(src).join('\n'), box);
     return box;
   };
 
