@@ -31,7 +31,7 @@ check('every talk with a hall is in Aryabhata Theatre or Kalam Theatre, most on 
 const gaurav = W.talk("speaker_name = 'Gaurav Jha'");
 W.db.run("UPDATE innovation_talks SET company = 'Origin AI', starts_at = NULL, time_slot = 'To be announced' WHERE id = ?", [gaurav.id]);
 W.db.exec(W.read('scripts/sql/innovation-talk-times.sql'));
-check('a talk whose company is spelt differently in the app still gets its time (by the speaker)', W.talk('id = ?', gaurav.id).time_slot === 'Fri 20 Nov · 12:40 – 12:48 PM', W.talk('id = ?', gaurav.id).time_slot);
+check('a talk whose company is spelt differently in the app still gets its time (by the speaker)', W.talk('id = ?', gaurav.id).time_slot === 'Fri 20 Nov · 6:06 – 6:16 PM', W.talk('id = ?', gaurav.id).time_slot);
 const hallBefore = W.rows('SELECT id, hall FROM innovation_talks ORDER BY id');
 W.db.exec(W.read('scripts/sql/innovation-talk-times.sql'));
 check('running the time SQL twice changes nothing', JSON.stringify(W.rows('SELECT id, hall FROM innovation_talks ORDER BY id')) === JSON.stringify(hallBefore));
@@ -40,9 +40,9 @@ check('running the time SQL twice changes nothing', JSON.stringify(W.rows('SELEC
 W.db.run("UPDATE innovation_talks SET speaker_email = 'amritesh@phoebetal.test', speaker_phone = '98200 11111', notes = 'internal: call Kitty' WHERE id = ?", [amr.id]);
 let r = await W.hit('GET', '/api/events/1/innovation-talks');
 const pub = r.json;
-check('public list: 200 and all 48 talks', r.status === 200 && Array.isArray(pub) && pub.length === 48, r.status);
+check('public list: 200 and all 49 talks', r.status === 200 && Array.isArray(pub) && pub.length === 49, [r.status, pub && pub.length]);
 const pa = pub.find(t => t.id === amr.id);
-check('public list carries hall, start and length', pa.hall === 'Aryabhata Theatre' && pa.starts_at === '2026-11-20 13:10' && pa.duration_min === 8, pa);
+check('public list carries hall, start and length', pa.hall === 'Aryabhata Theatre' && pa.starts_at === '2026-11-20 14:21' && pa.duration_min === 7, pa);
 check("public list never carries the speaker's email or mobile, the notes or who was asked", pub.every(t => !('speaker_email' in t) && !('speaker_phone' in t) && !('notes' in t) && !('details_requested_to' in t)) && !/amritesh@phoebetal|98200 11111|Kitty/.test(r.text));
 check('public list: talks with a time come first, in time order', pub.slice(0, 21).every(t => t.starts_at) && pub.slice(0, 21).every((t, i, a) => !i || a[i - 1].starts_at <= t.starts_at));
 r = await W.as('GET', '/api/events/1/innovation-talks');
