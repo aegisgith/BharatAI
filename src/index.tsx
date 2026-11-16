@@ -32774,7 +32774,7 @@ function mainPageScript(): string {
         +   item('fa-user-edit', 'Edit my profile', 'Name, organisation, LinkedIn, what you are here for', 'closeAccountMenu(); openEditProfile();')
         +   item('fa-camera', 'Change my photo', '', 'changeMyPhoto()')
         +   item('fa-id-badge', 'My pass', 'Keep it on your phone', 'closeAccountMenu(); generateDelegatePass();')
-        +   (isTeamMember() ? item('fa-user-plus', 'Register a guest', 'Only their mobile? Send the pass on WhatsApp', 'closeAccountMenu(); openTeamGuest();') : '')
+        +   (isTeamMember() ? item('fa-user-plus', 'Register guests', 'One or a list. Send the passes on WhatsApp', 'closeAccountMenu(); openTeamGuest();') : '')
         +   item('fa-share-alt', 'Share my badge', 'Post it on LinkedIn or WhatsApp', 'closeAccountMenu(); openSocialCard();')
         +   (appOnPhoneOffered() ? item('fa-mobile-alt', 'Save the app on my phone', 'Your pass one tap away', 'closeAccountMenu(); saveAppOnPhone();') : '')
         +   item('fa-chart-pie', 'My connections and meetings', '', 'closeAccountMenu(); switchTab(&quot;myprofile&quot;);')
@@ -32790,7 +32790,7 @@ function mainPageScript(): string {
     function openTeamGuest() {
       if (window.TeamGuest) { window.TeamGuest.open(); return; }
       const s = document.createElement('script');
-      s.src = '/static/team-guest.js?v=20261116';
+      s.src = '/static/team-guest.js?v=20261116b';
       s.onload = function () { if (window.TeamGuest) window.TeamGuest.open(); };
       s.onerror = function () { s.remove(); showToast('Could not open it. Check your internet and try again.', 'error'); };
       document.head.appendChild(s);

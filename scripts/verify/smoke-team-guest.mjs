@@ -133,9 +133,86 @@ r = await hit('POST', '/api/events/1/attendees/register', { name: 'Meera Iyer', 
 await settle(100);
 check('registering herself with that number: told the team sent it on WhatsApp, not a masked stand-in', r.status === 409 && r.json?.code === 'mobile_guest_pass' && /WhatsApp/.test(r.json?.error || '') && !(r.text || '').includes('no-email.invalid'), r.status + ' ' + r.text);
 
+// ---- a sheet of guests (16 Nov 2026, later: "upload from their account the guest list") ----
+const sheet = (rows, who = RAVI, pass = 'delegate') => hit('POST', '/api/team/guests/bulk', { rows, default_pass: pass }, as(who));
+r = await sheet([]);
+check('an empty sheet is refused', r.status === 400 && /no rows/.test(r.json?.error || ''), r.text);
+r = await sheet([{ Colour: 'red' }, { Colour: 'blue' }]);
+check('a sheet without Name and Mobile columns says which headings we read', r.status === 400 && /Name and a Mobile column/.test(r.json?.error || ''), r.text);
+r = await sheet(Array.from({ length: 301 }, (_, i) => ({ Name: 'P' + i, Mobile: '98' + String(10000000 + i) })));
+check('more than 300 rows is refused before anything is written', r.status === 400 && /up to 300/.test(r.json?.error || '') && q("SELECT COUNT(*) AS n FROM attendees WHERE name LIKE 'P%' AND registration_source LIKE 'team:%'")[0].n === 0, r.text);
+r = await sheet([{ Name: 'Someone', Mobile: '9820099990' }], RAVI, 'premium');
+check('a default pass we do not give is refused', r.status === 400 && /Visitor, Delegate or VIP/.test(r.json?.error || ''), r.text);
+const rows = [
+  { 'Name': 'Priya Nair', 'Mobile No.': '98200 55555', 'Pass': 'VIP', 'Organisation': 'Nair Foods', 'Designation': 'Director', 'Email': '' },
+  { 'Name': 'Sunil Rao', 'Mobile No.': '+91 98200 66666', 'Pass': '', 'Organisation': 'Rao & Co', 'Designation': '', 'Email': 'sunil@rao.in' },
+  { 'Name': 'Priya Nair again', 'Mobile No.': '9820055555', 'Pass': 'visitor' },
+  { 'Name': 'Meera I', 'Mobile No.': '9876543210', 'Pass': 'delegate' },
+  { 'Name': 'Asha', 'Mobile No.': '9820012345' },
+  { 'Name': 'Bad Pass', 'Mobile No.': '9820077777', 'Pass': 'Premium Delegate' },
+  { 'Name': 'No Number', 'Mobile No.': '', 'Pass': 'vip' },
+  { 'Name': 'X', 'Mobile No.': '9820088888' },
+  { 'First Name': 'Kiran', 'Last Name': 'Desai', 'WhatsApp': '9820099999', 'Category': 'Visitor' },
+];
+r = await sheet(rows);
+check('a sheet of nine: 3 added, 3 already on the list, 3 skipped', r.status === 201 && r.json.counts.added === 3 && r.json.counts.already === 3 && r.json.counts.skipped === 3 && r.json.stopped === null, JSON.stringify(r.json?.counts) + ' ' + r.text.slice(0, 300));
+const st = (r.json?.results || []).map(x => x.status).join(',');
+check('row by row, in the sheet\'s order, with the sheet\'s row numbers', st === 'added,added,already,already,already,skipped,skipped,skipped,added' && r.json.results[0].row === 2 && r.json.results[8].row === 10, st);
+const priya = who(r.json.results[0].guest.id), sunil = who(r.json.results[1].guest.id), kiran = who(r.json.results[8].guest.id);
+check('"VIP" in the Pass column: a complimentary VIP Pass, with the organisation and designation', priya.badge_type === 'VIP Pass' && priya.payment_status === 'waived' && priya.company === 'Nair Foods' && priya.job_title === 'Director' && priya.email === 'wa919820055555@no-email.invalid', JSON.stringify(priya));
+check('an empty Pass cell takes the sheet\'s default (Delegate), and the email given', sunil.badge_type === 'Delegate Pass' && sunil.payment_status === 'waived' && sunil.email === 'sunil@rao.in' && sunil.marketing_consent === null, JSON.stringify(sunil));
+check('First Name + Last Name, WhatsApp, Category are read as name, mobile, pass', kiran.name === 'Kiran Desai' && kiran.mobile === '+91 98200 99999' && kiran.badge_type === 'Visitor Pass', JSON.stringify(kiran));
+check('the same number twice in one sheet adds them once, and says so', /already registered as Priya Nair/.test(r.json.results[2].reason) && r.json.results[2].guest?.id === priya.id, r.json.results[2].reason);
+check('a guest another team member registered: their link, to send again', r.json.results[3].guest?.id === g1.id, JSON.stringify(r.json.results[3]));
+check('someone who registered themselves: no link', r.json.results[4].guest === null && /open it in the app/.test(r.json.results[4].reason), r.json.results[4].reason);
+check('the skipped rows say why: a pass we do not give, no number, a one-letter name', /Visitor, Delegate or VIP/.test(r.json.results[5].reason) && /mobile number/.test(r.json.results[6].reason) && /name/.test(r.json.results[7].reason), JSON.stringify(r.json.results.slice(5, 8).map(x => x.reason)));
+check('every added guest has the links to send', r.json.results.filter(x => x.status === 'added').every(x => x.guest && x.guest.whatsapp_url && x.guest.whatsapp_web_url && x.guest.pass_url));
+const sheetLog = W.rows('team.guest.sheet');
+check('the sheet is logged once, in Ravi\'s name, with its counts', sheetLog.length === 1 && sheetLog[0].actor === 'Ravi Team' && JSON.parse(sheetLog[0].detail).added === 3 && JSON.parse(sheetLog[0].detail).rows === 9, JSON.stringify(sheetLog));
+check('still no email to anybody', sent.length === 0, sent.length);
+
+// ---- the daily limit stops a sheet, and says so ----
+const AYESHA = person(531, { name: 'Ayesha A', email: 'ayesha.a@bharataiinnovation.com', badge_type: 'Organiser', payment_status: 'waived' });
+for (let i = 0; i < 500; i++) W.db.run("INSERT INTO attendees (event_id, name, email, mobile, badge_type, registration_source, registration_date, main_event) VALUES (1, ?, ?, ?, 'Visitor Pass', 'team:531', datetime('now'), 1)", ['Earlier ' + i, 'wa9177' + String(10000000 + i) + '@no-email.invalid', '+91 77' + String(10000000 + i)]);
+r = await add({ name: 'One More', mobile: '9820012399' }, AYESHA);
+check('after 500 in a day, one more is refused', r.status === 429 && /500 guests/.test(r.json?.error || ''), r.status + ' ' + r.text);
+r = await sheet([{ Name: 'A B', Mobile: '9820012398' }, { Name: 'C D', Mobile: '9820012397' }], AYESHA);
+check('and a sheet stops at the first, every row skipped with the reason', r.status === 201 && r.json.counts.added === 0 && r.json.counts.skipped === 2 && /500 guests/.test(r.json.stopped || ''), r.text.slice(0, 300));
+
+// ---- sent on WhatsApp, or not ----
+r = await hit('POST', '/api/team/guests/' + g1.id + '/sent', {}, as(RAVI));
+check('any team member can mark a guest\'s pass sent', r.status === 200 && r.json.sent === true && !!r.json.sent_at, r.status + ' ' + r.text);
+r = await hit('GET', '/api/team/guests', undefined, as(ANITA));
+let meeraRow = (r.json?.guests || []).find(g => g.id === g1.id);
+check('the list shows it sent, and counts it', !!meeraRow?.sent_at && r.json.counts.sent === 1 && r.json.counts.to_send === r.json.counts.total - 1, JSON.stringify(r.json?.counts));
+r = await hit('POST', '/api/team/guests/' + g1.id + '/unsent', {}, as(ANITA));
+check('Undo', r.status === 200 && r.json.sent === false && r.json.sent_at === null, r.text);
+r = await hit('GET', '/api/team/guests', undefined, as(ANITA));
+meeraRow = (r.json?.guests || []).find(g => g.id === g1.id);
+check('and the list shows it not sent again', !meeraRow?.sent_at && r.json.counts.sent === 0, JSON.stringify(r.json?.counts));
+r = await hit('POST', '/api/team/guests/' + g1.id + '/sent', {}, as(RAVI));
+r = await hit('POST', '/api/team/guests/' + g1.id + '/sent', {}, as(RAVI));
+r = await hit('GET', '/api/team/guests', undefined, as(ANITA));
+check('sent twice is sent once', (r.json?.guests || []).find(g => g.id === g1.id)?.sent_at && r.json.counts.sent === 1, JSON.stringify(r.json?.counts));
+r = await hit('POST', '/api/team/guests/' + ASHA + '/sent', {}, as(ANITA));
+check('someone who registered themselves cannot be marked', r.status === 404, r.status + ' ' + r.text);
+r = await hit('POST', '/api/team/guests/' + g1.id + '/sent', {}, as(NOTEAM));
+check('and not by someone off the team', r.status === 403, r.status);
+check('every mark is in the log in the member\'s name', W.rows('team.guest.sent', g1.id).length === 3 && W.rows('team.guest.unsent', g1.id).length === 1 && W.rows('team.guest.sent', g1.id)[0].actor === 'Ravi Team');
+
+// ---- the whole team's guests, and the links a laptop uses ----
+r = await hit('GET', '/api/team/guests?all=1', undefined, as(ANITA));
+const names = (r.json?.guests || []).map(g => g.name + '/' + g.by);
+check('"everyone" lists the other members\' guests with who registered them', r.status === 200 && names.includes('Priya Nair/Ravi Team') && names.includes('Meera Iyer/Anita Ram') && names.some(n => n.startsWith('Earlier 0/Ayesha A')), names.slice(0, 6).join(' | '));
+check('the WhatsApp Web link opens the same chat with the same message', g1.whatsapp_web_url === 'https://web.whatsapp.com/send?phone=919876543210&text=' + encodeURIComponent(g1.message), g1.whatsapp_web_url.slice(0, 80));
+r = await hit('GET', '/api/team/guests/template.csv', undefined, as(ANITA));
+check('a blank sheet to fill in, with the headings we read', r.status === 200 && /text\/csv/.test(r.headers.get('content-type') || '') && r.text.startsWith('Name,Mobile,Pass,Organisation,Designation,Email\r\n') && /attachment/.test(r.headers.get('content-disposition') || ''), r.status);
+r = await hit('GET', '/api/team/guests/template.csv');
+check('not for anyone signed out', r.status === 401);
+
 // ---- the app ----
 const appJs = (await hit('GET', '/app.js')).text;
-check('the app offers "Register a guest" to the team only, from the account menu', appJs.includes("(isTeamMember() ? item('fa-user-plus', 'Register a guest'") && appJs.includes("String(currentUser.badge_type || '') === 'Organiser'") && appJs.includes("s.src = '/static/team-guest.js?v="));
+check('the app offers "Register guests" to the team only, from the account menu', appJs.includes("(isTeamMember() ? item('fa-user-plus', 'Register guests'") && appJs.includes("String(currentUser.badge_type || '') === 'Organiser'") && appJs.includes("s.src = '/static/team-guest.js?v=20261116b'"));
 
 console.log(fails() ? `\n${fails()} FAILED` : '\nAll team-guest checks passed');
 process.exit(fails() ? 1 : 0);
