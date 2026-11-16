@@ -713,7 +713,11 @@
         /* --- Hero: the photograph is the backdrop, sharp; the dark sits only
            where the type does (the bottom on a phone, the left on a wide screen). */
         .hero { min-height: 100vh; min-height: 100svh; align-items: flex-end; }
-        .hero-bg-photo { object-position: center 40%; }
+        /* The photograph is blurred a little (the organiser, 16 Nov 2026: the
+           screen over the photo "a little more blurred"), so the type sits on a
+           softer ground. The frame is drawn 8px past the hero on every side, so
+           the blur's soft edge never shows; .hero clips the overhang. */
+        .hero-bg-photo { object-position: center 40%; filter: blur(4px); inset: -8px; max-width: none; width: calc(100% + 16px); height: calc(100% + 16px); }
         /* Only the first frame shows until the other six have arrived (the script
            at the end of the page loads them after the page itself, then adds
            .is-rolling). The !important beats the reduced-motion rule in style.css,
@@ -774,7 +778,7 @@
             .hero { background: #0A0C1C; min-height: 0; padding-top: calc(var(--nav-h) + 70px); }
             .hero-content { padding-top: 0 !important; }
             #heroGlobe { height: calc(var(--nav-h) + 300px); opacity: 0.6; }
-            .hero-bg-photo { height: calc(var(--nav-h) + 300px); }
+            .hero-bg-photo { height: calc(var(--nav-h) + 316px); }
             .hero-bg-scrim {
                 background: linear-gradient(180deg,
                     rgba(10,12,28,0.6) 0, rgba(10,12,28,0.12) 64px, rgba(10,12,28,0.22) calc(var(--nav-h) + 50px),
@@ -801,8 +805,8 @@
             .hero-bg-photo { object-position: center 45%; }
             .hero-bg-scrim {
                 background: linear-gradient(180deg,
-                    rgba(16,18,28,0.62) 0%, rgba(16,18,28,0.55) 14%,
-                    rgba(16,18,28,0.55) 86%, rgba(16,18,28,0.62) 100%);
+                    rgba(16,18,28,0.66) 0%, rgba(16,18,28,0.6) 14%,
+                    rgba(16,18,28,0.6) 86%, rgba(16,18,28,0.66) 100%);
             }
             .hero-content { max-width: var(--max-w); padding: 3.5rem 2rem 4rem !important; }
             .hero .hero-title { font-size: clamp(4.25rem, 6.4vw, 6rem); } .hero .hero-title-hi { font-size: 0.575em; }
@@ -867,29 +871,29 @@
         /* minmax(0, 1fr), and photographs no wider than their column: with plain 1fr six
            112px photographs and their gaps need 772px, more than a tablet has (768 to 835px
            wide), and the sixth column ran off the right edge of the page. */
-        #confirmed-speakers .speakers-grid, #campus-series .speakers-grid {
+        #confirmed-speakers .speakers-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem 0.6rem; padding: 0;
         }
         @media (min-width: 768px) {
-            #confirmed-speakers .speakers-grid, #campus-series .speakers-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2rem 1.25rem; }
+            #confirmed-speakers .speakers-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2rem 1.25rem; }
         }
-        #confirmed-speakers .speaker-card, #campus-series .speaker-card { padding: 0 !important; background: none; border: 0; box-shadow: none; gap: 0.3rem; overflow: visible; }
-        #confirmed-speakers .speaker-card:hover, #campus-series .speaker-card:hover { transform: none; box-shadow: none; }
-        #confirmed-speakers .speaker-photo, #campus-series .speaker-photo { width: min(84px, 100%) !important; height: auto !important; }
+        #confirmed-speakers .speaker-card { padding: 0 !important; background: none; border: 0; box-shadow: none; gap: 0.3rem; overflow: visible; }
+        #confirmed-speakers .speaker-card:hover { transform: none; box-shadow: none; }
+        #confirmed-speakers .speaker-photo { width: min(84px, 100%) !important; height: auto !important; }
         #confirmed-speakers .spk-photo-badge-wrap { width: min(84px, 100%); }
         #confirmed-speakers .spk-corner-badge { width: 30px; height: 30px; padding: 3px; }
-        #confirmed-speakers .speaker-card h4, #campus-series .speaker-card h4 { font-size: 0.84rem; line-height: 1.25; margin: 0.25rem 0 0; }
-        #confirmed-speakers .speaker-card p, #campus-series .speaker-card p {
+        #confirmed-speakers .speaker-card h4 { font-size: 0.84rem; line-height: 1.25; margin: 0.25rem 0 0; }
+        #confirmed-speakers .speaker-card p {
             font-size: 0.72rem !important; line-height: 1.3; margin: 0 !important;
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
         }
-        #confirmed-speakers .speaker-card p:first-of-type, #campus-series .speaker-card p:first-of-type { color: var(--ink-orange) !important; }
+        #confirmed-speakers .speaker-card p:first-of-type { color: var(--ink-orange) !important; }
         @media (min-width: 768px) {
-            #confirmed-speakers .speaker-photo, #campus-series .speaker-photo { width: min(112px, 100%) !important; height: auto !important; }
+            #confirmed-speakers .speaker-photo { width: min(112px, 100%) !important; height: auto !important; }
             #confirmed-speakers .spk-photo-badge-wrap { width: min(112px, 100%); }
             #confirmed-speakers .spk-corner-badge { width: 38px; height: 38px; padding: 4px; }
-            #confirmed-speakers .speaker-card h4, #campus-series .speaker-card h4 { font-size: 0.95rem; }
-            #confirmed-speakers .speaker-card p, #campus-series .speaker-card p { font-size: 0.78rem !important; }
+            #confirmed-speakers .speaker-card h4 { font-size: 0.95rem; }
+            #confirmed-speakers .speaker-card p { font-size: 0.78rem !important; }
         }
 
         /* --- Value: six photographs, one line each --- */
@@ -1006,17 +1010,27 @@
         .gallery-foot .show-all { margin: 0; }
 
         /* --- Campus Series and venue, shortened --- */
-        .campus-layout { display: grid; gap: 1.75rem; align-items: center; }
-        .campus-lead { font-size: 1rem; color: var(--dark-grey); line-height: 1.6; margin: 0 0 1.25rem; max-width: 46ch; }
-        .campus-next { display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--dark-grey); margin-bottom: 1.25rem; }
-        .campus-next i { color: var(--ink-orange); margin-right: 0.45rem; }
-        .campus-when { color: var(--mid-grey); font-weight: 500; }
-        .campus-btns { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-        .campus-photo { display: block; border-radius: 20px; overflow: hidden; border: 1px solid var(--light); }
-        .campus-photo img { width: 100%; height: auto; display: block; }
-        .campus-panel { margin-top: 1.5rem; text-align: center; }
-        .campus-panel .speakers-grid { margin-top: 1.25rem; text-align: left; }
-        @media (min-width: 900px) { .campus-layout { grid-template-columns: 1fr 1fr; gap: 3.5rem; } }
+        /* --- Partners (the organiser, 16 Nov 2026): four partners with their
+           roles, straight under the hero. The ASL mark is drawn on black, so its
+           plate is black; the other three sit on white. --- */
+        .partners-band { background: #fff; padding: 2rem 0 2.25rem; border-bottom: 1px solid var(--light); }
+        .partners-title { font-size: 0.72rem; font-weight: 700; color: var(--mid-grey); text-transform: uppercase; letter-spacing: 0.12em; text-align: center; margin: 0 0 1.1rem; }
+        .partners-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem 0.75rem; }
+        .partner-tile { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.5rem; }
+        .partner-role { display: flex; align-items: flex-end; min-height: 2.6em; font-size: 0.68rem; font-weight: 700; color: var(--ink-orange); text-transform: uppercase; letter-spacing: 0.08em; line-height: 1.3; }
+        .partner-logo {
+            display: flex; align-items: center; justify-content: center; width: 100%; height: 84px; padding: 0.6rem 0.75rem;
+            border-radius: 14px; background: #fff; border: 1px solid rgba(30,33,64,0.1);
+            box-shadow: 0 1px 2px rgba(13,15,30,0.04), 0 10px 22px -16px rgba(13,15,30,0.22);
+        }
+        .partner-logo img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
+        .partner-logo-dark { background: #000; border-color: #000; }
+        .partner-name { font-size: 0.82rem; font-weight: 600; color: var(--charcoal); line-height: 1.3; }
+        @media (min-width: 900px) {
+            .partners-band { padding: 2.5rem 0 2.75rem; }
+            .partners-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem; }
+            .partner-logo { height: 96px; padding: 1rem 1.25rem; }
+        }
         #venue .venue-images img:nth-child(2) { display: none; }
         @media (min-width: 900px) { #venue .venue-images img:nth-child(2) { display: block; } }
         #venue .venue-btns { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.25rem; }
@@ -1027,7 +1041,7 @@
             .section-header { margin-bottom: 1.75rem; }
             .section-subtitle { font-size: 0.98rem; }
             .pm-vision-section, .cm-vision-section { padding: 2.75rem 0 !important; }
-            #campus-series, #venue, .past-gallery, .registration-cta { padding: 3.25rem 0 !important; }
+            #venue, .past-gallery, .registration-cta { padding: 3.25rem 0 !important; }
         }
 
         /* --- The offer follows the reader once the hero has gone --- */
@@ -1152,6 +1166,35 @@
             </div>
         </div>
     </div>
+
+    <!-- ===== PARTNERS (the organiser, 16 Nov 2026) ===== -->
+    <section class="partners-band" id="partners" aria-labelledby="partners-title">
+        <div class="container">
+            <h2 class="partners-title" id="partners-title">Partners</h2>
+            <ul class="partners-grid">
+                <li class="partner-tile">
+                    <span class="partner-role">AI Partner</span>
+                    <span class="partner-logo partner-logo-dark"><img width="720" height="230" loading="lazy" decoding="async" src="images/org-logos/aegis-superintelligence-lab.webp" alt="Aegis Superintelligence Lab (ASL)"></span>
+                    <span class="partner-name">Aegis Superintelligence Lab (ASL)</span>
+                </li>
+                <li class="partner-tile">
+                    <span class="partner-role">Assessment OS Partner &amp; Panel Host</span>
+                    <span class="partner-logo"><img width="336" height="145" loading="lazy" decoding="async" src="images/exhibitors/assessfy.webp" alt="Assessfy"></span>
+                    <span class="partner-name">Assessfy</span>
+                </li>
+                <li class="partner-tile">
+                    <span class="partner-role">Partner AI Centre of Excellence</span>
+                    <span class="partner-logo"><img width="260" height="96" loading="lazy" decoding="async" src="images/logo-aegis.webp" alt="Aegis School of Data Science and AI"></span>
+                    <span class="partner-name">Aegis School of Data Science and AI</span>
+                </li>
+                <li class="partner-tile">
+                    <span class="partner-role">Panel Host Partner</span>
+                    <span class="partner-logo"><img width="212" height="93" loading="lazy" decoding="async" src="images/exhibitors/jade-global.webp" alt="Jade Global"></span>
+                    <span class="partner-name">Jade Global</span>
+                </li>
+            </ul>
+        </div>
+    </section>
 
     <!-- ===== PM MODI VISION QUOTE ===== -->
     <section class="pm-vision-section section-pad-sm" id="pm-vision">
@@ -2296,96 +2339,6 @@
         </div>
     </section>
 
-    <!-- ===== CAMPUS SERIES (pre-event panels; the panellists open on request) ===== -->
-    <section id="campus-series" class="section-pad-sm" style="background:white;">
-        <div class="container">
-            <div class="campus-layout">
-                <div class="reveal">
-                    <h2 class="section-title" style="text-align:left;margin-bottom:0.75rem;">Pre-event panels, <span class="accent">on campus</span></h2>
-                    <p class="campus-lead">Free panels on AI and jobs at universities, ahead of November.</p>
-                    <div class="campus-next">
-                        <span data-end="2026-09-21T12:30:00+05:30"><i class="fas fa-university"></i> DJ Sanghvi College of Engineering, Mumbai <span class="campus-when">· 21 Sept</span></span>
-                        <span data-end="2026-09-30T16:30:00+05:30"><i class="fas fa-university"></i> Jawaharlal Nehru University, New Delhi <span class="campus-when">· 30 Sept</span></span>
-                    </div>
-                    <div class="campus-btns">
-                        <a href="/campus-series" class="btn btn-primary">See the Campus Series <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
-                        <a href="/insights" class="btn btn-outline">Reports &amp; recordings</a>
-                    </div>
-                </div>
-                <a href="/campus-jnu" class="campus-photo reveal reveal-delay-1">
-                    <img width="590" height="350" loading="lazy" decoding="async" src="images/campus-jnu-30sep.jpg" alt="AI and Employability pre-event panel discussion at Jawaharlal Nehru University, 30 September 2026">
-                </a>
-            </div>
-            <details class="more campus-panel" id="pre-event-speakers">
-                <summary><span class="more-l">Meet the panellists</span><span class="less">Hide the panellists</span></summary>
-                <div class="speakers-grid">
-                    <div class="speaker-card reveal" style="text-align:center;align-items:center;">
-                        <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-ashish-tendulkar-panel.webp" alt="Dr. Ashish Tendulkar, AI Practice Manager, Google" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
-                        <h4>Dr. Ashish Tendulkar</h4>
-                        <p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">AI Practice Manager</p>
-                        <p class="spk-org" style="font-size:0.76rem;">Google</p>
-                        <span class="speaker-topic topic-policy" style="margin-top:0.5rem;display:inline-block;">DJ Sanghvi &middot; 21 Sep</span>
-                    </div>
-                    <div class="speaker-card reveal" style="text-align:center;align-items:center;">
-                        <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-virendra-pal.webp" alt="Virendra Pal, AI & FinTech Expert" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
-                        <h4>Virendra Pal</h4>
-                        <p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">AI &amp; FinTech Expert</p>
-                        <span class="speaker-topic topic-policy" style="margin-top:0.5rem;display:inline-block;">DJ Sanghvi &middot; 21 Sep</span>
-                    </div>
-                    <div class="speaker-card reveal" style="text-align:center;align-items:center;">
-                        <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-bhupesh-daheria-panel.webp" alt="Bhupesh Daheria, CEO, Aegis School of Data Science, Founder, Assessfy" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
-                        <h4>Bhupesh Daheria</h4>
-                        <p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">CEO, Aegis School of Data Science</p>
-                        <p class="spk-org" style="font-size:0.76rem;">Founder, Assessfy</p>
-                        <span class="speaker-topic topic-policy" style="margin-top:0.5rem;display:inline-block;">Both panels</span>
-                    </div>
-                    <div class="speaker-card reveal" style="text-align:center;align-items:center;">
-                        <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-brojen-singh-panel.webp" alt="Prof. R. K. Brojen Singh, Professor and Dean, School of Computational and Integrative Sciences, Jawaharlal Nehru University" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
-                        <h4>Prof. R. K. Brojen Singh</h4>
-                        <p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">Professor &amp; Dean, School of Computational and Integrative Sciences</p>
-                        <p class="spk-org" style="font-size:0.76rem;">Jawaharlal Nehru University</p>
-                        <span class="speaker-topic topic-policy" style="margin-top:0.5rem;display:inline-block;">JNU &middot; 30 Sep</span>
-                    </div>
-                    <div class="speaker-card reveal" style="text-align:center;align-items:center;">
-                        <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-sougata-mukherjea-panel.webp" alt="Prof. Sougata Mukherjea, Professor of Practice, Computer Technology, IIT Delhi" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
-                        <h4>Prof. Sougata Mukherjea</h4>
-                        <p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">Professor of Practice, Computer Technology</p>
-                        <p class="spk-org" style="font-size:0.76rem;">IIT Delhi</p>
-                        <span class="speaker-topic topic-policy" style="margin-top:0.5rem;display:inline-block;">JNU &middot; 30 Sep</span>
-                    </div>
-                    <div class="speaker-card reveal" style="text-align:center;align-items:center;">
-                        <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-madhvendra-singh-panel.webp" alt="Madhvendra Singh, Chief Executive Officer, Electronics Sector Skills Council of India" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
-                        <h4>Madhvendra Singh</h4>
-                        <p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">Chief Executive Officer</p>
-                        <p class="spk-org" style="font-size:0.76rem;">Electronics Sector Skills Council of India</p>
-                        <span class="speaker-topic topic-policy" style="margin-top:0.5rem;display:inline-block;">JNU &middot; 30 Sep</span>
-                    </div>
-                    <div class="speaker-card reveal" style="text-align:center;align-items:center;">
-                        <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-parna-ghosh-panel.webp" alt="Parna Ghosh, President, Group CIO & Data Protection Officer, Uno Minda" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
-                        <h4>Parna Ghosh</h4>
-                        <p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">President, Group CIO &amp; Data Protection Officer</p>
-                        <p class="spk-org" style="font-size:0.76rem;">Uno Minda</p>
-                        <span class="speaker-topic topic-policy" style="margin-top:0.5rem;display:inline-block;">JNU &middot; 30 Sep</span>
-                    </div>
-                    <div class="speaker-card reveal" style="text-align:center;align-items:center;">
-                        <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-shreenivas-chetlapalli-panel.webp" alt="Shreenivas Chetlapalli, Vice President, Technology and Strategy, Jade Global" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
-                        <h4>Shreenivas Chetlapalli</h4>
-                        <p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">Vice President, Technology and Strategy</p>
-                        <p class="spk-org" style="font-size:0.76rem;">Jade Global</p>
-                        <span class="speaker-topic topic-policy" style="margin-top:0.5rem;display:inline-block;">JNU &middot; 30 Sep</span>
-                    </div>
-                    <div class="speaker-card reveal" style="text-align:center;align-items:center;">
-                        <img width="320" height="320" loading="lazy" decoding="async" src="images/speaker-priyanka-srivastava-panel.webp" alt="Priyanka Srivastava, Senior Editor, Education Times, moderator of the panel" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:132px;height:132px;margin:0 auto;object-fit:cover;">
-                        <h4>Priyanka Srivastava</h4>
-                        <p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">Senior Editor (Moderator)</p>
-                        <p class="spk-org" style="font-size:0.76rem;">Education Times</p>
-                        <span class="speaker-topic topic-policy" style="margin-top:0.5rem;display:inline-block;">JNU &middot; 30 Sep</span>
-                    </div>
-                </div>
-            </details>
-        </div>
-    </section>
-
     <!-- ===== VENUE ===== -->
     <section class="venue" id="venue" style="background:var(--off-white);">
         <div class="container">
@@ -2638,24 +2591,6 @@
         </div>
     </footer>
 
-    <script>
-    // Homepage campus strip: a panel that has ended drops off the "upcoming" list.
-    // If they have all ended the list says so rather than going blank.
-    (function () {
-      var items = Array.prototype.slice.call(document.querySelectorAll('#campus-series [data-end]'));
-      if (!items.length) return;
-      var now = Date.now(), left = 0, parent = items[0].parentNode;
-      items.forEach(function (el) {
-        var end = Date.parse(el.getAttribute('data-end'));
-        if (!isNaN(end) && end < now) el.remove(); else left++;
-      });
-      if (!left && parent) {
-        var span = document.createElement('span');
-        span.innerHTML = '<i class="fas fa-university" style="color:var(--saffron);margin-right:0.5rem;"></i> Next campus being announced';
-        parent.appendChild(span);
-      }
-    })();
-    </script>
     <script defer src="js/main.js?v=20261112b"></script>
     <!-- images loaded directly from img/ folder -->
 
