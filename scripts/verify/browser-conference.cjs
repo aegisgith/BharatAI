@@ -3,7 +3,8 @@
 // organisers: the board with both hall names; a session added by clicking a hall, its
 // speaker picked by typing; a clash shown while typing, refused, then saved anyway and
 // fixed; a draft kept from attendees; a speaker added with a photo and given a slot
-// from their card; a speaker announced; their slot emailed; hide and show; a hall
+// from their card (a photo chosen for a listed speaker is saved at once; a file that
+// is not a picture is refused with a reason); a speaker announced; their slot emailed; hide and show; a hall
 // changed; the list, the CSV and the run sheet; Escape. On a phone: Admin fits the
 // screen; in the app, a speaker's "When and where" and the Conference Schedule show
 // both hall names, and nothing typed in Admin runs on the page. No page errors.
@@ -112,6 +113,20 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     const card = page.locator('.cm-card', { hasText: 'Dr. Meera Iyer' });
     check('saved: their card is there with their photo', await until(async () => ((await card.locator('img.cm-ava').getAttribute('src').catch(() => '')) || '').startsWith('/api/uploads/speakers/'), 10000));
     check('the photo loads', await page.evaluate(async () => { const i = [...document.querySelectorAll('.cm-card img.cm-ava')].find(x => x.src.includes('/api/uploads/speakers/')); return !!i && (await fetch(i.src)).ok; }));
+    // ---- a photo chosen for a speaker already on the list is saved at once (16 Nov) ----
+    await card.locator('[data-cm="edit-speaker"]').first().click();
+    await until(async () => (await page.locator('#cm-drawer.is-open').count()) && (await page.locator('#cm-p-name').inputValue()) === 'Dr. Meera Iyer');
+    const prevUrl = await page.locator('#cm-p-ava img').getAttribute('src');
+    check('the sheet says the photo is saved the moment it is chosen', (await page.locator('#cm-p-note').textContent()).includes('saved the moment you choose it'));
+    await page.setInputFiles('#cm-p-file', PHOTO);
+    check('choosing a photo saves it without pressing Save', await until(async () => (await page.locator('#cm-p-note').textContent()).startsWith('Photo saved'), 10000), await page.locator('#cm-p-err').textContent());
+    check('their card shows the new photo straight away', await until(async () => { const s = (await card.locator('img.cm-ava').getAttribute('src').catch(() => '')) || ''; return s.startsWith('/api/uploads/speakers/') && s !== prevUrl; }, 5000));
+    check('the circle itself opens the picker', await page.evaluate(() => { let opened = false; const f = document.getElementById('cm-p-file'); f.addEventListener('click', e => { opened = true; e.preventDefault(); }, { once: true }); document.getElementById('cm-p-ava').click(); return opened; }));
+    await page.setInputFiles('#cm-p-file', path.join(__dirname, 'browser-conference.cjs'));
+    check('a file that is not a picture is refused with a reason, not quietly', await until(async () => /not a picture|could not be opened/.test(await page.locator('#cm-p-err').textContent())), await page.locator('#cm-p-err').textContent());
+    check('the photo they had stays on the sheet after a refused file', ((await page.locator('#cm-p-ava img').getAttribute('src')) || '').startsWith('/api/uploads/speakers/'));
+    await page.locator('#cm-drawer .cm-x').click();
+    await until(async () => !(await page.locator('#cm-drawer.is-open').count()));
     await page.click('[data-cm="spk-filter"][data-k="noslot"]');
     check('"No session yet" lists them', (await page.locator('.cm-card').count()) === 1 && (await page.locator('.cm-card').textContent()).includes('Meera'));
     await page.click('.cm-card [data-cm="slot-for"]');

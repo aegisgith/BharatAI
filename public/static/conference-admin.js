@@ -635,9 +635,10 @@
     SP = { id: sp.id || null, photo: null };
     var ss = sp.id ? sessionsOf(sp.id) : [];
     var html = '<div id="cm-p-err"></div>' +
-      '<div class="cm-photo">' + '<span id="cm-p-ava">' + ava(sp) + '</span><div>' +
-        '<label class="cm-btn" style="display:inline-flex"><i class="fas fa-camera"></i>' + (sp.photo_url ? 'Change photo' : 'Add a photo') + '<input type="file" id="cm-p-file" accept="image/jpeg,image/png,image/webp" style="display:none" data-cm-input="photo"></label>' +
-        '<div class="cm-help">A head-and-shoulders photo. It is cropped to a square from the middle.</div></div></div>' +
+      '<div class="cm-photo" id="cm-p-photo">' +
+        '<button type="button" class="cm-photo-pick" id="cm-p-ava" data-cm="pick-photo" title="' + (sp.photo_url ? 'Change the photo' : 'Add a photo') + '" aria-label="' + (sp.photo_url ? 'Change the photo' : 'Add a photo') + '">' + ava(sp) + '</button><div>' +
+        '<label class="cm-btn" style="display:inline-flex"><i class="fas fa-camera"></i>' + (sp.photo_url ? 'Change photo' : 'Add a photo') + '<input type="file" id="cm-p-file" accept="image/*" style="display:none" data-cm-input="photo" data-id="' + (sp.id || '') + '"></label>' +
+        '<div class="cm-help" id="cm-p-note">' + PHOTO_HELP(sp.id) + '</div></div></div>' +
       '<div class="cm-f"><label for="cm-p-name">Name <em>as it should be printed, with Shri, Dr. or Hon’ble if used</em></label><input id="cm-p-name" class="cm-in" maxlength="120" value="' + esc(sp.name || preset.name || '') + '" autocomplete="off"></div>' +
       '<div class="cm-row"><div class="cm-f"><label for="cm-p-role">Designation</label><input id="cm-p-role" class="cm-in" maxlength="200" value="' + esc(sp.role || '') + '" placeholder="e.g. Chief Technology Officer" autocomplete="off"></div>' +
       '<div class="cm-f"><label for="cm-p-org">Organisation</label><input id="cm-p-org" class="cm-in" maxlength="200" value="' + esc(sp.organisation || '') + '" placeholder="e.g. Bandhan Bank" autocomplete="off"></div></div>' +
@@ -680,13 +681,24 @@
     if (sameName) v.allow_same_name = true;
     var btn = $('cm-p-save'); if (btn) btn.disabled = true;
     try {
-      var id = SP.id;
+      var id = SP.id, pending = SP.photo, wasNew = !SP.id;
       if (id) await api.put('/api/admin/speakers/' + id, v);
       else { var r = await api.post('/api/admin/speakers', v); id = r.id; }
-      if (SP.photo) await uploadPhoto(id, SP.photo);
+      var photoErr = pending ? await uploadPhoto(id, pending) : '';
       closeDrawer();
-      say(SP.id ? 'Speaker saved.' : 'Speaker added.');
+      say(wasNew ? 'Speaker added.' : 'Speaker saved.');
       await load();
+      if (photoErr) {
+        // Their details are saved; the photo is still on the sheet so one press saves it.
+        var again = speakerById(id);
+        if (again) {
+          openSpeaker(again);
+          SP.photo = pending;
+          var pa = $('cm-p-ava'); if (pa) pa.innerHTML = '<img class="cm-ava" src="' + pending + '" alt="">';
+          var pn = $('cm-p-note'); if (pn) pn.textContent = 'Photo ready. Press Save changes to upload it.';
+          $('cm-p-err').innerHTML = '<div class="cm-err">' + esc(again.name) + ' is saved, but the photo did not upload: ' + esc(photoErr) + ' Press Save changes to try again.</div>';
+        }
+      }
     } catch (e) {
       if (btn) btn.disabled = false;
       var data = e && e.data;
@@ -695,31 +707,73 @@
         (data && data.speaker_id && !data.same_name ? ' <button type="button" class="cm-btn is-small" data-cm="edit-speaker" data-id="' + Number(data.speaker_id) + '">Open them</button>' : '') + '</div>';
     }
   }
-  // Square from the centre, 480px, JPEG: what the app and the cards draw.
+  // Square from the centre, 480px, JPEG: what the app and the cards draw. Any picture
+  // the browser can open is accepted; an iPhone's HEIC is not, and the message says
+  // what to do. Nothing here ends quietly: the sheet always hears back.
   function squarePhoto(file) {
     return new Promise(function (resolve, reject) {
-      if (!file || !/^image\/(jpeg|png|webp)$/.test(file.type)) { reject(new Error('Choose a JPEG, PNG or WebP photo.')); return; }
-      if (file.size > 15 * 1024 * 1024) { reject(new Error('That file is over 15 MB. Choose a smaller photo.')); return; }
-      var fr = new FileReader();
-      fr.onload = function () {
-        var img = new Image();
-        img.onload = function () {
-          var side = Math.min(img.width, img.height), out = Math.min(480, side);
-          var cv = document.createElement('canvas'); cv.width = out; cv.height = out;
-          var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, out, out);
-          ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, out, out);
-          resolve(cv.toDataURL('image/jpeg', 0.86));
-        };
-        img.onerror = function () { reject(new Error('That file could not be read as a photo.')); };
-        img.src = fr.result;
+      if (!file) { reject(new Error('Choose a photo.')); return; }
+      var name = String(file.name || '');
+      if (/\.(heic|heif)$/i.test(name) || /^image\/hei[cf]$/.test(file.type)) { reject(new Error('That is an iPhone HEIC photo, which the browser cannot open. Ask for it as a JPEG (sending it on WhatsApp or email converts it), then try again.')); return; }
+      if (file.type && !/^image\//.test(file.type)) { reject(new Error('That file is not a picture' + (name ? ' (' + name + ')' : '') + '. Choose a JPEG or PNG photo.')); return; }
+      if (file.size > 25 * 1024 * 1024) { reject(new Error('That file is over 25 MB. Choose a smaller photo.')); return; }
+      var url = URL.createObjectURL(file);
+      var done = function (fn) { try { URL.revokeObjectURL(url); } catch (e) {} fn(); };
+      var img = new Image();
+      img.onload = function () {
+        done(function () {
+          try {
+            var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+            var side = Math.min(w, h), out = Math.min(480, side);
+            if (!side) throw new Error('empty');
+            var cv = document.createElement('canvas'); cv.width = out; cv.height = out;
+            var ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, out, out);
+            ctx.drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, out, out);
+            resolve(cv.toDataURL('image/jpeg', 0.86));
+          } catch (e) { reject(new Error('That file could not be read as a photo. Save it as a JPEG or PNG and try again.')); }
+        });
       };
-      fr.onerror = function () { reject(new Error('That file could not be read.')); };
-      fr.readAsDataURL(file);
+      img.onerror = function () { done(function () { reject(new Error('That file could not be opened as a photo' + (name ? ' (' + name + ')' : '') + '. Save it as a JPEG or PNG and try again.')); }); };
+      img.src = url;
     });
   }
+  function PHOTO_HELP(id) { return 'A head-and-shoulders photo, JPEG or PNG. It is cropped to a square from the middle' + (id ? ' and saved the moment you choose it.' : '. It uploads when you press Add speaker.'); }
+  // A photo chosen or dropped on the sheet: shown at once, and for a speaker already on
+  // the list saved straight away (no Save needed). A new speaker's photo goes up with them.
+  async function photoChosen(file) {
+    if (!SP) return;
+    var a = $('cm-p-ava'), note = $('cm-p-note'), err = $('cm-p-err');
+    if (err) err.innerHTML = '';
+    if (a) a.innerHTML = '<span class="cm-ava is-busy" aria-hidden="true"><i class="fas fa-spinner fa-spin"></i></span>';
+    if (note) note.textContent = 'Reading the photo…';
+    var dataUrl;
+    try { dataUrl = await squarePhoto(file); }
+    catch (e) {
+      if (a) a.innerHTML = ava(SP.id ? speakerById(SP.id) : { name: val('cm-p-name') });
+      if (note) note.textContent = PHOTO_HELP(SP.id);
+      if (err) err.innerHTML = '<div class="cm-err">' + esc(errText(e)) + '</div>';
+      return;
+    }
+    SP.photo = dataUrl;
+    if (a) a.innerHTML = '<img class="cm-ava" src="' + dataUrl + '" alt="">';
+    if (!SP.id) { if (note) note.textContent = 'Photo ready. It uploads when you press Add speaker.'; return; }
+    if (note) note.textContent = 'Saving the photo…';
+    try {
+      var r = await api.post('/api/admin/speakers/' + SP.id + '/photo', { image: dataUrl });
+      SP.photo = null;
+      var sp = speakerById(SP.id); if (sp && r && r.photo_url) sp.photo_url = r.photo_url;
+      if (note) note.textContent = 'Photo saved. It is on their card, their profile in the app and their pass.';
+      say('Photo saved.');
+      body();
+    } catch (e) {
+      if (note) note.textContent = 'Photo ready. Press Save changes to upload it.';
+      if (err) err.innerHTML = '<div class="cm-err">The photo was not saved: ' + esc(errText(e)) + ' Press Save changes to try again.</div>';
+    }
+  }
+  // Returns '' when the photo is up, or the reason it is not.
   async function uploadPhoto(id, dataUrl) {
-    try { await api.post('/api/admin/speakers/' + id + '/photo', { image: dataUrl }); }
-    catch (e) { say('Saved, but the photo did not upload: ' + errText(e), 'error'); }
+    try { await api.post('/api/admin/speakers/' + id + '/photo', { image: dataUrl }); return ''; }
+    catch (e) { return errText(e) || 'the server did not answer.'; }
   }
   async function togglePublished(id) {
     var sp = speakerById(id); if (!sp) return;
@@ -1626,6 +1680,7 @@
     'p-up': function (el) { var i = Number(el.getAttribute('data-i')); if (i > 0) { var p = ED.people.splice(i, 1)[0]; ED.people.splice(i - 1, 0, p); drawPeople(); } },
     'p-del': function (el) { ED.people.splice(Number(el.getAttribute('data-i')), 1); drawPeople(); liveCheck(); },
     'new-speaker': function () { openSpeaker(null); },
+    'pick-photo': function () { var f = $('cm-p-file'); if (f) f.click(); },
     'edit-speaker': function (el) { var sp = speakerById(el.getAttribute('data-id')); if (sp) openSpeaker(sp); },
     'save-speaker': function () { saveSpeaker(false); },
     'save-speaker-same': function () { saveSpeaker(true); },
@@ -1818,13 +1873,21 @@
         var t = announceText(sp, s); $('cm-a-title').value = t.title; $('cm-a-content').value = t.content;
         var pn = $('cm-a-panel'); if (pn) pn.innerHTML = panelSwitch(s);
       } else if (k === 'photo') {
-        var f = el.files && el.files[0]; if (!f || !SP) return;
-        squarePhoto(f).then(function (dataUrl) {
-          SP.photo = dataUrl;
-          var a = $('cm-p-ava'); if (a) a.innerHTML = '<img class="cm-ava" src="' + dataUrl + '" alt="">';
-          say('Photo ready. It uploads when you save.', 'info');
-        }, function (e) { $('cm-p-err').innerHTML = '<div class="cm-err">' + esc(errText(e)) + '</div>'; });
+        var f = el.files && el.files[0]; if (!f) return;
+        if (!SP) SP = { id: Number(el.getAttribute('data-id')) || null, photo: null };
+        el.value = '';
+        photoChosen(f);
       }
+    });
+    // A photo dropped on the photo row of the speaker sheet.
+    document.addEventListener('dragover', function (ev) { var z = ev.target.closest && ev.target.closest('#cm-p-photo'); if (!z) return; ev.preventDefault(); z.classList.add('is-drop'); });
+    document.addEventListener('dragleave', function (ev) { var z = ev.target.closest && ev.target.closest('#cm-p-photo'); if (z) z.classList.remove('is-drop'); });
+    document.addEventListener('drop', function (ev) {
+      var z = ev.target.closest && ev.target.closest('#cm-p-photo'); if (!z) return;
+      ev.preventDefault(); z.classList.remove('is-drop');
+      var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]; if (!f) return;
+      if (!SP) { var inp = $('cm-p-file'); SP = { id: inp ? Number(inp.getAttribute('data-id')) || null : null, photo: null }; }
+      photoChosen(f);
     });
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'Escape' && drawerOpen()) { closeDrawer(); return; }

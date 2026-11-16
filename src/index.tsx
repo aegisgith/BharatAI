@@ -41319,7 +41319,7 @@ function adminPageHTML(): string {
        is the card that speaker would have made themselves. -->
   <script src="/js/social-card.js?v=20261102"></script>
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
-  <link rel="stylesheet" href="/static/conference-admin.css?v=20261112c">
+  <link rel="stylesheet" href="/static/conference-admin.css?v=20261116">
   <style>
     * { font-family: 'Manrope', sans-serif; }
     body { background: #F8F9FF; color: #1E2140; }
@@ -41697,7 +41697,7 @@ function adminPageHTML(): string {
     <div id="modal-box" class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;"></div>
   </div>
 
-  <script src="/static/conference-admin.js?v=20261115"></script>
+  <script src="/static/conference-admin.js?v=20261116"></script>
   <script src="/static/speaker-brief.js?v=20261116c"></script>
   <script src="/static/talk-brief.js?v=20261116"></script>
   <script src="/static/event-week.js?v=20261116"></script>
