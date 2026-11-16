@@ -7,6 +7,8 @@ import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots } from './routes/conference'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
+import talkBrief, { configureTalkBrief } from './routes/talk-brief'
+import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
 import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql } from './routes/workshop-reminder'
 import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
@@ -532,6 +534,52 @@ configureSpeakerBrief({ sendEmail: sendAdminEmail, audit, emailHeader: emailBran
     return href
   } })
 app.route('/', speakerBrief)
+// Innovation Talk briefs (16 Nov 2026): each stage speaker's day, time, hall, length,
+// topic and pass in one email, previewed and sent from Admin -> Innovation Talks ("Time
+// & hall briefs"); routes/talk-brief.ts, screen public/static/talk-brief.js. Lambdas,
+// because some of these are consts declared further down.
+configureTalkBrief({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader,
+  hallWhere: (h: any) => ITALK_HALLS[String(h || '').trim()] || '',
+  detailsLink: (c: any, id: number) => talkDetailsLink(c, id),
+  // The same address order as the "details we need" email: the talk's own speaker email,
+  // the person by that name on the company's team list, the booth contact.
+  contacts: async (c: any, eventId: number) => {
+    const q = async (sql: string) => ((await c.env.DB.prepare(sql).bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
+    const [talks, exhibitors, team, heldIds] = await Promise.all([
+      q('SELECT * FROM innovation_talks WHERE event_id = ?'),
+      q('SELECT id, company_name, contact_email FROM exhibitors WHERE event_id = ?'),
+      q("SELECT exhibitor_id, first_name, last_name, email FROM exhibitor_team WHERE event_id = ? AND trim(email) <> ''"),
+      italkHeldIds(c)])
+    const out: Record<string, any> = {}
+    for (const t of talks) out[String(t.id)] = { ...italkContactFor(t, exhibitors, team), protocol: italkIsProtocol(t) || heldIds.has(Number(t.id)) }
+    return out
+  },
+  passLink: async (c: any, eventId: number, email: string) => {
+    const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+    let href = appUrl + '?email=' + encodeURIComponent(email) + '&action=download-pass'
+    try {
+      if (await verifiedLoginEnabled(c)) href += '&token=' + (await createLoginToken(c, eventId, email, PROFILE_LINK_TTL_MINUTES, 4)).token
+    } catch { /* the plain link opens the sign-in box on their address */ }
+    return href
+  } })
+app.route('/', talkBrief)
+// The event-week email (16 Nov 2026): "Get ready for 20 and 21 Nov" to delegates,
+// exhibitors and everyone else, a checklist of photo, pass, LinkedIn badge, the app and
+// meetings, each step a sign-in button; a campaign of kind event_week (BULK EMAIL
+// CAMPAIGNS), previewed and sent from the Overview card; routes/event-week.ts, screen
+// public/static/event-week.js.
+configureEventWeek({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader,
+  appUrl: async (c: any) => (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app',
+  signIn: async (c: any, eventId: number, email: string) => (await verifiedLoginEnabled(c)) ? (await createLoginToken(c, eventId, email, PROFILE_LINK_TTL_MINUTES, 6)).token : '',
+  markSig: (c: any, kind: string, id: any) => mailMarkSig(c, kind, id), mark: (c: any, action: string, id: any, sig: any) => mailMark(c, action, id, sig),
+  pixel: () => UPGRADE_PIXEL,
+  clauses: async (c: any) => ({ mc: await mainEventClause(c), sc: await suppressionClause(c), noEmail: NO_EMAIL_SQL() }),
+  profileGaps: (a: any) => attendeeProfileGaps(a), notifyKind: (a: any) => notifyKind(a), waitlisted: (a: any) => entryWaitlisted(a),
+  pushPassFor: (a: any) => pushPassFor(a), rsPrice: (p: string) => rsPrice(p), passKey: (p: string) => PASS_KEY[p] || 'delegate',
+  window: () => sendWindowState(),
+  decorate: async (c: any, html: string, to: string) => (await withAppOnPhoneFor(c, html, to)).replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, to)) + '</body>'),
+  setting: (c: any, k: string) => settingValue(c, k), settingWrite: (c: any, k: string, v: string) => settingWrite(c, k, v) })
+app.route('/', eventWeek)
 // A speaker fills in their own Innovation Talk details (12 Nov 2026): the "a few details
 // we need" email links to /app/my-talk?t=<signed token>, no sign-in; routes/talk-self.ts,
 // page public/static/talk-self.js. It writes only what a speaker sends, never time or hall.
@@ -20594,6 +20642,7 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'waitlist_confirm' ? `/api/admin/attendees/${r.attendee_id}/send-waitlist-confirm`
     : kind === 'feedback' ? `/api/admin/attendees/${r.attendee_id}/send-feedback`
     : kind === 'workshop_invite' ? `/api/admin/attendees/${r.attendee_id}/send-workshop-invite`
+    : kind === 'event_week' ? `/api/admin/attendees/${r.attendee_id}/send-event-week`
     : kind === 'offer' ? '/api/admin/offers/send'
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
@@ -20657,6 +20706,9 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
     ).bind(eventId).all()
     return (results as any[]) || []
   }
+  // The event-week email sorts its own audience (routes/event-week.ts): the kind of
+  // email needs the whole row.
+  if (kind === 'event_week') return eventWeekAudienceRows(c, audience, { mc, sc, noEmail: NO_EMAIL_SQL() })
   if (kind === 'networking') {
     // Every conference registrant not on a networking run yet. Paid passes and
     // senior titles first: theirs are the requests the others receive. Last, anyone
@@ -20696,7 +20748,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
@@ -20750,6 +20802,7 @@ app.post('/api/admin/campaigns', async (c) => {
   const title = String(body.title || (kind === 'offer' ? OFFER_AUDIENCES[audience].title : kind === 'upgrade' ? (audience === 'students' ? 'Upgrade offer: Student Pass to students' : 'Upgrade offer: Delegate Pass to senior Visitors')
     : kind === 'notify' ? 'Account-ready email'
     : kind === 'networking' ? 'Networking app email'
+    : kind === 'event_week' ? 'Get ready for 20 and 21 Nov'
     : kind === 'thankyou' ? 'Post-event thank you'
     : kind === 'profile_reminder' ? 'Complete your profile'
     : kind === 'waitlist_confirm' ? 'Waiting list: your Free Visitor Pass is confirmed'
@@ -20809,11 +20862,13 @@ app.post('/api/admin/campaigns/:id/pump', async (c) => {
 async function tickCampaigns(c: any): Promise<any[]> {
   const secret = String(c.env?.ADMIN_SECRET || '')
   if (!secret) return []
-  const { results } = await c.env.DB.prepare("SELECT id FROM campaigns WHERE status = 'running' ORDER BY id").all().catch(() => ({ results: [] }))
+  const { results } = await c.env.DB.prepare("SELECT id, kind FROM campaigns WHERE status = 'running' ORDER BY id").all().catch(() => ({ results: [] }))
   const out: any[] = []
   for (const k of (results as any[]) || []) {
     try {
-      const r = await pumpCampaign(c, k.id, 1, 'Bearer ' + secret)
+      // The event-week email is not paced by the send gap (routes/event-week.ts): ten a
+      // minute, so a few thousand go in a day and not a week.
+      const r = await pumpCampaign(c, k.id, k.kind === 'event_week' ? 10 : 1, 'Bearer ' + secret)
       out.push({ id: k.id, sent: r.body?.sent ?? null, remaining: r.body?.remaining ?? null, wait_seconds: r.body?.wait_seconds ?? 0 })
     } catch (e: any) { out.push({ id: k.id, error: String(e?.message || e).slice(0, 200) }) }
   }
@@ -33065,6 +33120,8 @@ function mainPageScript(): string {
       // And the networking email's buttons carry nw=.
       const nwParam = (urlParams.get('nw') || '').split('.');
       if (nwParam[1]) fetch('/api/netmail-click', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: nwParam[0], s: nwParam[1] }), keepalive: true }).catch(function () {});
+      const ewParam = (urlParams.get('ew') || '').split('.');
+      if (ewParam[1]) fetch('/api/eventweek-click', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: ewParam[0], s: ewParam[1] }), keepalive: true }).catch(function () {});
       // The QR on a campus panel's closing slide lands here with ?panel=&claim=.
       // Kept in localStorage rather than the URL: the person may still have to
       // sign in, and the sign-in link opens from their mail app in another tab.
@@ -41641,6 +41698,8 @@ function adminPageHTML(): string {
 
   <script src="/static/conference-admin.js?v=20261115"></script>
   <script src="/static/speaker-brief.js?v=20261113"></script>
+  <script src="/static/talk-brief.js?v=20261116"></script>
+  <script src="/static/event-week.js?v=20261116"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
   <script src="/static/workshop-reminder.js?v=2026111503"></script>
 </body>
@@ -43998,6 +44057,7 @@ function adminPageScript(): string {
             \${notifyAutoHTML(lunchStats.notifyAuto)}
             \${notifyFunnelHTML(lunchStats.notifyMail)}
             <div id="netmail-strip"></div>
+            <div id="eventweek-strip"></div>
             <div class="mt-4 pt-3 border-t border-white/10">
               <p class="text-xs text-gray-400 leading-relaxed">
                 <i class="fas fa-info-circle text-blue-400 mr-1"></i>
@@ -52132,6 +52192,7 @@ function adminPageScript(): string {
         + '</div>'
         + '<div class="flex gap-2 flex-wrap">'
         + '<button onclick="italkAskAll()" class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-envelope mr-1.5 text-primary-400"></i>Ask everyone for missing details</button>'
+        + (window.TalkBrief ? '<button onclick="TalkBrief.openList()" class="px-4 py-2 rounded-xl text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-clock mr-1.5 text-primary-400"></i>Time &amp; hall briefs</button>' : '')
         + '<button onclick="addInnovationTalk()" class="px-4 py-2 rounded-xl text-xs font-medium bg-primary-600 hover:bg-primary-500 text-white transition"><i class="fas fa-plus mr-1.5"></i>Add Talk</button>'
         + '</div></div>'
         + italkAutoStrip()
