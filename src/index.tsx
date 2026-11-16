@@ -26197,20 +26197,9 @@ const MEDIA_PASS_PER_HOUR = 5
 const _mediaPassAsks = new Map<string, number[]>()
 const MEDIA_PASS_REPLY = 'We review every request and reply by email within 2 working days.'
 const MEDIA_PASS_INSTAGRAM = '@bharataiinnovation.ai'
-// The approval email names one person from the organising team for help at the venue
-// and for the links to what they post. A change of person is these three lines.
+// The approval email names one person from the organising team for help at the venue.
+// Nothing is demanded of them in return for the pass (organiser, 16 Nov 2026).
 const MEDIA_PASS_CONTACT = { name: 'Akshay Khilare', phone: '+91 88508 99232', wa: '918850899232', email: 'akshay@aegis.edu.in' }
-// What the approval email asks of them in return for the free pass, by kind.
-const MEDIA_PASS_ASKS: Record<string, string[]> = {
-  influencer: [
-    '<strong>Before you come:</strong> one post or story saying you will be at Bharat AI Innovation, tagging ' + MEDIA_PASS_INSTAGRAM + '.',
-    '<strong>At the event:</strong> at least 3 stories from the venue, tagging ' + MEDIA_PASS_INSTAGRAM + '.',
-    '<strong>Within a week after (by 28 November):</strong> one reel or post about the event, with a Collab invite to ' + MEDIA_PASS_INSTAGRAM + '.',
-  ],
-  media: [
-    '<strong>Within two weeks (by 5 December):</strong> one story, article, video or TV segment about the event.',
-  ],
-}
 
 type MediaPassAnswers = {
   kind: string; name: string; email: string; mobile: string; organisation: string; designation: string; city: string
@@ -26766,7 +26755,7 @@ async function issueMediaPass(c: any, x: { kind: string; name: string; email: st
 }
 
 // "Your pass is approved", with the button that signs them in at their pass.
-async function mediaPassApprovedMail(c: any, x: { name: string; email: string; pass: string; kept: boolean; note: string; kind: string }): Promise<{ subject: string; html: string }> {
+async function mediaPassApprovedMail(c: any, x: { name: string; email: string; pass: string; kept: boolean; note: string }): Promise<{ subject: string; html: string }> {
   const e = payEsc
   const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
   const email = String(x.email || '').trim().toLowerCase()
@@ -26784,18 +26773,12 @@ async function mediaPassApprovedMail(c: any, x: { name: string; email: string; p
         <div style="text-align:center;margin:20px 0;">${payButton(href, 'Download my pass')}</div>
         ${payP('The button signs you in to the event app with this email address and opens your pass. Keep the pass on your phone, or print it, and bring a photo ID.')}
         ${payP('If the button has stopped working, open <a href="' + e(appUrl) + '" style="color:#C84F00;">' + e(appUrl.replace(/^https?:\/\//, '')) + '</a> and sign in with ' + e(email) + '.')}
-        <h3 style="font-size:17px;color:#1E2140;margin:24px 0 8px;">What we ask of you</h3>
-        <ul style="margin:0 0 12px;padding-left:20px;font-size:15px;line-height:1.6;color:#333;">
-          ${(MEDIA_PASS_ASKS[x.kind] || MEDIA_PASS_ASKS.media).concat([
-            'Send ' + e(MEDIA_PASS_CONTACT.name.split(' ')[0]) + ' the links to what you post, so we can share it too.',
-            'Wear your badge at the venue, and ask before filming inside a workshop.',
-          ]).map(t => '<li style="margin:0 0 6px;">' + t + '</li>').join('')}
-        </ul>
         <div style="background:#FFF7F0;border:1px solid #F3D3BA;border-radius:10px;padding:14px 16px;margin:16px 0;font-size:15px;line-height:1.6;color:#1E2140;">
           <strong>Your contact at the venue: ${e(MEDIA_PASS_CONTACT.name)}</strong>, Bharat AI Innovation organising team.<br>
           Call or WhatsApp <a href="https://wa.me/${MEDIA_PASS_CONTACT.wa}" style="color:#C84F00;font-weight:700;">${e(MEDIA_PASS_CONTACT.phone)}</a>, or email <a href="mailto:${e(MEDIA_PASS_CONTACT.email)}" style="color:#C84F00;">${e(MEDIA_PASS_CONTACT.email)}</a>.<br>
-          ${e(MEDIA_PASS_CONTACT.name.split(' ')[0])} can help you get in, set up speaker interviews and find good places to film.
-        </div>`)
+          ${e(MEDIA_PASS_CONTACT.name.split(' ')[0])} can help you get in, set up speaker interviews and find good places to film. If you send ${e(MEDIA_PASS_CONTACT.name.split(' ')[0])} links to your posts, we will be glad to share them too.
+        </div>
+        ${payP('When you post about the event, please tag Bharat AI Innovation (' + MEDIA_PASS_INSTAGRAM + ' on Instagram).')}`)
   return { subject: x.kept ? 'Your request is approved - Bharat AI Innovation 2026' : 'Your ' + x.pass + ' is approved - Bharat AI Innovation 2026', html }
 }
 
@@ -26843,7 +26826,7 @@ app.post('/api/admin/media-pass/:id/approve', async (c) => {
   if ('error' in issued) return c.json({ error: issued.error }, 400)
   let emailed = false, emailError = ''
   if (tell) {
-    const mail = await mediaPassApprovedMail(c, { name: inq.name, email: inq.email, pass: issued.pass, kept: issued.kept, note, kind })
+    const mail = await mediaPassApprovedMail(c, { name: inq.name, email: inq.email, pass: issued.pass, kept: issued.kept, note })
     const sent = await sendAdminEmail(c, String(inq.email).trim().toLowerCase(), mail.subject, mail.html, { unsubscribe: false })
     emailed = sent.ok
     if (!sent.ok) emailError = sent.error
@@ -26866,9 +26849,7 @@ app.post('/api/admin/media-pass/:id/resend', async (c) => {
   const a = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE event_id = 1 AND lower(email) = ? ORDER BY id LIMIT 1').bind(String(inq.email || '').trim().toLowerCase()).first() as any
   if (!a) return c.json({ error: 'Nobody is registered with this email any more. Approve it again from Inquiries, or add them in Attendees.' }, 409)
   const pass = String(a.badge_type || '')
-  const kind = pass === 'Influencer Pass' ? 'influencer' : pass === 'Media Pass' ? 'media'
-    : MEDIA_PASS_KINDS.includes(meta.decision?.kind) ? meta.decision.kind : MEDIA_PASS_KINDS.includes(meta.kind) ? meta.kind : 'media'
-  const mail = await mediaPassApprovedMail(c, { name: inq.name, email: inq.email, pass, kept: !MEDIA_PASS_BADGES.includes(pass), note: '', kind })
+  const mail = await mediaPassApprovedMail(c, { name: inq.name, email: inq.email, pass, kept: !MEDIA_PASS_BADGES.includes(pass), note: '' })
   const sent = await sendAdminEmail(c, String(inq.email).trim().toLowerCase(), mail.subject, mail.html, { unsubscribe: false })
   if (!sent.ok) return c.json({ error: 'The email could not be sent: ' + sent.error }, 502)
   const me = inqActorName(c), at = new Date().toISOString()

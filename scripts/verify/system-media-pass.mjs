@@ -52,7 +52,7 @@ check('she is an attendee now: lowercased email, her LinkedIn from the form, the
 const ok = mailTo('meera.shah@creator.in')[0];
 const tok = (bodyOf(ok).match(/token=([0-9a-f]{64})/) || [])[1];
 check('her email: approved, the note, and the button', subj(ok) === 'Your Influencer Pass is approved - Bharat AI Innovation 2026' && /lanyard at the media desk/.test(bodyOf(ok)) && /Download my pass/.test(bodyOf(ok)) && !!tok);
-check('her email: what we ask of an influencer, and Akshay as her contact at the venue', /What we ask of you/.test(bodyOf(ok)) && /at least 3 stories/.test(bodyOf(ok)) && /Collab invite/.test(bodyOf(ok)) && /Akshay Khilare/.test(bodyOf(ok)) && /wa\.me\/918850899232/.test(bodyOf(ok)) && /akshay@aegis\.edu\.in/.test(bodyOf(ok)));
+check('her email: Akshay as her contact at the venue, and nothing demanded of her', /Akshay Khilare/.test(bodyOf(ok)) && /wa\.me\/918850899232/.test(bodyOf(ok)) && /akshay@aegis\.edu\.in/.test(bodyOf(ok)) && !/What we ask|at least 3 stories|Collab invite|by 5 December/.test(bodyOf(ok)));
 r = await call('/api/events/1/attendees/login', { method: 'POST', body: { email: 'meera.shah@creator.in', token: tok } });
 check('the button signs her in', r.status === 200 && r.json?.id === a.id && r.json.badge_type === 'Influencer Pass', r.status);
 const me = { Cookie: sessionCookie('iq-session', a.id) };
