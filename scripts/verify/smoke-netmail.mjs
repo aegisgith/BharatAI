@@ -147,7 +147,9 @@ check('the pump sends the first one through send-networking', r.status === 200 &
 const html = body(0);
 const sig = crypto.createHmac('sha256', SESSION).update('networking-mail:1').digest('hex').slice(0, 20);
 check('it carries the open picture on the site root', html.includes(`src="https://bharataiinnovation.com/api/netmail-open?a=1&amp;s=${sig}"`), html.slice(-500));
-const appLinks = html.match(/href="https:\/\/bharataiinnovation\.com\/app\?[^"]*"/g) || [];
+// "Show me how" (/app?action=save-app) is the save-the-app block every email carries
+// since 13 Nov 2026, not one of this email's buttons: it is not tagged, and not counted.
+const appLinks = (html.match(/href="https:\/\/bharataiinnovation\.com\/app\?[^"]*"/g) || []).filter(h => !h.includes('action=save-app'));
 check('every app button carries nw=<id>.<sig> and a sign-in token', appLinks.length >= 4 && appLinks.every(h => h.includes(`nw=1.${sig}`) && /[?&]token=[0-9a-f]+/.test(h)), appLinks.length + ' ' + (appLinks[0] || ''));
 check('the sent email has the unsubscribe footer and header', /unsubscribe/i.test(html) && !!sent[0]?.Content?.Headers?.['List-Unsubscribe'], '');
 check('the first send stamps networking_marks_from', q("SELECT value FROM app_settings WHERE key = 'networking_marks_from'").length === 1, '');
