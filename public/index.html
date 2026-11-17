@@ -470,6 +470,17 @@
         .hero-alt a { color: #fff; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: rgba(255,255,255,0.4); }
         .hero-alt a:hover { text-decoration-color: #fff; }
         .hero-alt .sep { margin: 0 0.4rem; color: rgba(255,255,255,0.4); }
+        /* Powered by IDFC FIRST Bank (the organiser, 17 Nov 2026): beside the title on its left; under the title on a phone. */
+        .hero-title-wrap { position: relative; }
+        .hero-powered { display: flex; align-items: center; justify-content: center; gap: 0.65rem; margin: 0 0 1.1rem; animation: fadeSlideUp 0.9s var(--ease-out) 0.2s both; }
+        .hero-powered span { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.85); text-shadow: 0 1px 10px rgba(10,12,28,0.85); white-space: nowrap; }
+        .hero-powered img { width: 148px; height: auto; border-radius: 6px; box-shadow: 0 8px 22px -8px rgba(0,0,0,0.7); }
+        @media (min-width: 1024px) {
+            .hero-title-wrap { width: max-content; max-width: 100%; margin: 0 auto; }
+            .hero-powered { position: absolute; top: 0; bottom: 0; right: calc(100% + 1.75rem); width: 180px; margin: 0; flex-direction: column; gap: 0.5rem; }
+            .hero-powered span { font-size: 0.74rem; }
+            .hero-powered img { width: 180px; max-width: none; }
+        }
         .hero-entry { display: flex; gap: 0.55rem; align-items: flex-start; max-width: 560px; margin: 0.9rem auto 0; padding: 0.7rem 0.95rem; border-radius: 12px; border: 1px solid rgba(255,194,77,0.5); background: rgba(20,16,4,0.55); font-size: 0.92rem; line-height: 1.5; color: #FFE2A8; text-align: left; animation: fadeSlideUp 0.9s var(--ease-out) 0.5s both; }
         .hero-entry i { margin-top: 0.22rem; color: #FFC24D; }
         .hero-entry strong { color: #fff; }
@@ -850,11 +861,14 @@
                 <span><span class="dl-long">World Trade Center</span><span class="dl-short">WTC</span> Mumbai</span>
             </div>
 
+            <div class="hero-title-wrap">
             <h1 class="hero-title">
                 <span class="line-saffron">Bharat AI</span>
                 <span class="line-gradient">Innovation</span>
                     <span class="hero-title-hi" lang="hi"><span class="hi-saffron">भारत</span> <span class="hi-white">एआई</span> <span class="hi-green">इनोवेशन</span></span>
             </h1>
+            <p class="hero-powered"><span>Powered by</span><img width="640" height="212" decoding="async" src="images/logo-idfc-first-bank.webp" alt="IDFC FIRST Bank"></p>
+            </div>
 
             <p class="hero-desc">
                 India’s B2B platform for AI. The government ministries and departments, enterprises and startups
