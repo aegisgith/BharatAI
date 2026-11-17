@@ -173,6 +173,15 @@ r = await hit('POST', '/api/admin/attendees/1/send-entry-slot', {}, ADMIN);
 check('after 9 pm IST a send waits (409, paused)', r.status === 409 && r.json?.paused === true, r.status + ' ' + JSON.stringify(r.json));
 r = await hit('POST', '/api/admin/attendees/20/send-entry-slot', {}, ADMIN);
 check('a paid pass is skipped', r.json?.skipped === true, JSON.stringify(r.json));
+// From 8:30 am for this email only (the organiser: "start sending from morning 8:30 AM").
+FAKE_NOW = RealDate.parse('2026-11-18T02:50:00Z'); // Wednesday 8:20 IST
+r = await hit('POST', '/api/admin/attendees/1/send-entry-slot', {}, ADMIN);
+check('8:20 am IST: still waits', r.status === 409 && r.json?.paused === true && /8:30am to 9pm IST/.test(JSON.stringify(r.json)), r.status + ' ' + JSON.stringify(r.json));
+FAKE_NOW = RealDate.parse('2026-11-18T03:05:00Z'); // Wednesday 8:35 IST
+r = await hit('POST', '/api/admin/attendees/1/send-entry-slot', {}, ADMIN);
+check('8:35 am IST: it goes (this email opens at 8:30, not 9)', r.status === 200 && r.json?.success === true, r.status + ' ' + JSON.stringify(r.json));
+r = await hit('POST', '/api/admin/attendees/1/send-event-week', {}, ADMIN);
+check('8:35 am IST: the other bulk emails still wait for 9', r.status === 409 && r.json?.paused === true, r.status + ' ' + JSON.stringify(r.json));
 FAKE_NOW = RealDate.parse('2026-11-19T03:45:00Z'); // Thursday 19 Nov, 9:15 IST
 
 // ---- the waiting list, let in on the 19th ----

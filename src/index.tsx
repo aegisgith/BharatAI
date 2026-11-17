@@ -594,7 +594,7 @@ configureEntrySlots({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader,
   signIn: async (c: any, eventId: number, email: string) => (await verifiedLoginEnabled(c)) ? (await createLoginToken(c, eventId, email, PROFILE_LINK_TTL_MINUTES, 6)).token : '',
   clauses: async (c: any) => ({ mc: await mainEventClause(c), noEmail: NO_EMAIL_SQL() }),
   notifyKind: (a: any) => notifyKind(a), waitlisted: (a: any) => entryWaitlisted(a), profileGaps: (a: any) => attendeeProfileGaps(a),
-  rsPrice: (p: string) => rsPrice(p), window: () => sendWindowState(),
+  rsPrice: (p: string) => rsPrice(p),
   decorate: async (c: any, html: string, to: string) => (await withAppOnPhoneFor(c, html, to)).replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, to)) + '</body>'),
   audit: (...a: any[]) => (audit as any)(...a) })
 app.route('/', entrySlots)

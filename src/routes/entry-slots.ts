@@ -49,6 +49,16 @@ const TEAM_ONLY = ['Organiser', 'Support Staff']
 const IST_MS = 330 * 60000
 // Thirty minutes either side still counts as on time at the desk.
 const GRACE_MIN = 30
+// This email goes from 8:30 am (the organiser, 17 Nov 2026: "lets start sending from
+// morning 8:30 AM"), until 9 pm IST like every bulk email. Only this email: the shared
+// 9am-9pm window (sendWindowState in index.tsx) is unchanged for the rest.
+export const SEND_FROM_MIN = 8 * 60 + 30
+export const SEND_UNTIL_MIN = 21 * 60
+export function sendWindow(nowMs = Date.now()): { open: boolean; window: string; ist_time: string } {
+  const ist = new Date(nowMs + IST_MS)
+  const m = ist.getUTCHours() * 60 + ist.getUTCMinutes()
+  return { open: m >= SEND_FROM_MIN && m < SEND_UNTIL_MIN, window: '8:30am to 9pm IST', ist_time: ist.toISOString().slice(11, 16) + ' IST' }
+}
 
 type Hooks = {
   sendEmail?: (c: any, to: string, subject: string, html: string) => Promise<{ ok: boolean; error?: string }>
@@ -60,7 +70,6 @@ type Hooks = {
   waitlisted?: (a: any) => boolean
   profileGaps?: (a: any) => string[]
   rsPrice?: (pass: string) => string
-  window?: () => { open: boolean; window: string; ist_time: string }
   decorate?: (c: any, html: string, to: string) => Promise<string>
   audit?: (c: any, action: string, entity?: string, entityId?: any, detail?: any) => Promise<any>
 }
@@ -345,7 +354,7 @@ es.get('/api/admin/entry-slots/status', async (c) => {
       slots: SLOT_ORDER.map(k => ({ key: k, text: SLOTS[k].text, short: SLOTS[k].short, given: given[k], sent: sent[k], planned: planned[k], waitlist: wlPlan[k] })),
       without: open.length, other, waiting, let_in: letIn, to_send: toSend,
       open_run: run ? { id: run.id, status: run.status, title: run.title, total: run.total, sent: run.sent, failed: run.failed } : null,
-      window: hooks.window ? hooks.window().window : '',
+      window: sendWindow().window,
     })
   } catch (e: any) {
     if (/no such (table|column)/i.test(String(e?.message || ''))) return c.json({ unavailable: true })
@@ -387,7 +396,7 @@ es.post('/api/admin/attendees/:id/send-entry-slot', async (c) => {
   if (!freeHolder(a)) return c.json({ skipped: true, reason: 'Holds ' + (String(a.badge_type || '').trim() || 'another pass') + ' now: no entry time needed' })
   if (waitingRow(a)) return c.json({ skipped: true, reason: 'Still on the waiting list' })
   if (!String(a.entry_slot || '').trim()) return c.json({ skipped: true, reason: 'No entry time' })
-  const win = hooks.window ? hooks.window() : { open: true, window: '', ist_time: '' }
+  const win = sendWindow()
   if (!win.open && c.req.query('force') !== '1') {
     return c.json({ paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win }, 409)
   }
@@ -409,7 +418,7 @@ es.get('/api/admin/entry-slots/preview', async (c) => {
   const pick = (want && first[want]) || SLOT_ORDER.map(k => first[k]).find(Boolean) || first.other
   const sample = pick ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(pick.id).first() as any : null
   const open = await openRun(c)
-  const out = { counts, slots: SLOT_ORDER.map(k => ({ key: k, text: SLOTS[k].text, short: SLOTS[k].short })), window: hooks.window ? hooks.window().window : '',
+  const out = { counts, slots: SLOT_ORDER.map(k => ({ key: k, text: SLOTS[k].text, short: SLOTS[k].short })), window: sendWindow().window,
     open_run: open ? { id: open.id, status: open.status, title: open.title } : null }
   if (!sample) return c.json({ ...out, slot: want, sample: null })
   const mail = await entrySlotEmail(c, sample, { preview: true })
