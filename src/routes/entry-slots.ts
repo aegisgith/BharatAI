@@ -427,22 +427,42 @@ es.post('/api/admin/attendees/:id/send-entry-slot', async (c) => {
 })
 
 // The email before it goes: how many per entry time and one real recipient's email for
-// the time asked for. Sends nothing, mints no token.
+// the time asked for. Sends nothing, mints no token, writes nothing.
+// Before "Give entry times" nobody has one, so the organiser reads what the plan would send
+// (the person's entry time is filled in from the plan, in memory only), and ?slot=waitlist
+// shows the "a place has opened up" version the waiting list gets when it is let in.
 es.get('/api/admin/entry-slots/preview', async (c) => {
   const want = String(c.req.query('slot') || '')
   const rows = await entrySlotAudienceRows(c)
   const counts: Record<string, number> = { total: rows.length }
   const first: Record<string, any> = {}
   for (const r of rows) { counts[r.slot] = (counts[r.slot] || 0) + 1; if (!first[r.slot]) first[r.slot] = r }
-  const pick = (want && first[want]) || SLOT_ORDER.map(k => first[k]).find(Boolean) || first.other
-  const sample = pick ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(pick.id).first() as any : null
+  const planned: Record<string, number> = {}
+  const firstPlanned: Record<string, { id: number; slot: SlotKey; wl: boolean }> = {}
+  const holders = await freeHolders(c)
+  for (const [id, k] of planSlots(holders.filter(a => !waitingRow(a) && !String(a.entry_slot || '').trim()))) {
+    planned[k] = (planned[k] || 0) + 1
+    if (!firstPlanned[k]) firstPlanned[k] = { id, slot: k, wl: false }
+  }
+  for (const a of holders.filter(waitingRow)) {
+    planned.waitlist = (planned.waitlist || 0) + 1
+    if (!firstPlanned.waitlist) firstPlanned.waitlist = { id: Number(a.id), slot: waitlistSlotFor(a), wl: true }
+  }
+  let pick: any = null, from: { id: number; slot: SlotKey; wl: boolean } | null = null
+  if (want) { pick = first[want] || null; if (!pick) from = firstPlanned[want] || null }
+  if (!pick && !from) pick = SLOT_ORDER.map(k => first[k]).find(Boolean) || null
+  if (!pick && !from) from = SLOT_ORDER.map(k => firstPlanned[k]).find(Boolean) || firstPlanned.waitlist || null
+  if (!pick && !from) pick = first.other || null
+  const id = pick ? Number(pick.id) : from ? from.id : 0
+  let sample = id ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first() as any : null
+  if (sample && from) sample = { ...sample, entry_slot: SLOTS[from.slot].text, entry_status: from.wl ? 'confirmed' : sample.entry_status }
   const open = await openRun(c)
-  const out = { counts, slots: SLOT_ORDER.map(k => ({ key: k, text: SLOTS[k].text, short: SLOTS[k].short })), window: sendWindow().window,
+  const out = { counts, planned, slots: SLOT_ORDER.map(k => ({ key: k, text: SLOTS[k].text, short: SLOTS[k].short })), window: sendWindow().window,
     open_run: open ? { id: open.id, status: open.status, title: open.title } : null }
   if (!sample) return c.json({ ...out, slot: want, sample: null })
   const mail = await entrySlotEmail(c, sample, { preview: true })
-  return c.json({ ...out, slot: slotKeyOf(sample.entry_slot) || 'other', subject: mail.subject,
-    sample: { id: sample.id, name: sample.name, email: sample.email, entry_slot: sample.entry_slot, from_waitlist: String(sample.entry_status || '') === 'confirmed' },
+  return c.json({ ...out, slot: from ? (from.wl ? 'waitlist' : from.slot) : (slotKeyOf(sample.entry_slot) || 'other'), subject: mail.subject,
+    sample: { id: sample.id, name: sample.name, email: sample.email, entry_slot: sample.entry_slot, from_waitlist: String(sample.entry_status || '') === 'confirmed', planned: !!from },
     html: hooks.decorate ? await hooks.decorate(c, mail.html, sample.email) : mail.html })
 })
 

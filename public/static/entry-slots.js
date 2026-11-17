@@ -69,6 +69,7 @@
     if (d.without) buttons += btn('assign', 'Give entry times to ' + d.without, true);
     if (run) buttons += btn('preview-run', 'Preview') + (run.status === 'running' ? btn('pause', 'Pause', true) : btn('resume', 'Resume', true));
     else if (d.to_send) buttons += btn('preview', 'Preview &amp; send to ' + d.to_send, !d.without);
+    else if (d.without || d.waiting) buttons += btn('preview', 'Read the email first');
     if (d.waiting) buttons += btn('letin', 'Let the waiting list in (' + d.waiting + ')');
     el.innerHTML = '<div class="mt-4 pt-3 border-t border-white/10">' +
       '<div class="flex items-center justify-between gap-3 flex-wrap mb-2">' +
@@ -132,20 +133,29 @@
       if (d && d.error) throw new Error(d.error);
     } catch (e) { openModal('<p class="text-sm text-red-400">Could not build the preview: ' + esc(errText(e)) + '</p>'); return; }
     S.pv = d;
-    var cnt = d.counts || {}, total = cnt.total || 0, run = S.d && S.d.open_run;
-    var chips = '<div class="flex gap-1.5 flex-wrap mb-3">' + (d.slots || []).filter(function (s) { return cnt[s.key]; }).map(function (s) {
-      var on = d.slot === s.key;
-      return '<button type="button" data-es="slot" data-slot="' + s.key + '" class="px-3 py-1.5 rounded-lg text-xs font-semibold ' + (on ? 'bg-amber-600 text-white' : 'border border-white/10 text-gray-300 hover:bg-white/5') + '">' +
-        esc(s.short) + ' (' + cnt[s.key] + ')</button>';
-    }).join('') + '</div>';
+    var cnt = d.counts || {}, pl = d.planned || {}, total = cnt.total || 0, run = S.d && S.d.open_run;
+    // Chips: the entry times with someone to send to; before "Give entry times", the plan's
+    // groups instead (nothing is written), and the waiting list's own version of the email.
+    var chip = function (key, label, n) {
+      var on = d.slot === key;
+      return '<button type="button" data-es="slot" data-slot="' + key + '" class="px-3 py-1.5 rounded-lg text-xs font-semibold ' + (on ? 'bg-amber-600 text-white' : 'border border-white/10 text-gray-300 hover:bg-white/5') + '">' +
+        esc(label) + ' (' + n + ')</button>';
+    };
+    var chips = '<div class="flex gap-1.5 flex-wrap mb-3">' + (d.slots || []).filter(function (s) { return cnt[s.key] || pl[s.key]; }).map(function (s) {
+      return chip(s.key, s.short, cnt[s.key] ? cnt[s.key] : pl[s.key] + ' to give');
+    }).join('') + (pl.waitlist ? chip('waitlist', 'Waiting list, when let in', pl.waitlist) : '') + '</div>';
+    var who = d.sample ? (d.sample.planned
+        ? (d.slot === 'waitlist' ? 'As ' + esc(d.sample.name) + ' will get it once the waiting list is let in.' : 'As ' + esc(d.sample.name) + ' will get it once the entry times are given.')
+        : 'As ' + esc(d.sample.name) + (d.sample.from_waitlist ? ' (let in from the waiting list)' : '') + ' will get it.') : '';
     var body = d.sample
-      ? '<p class="text-xs text-gray-400 mb-1">As ' + esc(d.sample.name) + (d.sample.from_waitlist ? ' (let in from the waiting list)' : '') + ' will get it. The buttons are not live in this preview.</p>' +
+      ? '<p class="text-xs text-gray-400 mb-1">' + who + ' The buttons are not live in this preview.</p>' +
         '<p class="text-sm font-semibold text-white mb-2">Subject: ' + esc(d.subject) + '</p>' +
         '<iframe id="es-prev-frame" sandbox="" title="Email preview" class="w-full rounded-xl bg-white" style="height:56vh;border:1px solid rgba(0,0,0,0.1);"></iframe>'
       : '<p class="text-sm text-gray-400 py-8 text-center">Nobody is waiting for this email.</p>';
     var act = run ? '' : (total ? 'Send to ' + total + ' ' + (total === 1 ? 'person' : 'people') : '');
+    var lead = total ? total + ' to send. Read each entry time:' : 'Nobody has an entry time yet, so nothing can be sent. This is what each group gets once you press Give entry times:';
     openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-clock text-primary-400 mr-2"></i>&ldquo;Your entry time&rdquo;: check it before it goes</h3>' +
-      '<p class="text-xs text-gray-400 mb-3">' + total + ' to send. Read each entry time:</p>' + chips + body +
+      '<p class="text-xs text-gray-400 mb-3">' + lead + '</p>' + chips + body +
       '<div class="flex gap-2 mt-4">' +
         '<button type="button" data-es="close" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">' + (act ? 'Cancel' : 'Close') + '</button>' +
         (act ? '<button type="button" data-es="go" class="flex-1 py-2.5 rounded-xl text-sm bg-amber-600 hover:bg-amber-500 text-white font-semibold">' + act + '</button>' : '') +

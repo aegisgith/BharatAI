@@ -115,6 +115,18 @@ check('plan: the other 16 shared evenly over three half-days (6/5/5 or so), the 
 check('plan: the waiting list, Mumbai to Saturday morning and Delhi to either day', by('sat-am').waitlist === 1 && by('any').waitlist === 1, JSON.stringify(st.json.slots));
 check('nothing written by the status', q("SELECT COUNT(*) AS n FROM attendees WHERE entry_slot IS NOT NULL")[0].n === 1, '');
 
+// ---- the email can be read BEFORE the entry times are given (the organiser, 17 Nov 23:30:
+// "show preview of email"): the sample's time comes from the plan, in memory only ----
+let early = await hit('GET', '/api/admin/entry-slots/preview', undefined, ADMIN);
+check('early preview: only the hand-told one to send, the plan counted per entry time, Friday morning shown first as Asha would get it',
+  early.status === 200 && early.json.counts?.total === 1 && early.json.planned?.['fri-am'] === 4 && early.json.planned?.any === 2 && early.json.planned?.waitlist === 2 && early.json.slot === 'fri-am' && early.json.sample?.planned === true && early.json.sample?.name === 'Asha Rao',
+  JSON.stringify({ counts: early.json?.counts, planned: early.json?.planned, slot: early.json?.slot, sample: early.json?.sample }));
+check('early preview: the subject and the big entry time read Friday 20 Nov, 8:30 am to 1 pm', /^Asha, your entry time for Bharat AI Innovation: Friday 20 Nov, 8:30 am to 1 pm$/.test(early.json.subject) && early.json.html.includes(FRI_AM), early.json.subject);
+early = await hit('GET', '/api/admin/entry-slots/preview?slot=waitlist', undefined, ADMIN);
+check('early preview (waiting list): the "good news" version with Saturday morning, as the Mumbai one on the list would get it',
+  early.json.slot === 'waitlist' && /good news: your Free Visitor Pass is confirmed for Saturday 21 Nov, 8:30 am to 1 pm$/.test(early.json.subject) && early.json.sample?.name === 'Waiting Mumbai' && early.json.html.includes('a place has opened up'), early.json.subject);
+check('early previews wrote nothing', q("SELECT COUNT(*) AS n FROM attendees WHERE entry_slot IS NOT NULL")[0].n === 1 && q("SELECT entry_status FROM attendees WHERE id = 22")[0].entry_status === 'waitlisted' && count('login_tokens') === 0, '');
+
 // ---- give the entry times ----
 let r = await hit('POST', '/api/admin/entry-slots/assign', {}, ADMIN);
 check('assign: 22 entry times given', r.status === 200 && r.json.assigned === 22, JSON.stringify(r.json));

@@ -41828,7 +41828,7 @@ function adminPageHTML(): string {
   <script src="/static/speaker-brief.js?v=20261116c"></script>
   <script src="/static/talk-brief.js?v=20261116"></script>
   <script src="/static/event-week.js?v=20261116"></script>
-  <script src="/static/entry-slots.js?v=20261117"></script>
+  <script src="/static/entry-slots.js?v=20261118"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
   <script src="/static/workshop-reminder.js?v=2026111503"></script>
 </body>
