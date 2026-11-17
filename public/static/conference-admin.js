@@ -52,6 +52,44 @@
     if (url && /^(\/|https:\/\/)/.test(url)) return '<img class="cm-ava ' + (cls || '') + '" src="' + esc(url) + '" alt="" loading="lazy">';
     return '<span class="cm-ava ' + (cls || '') + '" aria-hidden="true">' + esc(initial(sp && sp.name)) + '</span>';
   }
+  // Two spellings of one person ("Khushan Shah" / "Kushan Shah"): the server's rule,
+  // here for the search. Titles dropped; a word of four letters or more may differ by
+  // one letter; a middle name on one side is allowed.
+  function normNameJs(n) {
+    var s = String(n || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    s = s.replace(/\(\s*(ias|ifs|ips|irs|phd|ph\.?\s?d\.?|retd\.?|retired)\s*\)/g, ' ').replace(/[‘’'`]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    var prev = '';
+    while (prev !== s) { prev = s; s = s.replace(/^(honble|honourable|hon|shri|shree|smt|sushri|kumari|mr|mrs|ms|miss|dr|prof|professor|sir|adv|er|col|capt|lt|gen)\s+/, ''); }
+    return s;
+  }
+  function editDistance(a, b) {
+    var prev = [], i, j;
+    for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) {
+      var last = prev[0]; prev[0] = i;
+      for (j = 1; j <= b.length; j++) { var tmp = prev[j]; prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, last + (a[i - 1] === b[j - 1] ? 0 : 1)); last = tmp; }
+    }
+    return prev[b.length];
+  }
+  function wordClose(a, b) { if (a === b) return true; if (a.length < 4 || b.length < 4 || Math.abs(a.length - b.length) > 1) return false; return editDistance(a, b) <= 1; }
+  function nameClose(a, b) {
+    var x = normNameJs(a), y = normNameJs(b);
+    if (!x || !y) return false;
+    if (x === y) return true;
+    var ta = x.split(' '), tb = y.split(' ');
+    var s = ta.length <= tb.length ? ta : tb, l = ta.length <= tb.length ? tb : ta;
+    if (s.length < 2 || l.length - s.length > 1) return false;
+    var j = 0;
+    for (var i = 0; i < s.length; i++) { while (j < l.length && !wordClose(s[i], l[j])) j++; if (j >= l.length) return false; j++; }
+    return true;
+  }
+  // What was typed, against a name: a whole word spelt a little differently, or a whole name.
+  function nameNear(q, name) {
+    var qn = normNameJs(q), parts = qn ? qn.split(' ') : [];
+    if (!parts.length) return false;
+    if (parts.length === 1) { if (parts[0].length < 4) return false; return normNameJs(name).split(' ').some(function (t) { return wordClose(parts[0], t); }); }
+    return nameClose(qn, name);
+  }
   function speakerById(id) { var l = (S.d && S.d.speakers) || []; for (var i = 0; i < l.length; i++) if (Number(l[i].id) === Number(id)) return l[i]; return null; }
   function sessionById(id) { var l = (S.d && S.d.sessions) || []; for (var i = 0; i < l.length; i++) if (Number(l[i].id) === Number(id)) return l[i]; return null; }
   function hallByName(n) { var l = (S.d && S.d.halls) || []; for (var i = 0; i < l.length; i++) if (l[i].name === n) return l[i]; return null; }
@@ -485,11 +523,17 @@
     var holders = (S.d.pass_holders || []).filter(function (a) { return [a.name, a.company, a.job_title].join(' ').toLowerCase().indexOf(q) >= 0; }).slice(0, 5)
       .map(function (a) { return Object.assign({ _holder: true }, a); });
     hits = hits.concat(holders);
+    // Spelt a little differently ("Khushan" for Kushan): offered as "Did you mean", never missed.
+    var seen = {}; hits.forEach(function (h) { seen[(h._holder ? 'a' : 's') + h.id] = 1; });
+    var near = (S.d.speakers || []).filter(function (sp) { return !chosen[sp.id] && !seen['s' + sp.id] && nameNear(q, sp.name); }).slice(0, 3).map(function (sp) { return Object.assign({ _maybe: true }, sp); })
+      .concat((S.d.pass_holders || []).filter(function (a) { return !seen['a' + a.id] && nameNear(q, a.name); }).slice(0, 3).map(function (a) { return Object.assign({ _holder: true, _maybe: true }, a); }));
+    hits = hits.concat(near);
     ED.hits = hits;
     ED.pickIdx = Math.min(ED.pickIdx, Math.max(0, hits.length));
     box.innerHTML = '<div class="cm-pick-list" role="listbox">' + hits.map(function (sp, i) {
-      if (sp._holder) return '<div class="cm-pick-item is-holder' + (i === ED.pickIdx ? ' is-active' : '') + '" role="option" data-cm="pick-holder" data-id="' + sp.id + '">' + ava(sp) + '<div><b>' + esc(sp.name) + '</b><span>' + esc([sp.job_title, sp.company].filter(Boolean).join(', ')) + ' · Has a Speaker pass, not on the speakers list yet: add them</span></div></div>';
-      return '<div class="cm-pick-item' + (i === ED.pickIdx ? ' is-active' : '') + '" role="option" data-cm="pick" data-id="' + sp.id + '">' + ava(sp) + '<div><b>' + esc(sp.name) + '</b><span>' + esc([sp.role, sp.organisation].filter(Boolean).join(', ')) + (sp.slots ? ' · ' + sp.slots + ' session' + (sp.slots === 1 ? '' : 's') : '') + '</span></div></div>';
+      var lead = sp._maybe ? '<em>Did you mean</em> ' : '';
+      if (sp._holder) return '<div class="cm-pick-item is-holder' + (i === ED.pickIdx ? ' is-active' : '') + '" role="option" data-cm="pick-holder" data-id="' + sp.id + '">' + ava(sp) + '<div><b>' + lead + esc(sp.name) + '</b><span>' + esc([sp.job_title, sp.company].filter(Boolean).join(', ')) + (sp.maybe ? ' · Has a Speaker pass; probably the same person as ' + esc(sp.maybe.name) + ' on the list: link them' : ' · Has a Speaker pass, not on the speakers list yet: add them') + '</span></div></div>';
+      return '<div class="cm-pick-item' + (i === ED.pickIdx ? ' is-active' : '') + '" role="option" data-cm="pick" data-id="' + sp.id + '">' + ava(sp) + '<div><b>' + lead + esc(sp.name) + '</b><span>' + esc([sp.role, sp.organisation].filter(Boolean).join(', ')) + (sp.slots ? ' · ' + sp.slots + ' session' + (sp.slots === 1 ? '' : 's') : '') + '</span></div></div>';
     }).join('') +
       '<div class="cm-pick-item' + (ED.pickIdx === hits.length ? ' is-active' : '') + '" data-cm="pick-new"><span class="cm-ava"><i class="fas fa-plus"></i></span><div><b>Add "' + esc(ED.pickQ.trim()) + '" as a new speaker</b><span>With their designation, organisation, email and mobile</span></div></div></div>';
   }
@@ -716,6 +760,7 @@
       if (btn) btn.disabled = false;
       var data = e && e.data;
       err.innerHTML = '<div class="cm-err">' + esc(errText(e)) +
+        (data && data.pass_holder ? ' <button type="button" class="cm-btn is-small is-primary" data-cm="use-holder-sheet" data-id="' + Number(data.pass_holder.id) + '"><i class="fas fa-link"></i>Use ' + esc(data.pass_holder.name) + '’s record</button>' : '') +
         (data && data.same_name ? ' <button type="button" class="cm-btn is-small" data-cm="save-speaker-same">Add a second person anyway</button>' : '') +
         (data && data.speaker_id && !data.same_name ? ' <button type="button" class="cm-btn is-small" data-cm="edit-speaker" data-id="' + Number(data.speaker_id) + '">Open them</button>' : '') + '</div>';
     }
@@ -1689,7 +1734,10 @@
     'from-attendee-all': function () { fromAttendeeAll(); },
     'pick-new': function () { openNewSpeaker(ED ? ED.pickQ.trim() : ''); },
     'new-in-session': function () { openNewSpeaker(''); },
-    'save-new-speaker': function () { saveNewSpeaker(); },
+    'save-new-speaker': function () { saveNewSpeaker(false); },
+    'save-new-speaker-same': function () { saveNewSpeaker(true); },
+    'use-holder': function (el) { addHolder(Number(el.getAttribute('data-id'))); },
+    'use-holder-sheet': function (el) { closeDrawer(); fromAttendee(Number(el.getAttribute('data-id'))); },
     'cancel-new-speaker': function () { var b = $('cm-s-newsp'); if (b) b.innerHTML = ''; },
     'others-to-speakers': function () { othersToSpeakers(); },
     'give-pass': function (el) { givePass(el.getAttribute('data-id')); },
@@ -1754,10 +1802,22 @@
   }
   // ---------- Speaker pass holders who are not on the speakers list ----------
   function holderById(id) { var l = (S.d && S.d.pass_holders) || []; for (var i = 0; i < l.length; i++) if (Number(l[i].id) === Number(id)) return l[i]; return null; }
+  // Null when they said no to linking.
   async function listHolder(attendeeId) {
-    var r = await api.post('/api/admin/speakers/from-attendee/' + attendeeId, {});
+    var a = holderById(attendeeId), body = {};
+    if (a && a.maybe) {
+      var differ = a.maybe.name !== a.name;
+      if (!confirm('"' + a.name + '" holds the Speaker pass; "' + a.maybe.name + '" is on the speakers list. Link them as one person?\n\nTheir email, mobile and photo come onto the list entry' + (differ ? ', and the name becomes "' + a.name + '", as they registered it' : '') + '. Nothing is added twice.')) return null;
+      if (differ) body.use_registered_name = true;
+    }
+    var r = await api.post('/api/admin/speakers/from-attendee/' + attendeeId, body);
     await refreshSpeakers();
     return r;
+  }
+  function listedWords(a, r) {
+    if (r.linked) return a.name + ' is linked to their pass: email, mobile and photo are on their entry.';
+    if (r.existed) return a.name + ' was already on the speakers list.';
+    return a.name + ' is on the speakers list.';
   }
   // From the session's speaker search: on the list, then in this session.
   async function addHolder(attendeeId) {
@@ -1765,8 +1825,9 @@
     var box = $('cm-s-pick-list'); if (box) box.innerHTML = '<div class="cm-pick-list"><div class="cm-pick-item"><span class="cm-ava"><i class="fas fa-spinner fa-spin"></i></span><div><b>Adding ' + esc(a.name) + ' to the speakers list…</b></div></div></div>';
     try {
       var r = await listHolder(attendeeId);
+      if (!r) { pickList(); return; }
       addPerson(Number(r.id));
-      say(a.name + (r.existed ? ' was already on the speakers list, and is now in this session.' : ' is on the speakers list and in this session.'));
+      say(listedWords(a, r) + ' They are in this session.');
     } catch (e) { say(errText(e), 'error'); pickList(); }
   }
   // From their card on the Speakers tab.
@@ -1774,9 +1835,10 @@
     var a = holderById(attendeeId); if (!a) return;
     try {
       var r = await listHolder(attendeeId);
+      if (!r) return;
       if (S.spk === 'passonly' && !(S.d.pass_holders || []).length) S.spk = 'all';
       body();
-      say(a.name + (r.existed ? ' was already on the speakers list.' : ' is on the speakers list. Their card is under Everyone.'));
+      say(listedWords(a, r) + (r.linked || r.existed ? '' : ' Their card is under Everyone.'));
     } catch (e) { say(errText(e), 'error'); }
   }
   async function fromAttendeeAll() {
@@ -1792,10 +1854,11 @@
     return '<div class="cm-card is-holder">' +
       '<div class="cm-who">' + ava(a) + '<div style="min-width:0"><b>' + esc(a.name) + '</b><span class="r">' + esc([a.job_title, a.company].filter(Boolean).join(', ') || 'No title yet') + '</span></div></div>' +
       '<div><span class="cm-chip is-warn"><i class="fas fa-id-badge"></i>Speaker pass, not on the speakers list</span>' + (a.email ? '' : '<span class="cm-chip is-bad"><i class="fas fa-envelope"></i>No email</span>') + '</div>' +
-      '<div class="cm-help">Registered' + (a.created_at ? ' ' + esc(dayLabel(a.created_at, true)) : '') + '. Until they are on the list they cannot be put on a session or shown in the app.</div>' +
-      '<div class="cm-actions"><button type="button" class="cm-btn is-primary is-small" data-cm="from-attendee" data-id="' + a.id + '"><i class="fas fa-user-plus"></i>Add to the speakers list</button></div></div>';
+      (a.maybe ? '<div class="cm-help"><b>Probably the same person as ' + esc(a.maybe.name) + ' on the list</b>, typed by hand. Link them: their email, mobile and photo come onto that entry, and nothing is added twice.</div>'
+        : '<div class="cm-help">Registered' + (a.created_at ? ' ' + esc(dayLabel(a.created_at, true)) : '') + '. Until they are on the list they cannot be put on a session or shown in the app.</div>') +
+      '<div class="cm-actions"><button type="button" class="cm-btn is-primary is-small" data-cm="from-attendee" data-id="' + a.id + '"><i class="fas ' + (a.maybe ? 'fa-link' : 'fa-user-plus') + '"></i>' + (a.maybe ? 'Link them' : 'Add to the speakers list') + '</button></div></div>';
   }
-  async function saveNewSpeaker() {
+  async function saveNewSpeaker(sameName) {
     var name = val('cm-n-name').trim(), email = val('cm-n-email').trim(), err = $('cm-n-err');
     if (!ED || !err) return;
     if (!name) { err.innerHTML = '<div class="cm-err">Type their name.</div>'; $('cm-n-name').focus(); return; }
@@ -1804,7 +1867,7 @@
     try {
       var id = 0, already = false;
       try {
-        var r = await api.post('/api/admin/speakers', { event_id: eid(), name: name, role: val('cm-n-role').trim(), organisation: val('cm-n-org').trim(), email: email, phone: val('cm-n-phone').trim() });
+        var r = await api.post('/api/admin/speakers', { event_id: eid(), name: name, role: val('cm-n-role').trim(), organisation: val('cm-n-org').trim(), email: email, phone: val('cm-n-phone').trim(), allow_same_name: !!sameName });
         id = Number(r.id);
       } catch (e) {
         if (e && e.data && e.data.speaker_id) { id = Number(e.data.speaker_id); already = true; } else throw e;
@@ -1820,7 +1883,10 @@
       say(note);
     } catch (e) {
       if (btn) btn.disabled = false;
-      err.innerHTML = '<div class="cm-err">' + esc(errText(e)) + '</div>';
+      var data = e && e.data;
+      err.innerHTML = '<div class="cm-err">' + esc(errText(e)) +
+        (data && data.pass_holder ? ' <button type="button" class="cm-btn is-small is-primary" data-cm="use-holder" data-id="' + Number(data.pass_holder.id) + '"><i class="fas fa-link"></i>Use ' + esc(data.pass_holder.name) + '’s record</button>' : '') +
+        (data && data.same_name ? ' <button type="button" class="cm-btn is-small" data-cm="save-new-speaker-same">Add a different person anyway</button>' : '') + '</div>';
     }
   }
   // "Asha Rao (Tata Capital), Vikram Shah (Moderator)" read the way the server reads it.
@@ -1851,7 +1917,13 @@
     for (var i = 0; i < parts.length; i++) {
       var p = parts[i], id = 0;
       try { var r = await api.post('/api/admin/speakers', { event_id: eid(), name: p.name, organisation: p.role ? '' : p.info }); id = Number(r.id); made++; }
-      catch (e) { if (e && e.data && e.data.speaker_id) { id = Number(e.data.speaker_id); had++; } else failed.push(p.raw); }
+      catch (e) {
+        var d = e && e.data;
+        if (d && d.speaker_id) { id = Number(d.speaker_id); had++; }
+        // The name belongs to someone holding a Speaker pass: their record, not a twin.
+        else if (d && d.pass_holder) { try { var h = await api.post('/api/admin/speakers/from-attendee/' + Number(d.pass_holder.id), {}); id = Number(h.id); if (h.linked || h.existed) had++; else made++; } catch (e2) { failed.push(p.raw); } }
+        else failed.push(p.raw);
+      }
       if (id && ED && !ED.people.some(function (x) { return Number(x.speaker_id) === id; })) ED.people.push({ speaker_id: id, role: p.role || (type === 'keynote' ? 'keynote' : type === 'panel' ? 'panellist' : 'speaker') });
     }
     try { await refreshSpeakers(); } catch (e3) {}

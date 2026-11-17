@@ -277,5 +277,36 @@ const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (o
   check('...but a pass with a photo of its own keeps it', r2.status === 200 && W.rows("SELECT avatar_url FROM attendees WHERE email = 'own@example.test'")[0].avatar_url === '/api/uploads/avatars/9-2.jpg');
 }
 
+// ================= the same person under another spelling (17 Nov 2026) =================
+{
+  const W = await makeWorld();
+  // Kushan Shah registered on the site and holds a Speaker pass with his photo; the
+  // team types "Khushan Shah" on a panel.
+  W.db.run("INSERT INTO attendees (id, event_id, name, email, mobile, company, job_title, badge_type, payment_status, main_event, avatar_url) VALUES (9101, 1, 'Kushan Shah', 'kushan@example.test', '9876543210', 'Fynd', 'CTPO', 'Speaker', 'waived', 1, '/api/uploads/avatars/9101.jpg')");
+  const typed = await W.call('POST', '/api/admin/speakers', { name: 'Khushan Shah', organisation: 'Fynd' });
+  check('typing "Khushan Shah" when Kushan Shah holds a Speaker pass is stopped, with his record offered', typed.status === 409 && typed.json.pass_holder && typed.json.pass_holder.id === 9101 && /holds a Speaker pass/.test(typed.json.error), typed.json);
+  const anyway = await W.call('POST', '/api/admin/speakers', { name: 'Khushan Shah', organisation: 'Fynd', allow_same_name: true });
+  check('...unless the team says it is a different person', anyway.status === 201, anyway.json);
+  const khushan = anyway.json.id;
+  const sess = await W.call('POST', '/api/admin/sessions', { event_id: 1, title: 'Insurance panel', session_type: 'panel', room: 'Kalam Theatre', start_time: '2026-11-21 12:30', end_time: '2026-11-21 13:30', speakers: [{ speaker_id: khushan, role: 'panellist' }] });
+  const line0 = sess.json && sess.json.id ? W.rows('SELECT speaker_name FROM sessions WHERE id = ?', [sess.json.id])[0] : null;
+  check('the typed entry is on a session, by that spelling', sess.status < 300 && line0 && /Khushan Shah/.test(line0.speaker_name), { status: sess.status, json: sess.json, line0 });
+  const d1 = (await W.call('GET', '/api/admin/events/1/conference')).json;
+  const holder = d1.pass_holders.find(a => a.id === 9101);
+  check('the Speakers tab says the pass holder is probably the same person as the typed entry', holder && holder.maybe && holder.maybe.speaker_id === khushan, holder);
+  const dup = await W.call('POST', '/api/admin/speakers', { name: 'Kushan Shah' });
+  check('typing the right spelling now finds the typed entry instead of making a twin', dup.status === 409 && dup.json.speaker_id === khushan && /you typed/.test(dup.json.error), dup.json);
+  const link = await W.call('POST', '/api/admin/speakers/from-attendee/9101', { use_registered_name: true });
+  const sp = W.rows('SELECT name, email, phone, photo_url FROM speakers WHERE id = ?', [khushan])[0];
+  check('Link: one entry, now spelt as registered, with the email, mobile and photo from the pass', link.status === 200 && link.json.linked && link.json.id === khushan && sp.name === 'Kushan Shah' && sp.email === 'kushan@example.test' && sp.phone === '9876543210' && sp.photo_url === '/api/uploads/avatars/9101.jpg' && W.rows("SELECT id FROM speakers WHERE name LIKE '%ushan Shah'").length === 1, { link: link.json, sp });
+  const line1 = W.rows('SELECT speaker_name FROM sessions WHERE id = ?', [sess.json.id])[0];
+  check('the session line is reworded to the registered spelling', line1 && /Kushan Shah/.test(line1.speaker_name) && !/Khushan/.test(line1.speaker_name), line1);
+  const d2 = (await W.call('GET', '/api/admin/events/1/conference')).json;
+  check('they are no longer offered as a pass holder, and their entry shows the pass', !d2.pass_holders.some(a => a.id === 9101) && d2.speakers.find(s => s.id === khushan).pass?.badge_type === 'Speaker', d2.pass_holders);
+  check('audit: speaker.link', W.rows("SELECT action FROM admin_audit WHERE action = 'speaker.link'").length === 1);
+  const other = await W.call('POST', '/api/admin/speakers', { name: 'Kiran Shah' });
+  check('a different name is not mistaken for them', other.status === 201, other.json);
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

@@ -91,6 +91,43 @@ export function normName(n: any): string {
   return s
 }
 
+// Two spellings of one person: "Khushan Shah" and "Kushan Shah", "Rohini Ramnathan"
+// and "Rohini Ramanathan". Titles dropped, then word by word: a word of four letters
+// or more may differ by one letter, a short one must match; a middle name on one side
+// is allowed. Used wherever a typed name is matched to a person (17 Nov 2026).
+export function nameClose(a: any, b: any): boolean {
+  const x = normName(a), y = normName(b)
+  if (!x || !y) return false
+  if (x === y) return true
+  const ta = x.split(' '), tb = y.split(' ')
+  const [short, long] = ta.length <= tb.length ? [ta, tb] : [tb, ta]
+  if (short.length < 2 || long.length - short.length > 1) return false
+  let j = 0
+  for (const w of short) {
+    while (j < long.length && !wordClose(w, long[j])) j++
+    if (j >= long.length) return false
+    j++
+  }
+  return true
+}
+function wordClose(a: string, b: string): boolean {
+  if (a === b) return true
+  if (a.length < 4 || b.length < 4 || Math.abs(a.length - b.length) > 1) return false
+  return editDistance(a, b) <= 1
+}
+function editDistance(a: string, b: string): number {
+  const prev = new Array(b.length + 1).fill(0).map((_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    let last = prev[0]; prev[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j]
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, last + (a[i - 1] === b[j - 1] ? 0 : 1))
+      last = tmp
+    }
+  }
+  return prev[b.length]
+}
+
 // A URL-safe slug from a name, without the titles of address.
 export function slugFor(name: any): string {
   return normName(name).replace(/\s+/g, '-').slice(0, 60).replace(/-+$/, '') || 'speaker'
@@ -559,12 +596,18 @@ async function speakerPassHolders(c: any, eventId: number, speakers: any[]) {
   } catch { return [] }
   const emails = new Set(speakers.map((s: any) => String(s.email || '').trim().toLowerCase()).filter(Boolean))
   const names = new Set(speakers.map((s: any) => normName(s.name)).filter(Boolean))
-  return rows.filter((a: any) => a.name && !emails.has(String(a.email || '').trim().toLowerCase()) && !names.has(normName(a.name))).map((a: any) => ({
-    id: Number(a.id), name: a.name, email: /@no-email\.invalid$/i.test(String(a.email || '')) ? '' : String(a.email || ''), mobile: a.mobile || '',
-    company: a.company || '', job_title: a.job_title || '', linkedin_url: a.linkedin_url || '',
-    photo_url: /^\/api\/uploads\//.test(String(a.avatar_url || '')) ? a.avatar_url : '',
-    source: a.registration_source || '', created_at: a.created_at || null,
-  }))
+  return rows.filter((a: any) => a.name && !emails.has(String(a.email || '').trim().toLowerCase()) && !names.has(normName(a.name))).map((a: any) => {
+    // Spelt a little differently from exactly one speaker on the list: probably the
+    // same person, typed by hand; the screen offers to link them, not to add a twin.
+    const close = speakers.filter((s: any) => nameClose(s.name, a.name))
+    return {
+      id: Number(a.id), name: a.name, email: /@no-email\.invalid$/i.test(String(a.email || '')) ? '' : String(a.email || ''), mobile: a.mobile || '',
+      company: a.company || '', job_title: a.job_title || '', linkedin_url: a.linkedin_url || '',
+      photo_url: /^\/api\/uploads\//.test(String(a.avatar_url || '')) ? a.avatar_url : '',
+      source: a.registration_source || '', created_at: a.created_at || null,
+      maybe: close.length === 1 ? { speaker_id: Number(close[0].id), name: close[0].name } : null,
+    }
+  })
 }
 
 // ---------- the one read the screen makes ----------
@@ -804,8 +847,19 @@ conf.post('/api/admin/speakers', async (c) => {
     const dup = await one(c, 'SELECT id, name FROM speakers WHERE event_id = ? AND LOWER(email) = ?', eventId, set.email)
     if (dup) return c.json({ error: 'That email is already on ' + dup.name + '.', speaker_id: dup.id }, 409)
   }
-  const same = await one(c, 'SELECT id, name FROM speakers WHERE event_id = ? AND LOWER(TRIM(name)) = ?', eventId, String(set.name).trim().toLowerCase())
-  if (same && !b.allow_same_name) return c.json({ error: same.name + ' is already a speaker. Open them to edit, or save again to add a second person with this name.', speaker_id: same.id, same_name: true }, 409)
+  // The same person under another spelling is still the same person: "Khushan Shah"
+  // typed for the Kushan Shah already listed, or holding a Speaker pass, must not
+  // become a second record with no email, no photo and no pass (17 Nov 2026).
+  if (!b.allow_same_name) {
+    const listed = await all(c, 'SELECT id, name FROM speakers WHERE event_id = ?', eventId)
+    const same = listed.find((s: any) => nameClose(s.name, set.name))
+    if (same) {
+      const exact = normName(same.name) === normName(set.name)
+      return c.json({ error: same.name + ' is already a speaker' + (exact ? '' : ' (you typed "' + set.name + '")') + '. Open them to edit, or save again to add a second person with this name.', speaker_id: same.id, same_name: true }, 409)
+    }
+    const holder = (await speakerPassHolders(c, eventId, listed)).find(a => nameClose(a.name, set.name))
+    if (holder) return c.json({ error: holder.name + (holder.company ? ' (' + holder.company + ')' : '') + ' holds a Speaker pass under their registration. Use their record, so their photo, email and pass come with them; or save again to add a different person.', pass_holder: { id: holder.id, name: holder.name, company: holder.company, job_title: holder.job_title }, same_name: true }, 409)
+  }
   if (!('sort_order' in set)) set.sort_order = Number((await one(c, 'SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM speakers WHERE event_id = ?', eventId))?.n || 1)
   const slug = await uniqueSlug(c, eventId, set.name)
   const cols = ['event_id', 'slug', ...Object.keys(set)]
@@ -822,6 +876,7 @@ conf.post('/api/admin/speakers', async (c) => {
 // Someone already listed under that email or name is handed back, never twinned.
 conf.post('/api/admin/speakers/from-attendee/:attendeeId', async (c) => {
   const aid = Number(c.req.param('attendeeId'))
+  const b = await c.req.json().catch(() => ({})) as any
   const a = await one(c, 'SELECT id, event_id, name, email, mobile, company, job_title, linkedin_url, avatar_url, badge_type FROM attendees WHERE id = ?', aid)
   if (!a) return c.json({ error: 'That attendee is not on the list any more.' }, 404)
   const eventId = Number(a.event_id) || 1
@@ -835,6 +890,31 @@ conf.post('/api/admin/speakers/from-attendee/:attendeeId', async (c) => {
   const phone = String(a.mobile || '').replace(/[^\d+]/g, '')
   const li = String(a.linkedin_url || '').trim()
   const photo = String(a.avatar_url || '')
+  // Spelt a little differently from exactly one speaker already listed ("Khushan Shah"
+  // typed by hand, "Kushan Shah" on the pass): that is the same person. Their blanks
+  // are filled from the pass (email, mobile, LinkedIn, photo) and nothing is twinned;
+  // the name on the list stays unless the screen asks for the registered one.
+  const listed = await all(c, 'SELECT id, name, email, phone, linkedin_url, photo_url FROM speakers WHERE event_id = ?', eventId)
+  const close = listed.filter((s: any) => nameClose(s.name, a.name))
+  if (close.length === 1) {
+    const sp = close[0]
+    const fill: Record<string, any> = {}
+    if (!String(sp.email || '').trim() && email) fill.email = email
+    if (!String(sp.phone || '').trim() && phone.replace(/\D/g, '').length >= 10) fill.phone = phone
+    if (!String(sp.linkedin_url || '').trim() && /^https:\/\/([a-z]+\.)?linkedin\.com\//i.test(li)) fill.linkedin_url = li
+    if (!String(sp.photo_url || '').trim() && /^\/api\/uploads\//.test(photo)) fill.photo_url = photo
+    if (b.use_registered_name && String(sp.name) !== String(a.name)) fill.name = String(a.name).trim()
+    if (Object.keys(fill).length) {
+      const keys = Object.keys(fill)
+      // A new spelling is rewritten on every session line that names them, as a rename in the sheet is.
+      const was = fill.name ? await all(c, SPEAKER_COLS, eventId) : []
+      const affected = fill.name ? await sessionIdsOfSpeaker(c, eventId, Number(sp.id), was) : []
+      await c.env.DB.prepare('UPDATE speakers SET ' + keys.map(k => k + ' = ?').join(', ') + ', updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(...keys.map(k => fill[k]), sp.id).run()
+      for (const sid of affected) await recomposeSession(c, sid, was)
+    }
+    await audit(c, 'speaker.link', 'speaker', sp.id, { name: fill.name || sp.name, was: sp.name, attendee_id: aid, filled: Object.keys(fill) })
+    return c.json({ success: true, id: sp.id, linked: true, name: fill.name || sp.name, registered_name: a.name, filled: Object.keys(fill) })
+  }
   const { set, error } = speakerFields({
     name: String(a.name || '').trim(), role: a.job_title || '', organisation: a.company || '', email,
     phone: phone.replace(/\D/g, '').length >= 10 ? phone : '', linkedin_url: /^https:\/\/([a-z]+\.)?linkedin\.com\//i.test(li) ? li : '',

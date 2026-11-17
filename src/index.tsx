@@ -41791,7 +41791,7 @@ function adminPageHTML(): string {
     <div id="modal-box" class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;"></div>
   </div>
 
-  <script src="/static/conference-admin.js?v=20261116b"></script>
+  <script src="/static/conference-admin.js?v=20261117"></script>
   <script src="/static/speaker-brief.js?v=20261116c"></script>
   <script src="/static/talk-brief.js?v=20261116"></script>
   <script src="/static/event-week.js?v=20261116"></script>

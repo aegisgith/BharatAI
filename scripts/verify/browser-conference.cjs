@@ -227,6 +227,24 @@ const adminInit = () => { if (window.top !== window) return; sessionStorage.setI
     check('they are on the speakers list and in the session', await until(async () => (await page.locator('.cm-person', { hasText: 'Rohini Ramnathan' }).count()) === 1, 10000));
     await page.keyboard.press('Escape');
     await until(async () => (await page.locator('#cm-drawer.is-open').count()) === 0);
+
+    // ---- the same person under another spelling (17 Nov) ----
+    await page.evaluate(() => api.post('/api/admin/attendees', { event_id: 1, name: 'Kushan Shah', email: 'kushan@example.test', company: 'Fynd', job_title: 'CTPO', badge_type: 'Speaker', payment_status: 'waived' }));
+    await page.evaluate(() => ConfDesk.load());
+    await until(() => page.locator('.cm-stats').isVisible(), 10000);
+    await page.click('[data-cm="new-session"]');
+    await until(() => page.locator('#cm-drawer.is-open').count());
+    await page.fill('#cm-s-pick', 'Khushan Shah');
+    check('a misspelt name offers "Did you mean" the pass holder', await until(async () => (await page.locator('.cm-pick-item.is-holder', { hasText: 'Kushan Shah' }).count()) === 1), await page.locator('#cm-s-pick-list').textContent());
+    await page.click('[data-cm="pick-new"]');
+    await until(() => page.locator('#cm-n-name').count());
+    await page.fill('#cm-n-org', 'Fynd');
+    await page.click('#cm-n-save');
+    check('typing them as a new speaker is stopped, with their record offered', await until(async () => (await page.locator('#cm-n-err [data-cm="use-holder"]').count()) === 1), await page.locator('#cm-n-err').textContent());
+    await page.locator('#cm-n-err [data-cm="use-holder"]').click();
+    check('one click uses their record: on the list and in the session, spelt as registered', await until(async () => (await page.locator('.cm-person', { hasText: 'Kushan Shah' }).count()) === 1, 10000));
+    await page.keyboard.press('Escape');
+    await until(async () => (await page.locator('#cm-drawer.is-open').count()) === 0);
     check('laptop: no page errors', errors.length === 0, errors);
     await ctx.close();
 
