@@ -730,7 +730,7 @@
            (the organiser, on the first cards: the tag goes ON TOP of the logo, in
            a different font, not the saffron; then "remove names of companies", so
            the logo alone names the partner). The ASL mark is drawn on black, so
-           its stage is black with a glow in its own red. --- */
+           its stage is black with a glow in its own blue (the silver mark since 17 Nov 2026). --- */
         .partners { background: #fff; }
         .partners[hidden] { display: none !important; }
         .ptiles { list-style: none; margin: 0 auto; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; max-width: 1040px; }
@@ -750,7 +750,7 @@
         /* Assessfy's and Jade's files carry a white box; multiply makes it vanish on the stage. */
         .ptile:not(.ptile-dark) .ptile-stage img { mix-blend-mode: multiply; }
         .ptile-dark .ptile-stage {
-            background: radial-gradient(90% 80% at 50% 110%, rgba(214,32,40,0.5) 0%, rgba(214,32,40,0) 65%), #000;
+            background: radial-gradient(90% 80% at 50% 110%, rgba(46,118,255,0.45) 0%, rgba(46,118,255,0) 65%), #000;
             border-top-color: #000; padding: 0.6rem 0.9rem;
         }
         .ptile-cap { padding: 0.85rem 0.9rem 0.8rem; display: flex; align-items: flex-start; flex: 1; }
@@ -759,7 +759,7 @@
             color: var(--indigo); background: var(--light); border: 1px solid rgba(26,35,126,0.14); border-radius: 12px; padding: 0.22rem 0.6rem;
         }
         @media (min-width: 900px) {
-            .ptiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem; }
+            .ptiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
             .ptile-stage { height: 128px; padding: 1.1rem 1.5rem; }
             .ptile-cap { padding: 1rem 1.15rem 0.9rem; }
             .ptile-role { font-size: 0.7rem; }
@@ -903,13 +903,13 @@
     </div>
 
     <!-- ===== PARTNERS (the organiser, 16 Nov 2026) ===== -->
-    <!-- Hidden for now (the organiser, 16 Nov 2026): drop the hidden attribute to show the cards again. -->
-    <section class="section-pad-sm partners" id="partners" aria-label="Partners" hidden>
+    <!-- Shown again on 17 Nov 2026 with six partners (the organiser). -->
+    <section class="section-pad-sm partners" id="partners" aria-label="Partners">
         <div class="container">
             <ul class="ptiles">
                 <li class="ptile ptile-dark reveal">
                     <div class="ptile-cap"><span class="ptile-role">AI Partner</span></div>
-                    <div class="ptile-stage"><img width="720" height="230" loading="lazy" decoding="async" src="images/org-logos/aegis-superintelligence-lab.webp" alt="Aegis Superintelligence Lab (ASL)"></div>
+                    <div class="ptile-stage"><img width="360" height="102" loading="lazy" decoding="async" src="images/org-logos/aegis-superintelligence-lab.webp" alt="Aegis Superintelligence Lab (ASL)"></div>
                 </li>
                 <li class="ptile reveal reveal-delay-1">
                     <div class="ptile-cap"><span class="ptile-role">Assessment OS Partner &amp; Panel Host</span></div>
@@ -922,6 +922,14 @@
                 <li class="ptile reveal reveal-delay-3">
                     <div class="ptile-cap"><span class="ptile-role">Panel Host Partner</span></div>
                     <div class="ptile-stage"><img width="212" height="93" loading="lazy" decoding="async" src="images/exhibitors/jade-global.webp" alt="Jade Global"></div>
+                </li>
+                <li class="ptile reveal reveal-delay-1">
+                    <div class="ptile-cap"><span class="ptile-role">Partner</span></div>
+                    <div class="ptile-stage"><img width="720" height="194" loading="lazy" decoding="async" src="images/org-logos/pramaana-labs.webp" alt="Pramaana Labs"></div>
+                </li>
+                <li class="ptile reveal reveal-delay-2">
+                    <div class="ptile-cap"><span class="ptile-role">Partner</span></div>
+                    <div class="ptile-stage"><img width="880" height="303" loading="lazy" decoding="async" src="images/org-logos/decimal-point-analytics.webp" alt="Decimal Point Analytics"></div>
                 </li>
             </ul>
         </div>
