@@ -753,10 +753,10 @@
             background: radial-gradient(90% 80% at 50% 110%, rgba(46,118,255,0.45) 0%, rgba(46,118,255,0) 65%), #000;
             border-top-color: #000; padding: 0.6rem 0.9rem;
         }
-        .ptile-cap { padding: 0.85rem 0.9rem 0.8rem; display: flex; align-items: flex-start; flex: 1; }
+        .ptile-cap { padding: 0.85rem 0.9rem 0.8rem; display: flex; align-items: center; justify-content: center; flex: 1; }
         .ptile-role {
             display: inline-block; font-family: var(--font-body); font-size: 0.64rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.35;
-            color: var(--indigo); background: var(--light); border: 1px solid rgba(26,35,126,0.14); border-radius: 12px; padding: 0.22rem 0.6rem;
+            color: var(--indigo); text-align: center; /* no box round it (the organiser, 17 Nov 2026) */
         }
         @media (min-width: 900px) {
             .ptiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
@@ -923,7 +923,7 @@
                     <div class="ptile-stage"><img width="336" height="145" loading="lazy" decoding="async" src="images/exhibitors/assessfy.webp" alt="Assessfy"></div>
                 </li>
                 <li class="ptile reveal reveal-delay-2">
-                    <div class="ptile-cap"><span class="ptile-role">Partner AI Centre of Excellence</span></div>
+                    <div class="ptile-cap"><span class="ptile-role">AI COE</span></div>
                     <div class="ptile-stage"><img width="260" height="96" loading="lazy" decoding="async" src="images/logo-aegis.webp" alt="Aegis School of Data Science and AI"></div>
                 </li>
                 <li class="ptile reveal reveal-delay-3">
