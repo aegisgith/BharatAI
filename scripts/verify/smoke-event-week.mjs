@@ -135,7 +135,7 @@ const links = [...body(0).matchAll(/href="(https:\/\/bharataiinnovation\.com\/ap
 const sig = (body(0).match(/ew=1\.([0-9a-f]+)/) || [])[1] || '';
 check('every app button carries ew=1.<sig> and a sign-in token; one token for the whole email', links.length >= 4 && sig && links.every(h => h.includes('ew=1.' + sig) && /[?&](amp;)?token=[0-9a-f]+/.test(h)) && count('login_tokens') === before.tokens + 1, links.length + ' ' + (links[0] || ''));
 check('the open picture and the app-on-phone mark; the marks clock started', body(0).includes('/api/eventweek-open?a=1&amp;s=' + sig) && body(0).includes('data-app-on-phone') && q("SELECT value FROM app_settings WHERE key = 'eventweek_marks_from'").length === 1, '');
-check('the sent email has the unsubscribe footer and the badge-desk line', /unsubscribe/i.test(body(0)) && body(0).includes('8:30 am on Thursday 20 Nov'), '');
+check('the sent email has the unsubscribe footer and the badge-desk line', /unsubscribe/i.test(body(0)) && body(0).includes('8:30 am on Friday 20 Nov'), '');
 
 // ---- opens and clicks ----
 await hit('GET', '/api/eventweek-open?a=1&s=' + sig);

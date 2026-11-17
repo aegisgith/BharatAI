@@ -10,6 +10,7 @@ import siteLive from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief } from './routes/talk-brief'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
+import entrySlots, { configureEntrySlots, entrySlotAudienceRows, inSlot as entryInSlot } from './routes/entry-slots'
 import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql } from './routes/workshop-reminder'
 import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
@@ -584,6 +585,19 @@ configureEventWeek({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader,
   decorate: async (c: any, html: string, to: string) => (await withAppOnPhoneFor(c, html, to)).replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, to)) + '</body>'),
   setting: (c: any, k: string) => settingValue(c, k), settingWrite: (c: any, k: string, v: string) => settingWrite(c, k, v) })
 app.route('/', eventWeek)
+// Entry times for the free Visitor Pass (17 Nov 2026): every free pass holder gets one
+// (Friday morning for the keen local ones, either day for those far away, the rest shared
+// over three half-days), the waiting list let in on the 19th, one email each; a campaign of
+// kind entry_slot. routes/entry-slots.ts, screen public/static/entry-slots.js.
+configureEntrySlots({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader,
+  appUrl: async (c: any) => (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app',
+  signIn: async (c: any, eventId: number, email: string) => (await verifiedLoginEnabled(c)) ? (await createLoginToken(c, eventId, email, PROFILE_LINK_TTL_MINUTES, 6)).token : '',
+  clauses: async (c: any) => ({ mc: await mainEventClause(c), noEmail: NO_EMAIL_SQL() }),
+  notifyKind: (a: any) => notifyKind(a), waitlisted: (a: any) => entryWaitlisted(a), profileGaps: (a: any) => attendeeProfileGaps(a),
+  rsPrice: (p: string) => rsPrice(p), window: () => sendWindowState(),
+  decorate: async (c: any, html: string, to: string) => (await withAppOnPhoneFor(c, html, to)).replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, to)) + '</body>'),
+  audit: (...a: any[]) => (audit as any)(...a) })
+app.route('/', entrySlots)
 // A speaker fills in their own Innovation Talk details (12 Nov 2026): the "a few details
 // we need" email links to /app/my-talk?t=<signed token>, no sign-in; routes/talk-self.ts,
 // page public/static/talk-self.js. It writes only what a speaker sends, never time or hall.
@@ -6581,8 +6595,10 @@ function staffScanHTML(me: any): string {
      var idNote=j.photo_flagged?'The photo on this pass did not match the person. Check the NAME on a government photo ID.'
        :j.photo?'Check the photo and name against a government photo ID.':'No photo on file. Check the NAME on a government photo ID.';
      var ws=j.workshop?' Workshop: '+j.workshop+'.':'';
+     var late=!!j.slot&&j.slot_now===false;
+     var slotNote=j.slot?(late?' NOT THEIR ENTRY TIME: free pass for '+j.slot+'. Ask the desk lead; if not, Undo and ask them to come back then.':' Free pass, entry time '+j.slot+'.'):'';
      if(j.state==='ok') count(1);
-     if(j.state==='ok') card({counted:true,state:'ok',bg:GREEN,title:'CHECKED IN',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:idNote+ws+also,token:tok,undo:j.undoable});
+     if(j.state==='ok') card({counted:true,state:'ok',bg:late?AMBER:GREEN,title:late?'CHECKED IN: NOT THEIR TIME':'CHECKED IN',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:idNote+slotNote+ws+also,token:tok,undo:j.undoable});
      else if(j.state==='already') card({state:'already',bg:AMBER,title:'ALREADY CHECKED IN TODAY',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:(j.at_ist||'')+(j.by?' by '+j.by:'')+'.'+ws,token:tok,undo:j.undoable});
      else if(j.state==='payment_pending') card({state:'payment_pending',bg:AMBER,title:'PAYMENT PENDING',name:j.name,sub:sub,pass:j.pass,note:'This tier has not been paid for. Do not admit without checking.',token:tok});
      else if(j.state==='panel_only') card({state:'panel_only',bg:RED,title:'NOT REGISTERED',name:j.name,note:'Registered for a campus panel only, not for the conference. Send them to the registration desk.',token:tok});
@@ -7050,6 +7066,12 @@ app.post('/api/staff/scan', async (c) => {
   if (Number(a.main_event ?? 1) === 0) return c.json({ state: 'panel_only', ...person })
   if (['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())) return c.json({ state: 'payment_pending', ...person })
   if (entryWaitlisted(a)) return c.json({ state: 'waitlisted', ...person })
+  // A free pass has an entry time (routes/entry-slots.ts): shown, not enforced. The desk
+  // card turns amber outside it, and the desk lead decides.
+  if (notifyKind(a) !== 'paid' && String(a.entry_slot || '').trim()) {
+    person.slot = String(a.entry_slot).trim()
+    person.slot_now = entryInSlot(person.slot, Number.isFinite(Number(body.at)) && Number(body.at) > 0 ? Number(body.at) : Date.now())
+  }
   try {
     if (await workshopsReady(c)) {
       const ws = await c.env.DB.prepare('SELECT w.title FROM workshop_seats s JOIN workshops w ON w.id = s.workshop_id WHERE s.event_id = 1 AND s.attendee_id = ?').bind(id).first() as any
@@ -20712,6 +20734,7 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'feedback' ? `/api/admin/attendees/${r.attendee_id}/send-feedback`
     : kind === 'workshop_invite' ? `/api/admin/attendees/${r.attendee_id}/send-workshop-invite`
     : kind === 'event_week' ? `/api/admin/attendees/${r.attendee_id}/send-event-week`
+    : kind === 'entry_slot' ? `/api/admin/attendees/${r.attendee_id}/send-entry-slot`
     : kind === 'offer' ? '/api/admin/offers/send'
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
@@ -20778,6 +20801,9 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
   // The event-week email sorts its own audience (routes/event-week.ts): the kind of
   // email needs the whole row.
   if (kind === 'event_week') return eventWeekAudienceRows(c, audience, { mc, sc, noEmail: NO_EMAIL_SQL() })
+  // Entry times (routes/entry-slots.ts): about their own entry, so a "no" to marketing does
+  // not hold it back; an unsubscribe does.
+  if (kind === 'entry_slot') return entrySlotAudienceRows(c, audience, { mc, noEmail: NO_EMAIL_SQL() })
   if (kind === 'networking') {
     // Every conference registrant not on a networking run yet. Paid passes and
     // senior titles first: theirs are the requests the others receive. Last, anyone
@@ -20817,7 +20843,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week', 'entry_slot'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
@@ -20872,6 +20898,7 @@ app.post('/api/admin/campaigns', async (c) => {
     : kind === 'notify' ? 'Account-ready email'
     : kind === 'networking' ? 'Networking app email'
     : kind === 'event_week' ? 'Get ready for 20 and 21 Nov'
+    : kind === 'entry_slot' ? 'Free Visitor Pass: your entry time'
     : kind === 'thankyou' ? 'Post-event thank you'
     : kind === 'profile_reminder' ? 'Complete your profile'
     : kind === 'waitlist_confirm' ? 'Waiting list: your Free Visitor Pass is confirmed'
@@ -20937,7 +20964,7 @@ async function tickCampaigns(c: any): Promise<any[]> {
     try {
       // The event-week email is not paced by the send gap (routes/event-week.ts): ten a
       // minute, so a few thousand go in a day and not a week.
-      const r = await pumpCampaign(c, k.id, k.kind === 'event_week' ? 10 : 1, 'Bearer ' + secret)
+      const r = await pumpCampaign(c, k.id, k.kind === 'event_week' || k.kind === 'entry_slot' ? 10 : 1, 'Bearer ' + secret)
       out.push({ id: k.id, sent: r.body?.sent ?? null, remaining: r.body?.remaining ?? null, wait_seconds: r.body?.wait_seconds ?? 0 })
     } catch (e: any) { out.push({ id: k.id, error: String(e?.message || e).slice(0, 200) }) }
   }
@@ -34252,10 +34279,12 @@ function mainPageScript(): string {
       const eBtn = document.getElementById('pcc-expo-btn');
       if (eBtn) eBtn.classList.toggle('hidden', !waitlisted);
       const stateEl = document.getElementById('pcc-pass-state');
-      if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : waitlisted ? ' is on the waiting list' : visitor ? ' is a free pass: entry not guaranteed' : ' is ready';
+      const slotText = visitor && !waitlisted && currentUser && currentUser.entry_slot ? String(currentUser.entry_slot) : '';
+      if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : waitlisted ? ' is on the waiting list' : slotText ? ' is a free pass with an entry time' : visitor ? ' is a free pass: entry not guaranteed' : ' is ready';
       document.getElementById('pcc-pass-note').textContent = pending
         ? (payNow ? 'It is issued the moment your payment goes through. Pay now to finish.' : 'It will be issued as soon as your payment is confirmed.')
         : waitlisted ? (Date.now() >= Date.parse(window.__WL_CLOSE || '${WAITLIST_CLOSE_DEFAULT}') ? '${WAITLIST_CLOSED_TEXT} ${waitlistExpoText()}' : '${WAITLIST_TEXT} ${waitlistExpoText()} ${WAITLIST_PROFILE_SHORT}')
+        : slotText ? 'Your entry time: ' + slotText + '. Show this pass and a government photo ID at the badge desk in that time. Every paid pass has guaranteed entry on both days, at any time.'
         : visitor ? 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. Every paid pass has guaranteed entry on both days.'
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
@@ -41795,6 +41824,7 @@ function adminPageHTML(): string {
   <script src="/static/speaker-brief.js?v=20261116c"></script>
   <script src="/static/talk-brief.js?v=20261116"></script>
   <script src="/static/event-week.js?v=20261116"></script>
+  <script src="/static/entry-slots.js?v=20261117"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
   <script src="/static/workshop-reminder.js?v=2026111503"></script>
 </body>
@@ -44153,6 +44183,7 @@ function adminPageScript(): string {
             \${notifyFunnelHTML(lunchStats.notifyMail)}
             <div id="netmail-strip"></div>
             <div id="eventweek-strip"></div>
+            <div id="entryslots-strip"></div>
             <div class="mt-4 pt-3 border-t border-white/10">
               <p class="text-xs text-gray-400 leading-relaxed">
                 <i class="fas fa-info-circle text-blue-400 mr-1"></i>

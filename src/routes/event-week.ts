@@ -252,12 +252,12 @@ export async function eventWeekEmail(c: any, a: any, opts: { preview?: boolean; 
   const onTheDay = `
       <div style="margin:22px 0 0;padding:18px 20px;background:#FFF8EC;border:1px solid #F3DDB0;border-radius:12px;">
         <p style="margin:0 0 6px;font-size:15px;font-weight:bold;color:#1E2140;">On the day</p>
-        <p style="margin:0;font-size:13.5px;line-height:1.65;color:#555;">The badge desk opens at <strong>8:30 am on Thursday 20 Nov</strong> at the World Trade Center, Cuffe Parade, Mumbai 400005. Show the QR code of your pass on your phone and a government photo ID with the same name. There is no on-spot registration. ${kind === 'exhibitor' ? 'Your booth is set up and waiting for you.' : ''}</p>
+        <p style="margin:0;font-size:13.5px;line-height:1.65;color:#555;">The badge desk opens at <strong>8:30 am on Friday 20 Nov</strong> at the World Trade Center, Cuffe Parade, Mumbai 400005. Show the QR code of your pass on your phone and a government photo ID with the same name. There is no on-spot registration. ${kind === 'exhibitor' ? 'Your booth is set up and waiting for you.' : ''}</p>
       </div>`
 
   const intro = kind === 'exhibitor'
-    ? `Bharat AI Innovation 2026 is this Thursday and Friday${days ? ` (<strong>${days.toLowerCase()}</strong>)` : ''} at the World Trade Center, Mumbai. Here is your booth, and what to do before the doors open so your team walks in ready and your leads are kept.`
-    : `Bharat AI Innovation 2026 is this Thursday and Friday${days ? ` (<strong>${days.toLowerCase()}</strong>)` : ''} at the World Trade Center, Mumbai. Here is what to do before you arrive, in order. Each button signs you in, so it takes a minute on your phone.`
+    ? `Bharat AI Innovation 2026 is this Friday and Saturday${days ? ` (<strong>${days.toLowerCase()}</strong>)` : ''} at the World Trade Center, Mumbai. Here is your booth, and what to do before the doors open so your team walks in ready and your leads are kept.`
+    : `Bharat AI Innovation 2026 is this Friday and Saturday${days ? ` (<strong>${days.toLowerCase()}</strong>)` : ''} at the World Trade Center, Mumbai. Here is what to do before you arrive, in order. Each button signs you in, so it takes a minute on your phone.`
   const preheader = kind === 'exhibitor' ? 'Your booth, your team’s passes, Booth Leads and your meetings. 20 and 21 Nov, WTC Mumbai.'
     : 'Your pass, your badge for LinkedIn, the app and your meetings. 20 and 21 Nov, WTC Mumbai.'
   const header = hooks.emailHeader ? hooks.emailHeader('Get ready for 20 and 21 Nov', (days ? days + ' &bull; ' : '') + 'World Trade Center, Mumbai') : ''
