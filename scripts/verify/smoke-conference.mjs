@@ -6,6 +6,7 @@
 // their slot emailed; a photo stored; and the real agenda read the way the screen
 // reads it. Run after `npm run build`:  node scripts/verify/smoke-conference.mjs
 import { makeWorld } from './conference-world.mjs';
+import crypto from 'node:crypto';
 
 let fails = 0;
 const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '' : '  <- ' + (typeof d === 'string' ? d : JSON.stringify(d)).slice(0, 400))); if (!ok) fails++; };
@@ -247,6 +248,33 @@ const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (o
   check('the app lists them: published, with a slug of their own', W.rows("SELECT is_published, slug FROM speakers WHERE name = 'Arindam Ghosh'")[0]?.is_published === 1);
   const gone = await W.call('POST', '/api/admin/speakers/from-attendee/999999', {});
   check('an attendee who is not there is refused in plain words', gone.status === 404 && /not on the list/.test(gone.json.error), gone.json);
+}
+
+// ================= a speaker's photo and their pass (17 Nov 2026) =================
+{
+  const W = await makeWorld();
+  const jpeg = 'data:image/jpeg;base64,' + Buffer.alloc(4000, 9).toString('base64');
+  const sessionFor = (id) => { const exp = Math.floor(Date.now() / 1000) + 3600; const b = id + '.' + exp; return 'bai_session=' + b + '.' + crypto.createHmac('sha256', 'h').update(b).digest('hex'); };
+  const mk = async (body) => (await W.call('POST', '/api/admin/speakers', body)).json.id;
+  const noPhoto = await mk({ name: 'Kushan Shah', role: 'CTPO', organisation: 'Fynd', email: 'kushan@example.test' });
+  const ownPhoto = await mk({ name: 'Own Photo', email: 'own@example.test', photo_url: 'https://example.test/own.jpg' });
+  const noPass = await mk({ name: 'No Pass', email: 'nopass@example.test' });
+  W.db.run("INSERT INTO attendees (id, event_id, name, email, badge_type, payment_status, main_event, avatar_url) VALUES (9001, 1, 'Kushan Shah', 'kushan@example.test', 'Speaker', 'waived', 1, '/api/uploads/avatars/9-1.jpg')");
+  W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, main_event, avatar_url) VALUES (1, 'Own Photo', 'own@example.test', 'Speaker', 'waived', 1, '/api/uploads/avatars/9-2.jpg')");
+  W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, main_event, avatar_url) VALUES (1, 'No Pass', 'nopass@example.test', 'Speaker', 'waived', 1, '')");
+  const d = (await W.call('GET', '/api/admin/events/1/conference')).json;
+  const by = (id) => d.speakers.find(s => s.id === id);
+  check('Admin: a speaker with no photo shows the one on their pass', by(noPhoto).photo_url === '/api/uploads/avatars/9-1.jpg' && by(noPhoto).photo_from_pass === true, by(noPhoto).photo_url);
+  check('Admin: a speaker with a photo of their own keeps it', by(ownPhoto).photo_url === 'https://example.test/own.jpg', by(ownPhoto).photo_url);
+  const app = await W.call('GET', '/api/events/1/speakers', undefined, { admin: false, headers: { cookie: sessionFor(9001) } });
+  const inApp = (id) => (app.json || []).find(s => s.id === id);
+  check('the app: the same photo from their pass, their own one kept', app.status === 200 && inApp(noPhoto)?.photo_url === '/api/uploads/avatars/9-1.jpg' && inApp(ownPhoto)?.photo_url === 'https://example.test/own.jpg', { status: app.status, got: inApp(noPhoto) });
+
+  // A photo put on a speaker in Admin reaches their pass when it has none, and never replaces one.
+  const r1 = await W.call('POST', '/api/admin/speakers/' + noPass + '/photo', { image: jpeg });
+  check('a photo put on a speaker in Admin shows on their pass too', r1.status === 200 && W.rows("SELECT avatar_url FROM attendees WHERE email = 'nopass@example.test'")[0].avatar_url === r1.json.photo_url, r1.json);
+  const r2 = await W.call('POST', '/api/admin/speakers/' + ownPhoto + '/photo', { image: jpeg });
+  check('...but a pass with a photo of its own keeps it', r2.status === 200 && W.rows("SELECT avatar_url FROM attendees WHERE email = 'own@example.test'")[0].avatar_url === '/api/uploads/avatars/9-2.jpg');
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');

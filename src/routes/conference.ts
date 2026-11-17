@@ -906,7 +906,7 @@ conf.post('/api/admin/speakers/reorder', async (c) => {
 // A photo chosen in Admin, cropped square in the browser, kept in the uploads bucket.
 conf.post('/api/admin/speakers/:id/photo', async (c) => {
   const id = Number(c.req.param('id'))
-  const sp = await one(c, 'SELECT id, name, photo_url FROM speakers WHERE id = ?', id)
+  const sp = await one(c, 'SELECT id, event_id, name, email, photo_url FROM speakers WHERE id = ?', id)
   if (!sp) return c.json({ error: 'That speaker is not on the list any more.' }, 404)
   if (!c.env.UPLOADS) return c.json({ error: 'Photo storage is not set up on this server, so the photo was not saved.' }, 503)
   const b = await c.req.json().catch(() => ({})) as any
@@ -922,6 +922,10 @@ conf.post('/api/admin/speakers/:id/photo', async (c) => {
   await c.env.UPLOADS.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: 'public, max-age=31536000' } })
   const url = '/api/uploads/' + key
   await c.env.DB.prepare('UPDATE speakers SET photo_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(url, id).run()
+  // Their pass (the attendee row under their email) shows this photo too when it has none.
+  if (String(sp.email || '').trim()) {
+    try { await c.env.DB.prepare("UPDATE attendees SET avatar_url = ? WHERE event_id = ? AND LOWER(TRIM(email)) = ? AND TRIM(IFNULL(avatar_url, '')) = ''").bind(url, Number(sp.event_id) || 1, String(sp.email).trim().toLowerCase()).run() } catch { /* a pass without the column keeps going */ }
+  }
   const prev = String(sp.photo_url || '')
   if (prev.startsWith('/api/uploads/speakers/')) { try { await c.env.UPLOADS.delete(prev.slice('/api/uploads/'.length)) } catch { /* an orphan file costs nothing */ } }
   await audit(c, 'speaker.photo', 'speaker', id, { name: sp.name })

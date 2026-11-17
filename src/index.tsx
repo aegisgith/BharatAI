@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
-import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots, syncTalkSessions, talkRemoved } from './routes/conference'
+import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots, syncTalkSessions, talkRemoved, withAttendeePhotos } from './routes/conference'
 import siteLive from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief } from './routes/talk-brief'
@@ -8373,6 +8373,9 @@ app.get('/api/events/:id/speakers', async (c) => {
   } catch (_) { return c.json([]) }
   speakers = speakers.filter(sp => !/\bminister\b/i.test(String(sp.role || '')) &&
     !NETWORK_HIDDEN_SPEAKER_SLUGS.has(String(sp.slug || '').trim().toLowerCase()))
+  // A speaker with no photo of their own shows the one on their pass, as Admin and the
+  // website do (withAttendeePhotos, 16-17 Nov 2026).
+  speakers = await withAttendeePhotos(c, Number(eventId) || 1, speakers)
   const names = [...new Set(speakers.map(sp => String(sp.name || '').trim().toLowerCase()).filter(Boolean))]
   const emails = [...new Set(speakers.map(sp => String(sp.email || '').trim().toLowerCase()).filter(Boolean))]
   let candidates: any[] = []
