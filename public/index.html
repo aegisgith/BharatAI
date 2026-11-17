@@ -764,6 +764,13 @@
             .ptile-cap { padding: 1rem 1.15rem 0.9rem; }
             .ptile-role { font-size: 0.7rem; }
         }
+        /* All six in one row (the organiser, 17 Nov 2026): the grid takes the whole container width. */
+        @media (min-width: 1024px) {
+            .ptiles { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.9rem; max-width: none; }
+            .ptile-stage { height: 112px; padding: 0.9rem 1rem; }
+            .ptile-cap { padding: 0.8rem 0.85rem 0.7rem; }
+            .ptile-role { font-size: 0.6rem; letter-spacing: 0.06em; }
+        }
         #venue .venue-images img:nth-child(2) { display: none; }
         @media (min-width: 900px) { #venue .venue-images img:nth-child(2) { display: block; } }
         #venue .venue-btns { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.25rem; }
