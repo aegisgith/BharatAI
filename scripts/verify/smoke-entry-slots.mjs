@@ -137,7 +137,7 @@ check('preview: 21 to send (the unsubscribed, the WhatsApp guest left out; the n
 check('preview: the entry time in big letters, Friday 20 Nov, the 9:30 am opening, the Free Visitor Pass named, ID and no on-spot registration',
   pv.json.html.includes(FRI_AM) && pv.json.html.includes('9:30 am') && pv.json.html.includes('Free Visitor Pass') && pv.json.html.includes('government photo ID') && pv.json.html.includes('no on-spot registration'), '');
 check('preview: the subject names the entry time', /^Asha, your entry time for Bharat AI Innovation: Friday 20 Nov, 8:30 am to 1 pm$/.test(pv.json.subject), pv.json.subject);
-check('preview: the Expo Pass offer, the download button, no sign-in token', pv.json.html.includes('Get the Expo Pass') && pv.json.html.includes('action=download-pass') && !/[?&]token=/.test(pv.json.html), '');
+check('preview: the Expo Pass offer, the download button, no sign-in token, the Are you coming buttons not live', pv.json.html.includes('Get the Expo Pass') && pv.json.html.includes('action=download-pass') && !/[?&]token=/.test(pv.json.html) && pv.json.html.includes('Are you coming at this time?') && !pv.json.html.includes('/api/rsvp?'), '');
 pv = await hit('GET', '/api/admin/entry-slots/preview?slot=any', undefined, ADMIN);
 check('preview (either day): "Come on either day", the traveller line', pv.json.slot === 'any' && pv.json.html.includes(ANY) && pv.json.html.includes('Come on either day'), pv.json.slot);
 pv = await hit('GET', '/api/admin/entry-slots/preview?slot=sat-am', undefined, ADMIN);
@@ -156,6 +156,14 @@ r = await hit('POST', `/api/admin/campaigns/${camp}/pump`, { batch: 8 }, ADMIN);
 check('one pump of 8 sends 8: no send gap', r.status === 200 && r.json.sent === 8 && sent.length === 8, JSON.stringify(r.json));
 check('the first email: to Asha, the subject with her entry time, a sign-in token on the button', to(0).includes('asha@example.com') && subj(0).includes(FRI_AM) && /action=download-pass[^"]*token=/.test(body(0)), subj(0));
 check('the sent email carries the unsubscribe footer', /unsubscribe/i.test(body(0)), '');
+// "Are you coming?" (the organiser: most yeses are from October). Two signed one-tap links.
+const yesLink = (body(0).match(/href="(https:\/\/bharataiinnovation\.com\/api\/rsvp\?[^"]*status=confirmed[^"]*)"/) || [])[1] || '';
+const noLink = (body(0).match(/href="(https:\/\/bharataiinnovation\.com\/api\/rsvp\?[^"]*status=declined[^"]*)"/) || [])[1] || '';
+check('the email asks "Are you coming at this time?" with signed Yes and Can\'t links', body(0).includes('Are you coming at this time?') && /sig=[0-9a-f]{32}/.test(yesLink) && /sig=[0-9a-f]{32}/.test(noLink), yesLink);
+r = await hit('GET', yesLink.replace('https://bharataiinnovation.com', ''));
+check('one tap on Yes records a fresh answer and lands on the answer page', r.status === 302 && !!q('SELECT rsvp_at FROM attendees WHERE id = 1')[0].rsvp_at, r.status + ' ' + q('SELECT rsvp_status, rsvp_at FROM attendees WHERE id = 1')[0].rsvp_at);
+st = await hit('GET', '/api/admin/entry-slots/status', undefined, ADMIN);
+check('status: Friday morning shows 1 fresh yes since the email went; the older yeses (Asha, the colleague) do not count', by('fri-am').yes_now === 1 && by('fri-am').no_now === 0 && !!st.json.asked_since, JSON.stringify(st.json.slots));
 // Someone pays before their turn: skipped, not sent.
 db.run("UPDATE attendees SET badge_type = 'Expo Pass', payment_status = 'paid' WHERE id = ?", [order[8]]);
 const t = await hit('POST', '/api/cron/tick', {}, ADMIN);

@@ -59,8 +59,12 @@
         '<td class="py-1 pr-3 text-gray-500 hidden sm:table-cell">' + esc(s.text) + '</td>' +
         '<td class="py-1 pr-3 text-right font-semibold text-white">' + s.given + '</td>' +
         '<td class="py-1 pr-3 text-right text-gray-400">' + s.sent + '</td>' +
+        '<td class="py-1 pr-3 text-right font-semibold text-green-300">' + (s.yes_now || 0) + '</td>' +
+        '<td class="py-1 pr-3 text-right text-gray-400">' + (s.no_now || 0) + '</td>' +
         '<td class="py-1 text-gray-500 text-[11px]">' + esc(plus.join(', ')) + '</td></tr>';
     }).join('');
+    var yesAll = sum(d.slots, 'yes_now'), noAll = sum(d.slots, 'no_now');
+    var fresh = d.asked_since ? ' Since the email went: <span class="text-green-300 font-semibold">' + yesAll + '</span> said yes, ' + noAll + ' can&rsquo;t.' : '';
     var buttons = '';
     if (d.without) buttons += btn('assign', 'Give entry times to ' + d.without, true);
     if (run) buttons += btn('preview-run', 'Preview') + (run.status === 'running' ? btn('pause', 'Pause', true) : btn('resume', 'Resume', true));
@@ -69,11 +73,11 @@
     el.innerHTML = '<div class="mt-4 pt-3 border-t border-white/10">' +
       '<div class="flex items-center justify-between gap-3 flex-wrap mb-2">' +
         '<div><h4 class="text-xs font-semibold text-gray-200"><i class="fas fa-clock text-primary-400 mr-1.5"></i>Entry times for the Free Visitor Pass</h4>' +
-        '<p class="text-[11px] mt-0.5 text-gray-400">' + state + (d.waiting ? ' ' + d.waiting + ' are on the waiting list.' : '') + (d.let_in ? ' ' + d.let_in + ' were let in from it.' : '') + '</p></div>' +
+        '<p class="text-[11px] mt-0.5 text-gray-400">' + state + (d.waiting ? ' ' + d.waiting + ' are on the waiting list.' : '') + (d.let_in ? ' ' + d.let_in + ' were let in from it.' : '') + fresh + '</p></div>' +
         '<div class="flex gap-1.5 flex-wrap">' + buttons + '</div></div>' +
       '<table class="w-full text-xs"><thead><tr class="text-[10px] uppercase tracking-wide text-gray-500"><th class="text-left font-medium pb-1">Entry time</th><th class="text-left font-medium pb-1 hidden sm:table-cell"></th>' +
-        '<th class="text-right font-medium pb-1 pr-3">Given</th><th class="text-right font-medium pb-1 pr-3">Emailed</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<p class="text-[11px] text-gray-500 mt-2">Friday morning: Mumbai and Thane side who said "I&rsquo;m coming" or saved the pass, with their colleagues. Either day: those who live outside Mumbai. The rest share the other three half-days, colleagues together. The desk shows the time on the scan; it does not turn anyone away.</p>' +
+        '<th class="text-right font-medium pb-1 pr-3">Given</th><th class="text-right font-medium pb-1 pr-3">Emailed</th><th class="text-right font-medium pb-1 pr-3" title="Tapped Yes, I\'m coming in the email or the app since the email went">Yes</th><th class="text-right font-medium pb-1 pr-3" title="Tapped I can\'t make it since the email went">Can&rsquo;t</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<p class="text-[11px] text-gray-500 mt-2">Friday morning: Mumbai and Thane side who said "I&rsquo;m coming" or saved the pass, with their colleagues. Either day: those who live outside Mumbai. The rest share the other three half-days, colleagues together. The email asks "Are you coming?": Yes and Can&rsquo;t count answers given since it went, not older ones. The desk shows the time on the scan; it does not turn anyone away.</p>' +
       '</div>';
     wire(el);
   }

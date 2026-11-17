@@ -70,6 +70,8 @@ type Hooks = {
   waitlisted?: (a: any) => boolean
   profileGaps?: (a: any) => string[]
   rsPrice?: (pass: string) => string
+  // The signed one-tap "Are you coming?" link (/api/rsvp in index.tsx); index.tsx signs it.
+  rsvpLink?: (c: any, email: string, status: 'confirmed' | 'declined') => Promise<string>
   decorate?: (c: any, html: string, to: string) => Promise<string>
   audit?: (c: any, action: string, entity?: string, entityId?: any, detail?: any) => Promise<any>
 }
@@ -212,6 +214,10 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean }
   if (!opts.preview && hooks.signIn) { try { token = await hooks.signIn(c, Number(a.event_id) || 1, email.toLowerCase()) } catch { token = '' } }
   const base = `${appUrl}?email=${encodeURIComponent(email)}`
   const go = (action: string, extra = '') => `${base}&action=${action}${extra}${token ? '&token=' + token : ''}`
+  // "Are you coming?" (the organiser, 17 Nov 2026: most yeses are from October; "how do we
+  // know how many will come?"): one tap records a fresh answer, counted on the Admin strip.
+  const ask = async (status: 'confirmed' | 'declined') => (opts.preview || !hooks.rsvpLink) ? '#' : await hooks.rsvpLink(c, email.toLowerCase(), status)
+  const yesHref = await ask('confirmed'), noHref = await ask('declined')
   const btn = (href: string, label: string, bg = '#C84F00') =>
     `<a href="${href}" style="display:inline-block;margin:8px 0 0;padding:11px 20px;background:${bg};color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13.5px;">${label}</a>`
   const gaps = hooks.profileGaps ? hooks.profileGaps(a) : []
@@ -263,6 +269,12 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean }
         <p style="margin:0;font-size:13px;line-height:1.6;color:#C9CDE6;">World Trade Center, Cuffe Parade, Mumbai 400005. ${stay}</p>
       </div>
       <p style="margin:14px 0 0;font-size:13.5px;line-height:1.65;color:#555;">${when}</p>
+      <div style="margin:16px 0 0;padding:16px 18px;background:#F0FAF4;border:1px solid #BFE3CC;border-radius:12px;text-align:center;">
+        <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;">${key === 'any' ? 'Are you coming?' : 'Are you coming at this time?'}</p>
+        <p style="margin:0 0 6px;font-size:13px;line-height:1.5;color:#555;">One tap. It helps us keep the floor comfortable for everyone.</p>
+        <a href="${yesHref}" style="display:inline-block;margin:6px 4px 0;padding:11px 20px;background:#0f7b47;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13.5px;">Yes, I&rsquo;m coming</a>
+        <a href="${noHref}" style="display:inline-block;margin:6px 4px 0;padding:11px 20px;background:#fff;color:#1E2140;border:1px solid #C9CDE6;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13.5px;">I can&rsquo;t make it</a>
+      </div>
       <table role="presentation" data-app-on-phone="1" style="width:100%;border-collapse:collapse;margin:20px 0 0;">${steps.join('')}</table>
       ${expo}
       <div style="margin-top:22px;padding-top:16px;border-top:1px solid #eee;">
@@ -282,7 +294,7 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean }
 // The free pass holders of the conference, with what the plan reads.
 async function freeHolders(c: any): Promise<any[]> {
   const cl = hooks.clauses ? await hooks.clauses(c) : { mc: '', noEmail: '' }
-  const rows = await all(c, `SELECT id, event_id, name, email, city, company, badge_type, payment_status, main_event, rsvp_status, pass_downloaded_at,
+  const rows = await all(c, `SELECT id, event_id, name, email, city, company, badge_type, payment_status, main_event, rsvp_status, rsvp_at, pass_downloaded_at,
       entry_status, entry_slot, unsubscribed_at FROM attendees WHERE event_id = 1${cl.mc} ORDER BY id`)
   return rows.filter(freeHolder)
 }
@@ -332,8 +344,13 @@ es.get('/api/admin/entry-slots/status', async (c) => {
     const rows = await freeHolders(c)
     const sentIds = new Set((await all(c, `SELECT cr.attendee_id AS id FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
         WHERE cp.kind = '${CAMPAIGN_KIND}' AND cr.status = 'sent' AND cr.attendee_id IS NOT NULL`)).map((r: any) => Number(r.id)))
+    // A fresh answer: one given since the first entry-time run was made (the email's two
+    // buttons, or the app). Older yeses, most from October, are not counted here.
+    const since = String(((await c.env.DB.prepare(`SELECT MIN(created_at) AS t FROM campaigns WHERE kind = '${CAMPAIGN_KIND}'`).first().catch(() => null)) as any)?.t || '')
+    const fresh = (a: any, s: string) => !!since && String(a.rsvp_status || '') === s && String(a.rsvp_at || '') >= since
     const given: Record<string, number> = {}, sent: Record<string, number> = {}, planned: Record<string, number> = {}, wlPlan: Record<string, number> = {}
-    for (const k of SLOT_ORDER) { given[k] = 0; sent[k] = 0; planned[k] = 0; wlPlan[k] = 0 }
+    const yesNow: Record<string, number> = {}, noNow: Record<string, number> = {}
+    for (const k of SLOT_ORDER) { given[k] = 0; sent[k] = 0; planned[k] = 0; wlPlan[k] = 0; yesNow[k] = 0; noNow[k] = 0 }
     let other = 0, waiting = 0, letIn = 0
     const open: any[] = [], wl: any[] = []
     for (const a of rows) {
@@ -345,14 +362,16 @@ es.get('/api/admin/entry-slots/status', async (c) => {
       if (!k) { other++; continue }
       given[k]++
       if (sentIds.has(Number(a.id))) sent[k]++
+      if (fresh(a, 'confirmed')) yesNow[k]++
+      if (fresh(a, 'declined')) noNow[k]++
     }
     for (const k of planSlots(open).values()) planned[k]++
     for (const a of wl) wlPlan[waitlistSlotFor(a)]++
     const run = await openRun(c)
     const toSend = (await entrySlotAudienceRows(c)).length
     return c.json({
-      slots: SLOT_ORDER.map(k => ({ key: k, text: SLOTS[k].text, short: SLOTS[k].short, given: given[k], sent: sent[k], planned: planned[k], waitlist: wlPlan[k] })),
-      without: open.length, other, waiting, let_in: letIn, to_send: toSend,
+      slots: SLOT_ORDER.map(k => ({ key: k, text: SLOTS[k].text, short: SLOTS[k].short, given: given[k], sent: sent[k], planned: planned[k], waitlist: wlPlan[k], yes_now: yesNow[k], no_now: noNow[k] })),
+      without: open.length, other, waiting, let_in: letIn, to_send: toSend, asked_since: since,
       open_run: run ? { id: run.id, status: run.status, title: run.title, total: run.total, sent: run.sent, failed: run.failed } : null,
       window: sendWindow().window,
     })

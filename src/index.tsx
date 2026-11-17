@@ -595,6 +595,10 @@ configureEntrySlots({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader,
   clauses: async (c: any) => ({ mc: await mainEventClause(c), noEmail: NO_EMAIL_SQL() }),
   notifyKind: (a: any) => notifyKind(a), waitlisted: (a: any) => entryWaitlisted(a), profileGaps: (a: any) => attendeeProfileGaps(a),
   rsPrice: (p: string) => rsPrice(p),
+  rsvpLink: async (c: any, email: string, status: string) => {
+    const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+    return appUrl.replace(/\/app\/?$/, '') + '/api/rsvp?email=' + encodeURIComponent(email) + '&status=' + status + '&event=1&sig=' + (await rsvpSig(c, email, status, 1))
+  },
   decorate: async (c: any, html: string, to: string) => (await withAppOnPhoneFor(c, html, to)).replace(/<\/body>/i, UNSUB_FOOTER(await unsubscribeUrl(c, to)) + '</body>'),
   audit: (...a: any[]) => (audit as any)(...a) })
 app.route('/', entrySlots)
