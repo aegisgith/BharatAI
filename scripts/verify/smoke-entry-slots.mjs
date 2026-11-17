@@ -149,7 +149,7 @@ check('preview: 21 to send (the unsubscribed, the WhatsApp guest left out; the n
 check('preview: the entry time in big letters, Friday 20 Nov, the 9:30 am opening, the Free Visitor Pass named, ID and no on-spot registration',
   pv.json.html.includes(FRI_AM) && pv.json.html.includes('9:30 am') && pv.json.html.includes('Free Visitor Pass') && pv.json.html.includes('government photo ID') && pv.json.html.includes('no on-spot registration'), '');
 check('preview: the subject names the entry time', /^Asha, your entry time for Bharat AI Innovation: Friday 20 Nov, 8:30 am to 1 pm$/.test(pv.json.subject), pv.json.subject);
-check('preview: the Expo Pass offer, the download button, no sign-in token, the Are you coming buttons not live', pv.json.html.includes('Get the Expo Pass') && pv.json.html.includes('action=download-pass') && !/[?&]token=/.test(pv.json.html) && pv.json.html.includes('Are you coming at this time?') && !pv.json.html.includes('/api/rsvp?'), '');
+check('preview: no Expo Pass offer (the organiser: it did not look good), the download button, no sign-in token, the Are you coming buttons not live', !pv.json.html.includes('Expo Pass') && pv.json.html.includes('action=download-pass') && !/[?&]token=/.test(pv.json.html) && pv.json.html.includes('Are you coming at this time?') && !pv.json.html.includes('/api/rsvp?'), '');
 pv = await hit('GET', '/api/admin/entry-slots/preview?slot=any', undefined, ADMIN);
 check('preview (either day): "Come on either day", the traveller line', pv.json.slot === 'any' && pv.json.html.includes(ANY) && pv.json.html.includes('Come on either day'), pv.json.slot);
 pv = await hit('GET', '/api/admin/entry-slots/preview?slot=sat-am', undefined, ADMIN);

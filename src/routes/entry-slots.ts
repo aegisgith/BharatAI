@@ -69,7 +69,6 @@ type Hooks = {
   notifyKind?: (a: any) => 'free' | 'unpaid' | 'paid'
   waitlisted?: (a: any) => boolean
   profileGaps?: (a: any) => string[]
-  rsPrice?: (pass: string) => string
   // The signed one-tap "Are you coming?" link (/api/rsvp in index.tsx); index.tsx signs it.
   rsvpLink?: (c: any, email: string, status: 'confirmed' | 'declined') => Promise<string>
   decorate?: (c: any, html: string, to: string) => Promise<string>
@@ -246,12 +245,7 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean }
     step('Bring a government photo ID', 'With the same name as your pass. The desk checks it.'),
     step('Come in your entry time', 'There is no on-spot registration at the venue. Please keep to your time, so the floor stays comfortable and everyone gets their turn.'),
   ]
-  const expo = hooks.rsPrice
-    ? `<div style="margin:20px 0 0;padding:16px 18px;background:#FFF8EC;border:1px solid #F3DDB0;border-radius:12px;">
-        <p style="margin:0 0 4px;font-size:14px;font-weight:bold;color:#1E2140;">Want to come on both days, at any time?</p>
-        <p style="margin:0;font-size:13px;line-height:1.6;color:#555;">The Expo Pass is ${hooks.rsPrice('Expo Pass')} + GST: guaranteed entry to the exhibition floor on both days, and you can book meetings in the app. The Delegate Pass adds the conference sessions.</p>
-        ${btn(go('pay', '&pass=expo'), 'Get the Expo Pass', '#0f7b47')}
-      </div>` : ''
+  // No Expo Pass offer in this email (the organiser, 17 Nov 23:58: "remove this it does not look good").
   const header = hooks.emailHeader ? hooks.emailHeader(fromWaitlist ? 'Your Free Visitor Pass is confirmed' : 'Your entry time', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai') : ''
   const html = `<!DOCTYPE html>
 <html>
@@ -276,7 +270,6 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean }
         <a href="${noHref}" style="display:inline-block;margin:6px 4px 0;padding:11px 20px;background:#fff;color:#1E2140;border:1px solid #C9CDE6;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13.5px;">I can&rsquo;t make it</a>
       </div>
       <table role="presentation" data-app-on-phone="1" style="width:100%;border-collapse:collapse;margin:20px 0 0;">${steps.join('')}</table>
-      ${expo}
       <div style="margin-top:22px;padding-top:16px;border-top:1px solid #eee;">
         <p style="margin:0 0 14px;font-size:12.5px;line-height:1.6;color:#888;">The buttons in this email sign you in as <strong>${esc(email)}</strong>. If one has expired, open the app and sign in with this address: we send you a one-time code, no password needed. Your entry time is also on your pass in the app. <a href="${base}${token ? '&token=' + token : ''}" style="color:#4f46e5;">Open the app</a></p>
         <p style="margin:0;font-size:14px;line-height:1.6;color:#555;">See you in Mumbai,<br><strong>Team Bharat AI Innovation</strong></p>
