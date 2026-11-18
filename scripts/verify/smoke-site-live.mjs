@@ -1,4 +1,5 @@
-// Integration: the website drawn live from the app (16 Nov 2026), through the WHOLE built
+// Integration: the website drawn live from the app (16 Nov 2026; /exhibition, the home page,
+// /partner and the talk cards since 18 Nov 2026), through the WHOLE built
 // worker on real SQLite (conference-world.mjs). The public programme (no email, no mobile,
 // no draft, no hidden speaker); /conference served as built until the switch is on; once
 // on, the schedule, the Tracks, the FAQ sentence and the speaker grids come from D1, and
@@ -98,11 +99,90 @@ check('...in Admin too (the session dialog lists speakers from here)', r.json.sp
 r = await W.call('GET', '/conference', undefined, anon);
 check('...and on the website', /Tarun Chugh[\s\S]{0,300}/.test(r.text) && r.text.includes('src="/api/uploads/avatars/77-1.jpg"'));
 
+// ---- the exhibitor wall and the talk cards, live (18 Nov 2026) ----
+// Dipti Agrawal's photo went on her pass after her talk was added, and Tudip's logo was
+// uploaded in Admin: neither reached the website, which changed only when rebuilt.
+const PAGES = { '/exhibition': 'exhibition.html', '/partner': 'partner.html', '/': 'index.html' };
+const page = (f) => readFileSync(join(ROOT, 'public', f), 'utf8').replace(/^﻿/, '');
+const conferenceAssets = W.env.ASSETS;
+W.env.ASSETS = { fetch: async (req) => {
+  const u = new URL(req.url);
+  if (PAGES[u.pathname]) return new Response(page(PAGES[u.pathname]), { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  return conferenceAssets.fetch(req);
+} };
+// A PNG 400 x 100, as the Admin screen sends a logo (a data URL).
+const png = new Uint8Array(300);
+png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 1, 144, 0, 0, 0, 100, 8, 6, 0, 0, 0]);
+const pngUrl = 'data:image/png;base64,' + Buffer.from(png).toString('base64');
+
+// The company team tables (0050): the public exhibitor list shows a company with a settings row.
+W.db.exec(readFileSync(join(ROOT, 'migrations', '0050_exhibitor_team.sql'), 'utf8'));
+// The talk's hall and the speaker's email (0052 and after), as production has them.
+for (const col of ['hall TEXT', "speaker_email TEXT DEFAULT ''"]) { try { W.db.run('ALTER TABLE innovation_talks ADD COLUMN ' + col); } catch { /* already there */ } }
+W.db.run("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('exhibitor_directory_public', '1')");
+W.db.run("INSERT INTO exhibitors (event_id, company_name, booth_number) VALUES (1, 'CGI', '5')");
+const cgi = W.rows("SELECT id FROM exhibitors WHERE company_name = 'CGI'")[0].id;
+W.db.run('INSERT INTO exhibitor_team_settings (exhibitor_id) VALUES (?)', [cgi]);
+W.db.run("INSERT INTO exhibitors (event_id, company_name) VALUES (1, 'Tudip Technologies Pvt Ltd')");
+const tudip = W.rows("SELECT id FROM exhibitors WHERE company_name = 'Tudip Technologies Pvt Ltd'")[0].id;
+W.db.run("INSERT INTO innovation_talks (event_id, slot_no, session_type, time_slot, speaker_name, company, topic, status, speaker_title, starts_at, duration_min, hall, speaker_email) VALUES (1, 2, 'Afternoon', 'Sat 21 Nov', 'Dipti Agrawal', 'Tudip Technologies Pvt Ltd', 'From Data to Decisions', 'confirmed', 'Co-Founder and CEO', '2026-11-21 12:20', 20, 'Aryabhata Theatre', 'dipti@tudip.test')");
+W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, main_event, avatar_url) VALUES (1, 'Dipti Agrawal', 'dipti@tudip.test', 'Exhibition Speaker', 'waived', 1, '/api/uploads/avatars/4147-1794979882967.jpg')");
+
+r = await W.call('GET', '/api/events/1/programme', undefined, anon);
+const dipti = r.json.talks.find((t) => t.speaker_name === 'Dipti Agrawal');
+check('a talk with no photo of its own shows the photo on the speaker’s pass, found by email', dipti && dipti.photo_url === '/api/uploads/avatars/4147-1794979882967.jpg' && !('speaker_email' in dipti), dipti);
+r = await W.call('GET', '/api/events/1/innovation-talks', undefined, anon);
+const diptiApp = (r.json || []).find((t) => t.speaker_name === 'Dipti Agrawal');
+check('...in the app’s Innovation Talks tab too', diptiApp && diptiApp.speaker_photo_url === '/api/uploads/avatars/4147-1794979882967.jpg' && !('speaker_email' in diptiApp), diptiApp);
+r = await W.call('GET', '/api/events/1/innovation-talks');
+check('...and in Admin', (r.json || []).find((t) => t.speaker_name === 'Dipti Agrawal')?.speaker_photo_url === '/api/uploads/avatars/4147-1794979882967.jpg');
+const tpTalk = W.rows("SELECT id FROM innovation_talks WHERE speaker_name = 'Dr. Saurabh N. Mehta'")[0];
+W.db.run("UPDATE innovation_talks SET speaker_photo_url = '/images/talks/own.webp', speaker_email = 'saurabh@example.test' WHERE id = ?", [tpTalk.id]);
+W.db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status, main_event, avatar_url) VALUES (1, 'Dr. Saurabh N. Mehta', 'saurabh@example.test', 'Exhibition Speaker', 'waived', 1, '/api/uploads/avatars/99-2.jpg')");
+r = await W.call('GET', '/api/events/1/programme', undefined, anon);
+check('a photo chosen for the talk itself still wins over the pass photo', r.json.talks.find((t) => t.speaker_name === 'Dr. Saurabh N. Mehta')?.photo_url === '/images/talks/own.webp');
+
+r = await W.call('GET', '/exhibition', undefined, anon);
+const card = (html, name) => (html.match(new RegExp('<div class="speaker-card[^"]*"[^>]*>(?:(?!<div class="speaker-card)[\\s\\S])*?<h4>' + name + '</h4>[\\s\\S]*?</div>')) || [''])[0];
+check('/exhibition is drawn live', r.status === 200 && r.headers.get('x-site-live') === 'live' && r.headers.get('cache-control') === 'public, max-age=0, must-revalidate', [r.status, r.headers.get('x-site-live'), r.headers.get('cache-control')]);
+check('...its talk card shows Dipti’s pass photo, not initials', card(r.text, 'Dipti Agrawal').includes('src="/api/uploads/avatars/4147-1794979882967.jpg"'), card(r.text, 'Dipti Agrawal'));
+check('...the page keeps its shell', r.text.includes('<title>') && r.text.includes('<!-- talks:start') && r.text.includes('<!-- exhibitors:start') && r.text.includes('</html>'));
+check('...the wall is the app’s list: CGI, with its name until a logo is uploaded', /<li class="exh-card" data-featured>[\s\S]{0,400}CGI/.test(r.text));
+check('...a company that is not on the public list is not on the wall', !/exh-name">Tudip/.test(r.text));
+
+r = await W.call('POST', '/api/admin/exhibitors/' + tudip + '/logo', { image: pngUrl });
+check('Tudip’s logo uploaded in Admin', r.status === 200 && /\/api\/uploads\/exhibitors\//.test(r.json.logo_url), r);
+r = await W.call('POST', '/api/admin/exhibitors/' + cgi + '/logo', { image: pngUrl });
+check('CGI’s logo uploaded in Admin', r.status === 200, r);
+const cgiLogo = W.rows('SELECT logo_url FROM exhibitors WHERE id = ?', [cgi])[0].logo_url.replace(/^https?:\/\/[^/]+/, '');
+r = await W.call('GET', '/exhibition', undefined, anon);
+const diptiCard = card(r.text, 'Dipti Agrawal');
+check('...Dipti’s talk card carries Tudip’s new logo at once, sized from the file', /class="talk-logo"/.test(diptiCard) && /width="400" height="100"[^>]*src="\/api\/uploads\/exhibitors\//.test(diptiCard), diptiCard);
+check('...the wall shows CGI’s new logo at once, with its real size', r.text.includes(`src="${cgiLogo}" width="400" height="100"`), (r.text.match(/exh-logo">[\s\S]{0,200}/) || [''])[0]);
+r = await W.call('GET', '/', undefined, anon);
+check('the home page is drawn live and its strip shows the new logo', r.status === 200 && r.headers.get('x-site-live') === 'live' && r.text.includes(`src="${cgiLogo}" width="400" height="100"`) && r.text.includes('<!-- speakers:start'), [r.status, r.headers.get('x-site-live')]);
+check('...its speaker grid is the app’s', /<!-- speakers:start[\s\S]*?Tarun Chugh[\s\S]*?<!-- speakers:end/.test(r.text) && !/<!-- speakers:start[\s\S]*?Nilesh Shah[\s\S]*?<!-- speakers:end/.test(r.text));
+r = await W.call('GET', '/partner', undefined, anon);
+check('/partner too', r.status === 200 && r.text.includes(`src="${cgiLogo}"`));
+r = await W.call('GET', '/conference', undefined, anon);
+check('/conference’s talk cards follow as well', /<!-- talks:start[\s\S]*?Dipti Agrawal[\s\S]*?<!-- talks:end/.test(r.text) && card(r.text.slice(r.text.indexOf('<!-- talks:start')), 'Dipti Agrawal').includes('src="/api/uploads/avatars/4147-1794979882967.jpg"'));
+r = await W.call('GET', '/exhibition', undefined, anon);
+check('nothing unfinished is printed', !/undefined|NaN|\[object/.test(r.text.slice(r.text.indexOf('<!-- talks:start'), r.text.indexOf('<!-- talks:end'))) && !/undefined|NaN|\[object/.test(r.text.slice(r.text.indexOf('<!-- exhibitors:start'), r.text.indexOf('<!-- exhibitors:end'))));
+
+W.db.run("INSERT INTO app_settings (key, value) VALUES ('site_live_pages', 'off')");
+r = await W.call('GET', '/exhibition', undefined, anon);
+check('switched off (site_live_pages = off): the page as built', r.status === 200 && r.text === page('exhibition.html') && r.headers.get('x-site-live') === 'static', [r.status, r.headers.get('x-site-live')]);
+W.db.run("DELETE FROM app_settings WHERE key = 'site_live_pages'");
+
 // ---- a broken database never breaks the page ----
 const goodDB = W.env.DB;
 W.env.DB = { prepare() { return { bind() { return this; }, async first() { throw new Error('boom'); }, async all() { throw new Error('boom'); }, async run() { throw new Error('boom'); } }; } };
 r = await W.call('GET', '/conference', undefined, anon);
 check('with the database down: the page as built, status 200', r.status === 200 && r.text === template, [r.status, r.text.length]);
+r = await W.call('GET', '/exhibition', undefined, anon);
+check('...and /exhibition as built, status 200', r.status === 200 && r.text === page('exhibition.html'), [r.status, r.headers.get('x-site-live')]);
+r = await W.call('GET', '/', undefined, anon);
+check('...and the home page as built, status 200', r.status === 200 && r.text === page('index.html'), [r.status, r.headers.get('x-site-live')]);
 W.env.DB = goodDB;
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');

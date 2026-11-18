@@ -54,7 +54,7 @@ export async function makeWorld({ seed = 'small', migrated = false } = {}) {
     async put(key, bytes, opts) { bucket.set(key, { bytes, type: opts?.httpMetadata?.contentType }); },
     async get(key) {
       const o = bucket.get(key); if (!o) return null;
-      return { body: o.bytes, httpEtag: '"e"', writeHttpMetadata(h) { h.set('content-type', o.type || 'application/octet-stream'); } };
+      return { body: o.bytes, async arrayBuffer() { return o.bytes.buffer.slice(o.bytes.byteOffset, o.bytes.byteOffset + o.bytes.byteLength); }, httpEtag: '"e"', writeHttpMetadata(h) { h.set('content-type', o.type || 'application/octet-stream'); } };
     },
     async delete(key) { bucket.delete(key); },
   };

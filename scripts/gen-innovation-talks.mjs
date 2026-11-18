@@ -35,6 +35,11 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import sharp from 'sharp'
+import { EXHIBITORS } from './data/exhibitor-looks.mjs'
+import { slugOf, talksFromApp, talkLogoFiles, sizeTalkLogo, renderTalks, fillTalks } from './lib/exhibit-site.mjs'
+
+// The markup is scripts/lib/exhibit-site.mjs, shared with the Worker, which draws the
+// same cards live from the app on every request (src/routes/site-live.ts, 18 Nov 2026).
 
 const DATA = 'scripts/data/innovation-talks.json'
 const OUT = 'public/images/talks'
@@ -54,24 +59,12 @@ function fromApp() {
   let p
   try { p = JSON.parse(readFileSync('scripts/data/programme.json', 'utf8')) } catch { return null }
   if (!Array.isArray(p.talks) || !p.talks.length) return null
-  const nm = (s) => String(s || '').toLowerCase().replace(/^(dr\.?|mr\.?|ms\.?|mrs\.?|shri\.?|smt\.?)\s+/, '').replace(/[^a-z0-9]+/g, ' ').trim()
-  const sl = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-  const byName = new Map(listed.map((t) => [nm(t.name), t]))
-  return p.talks.filter((a) => String(a.speaker_name || '').trim()).map((a) => {
-    const j = byName.get(nm(a.speaker_name)) || null
-    return {
-      name: String(a.speaker_name).trim(), title: a.speaker_title || j?.title || '', company: a.company || j?.company || '',
-      topic: a.topic || j?.topic || '', slug: j?.slug || sl(a.speaker_name), logoFile: j?.logoFile, government: j?.government,
-      photoSrc: String(a.photo_url || '').replace(/^\//, ''),
-    }
-  })
+  return talksFromApp(p.talks, listed)
 }
 const talks = (FROM_APP && fromApp()) || listed
 if (FROM_APP && talks === listed) { console.log('[talks] the app\'s talks could not be read: the committed blocks stand'); process.exit(0) }
 
-const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const sq = (s) => String(s ?? '').replace(/'/g, "''")
-const initials = (name) => name.replace(/^(Dr\.?|Mr\.?|Ms\.?)\s+/, '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')
 
 async function bake(src, slug, crop) {
   // Square crop biased towards the top third: portraits put the head there. A
@@ -104,14 +97,7 @@ async function bake(src, slug, crop) {
 function fill(path, body) {
   const src = readFileSync(path, 'utf8')
   const eol = src.includes('\r\n') ? '\r\n' : '\n'
-  const s = src.replace(/\r\n/g, '\n')
-  const a = s.indexOf('<!-- talks:start'), b = s.indexOf('<!-- talks:end -->')
-  if (a < 0 || b < 0) throw new Error(`${path}: talks markers missing`)
-  const lineStart = s.lastIndexOf('\n', a) + 1
-  const ind = s.slice(lineStart, a)
-  const startLine = s.slice(a, s.indexOf('\n', a) + 1)
-  const indented = body.split('\n').map((l) => (l ? ind + l : l)).join('\n')
-  const out = s.slice(0, lineStart) + ind + startLine + indented + ind + s.slice(b)
+  const out = fillTalks(src.replace(/\r\n/g, '\n'), body)
   writeFileSync(path, out.replace(/\n/g, eol), 'utf8')
 }
 
@@ -139,77 +125,18 @@ for (const t of talks) {
 // wordmark lower than a square mark, so they read at the same weight. A company
 // with no logo on the wall gets its name only. A speaker who is not an exhibitor (a
 // government department showing its work) names their logo in the JSON's "logoFile".
-const slugOf = (name) => name.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+const looks = EXHIBITORS.map((e) => ({ ...e, slug: slugOf(e.name) }))
 for (const t of talks) {
-  const file = t.logoFile || `images/exhibitors/${slugOf(t.company)}.webp`
-  if (!existsSync(join('public', file))) continue
+  const file = talkLogoFiles(t, looks).find((f) => existsSync(join('public', f)))
+  if (!file) continue
   const m = await sharp(join('public', file)).metadata()
-  const r = m.width / m.height
-  let h = Math.min(34, Math.max(18, 30 * Math.pow(r, -0.4)))
-  if (h * r > 120) h = 120 / r
-  if (t.government) h = Math.min(44, 170 / r)
-  t.logo = { file, w: m.width, h: m.height, dh: Math.round(h) }
+  sizeTalkLogo(t, { file, w: m.width, h: m.height })
 }
-const logo = (t, margin) => t.logo
-  ? `<img width="${t.logo.w}" height="${t.logo.h}" loading="lazy" decoding="async" src="${t.logo.file}" alt="" class="talk-logo" style="display:block;height:${t.logo.dh}px;width:auto;max-width:${t.government ? 170 : 120}px;margin:${margin};position:relative;z-index:1;">\n    `
-  : ''
 
-// ---- exhibition.html: a speaker wall ----
-const cards = talks.map((t) => {
-  const alt = `${t.name}, ${t.title ? t.title + ', ' : ''}${t.company}`
-  const photo = t.hasPhoto
-    ? `<img width="320" height="320" loading="lazy" decoding="async" src="${t.photoSrc}" alt="${esc(alt)}" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:120px;height:120px;margin:0 auto;object-fit:cover;">`
-    : `<div class="speaker-photo" aria-hidden="true" style="width:120px;height:120px;margin:0 auto;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(255,107,0,0.14),rgba(57,73,171,0.14));color:var(--indigo-light);font-family:var(--font-display);font-weight:800;font-size:2rem;">${esc(initials(t.name))}</div>`
-  const topic = t.topic
-    ? `<p class="talk-topic" style="font-size:0.84rem;color:var(--charcoal);line-height:1.45;margin:0.6rem 0 0;">&ldquo;${esc(t.topic)}&rdquo;</p>`
-    : `<p class="talk-topic" style="font-size:0.8rem;color:var(--dark-grey);margin:0.6rem 0 0;">Topic to be announced</p>`
-  return `<div class="speaker-card reveal" style="text-align:center;align-items:center;">
-    ${photo}
-    <h4>${esc(t.name)}</h4>
-    ${t.title ? `<p style="font-size:0.8rem;color:var(--saffron);font-weight:600;margin:0;">${esc(t.title)}</p>` : ''}
-    ${logo(t, '0 auto')}<p class="spk-org" style="font-size:0.78rem;">${esc(t.company)}</p>
-    ${topic}
-</div>`
-})
-fill('public/exhibition.html', `<div class="speakers-grid">\n${cards.join('\n')}\n</div>\n`)
-
-// ---- conference.html: the same speakers in that page's card style ----
-// A talk with "government" in the JSON stands in a row of its own at the top, in that
-// order; the JSON's own order stays, because it numbers the rows the SQL inserts.
-const confCard = (t) => {
-  const alt = `${t.name}, ${t.title ? t.title + ', ' : ''}${t.company}`
-  const avatar = t.hasPhoto
-    ? `<div class="speaker-avatar"><img width="320" height="320" loading="lazy" decoding="async" src="${t.photoSrc}" alt="${esc(alt)}"></div>`
-    : `<div class="speaker-avatar" aria-hidden="true"><span style="color:#fff;font-family:var(--font-display);font-weight:800;font-size:1.4rem;letter-spacing:0.02em;">${esc(initials(t.name))}</span></div>`
-  const topic = t.topic
-    ? `<p class="talk-topic" style="font-size:0.84rem;color:var(--charcoal);line-height:1.45;margin:0.6rem 0 0;position:relative;z-index:1;">&ldquo;${esc(t.topic)}&rdquo;</p>`
-    : `<p class="talk-topic" style="font-size:0.8rem;color:var(--dark-grey);margin:0.6rem 0 0;position:relative;z-index:1;">Topic to be announced</p>`
-  return `<div class="speaker-card reveal">
-    ${avatar}
-    <h4>${esc(t.name)}</h4>
-    ${t.title ? `<div class="speaker-role">${esc(t.title)}</div>` : ''}
-    ${logo(t, '0.6rem auto 0.3rem')}<div class="speaker-org">${esc(t.company)}</div>
-    ${topic}
-</div>`
-}
-const govTalks = talks.filter((t) => t.government).sort((a, b) => a.government - b.government)
-const groupHead = (words) => `<h3 class="reveal" style="margin:0 0 1.25rem;text-align:center;font-family:var(--font-display);font-weight:800;font-size:1.35rem;color:var(--charcoal);">${words}</h3>`
-fill('public/conference.html', [
-  groupHead('Government'),
-  `<div class="speakers-grid gov-talks" style="margin-bottom:3rem;">\n${govTalks.map(confCard).join('\n')}\n</div>`,
-  groupHead('Exhibitors'),
-  `<div class="speakers-grid">\n${talks.filter((t) => !t.government).map(confCard).join('\n')}\n</div>\n`,
-].join('\n'))
-
-// ---- llms.txt ----
-const lines = talks.map((t) => `- **${t.name}** (${t.title ? t.title + ', ' : ''}${t.company})${t.topic ? ' — ' + t.topic : ''}`)
-fill('public/llms.txt', [
-  '## Innovation Talk & Showcase speakers',
-  '',
-  `${talks.length} stage talks by exhibitors and government departments at Bharat AI Innovation 2026, 20–21 November, WTC Mumbai (hall and times to be announced):`,
-  ...lines,
-  '',
-].join('\n') + '\n')
+const out = renderTalks(talks)
+fill('public/exhibition.html', out.exhibition)
+fill('public/conference.html', out.conference)
+fill('public/llms.txt', out.llms)
 
 // ---- SQL for the app (organiser runs it) ----
 const sql = [

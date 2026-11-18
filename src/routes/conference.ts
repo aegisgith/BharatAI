@@ -1555,6 +1555,41 @@ export async function withAttendeePhotos(c: any, eventId: number, speakers: any[
   })
 }
 
+// The same for an Innovation Talk (18 Nov 2026): a talk with no photo of its own, and a
+// pass under the speaker's email (or, on an Exhibition Speaker or Speaker pass, their
+// name) with a profile photo: that photo, in the app, Admin and on the website. Dipti
+// Agrawal's photo went on her pass four minutes after her talk was added, and her talk
+// card showed initials, because a talk copied the pass photo only when it was made. A
+// photo set on the talk itself still wins (15 talks with a pass photo already had one
+// the team chose). Read-time only, so a pass photo saved later shows at once.
+export async function withTalkPhotos(c: any, eventId: number, talks: any[]): Promise<any[]> {
+  const has = (t: any) => /^(\/|https?:\/\/)/.test(String(t.speaker_photo_url || ''))
+  if (!talks.some(t => !has(t))) return talks
+  let rows: any[] = []
+  let emailOf = new Map<number, string>()
+  try {
+    // The public shape carries no email: read each talk's own.
+    const mail = await all(c, "SELECT id, speaker_email FROM innovation_talks WHERE event_id = ? AND COALESCE(speaker_email, '') <> ''", eventId)
+    emailOf = new Map(mail.map((r: any) => [Number(r.id), String(r.speaker_email || '').trim().toLowerCase()]))
+    rows = await all(c, "SELECT id, name, email, avatar_url, badge_type FROM attendees WHERE event_id = ? AND avatar_url LIKE '/api/uploads/%' AND (badge_type IN ('Exhibition Speaker', 'Speaker') OR LOWER(TRIM(email)) IN (SELECT LOWER(TRIM(speaker_email)) FROM innovation_talks WHERE event_id = ? AND COALESCE(speaker_email, '') <> ''))", eventId, eventId)
+  } catch { return talks }
+  if (!rows.length) return talks
+  const byEmail = new Map(rows.map((a: any) => [String(a.email || '').trim().toLowerCase(), a]))
+  const byName = new Map<string, any[]>()
+  for (const a of rows) {
+    if (!['Exhibition Speaker', 'Speaker'].includes(String(a.badge_type || ''))) continue
+    const k = normName(a.name); if (!k) continue
+    if (!byName.has(k)) byName.set(k, []); byName.get(k)!.push(a)
+  }
+  return talks.map(t => {
+    if (has(t)) return t
+    const email = String(t.speaker_email || emailOf.get(Number(t.id)) || '').trim().toLowerCase()
+    const same = byName.get(normName(t.speaker_name)) || []
+    const a = (email && byEmail.get(email)) || (same.length === 1 ? same[0] : null)
+    return a ? { ...t, speaker_photo_url: a.avatar_url, photo_from_pass: true } : t
+  })
+}
+
 // ---------- for the website (16 Nov 2026) ----------
 //
 // The programme as the website draws it: the event, its halls, every published session
@@ -1573,7 +1608,7 @@ export async function publicProgramme(c: any, eventId: number) {
     one(c, 'SELECT id, title, venue, start_date, end_date FROM events WHERE id = ?', eventId),
     all(c, 'SELECT id, slug, name, role, organisation, topic, photo_url, bio, email, linkedin_url, is_featured, is_published, sort_order FROM speakers WHERE event_id = ? AND is_published = 1 ORDER BY sort_order, id', eventId),
     hallsFor(c, eventId, r.halls),
-    talksFor(c, eventId),
+    talksFor(c, eventId).then(t => withTalkPhotos(c, eventId, t)),
   ])
   // The email is read only to find the photo on the speaker's pass; it is never answered.
   const speakers = await withAttendeePhotos(c, eventId, speakers0)

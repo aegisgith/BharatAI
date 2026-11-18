@@ -1,8 +1,8 @@
 // Admin: an exhibitor's logo and an Innovation Talk speaker's photo, chosen on the
 // Edit (and Add exhibitor) screens and saved the moment they are chosen (18 Nov 2026).
 // Server: src/routes/exhibitor-media.ts. The app shows the new picture at once; the
-// website's exhibitor wall and talk cards follow on its next build (they are drawn from
-// the app by scripts/gen-exhibitor-logos.mjs and scripts/gen-innovation-talks.mjs).
+// website's exhibitor wall and talk cards follow within a minute: src/routes/site-live.ts
+// draws them from the app on every request (scripts/lib/exhibit-site.mjs).
 //
 // Loaded after /admin.js, whose functions are globals: this file wraps
 // openEditExhibitor, openCreateExhibitor, loadAdminExhibitors and editInnovationTalk.
@@ -59,7 +59,7 @@
   function say(box, msg, bad) { var m = box.querySelector('[data-em="msg"]'); m.textContent = msg; m.style.color = bad ? '#f87171' : ''; }
 
   // ---- exhibitors ----
-  var HINT_EX = 'Saved as soon as you choose it. Shows in the app at once and on the website after its next update (a few minutes).';
+  var HINT_EX = 'Saved as soon as you choose it. Shows in the app at once and on the website within a minute.';
 
   async function uploadLogo(id, file, box) {
     say(box, 'Saving the logo...');
@@ -100,7 +100,7 @@
     origCreate.apply(this, arguments);
     var form = document.getElementById('ef-form');
     if (!form) return;
-    form.insertAdjacentHTML('afterbegin', pickerHTML('em-logo', 'Logo', '', 'Uploaded when you press Save. Shows in the app at once and on the website after its next update.', false));
+    form.insertAdjacentHTML('afterbegin', pickerHTML('em-logo', 'Logo', '', 'Uploaded when you press Save. Shows in the app at once and on the website within a minute.', false));
     var box = document.getElementById('em-logo');
     form.onsubmit = async function (e) {
       e.preventDefault();
@@ -146,7 +146,7 @@
       var t = typeof italkFind === 'function' ? italkFind(id) : null;
       if (!form || !t) return r;
       form.insertAdjacentHTML('afterbegin', pickerHTML('em-photo', 'Speaker photo (head and shoulders)', t.speaker_photo_url,
-        'Saved as soon as you choose it. Shows in the app at once and on the website after its next update.', false));
+        'Saved as soon as you choose it. Shows in the app at once and on the website within a minute.', false));
       var box = document.getElementById('em-photo');
       box.querySelector('[data-em="file"]').addEventListener('change', async function (e) {
         var f = e.target.files && e.target.files[0];
@@ -158,7 +158,7 @@
           if (res && res.error) throw new Error(res.error);
           t.speaker_photo_url = res.photo_url;
           setPreview(box, res.photo_url);
-          say(box, 'Photo saved. Shows in the app at once and on the website after its next update.');
+          say(box, 'Photo saved. Shows in the app at once and on the website within a minute.');
           note('Photo saved');
           if (typeof loadInnovationTalks === 'function') loadInnovationTalks();
         } catch (err) { say(box, err.message, true); note('Photo not saved: ' + err.message, 'error'); }

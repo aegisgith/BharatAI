@@ -28,7 +28,11 @@ const ROUTES = '_routes.json'
 // /conference is drawn by the Worker from the app's programme (src/routes/site-live.ts,
 // 16 Nov 2026): the static file is its template and its fallback. /conference.html
 // stays static, as every other page does.
-const FORCE_DYNAMIC = new Set(['/contact', '/register', '/conference'])
+// Since 18 Nov 2026 the home page, /exhibition and /partner too: their exhibitor wall,
+// talk cards and speaker grid are drawn from the app on every request (site-live.ts),
+// so a logo or photo uploaded in Admin shows within a minute. Their .html spellings
+// stay static.
+const FORCE_DYNAMIC = new Set(['/contact', '/register', '/conference', '/', '/exhibition', '/partner'])
 
 // Directories whose files the Worker must serve, never Pages directly. The
 // Campus Series insights reports (public/reports/*.pdf) are given out only

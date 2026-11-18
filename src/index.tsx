@@ -5,8 +5,8 @@ import { Hono } from 'hono'
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers, linkBadgeHolderToCompany } from './routes/marketplace'
-import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots, syncTalkSessions, talkRemoved, withAttendeePhotos } from './routes/conference'
-import siteLive from './routes/site-live'
+import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots, syncTalkSessions, talkRemoved, withAttendeePhotos, withTalkPhotos } from './routes/conference'
+import siteLive, { configureSiteLive } from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief } from './routes/talk-brief'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
@@ -530,6 +530,21 @@ app.route('/', conference)
 configureExhibitorMedia({ audit })
 app.route('/', exhibitorMedia)
 // /conference drawn live from the app's programme (16 Nov 2026): src/routes/site-live.ts.
+// Since 18 Nov 2026 also /exhibition, the home page and /partner: the exhibitor wall and
+// the talk cards, from the public exhibitor list (as /api/events/1/exhibitors gives it)
+// and every company's logo (a talk card shows its company's logo even when the company
+// is not on the public list).
+configureSiteLive({
+  exhibitors: async (c: any) => {
+    const allRows = ((await c.env.DB.prepare("SELECT id, company_name, logo_url FROM exhibitors WHERE event_id = 1 AND COALESCE(logo_url, '') <> ''").all()).results || []) as any[]
+    if (!(await exhibitorDirectoryVisible(c))) return { shown: null, all: allRows }
+    const q = 'SELECT ' + EXHIBITOR_PUBLIC_COLS + ' FROM exhibitors WHERE event_id = 1'
+    let rows: any[]
+    try { rows = ((await c.env.DB.prepare(q + ' AND ' + DIRECTORY_SHOWN_SQL + ' ORDER BY booth_size DESC, company_name ASC').all()).results || []) as any[] }
+    catch { rows = ((await c.env.DB.prepare(q + ' ORDER BY booth_size DESC, company_name ASC').all()).results || []) as any[] }
+    return { shown: rows.map(publicExhibitor), all: allRows }
+  },
+})
 app.route('/', siteLive)
 // Speaker briefs (12 Nov 2026): each speaker's sessions, panel and pass in one email,
 // previewed and sent from Admin -> Conference; routes/speaker-brief.ts, screen
@@ -19183,7 +19198,8 @@ app.get('/api/events/:id/innovation-talks', async (c) => {
          WHERE event_id = ? AND (exhibitor_id IS NULL OR (starts_at IS NOT NULL${admin ? '' : " AND trim(ifnull(topic, '')) <> '' AND trim(ifnull(speaker_name, '')) <> ''"}))
          ORDER BY starts_at IS NULL, starts_at, slot_no ASC`
       ).bind(eventId).all()
-      return c.json(results)
+      // A talk with no photo of its own shows the one on the speaker's pass (18 Nov 2026).
+      return c.json(await withTalkPhotos(c, Number(eventId) || 1, (results || []) as any[]))
     } catch (e: any) {
       const message = String(e?.message || '')
       // The table went missing from production for the life of this feature and the
@@ -41840,7 +41856,7 @@ function adminPageHTML(): string {
   <script src="/static/event-week.js?v=20261116"></script>
   <script src="/static/entry-slots.js?v=20261118"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
-  <script src="/static/exhibitor-media.js?v=20261118"></script>
+  <script src="/static/exhibitor-media.js?v=20261118b"></script>
   <script src="/static/workshop-reminder.js?v=2026111503"></script>
 </body>
 </html>`
@@ -52448,8 +52464,8 @@ function adminPageScript(): string {
       var dayOpts = '<option value="">Not set yet</option>' + italkDays.map(function (d) { return '<option value="' + d[0] + '"' + (day === d[0] ? ' selected' : '') + '>' + d[1] + ' (' + d[2] + ')</option>'; }).join('');
       if (day && !italkDays.some(function (d) { return d[0] === day; })) dayOpts += '<option value="' + escH(day) + '" selected>' + escH(day) + '</option>';
       var photo = italkHas(t.speaker_photo_url)
-        ? '<div class="flex items-center gap-2 text-[11px] text-gray-400">' + italkPhoto(t) + 'Photo on file. New photos are added from the website&rsquo;s speaker list.</div>'
-        : '<div class="text-[11px] text-amber-400"><i class="fas fa-image mr-1"></i>No photo yet. Ask the speaker for one with the envelope button.</div>';
+        ? '<div class="flex items-center gap-2 text-[11px] text-gray-400">' + italkPhoto(t) + (t.photo_from_pass ? 'Using the photo on their pass. Choose a photo at the top to use another.' : 'Photo on file. To change it, choose a new photo at the top.') + '</div>'
+        : '<div class="text-[11px] text-amber-400"><i class="fas fa-image mr-1"></i>' + (t.id ? 'No photo yet. Choose one at the top, or ask the speaker with the envelope button.' : 'Add the talk first, then press Edit on it to choose the photo. A photo on the speaker&rsquo;s pass is used until then.') + '</div>';
       return '<form id="italk-form" class="space-y-3">'
         + '<div class="grid grid-cols-3 gap-3">'
         + '<div><label class="text-xs text-gray-400 mb-1 block">Day</label><select name="day" class="w-full px-3 py-2 rounded-lg text-sm">' + dayOpts + '</select></div>'

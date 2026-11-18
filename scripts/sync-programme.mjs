@@ -34,4 +34,6 @@ for (const script of ['scripts/gen-exhibitor-logos.mjs', 'scripts/gen-innovation
   const r = run(script, ['--from-app'])
   if (r.status !== 0) console.log(`[sync-programme] ${script} --from-app failed; the committed blocks stand`)
 }
+// The image sizes and baked uploads the Worker's live pages read (18 Nov 2026).
+if (run('scripts/gen-site-images.mjs').status !== 0) console.log('[sync-programme] gen-site-images failed; the committed scripts/data/site-images.json stands')
 console.log('[sync-programme] the website now shows the programme as the app holds it')
