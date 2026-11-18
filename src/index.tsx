@@ -14,6 +14,7 @@ import entrySlots, { configureEntrySlots, entrySlotAudienceRows, inSlot as entry
 import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql } from './routes/workshop-reminder'
 import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
+import exhibitorMedia, { configureExhibitorMedia } from './routes/exhibitor-media'
 import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, SUMMIT_EVENT_NAME, SUMMIT_WHEN } from './routes/agent-summit'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
@@ -524,6 +525,10 @@ app.get('/api/admin/events/:id/senders', async (c) => {
 // an admin. It also owns POST/PUT/DELETE /api/admin/sessions.
 configureConference({ sendEmail: sendAdminEmail, audit, changedFields, emailHeader: emailBrandHeader, actor: (c: any) => adminActor(c).actor, syncTalk: italkSyncFromProgramme, issueSpeakerPass })
 app.route('/', conference)
+// Exhibitor logos and Innovation Talk photos uploaded in Admin, and the website rebuild
+// after any exhibitor or talk change (18 Nov 2026): src/routes/exhibitor-media.ts.
+configureExhibitorMedia({ audit })
+app.route('/', exhibitorMedia)
 // /conference drawn live from the app's programme (16 Nov 2026): src/routes/site-live.ts.
 app.route('/', siteLive)
 // Speaker briefs (12 Nov 2026): each speaker's sessions, panel and pass in one email,
@@ -41829,6 +41834,7 @@ function adminPageHTML(): string {
   <script src="/static/event-week.js?v=20261116"></script>
   <script src="/static/entry-slots.js?v=20261118"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
+  <script src="/static/exhibitor-media.js?v=20261118"></script>
   <script src="/static/workshop-reminder.js?v=2026111503"></script>
 </body>
 </html>`

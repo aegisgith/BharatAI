@@ -43,10 +43,24 @@ import sharp from 'sharp'
 const SITE = 'https://bharataiinnovation.com'
 const OUT = 'public/images/exhibitors'
 
+// SINCE 18 NOV 2026 THE APP IS THE LIST (organiser: "if someone is on the web it should
+// be on the app and vice versa"). `--from-app`, run by scripts/sync-programme.mjs on
+// every Pages build, draws the wall from the app's public exhibitor list (Admin ->
+// Exhibitors): add, edit, delete or upload a logo there and the website follows on
+// the next deploy. This list then only says how each logo looks (its file, `optical`,
+// `dark`), matched by `db` id or by name. `untilApp: true` keeps a company on the wall
+// while the app does not have it yet (scripts/sql/exhibitors-sync-2026-11-18.sql
+// adds them); drop the flag once that file has run.
 const EXHIBITORS = [
-  { name: 'Actin Technologies', file: 'Actin Technologies logo.jpg' },
-  { name: 'Aegis School of Data Science & AI', file: 'Our Logo/logo-aegis (1) (1).webp', optical: 1.15 },
-  { name: 'AI Products Factory', file: 'Our Logo/AI Product Factory/aipf-logo-horizontal-transparent.png' },
+  { name: 'Actin Technologies', file: 'Actin Technologies logo.jpg', untilApp: true },
+  { name: 'Aegis School of Data Science & AI', file: 'Our Logo/logo-aegis (1) (1).webp', optical: 1.15, untilApp: true },
+  { name: 'AI Products Factory', file: 'Our Logo/AI Product Factory/aipf-logo-horizontal-transparent.png', untilApp: true },
+  // Back on 18 Nov 2026 (organiser): logos restored from before 91bc99b; no source file.
+  { name: 'Amnex Infotechnologies', db: [22, 'Amnex technologies'] },
+  { name: 'Indigloo Software', db: [32, 'Indigloo Software Pvt Ltd'] },
+  // 18 Nov 2026, sent by the organiser on WhatsApp (baked with this script's bake(), grey field whitened).
+  { name: 'Kavion.ai', untilApp: true },
+  { name: 'Yarnit', untilApp: true },
   { name: 'Ai Vie Insights', file: 'Ai Vie Insights Private Limited.jpg', db: [9, 'Ai Vie Insights Private Limited'] },
   { name: 'AlgoAnalytics', file: 'Algo Analytics.jpg', db: [6, 'Algo Analytics'] },
   { name: 'Aria Telecom', file: 'Aria Telecom Solutions Pvt. Ltd.jpg', dark: true }, // white wordmark on navy
@@ -73,13 +87,14 @@ const EXHIBITORS = [
   { name: 'JoyVibe', file: 'joyvibe_logo.jpg', optical: 1.15 },
   { name: 'Kadeep.ai', file: 'Kadeep Ai logo.jpg', db: [26, 'kadeep.ai'] },
   { name: 'Kirusa', file: 'Kirusa Inc.jpg', db: [20, 'Kirusa Inc'] },
-  { name: 'Lenixvision', file: 'Lenixvision Smart Eyewear Logo.png', optical: 1.2 },
+  { name: 'Lenixvision', file: 'Lenixvision Smart Eyewear Logo.png', optical: 1.2, untilApp: true },
   { name: 'LightMetrics', file: 'LightMetrics logo.jpg' },
   // The ministry's own logo (organiser, 4 Oct), replacing an old Azadi Ka Amrit Mahotsav graphic.
   { name: 'Ministry of Tribal Affairs', file: 'Minsitry of Tribal Affairs  Logo.png', db: [24, 'Ministry of Tribal Affairs'], optical: 1.3 },
   { name: 'NoBroker', file: 'NoBroker Technologies Solutions Private Limited.jpg', db: [10, 'NoBroker Technologies Solutions Private Limited'] },
-  { name: 'Nu10 Technologies', file: '4 Nov New logo/Nu10 Technologies India Private Limited_.webp' },
-  { name: 'OliAI', file: 'Oli AI  Logo_.jpg', optical: 1.15 },
+  // New logo 18 Nov 2026 (organiser, WhatsApp); baked by hand, so no source file here.
+  { name: 'Nu10 Technologies', db: [49, 'Nu10 Technologies'] },
+  { name: 'OliAI', file: 'Oli AI  Logo_.jpg', optical: 1.15, db: [38, 'Oli AI'] },
   { name: 'Oranje AI', file: 'ORANJE AI PRIVATE LIMITED logo.png', db: [14, 'ORANJE AI PRIVATE LIMITED'] },
   // Renamed Origins AI with a new logo on 28 Oct; the database row is renamed by
   // scripts/sql/exhibitor-changes-2026-10-28.sql (organiser runs it).
@@ -87,7 +102,7 @@ const EXHIBITORS = [
   { name: 'P99Soft', file: 'P99SOFT Logo.jpg', dark: true }, // white mark on dark teal
   { name: 'Paisani Technology Services', file: 'Paisani Technology Services_.jpg', db: [13, 'Paisani Technology Services'], optical: 1.2 }, // thin script
   { name: 'Phoebetal Technologies', file: 'Phoebetal Technologies Pvt Ltd.jpg', db: [30, 'Phoebetal Technologies Pvt Ltd'] },
-  { name: 'Pramaana Labs', file: 'pramaana labs logo.jpg' },
+  { name: 'Pramaana Labs', file: 'pramaana labs logo.jpg', untilApp: true },
   { name: 'Qapitol AI', file: 'Qapitol AI logo.jpg', db: [2, 'Qapitol AI'] },
   { name: 'RedFerns Tech', file: 'RedFerns Tech Private Limited.jpg', db: [29, 'RedFerns Tech Private Limited'] },
   { name: 'Rightangle Technologies', file: '4 Nov New logo/Rightangle Technologies Pvt. Ltd_' }, // no extension; it is a JPEG
@@ -97,7 +112,7 @@ const EXHIBITORS = [
   { name: 'Trust3 AI', file: 'Trust3 AI Logo.png' },
   { name: 'ValuEnable', file: 'Valuenable pvt ltd.jpg' },
   { name: 'Vassar Labs', file: 'Vassar Lab logo.jpg' },
-  { name: 'Wissen Technology', file: 'Wissen Technology Logo.jpg', dark: true }, // white mark on navy
+  { name: 'Wissen Technology', file: 'Wissen Technology Logo.jpg', dark: true, untilApp: true }, // white mark on navy
   { name: 'Wyn Labs', file: 'Wyn Labs.jpg', db: [17, 'Wyn Labs'] },
   { name: 'Xtant Tech', file: 'Xtant Tech.png', dark: true }, // white wordmark on a big black square
   { name: 'Zanopy AI', file: 'Zanopy AI.jpg', db: [21, 'Zanopy AI'] },
@@ -153,28 +168,90 @@ function fill(path, html) {
   writeFileSync(path, out.replace(/\n/g, eol), 'utf8')
 }
 
-const srcDir = process.argv[2]
+const FROM_APP = process.argv.includes('--from-app')
+const srcDir = FROM_APP ? '' : process.argv[2]
 mkdirSync(OUT, { recursive: true })
-const all = [...EXHIBITORS].sort(byName).map((e) => ({ ...e, slug: slugOf(e.name) }))
+let all = [...EXHIBITORS].sort(byName).map((e) => ({ ...e, slug: slugOf(e.name) }))
 const media = { ...MEDIA_PARTNER, slug: slugOf(MEDIA_PARTNER.name) }
+
+// ---- the app's list (see the note above EXHIBITORS) ----
+// A company's words for itself, without the legal tail: "Indigloo Software Pvt Ltd".
+const tidy = (s) => {
+  let n = String(s || '').trim()
+  for (let i = 0; i < 3; i++) n = n.replace(/[\s,.]*\b(pvt\.?\s*ltd\.?|private\s+limited|limited|ltd\.?|llp|inc\.?)\s*\.?$/i, '').trim()
+  return n.split(/\s+/).map((w) => (/^[a-z]+$/.test(w) ? w[0].toUpperCase() + w.slice(1) : w)).join(' ')
+}
+const key = (s) => String(s || '').toLowerCase().replace(/\b(private|pvt|ltd|limited|llp|inc|technologies|technology|solutions|services|india|the|co|labs?|software|systems|ai)\b/g, ' ').replace(/[^a-z0-9]/g, '')
+const same = (a, b) => !!a && !!b && (a === b || (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a))))
+async function fromApp() {
+  const base = (process.argv[process.argv.indexOf('--from-app') + 1] || '').startsWith('http') ? process.argv[process.argv.indexOf('--from-app') + 1] : SITE
+  let rows
+  try {
+    const r = await fetch(base.replace(/\/$/, '') + '/api/events/1/exhibitors', { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20000) })
+    rows = r.ok ? await r.json() : null
+  } catch { rows = null }
+  if (!Array.isArray(rows) || !rows.length) return null
+  const looks = [...all]
+  const used = new Set()
+  const out = []
+  for (const row of rows) {
+    const look = looks.find((e) => e.db && e.db[0] === Number(row.id)) || looks.find((e) => !used.has(e) && same(key(e.name), key(row.company_name)))
+    if (look) used.add(look)
+    const e = look ? { ...look } : { name: tidy(row.company_name), slug: slugOf(tidy(row.company_name)) }
+    e.appId = Number(row.id)
+    // A logo uploaded in Admin wins: a 300 x 150 copy is baked into the site, once per upload.
+    const logo = String(row.logo_url || '').replace(/^https?:\/\/[^/]+/, '')
+    if (/^\/api\/uploads\//.test(logo)) {
+      const mark = join(OUT, `${e.slug}.src`)
+      if (!(existsSync(mark) && readFileSync(mark, 'utf8').trim() === logo && existsSync(join(OUT, `${e.slug}.webp`)))) {
+        try {
+          const r = await fetch(base.replace(/\/$/, '') + logo, { signal: AbortSignal.timeout(20000) })
+          if (r.ok) {
+            const tmp = join(OUT, `${e.slug}.upload`)
+            writeFileSync(tmp, Buffer.from(await r.arrayBuffer()))
+            await bake(tmp, e.slug, e.dark)
+            writeFileSync(mark, logo + '\n')
+            try { (await import('node:fs')).unlinkSync(tmp) } catch { /* left behind */ }
+          }
+        } catch (err) { console.log(`[exhibitors] ${e.name}: the uploaded logo could not be fetched (${err.message})`) }
+      }
+    } else if (/^\/images\/exhibitors\/[a-z0-9-]+\.webp$/.test(logo) && existsSync(join('public', logo))) {
+      e.slug = logo.slice('/images/exhibitors/'.length, -'.webp'.length)
+    }
+    out.push(e)
+  }
+  // Not in the app yet, but on its way (the 18 Nov sync SQL): kept until it arrives.
+  for (const e of looks) if (!used.has(e) && e.untilApp) out.push({ ...e })
+  const gone = looks.filter((e) => !used.has(e) && !e.untilApp).map((e) => e.name)
+  if (gone.length) console.log(`[exhibitors] not in the app, so not on the website: ${gone.join(', ')}`)
+  return out.sort(byName)
+}
+if (FROM_APP) {
+  const list = await fromApp()
+  if (!list) { console.log('[exhibitors] the app\'s exhibitor list could not be read: the committed blocks stand'); process.exit(0) }
+  all = list
+}
 
 if (srcDir) {
   for (const e of [...all, media]) {
+    if (!e.file) { console.log(`${e.name}: no source file, keeping ${e.slug}.webp`); continue }
     const src = join(srcDir, e.file)
     if (!existsSync(src)) throw new Error(`missing logo file: ${src}`)
     await bake(src, e.slug, e.dark)
   }
   const known = new Set([...all, media].map((e) => `${e.slug}.webp`))
-  const stray = readdirSync(OUT).filter((f) => !known.has(f))
+  const stray = readdirSync(OUT).filter((f) => !known.has(f) && /\.webp$/.test(f))
   if (stray.length) console.log(`not in the list any more (delete if unwanted): ${stray.join(', ')}`)
 }
-for (const e of [...all, media]) Object.assign(e, await size(e.slug))
+// A company with no logo file shows its name in the logo's place.
+for (const e of [...all, media]) if (existsSync(join(OUT, `${e.slug}.webp`))) Object.assign(e, await size(e.slug))
 
 // Optical sizing. At one shared height a wide wordmark shouts and a square mark
 // whispers, so the displayed height falls as the logo gets wider (aspect^-0.4,
 // a little gentler than equal area, which leaves long wordmarks too small).
 // The page scales the result per screen size through --ls.
 for (const e of all) {
+  if (!e.w) continue
   const r = e.w / e.h
   let h = 52 * Math.pow(r, -0.4) * (e.optical || 1)
   h = Math.min(58, Math.max(24, h))
@@ -203,7 +280,7 @@ const START = '<!-- exhibitors:start (generated by scripts/gen-exhibitor-logos.m
 // Each row leads with a recognisable name (FEATURED), then the rest at random.
 // The second copy of each row makes the loop seamless; screen readers skip it.
 const FEATURED = ['CGI', 'NoBroker', 'Gupshup.ai', 'Jade Global', 'Evoke Technologies', 'Ministry of Tribal Affairs']
-for (const n of FEATURED) if (!all.some((e) => e.name === n)) throw new Error(`FEATURED names an unknown exhibitor: ${n}`)
+for (const n of FEATURED) if (!all.some((e) => e.name === n)) { if (FROM_APP) console.log(`[exhibitors] FEATURED ${n} is not in the app`); else throw new Error(`FEATURED names an unknown exhibitor: ${n}`) }
 for (const e of all) e.featured = FEATURED.includes(e.name)
 const ordered = [...all.filter((e) => e.featured), ...all.filter((e) => !e.featured)]
 const deal = (n) => ordered.reduce((rows, e, i) => (rows[i % n].push(e), rows), Array.from({ length: n }, () => []))
@@ -274,8 +351,10 @@ ${r.map(item).join('\n')}${tail && i % 2 === 0 ? '\n' + tail(copy) : ''}
       </div>`).join('\n')}
     </div>`
 
-const chip = (e) => `          <li class="exh-chip"${feat(e)}>${img(e, `--lh:${e.lh}px`)}<span>${esc(e.name)}</span></li>`
-const card = (e) => `          <li class="exh-card"${feat(e)}><span class="exh-logo">${img(e, `--lh:${e.lh}px`)}</span><span class="exh-name">${esc(e.name)}</span></li>`
+const chip = (e) => `          <li class="exh-chip"${feat(e)}>${e.w ? img(e, `--lh:${e.lh}px`) : ''}<span>${esc(e.name)}</span></li>`
+const card = (e) => e.w
+  ? `          <li class="exh-card"${feat(e)}><span class="exh-logo">${img(e, `--lh:${e.lh}px`)}</span><span class="exh-name">${esc(e.name)}</span></li>`
+  : `          <li class="exh-card"${feat(e)}><span class="exh-logo"><b style="font-size:1.05rem;color:var(--charcoal);white-space:nowrap">${esc(e.name)}</b></span></li>`
 // A call to action at the end of every other exhibition row (more than one or
 // two in view reads as empty booths), plainly labelled: an invitation, not an
 // exhibitor.
@@ -348,6 +427,8 @@ const sql = `-- Exhibitor logos for the app's Exhibitors tab (organiser's logo f
 
 ${all.filter((e) => e.db).map((e) => `UPDATE exhibitors SET logo_url = '${SITE}/images/exhibitors/${e.slug}.webp' WHERE id = ${e.db[0]} AND company_name = '${e.db[1].replace(/'/g, "''")}' AND COALESCE(logo_url, '') = '';`).join('\n')}
 `
-writeFileSync('scripts/sql/exhibitor-logos.sql', sql)
+if (!FROM_APP) writeFileSync('scripts/sql/exhibitor-logos.sql', sql)
 
-console.log(`${all.length} exhibitors + media partner; ${all.filter((e) => e.db).length} rows in scripts/sql/exhibitor-logos.sql`)
+console.log(FROM_APP
+  ? `${all.length} exhibitors from the app (${all.filter((e) => !e.appId).length} kept until the app has them, ${all.filter((e) => !e.w).length} without a logo) + media partner`
+  : `${all.length} exhibitors + media partner; ${all.filter((e) => e.db).length} rows in scripts/sql/exhibitor-logos.sql`)

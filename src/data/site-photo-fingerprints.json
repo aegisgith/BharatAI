@@ -148,6 +148,10 @@
 "fp":"030023c033c013c013d803f80bf0063c0bbc0f4f0757eb5792a5256d395d3059:fffffbffd9ffe9ffe0ffe0fff07fe01fe00fc3af801f3dd700000200dfffffff"
 },
 {
+"file":"public/images/exhibitors/amnex-infotechnologies.webp",
+"fp":"118f518f40034003400340135523352d25ab3523400140014001400140810083:ffff8001800180018001800180018d818061800180018001800180018001ffff"
+},
+{
 "file":"public/images/exhibitors/aria-telecom.webp",
 "fp":"00000000683b3a523c31a9918993c933c93349b3e992266732274b1900000000:0000000000008000cf98dfd96cd9efd9ff9b3cdb3cdb91139113000000000000"
 },
@@ -212,6 +216,10 @@
 "fp":"00000000000000002a5c2a9c5b9d4cdd25ab5565659525a30000000000000000:ffffffffffffffffff7f800f808f800f900081018010ffffffffffffffffffff"
 },
 {
+"file":"public/images/exhibitors/indigloo-software.webp",
+"fp":"0000000000001800aec18d41c8c5cb59cb59eb49eb65c12c0412000000000000:fffffffffffffffff7fd67fd602121092189618175a1ffffffffffffffffffff"
+},
+{
 "file":"public/images/exhibitors/info-science-labs.webp",
 "fp":"00e801fc05be070f0f073f073e071c03380318073c070f07070f572b4f271f27:fffff81fe007c003c7e387e18ff18ff9dff98ff1c7e1c3e3e18381818181ffff"
 },
@@ -236,6 +244,10 @@
 "fp":"0e070613263774ef7dfe7bff7bff73fc733c7a7c60fc75ff34ff367f063f063f:ffffc38183038207800f801f801f803f801f801f800f800782078303c381ffff"
 },
 {
+"file":"public/images/exhibitors/kavion-ai.webp",
+"fp":"000000000600070007002638265c64cc65c465c4c4c4c4ccc63cce1800000000:fffffffffffff3fff3ffffdf920492641060306030643204730cffffffffffff"
+},
+{
 "file":"public/images/exhibitors/kirusa.webp",
 "fp":"78e77947594f2ddf349827180318031e021f009b00c501c301f301f003e003e0:fc739d638c47804fd2dffbdfffffffffffc7ffc1fe61fcf9fcfffcfffcfff9ff"
 },
@@ -257,7 +269,7 @@
 },
 {
 "file":"public/images/exhibitors/nu10-technologies.webp",
-"fp":"000080008000800034440e621662326273627362736273727326731e90168000:ffffffffffffffffffffe77ac13a993a9d3a9d3a9d3a9d329d029d86ffffffff"
+"fp":"000080008000000082008e729372317331733173317331733133318e718e00b2:fffffffffffffffffffff3bfc138cc399c399c399c399c399c839cc3ffffffff"
 },
 {
 "file":"public/images/exhibitors/oliai.webp",
@@ -338,6 +350,10 @@
 {
 "file":"public/images/exhibitors/xtant-tech.webp",
 "fp":"0000000000000000033017313b32ad34ad34a575a554259b0000000000000000:000000000000000000000190bfbb7794e3976394e3d6e2cb0000000000000000"
+},
+{
+"file":"public/images/exhibitors/yarnit.webp",
+"fp":"00000000000000008db589b58b3797369736b33631b631a67000f00000000000:fffffffffffffffffeff6010619343930393091318139fff1fff7fffffffffff"
 },
 {
 "file":"public/images/exhibitors/zanopy-ai.webp",

@@ -27,4 +27,11 @@ for (const script of ['scripts/gen-schedule.mjs', 'scripts/gen-speakers.mjs']) {
   const r = run(script)
   if (r.status !== 0) { console.log(`[sync-programme] ${script} failed`); process.exit(ciOnly ? 0 : 1) }
 }
+// The exhibitor wall and the Innovation Talk cards follow the app too (18 Nov 2026):
+// Admin -> Exhibitors and Admin -> Innovation Talks are the only lists. A failure here
+// leaves the committed blocks and never fails the build.
+for (const script of ['scripts/gen-exhibitor-logos.mjs', 'scripts/gen-innovation-talks.mjs']) {
+  const r = run(script, ['--from-app'])
+  if (r.status !== 0) console.log(`[sync-programme] ${script} --from-app failed; the committed blocks stand`)
+}
 console.log('[sync-programme] the website now shows the programme as the app holds it')

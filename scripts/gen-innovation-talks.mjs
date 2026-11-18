@@ -40,7 +40,34 @@ const DATA = 'scripts/data/innovation-talks.json'
 const OUT = 'public/images/talks'
 const SQL = 'scripts/sql/innovation-talks.sql'
 
-const talks = JSON.parse(readFileSync(DATA, 'utf8'))
+const listed = JSON.parse(readFileSync(DATA, 'utf8'))
+
+// --from-app (18 Nov 2026, organiser: "if someone is on the web it should be on the app
+// and vice versa"): the talks are the app's (Admin -> Innovation Talks), read from
+// scripts/data/programme.json, which scripts/pull-programme.mjs writes just before
+// (an uploaded photo is already copied to public/images/speakers/talk-<slug>.webp).
+// The app's name, designation, company, topic and photo win; the JSON only adds what
+// the app does not hold (the logo file, the government order, a topic the app lacks).
+// Run by scripts/sync-programme.mjs on every Pages build. Writes no SQL.
+const FROM_APP = process.argv.includes('--from-app')
+function fromApp() {
+  let p
+  try { p = JSON.parse(readFileSync('scripts/data/programme.json', 'utf8')) } catch { return null }
+  if (!Array.isArray(p.talks) || !p.talks.length) return null
+  const nm = (s) => String(s || '').toLowerCase().replace(/^(dr\.?|mr\.?|ms\.?|mrs\.?|shri\.?|smt\.?)\s+/, '').replace(/[^a-z0-9]+/g, ' ').trim()
+  const sl = (s) => String(s || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  const byName = new Map(listed.map((t) => [nm(t.name), t]))
+  return p.talks.filter((a) => String(a.speaker_name || '').trim()).map((a) => {
+    const j = byName.get(nm(a.speaker_name)) || null
+    return {
+      name: String(a.speaker_name).trim(), title: a.speaker_title || j?.title || '', company: a.company || j?.company || '',
+      topic: a.topic || j?.topic || '', slug: j?.slug || sl(a.speaker_name), logoFile: j?.logoFile, government: j?.government,
+      photoSrc: String(a.photo_url || '').replace(/^\//, ''),
+    }
+  })
+}
+const talks = (FROM_APP && fromApp()) || listed
+if (FROM_APP && talks === listed) { console.log('[talks] the app\'s talks could not be read: the committed blocks stand'); process.exit(0) }
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const sq = (s) => String(s ?? '').replace(/'/g, "''")
@@ -88,7 +115,7 @@ function fill(path, body) {
   writeFileSync(path, out.replace(/\n/g, eol), 'utf8')
 }
 
-const srcDir = process.argv[2]
+const srcDir = FROM_APP ? '' : process.argv[2]
 mkdirSync(OUT, { recursive: true })
 
 if (srcDir) {
@@ -100,7 +127,9 @@ if (srcDir) {
   }
 }
 for (const t of talks) {
-  t.hasPhoto = existsSync(join(OUT, `${t.slug}.webp`))
+  // The app's photo first (an Admin upload), then the baked file.
+  t.photoSrc = [t.photoSrc, `images/talks/${t.slug}.webp`].find((f) => f && existsSync(join('public', f))) || ''
+  t.hasPhoto = !!t.photoSrc
 }
 
 // Each card carries the company's logo from the exhibitor wall (made by
@@ -129,7 +158,7 @@ const logo = (t, margin) => t.logo
 const cards = talks.map((t) => {
   const alt = `${t.name}, ${t.title ? t.title + ', ' : ''}${t.company}`
   const photo = t.hasPhoto
-    ? `<img width="320" height="320" loading="lazy" decoding="async" src="images/talks/${t.slug}.webp" alt="${esc(alt)}" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:120px;height:120px;margin:0 auto;object-fit:cover;">`
+    ? `<img width="320" height="320" loading="lazy" decoding="async" src="${t.photoSrc}" alt="${esc(alt)}" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:120px;height:120px;margin:0 auto;object-fit:cover;">`
     : `<div class="speaker-photo" aria-hidden="true" style="width:120px;height:120px;margin:0 auto;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(255,107,0,0.14),rgba(57,73,171,0.14));color:var(--indigo-light);font-family:var(--font-display);font-weight:800;font-size:2rem;">${esc(initials(t.name))}</div>`
   const topic = t.topic
     ? `<p class="talk-topic" style="font-size:0.84rem;color:var(--charcoal);line-height:1.45;margin:0.6rem 0 0;">&ldquo;${esc(t.topic)}&rdquo;</p>`
@@ -150,7 +179,7 @@ fill('public/exhibition.html', `<div class="speakers-grid">\n${cards.join('\n')}
 const confCard = (t) => {
   const alt = `${t.name}, ${t.title ? t.title + ', ' : ''}${t.company}`
   const avatar = t.hasPhoto
-    ? `<div class="speaker-avatar"><img width="320" height="320" loading="lazy" decoding="async" src="images/talks/${t.slug}.webp" alt="${esc(alt)}"></div>`
+    ? `<div class="speaker-avatar"><img width="320" height="320" loading="lazy" decoding="async" src="${t.photoSrc}" alt="${esc(alt)}"></div>`
     : `<div class="speaker-avatar" aria-hidden="true"><span style="color:#fff;font-family:var(--font-display);font-weight:800;font-size:1.4rem;letter-spacing:0.02em;">${esc(initials(t.name))}</span></div>`
   const topic = t.topic
     ? `<p class="talk-topic" style="font-size:0.84rem;color:var(--charcoal);line-height:1.45;margin:0.6rem 0 0;position:relative;z-index:1;">&ldquo;${esc(t.topic)}&rdquo;</p>`
@@ -209,6 +238,6 @@ talks.forEach((t, i) => {
     '',
   )
 })
-writeFileSync(SQL, sql.join('\n'), 'utf8')
+if (!FROM_APP) writeFileSync(SQL, sql.join('\n'), 'utf8')
 
-console.log(`${talks.length} speakers, ${talks.filter((t) => t.hasPhoto).length} with photos; ${SQL} rewritten`)
+console.log(`${talks.length} speakers, ${talks.filter((t) => t.hasPhoto).length} with photos; ${FROM_APP ? 'from the app, no SQL written' : SQL + ' rewritten'}`)
