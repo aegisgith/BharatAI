@@ -1521,6 +1521,69 @@ DELETE FROM exhibitor_leads WHERE exhibitor_id = 150;
 DELETE FROM booth_visits WHERE exhibitor_id = 150;
 DELETE FROM exhibitors WHERE id = 150 AND company_name = 'KaDeep AI' AND NOT EXISTS (SELECT 1 FROM exhibitor_team_settings WHERE exhibitor_id = 150) AND NOT EXISTS (SELECT 1 FROM booth_allocations WHERE exhibitor_id = 150 AND status = 'confirmed' AND released_at IS NULL);
 
+-- 151 Kadeep AI -> 26 kadeep.ai
+UPDATE exhibitor_team SET attendee_id = (SELECT id FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 151)), speaker = CASE WHEN lower((SELECT COALESCE(badge_type, '') FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 151))) LIKE '%speaker%' THEN 1 ELSE speaker END, pass = CASE WHEN pass = '' THEN (SELECT COALESCE(badge_type, '') FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 151)) ELSE pass END, updated_at = CURRENT_TIMESTAMP
+  WHERE event_id = 1 AND attendee_id IS NULL AND email <> '' AND lower(email) = (SELECT lower(trim(email)) FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 151));
+INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_name, designation, company, email, photo_url, at_booth, speaker, attendee_id, pass, pass_given, added_by)
+  SELECT a.event_id, 26, CASE WHEN instr(trim(a.name), ' ') > 0 THEN substr(trim(a.name), 1, instr(trim(a.name), ' ') - 1) ELSE trim(a.name) END, CASE WHEN instr(trim(a.name), ' ') > 0 THEN trim(substr(trim(a.name), instr(trim(a.name), ' ') + 1)) ELSE '' END, COALESCE(a.job_title, ''), (SELECT company_name FROM exhibitors WHERE id = 26), lower(trim(a.email)),
+    CASE WHEN a.avatar_url LIKE '/api/uploads/%' OR a.avatar_url LIKE '/images/%' THEN a.avatar_url ELSE '' END, 1,
+    CASE WHEN lower(COALESCE(a.badge_type, '')) LIKE '%speaker%' THEN 1 ELSE 0 END, a.id, COALESCE(a.badge_type, ''), '', 'badge'
+  FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id
+  WHERE e.id = 151 AND EXISTS (SELECT 1 FROM exhibitors WHERE id = 26) AND trim(COALESCE(a.email, '')) <> ''
+    AND NOT EXISTS (SELECT 1 FROM exhibitor_team t WHERE t.event_id = a.event_id AND (t.attendee_id = a.id OR lower(t.email) = lower(trim(a.email))));
+UPDATE exhibitors SET contact_email = (SELECT contact_email FROM exhibitors WHERE id = 151) WHERE id = 26 AND COALESCE(trim(contact_email), '') = '' AND EXISTS (SELECT 1 FROM exhibitors WHERE id = 151);
+UPDATE exhibitor_team SET exhibitor_id = 26, updated_at = CURRENT_TIMESTAMP WHERE exhibitor_id = 151;
+UPDATE OR IGNORE exhibitor_leads SET exhibitor_id = 26 WHERE exhibitor_id = 151;
+UPDATE OR IGNORE booth_visits SET exhibitor_id = 26 WHERE exhibitor_id = 151;
+UPDATE mp_companies SET exhibitor_id = 26 WHERE exhibitor_id = 151;
+UPDATE mp_listings SET exhibitor_id = 26 WHERE exhibitor_id = 151;
+UPDATE OR IGNORE innovation_talks SET exhibitor_id = 26 WHERE exhibitor_id = 151;
+DELETE FROM exhibitor_leads WHERE exhibitor_id = 151;
+DELETE FROM booth_visits WHERE exhibitor_id = 151;
+DELETE FROM exhibitors WHERE id = 151 AND company_name = 'Kadeep AI' AND NOT EXISTS (SELECT 1 FROM exhibitor_team_settings WHERE exhibitor_id = 151) AND NOT EXISTS (SELECT 1 FROM booth_allocations WHERE exhibitor_id = 151 AND status = 'confirmed' AND released_at IS NULL);
+
+-- 152 Asmadiya -> 12 Asmadiya
+UPDATE exhibitor_team SET attendee_id = (SELECT id FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 152)), speaker = CASE WHEN lower((SELECT COALESCE(badge_type, '') FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 152))) LIKE '%speaker%' THEN 1 ELSE speaker END, pass = CASE WHEN pass = '' THEN (SELECT COALESCE(badge_type, '') FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 152)) ELSE pass END, updated_at = CURRENT_TIMESTAMP
+  WHERE event_id = 1 AND attendee_id IS NULL AND email <> '' AND lower(email) = (SELECT lower(trim(email)) FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 152));
+INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_name, designation, company, email, photo_url, at_booth, speaker, attendee_id, pass, pass_given, added_by)
+  SELECT a.event_id, 12, CASE WHEN instr(trim(a.name), ' ') > 0 THEN substr(trim(a.name), 1, instr(trim(a.name), ' ') - 1) ELSE trim(a.name) END, CASE WHEN instr(trim(a.name), ' ') > 0 THEN trim(substr(trim(a.name), instr(trim(a.name), ' ') + 1)) ELSE '' END, COALESCE(a.job_title, ''), (SELECT company_name FROM exhibitors WHERE id = 12), lower(trim(a.email)),
+    CASE WHEN a.avatar_url LIKE '/api/uploads/%' OR a.avatar_url LIKE '/images/%' THEN a.avatar_url ELSE '' END, 1,
+    CASE WHEN lower(COALESCE(a.badge_type, '')) LIKE '%speaker%' THEN 1 ELSE 0 END, a.id, COALESCE(a.badge_type, ''), '', 'badge'
+  FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id
+  WHERE e.id = 152 AND EXISTS (SELECT 1 FROM exhibitors WHERE id = 12) AND trim(COALESCE(a.email, '')) <> ''
+    AND NOT EXISTS (SELECT 1 FROM exhibitor_team t WHERE t.event_id = a.event_id AND (t.attendee_id = a.id OR lower(t.email) = lower(trim(a.email))));
+UPDATE exhibitors SET contact_email = (SELECT contact_email FROM exhibitors WHERE id = 152) WHERE id = 12 AND COALESCE(trim(contact_email), '') = '' AND EXISTS (SELECT 1 FROM exhibitors WHERE id = 152);
+UPDATE exhibitor_team SET exhibitor_id = 12, updated_at = CURRENT_TIMESTAMP WHERE exhibitor_id = 152;
+UPDATE OR IGNORE exhibitor_leads SET exhibitor_id = 12 WHERE exhibitor_id = 152;
+UPDATE OR IGNORE booth_visits SET exhibitor_id = 12 WHERE exhibitor_id = 152;
+UPDATE mp_companies SET exhibitor_id = 12 WHERE exhibitor_id = 152;
+UPDATE mp_listings SET exhibitor_id = 12 WHERE exhibitor_id = 152;
+UPDATE OR IGNORE innovation_talks SET exhibitor_id = 12 WHERE exhibitor_id = 152;
+DELETE FROM exhibitor_leads WHERE exhibitor_id = 152;
+DELETE FROM booth_visits WHERE exhibitor_id = 152;
+DELETE FROM exhibitors WHERE id = 152 AND company_name = 'Asmadiya' AND NOT EXISTS (SELECT 1 FROM exhibitor_team_settings WHERE exhibitor_id = 152) AND NOT EXISTS (SELECT 1 FROM booth_allocations WHERE exhibitor_id = 152 AND status = 'confirmed' AND released_at IS NULL);
+
+-- 153 Asmadiya -> 12 Asmadiya
+UPDATE exhibitor_team SET attendee_id = (SELECT id FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 153)), speaker = CASE WHEN lower((SELECT COALESCE(badge_type, '') FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 153))) LIKE '%speaker%' THEN 1 ELSE speaker END, pass = CASE WHEN pass = '' THEN (SELECT COALESCE(badge_type, '') FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 153)) ELSE pass END, updated_at = CURRENT_TIMESTAMP
+  WHERE event_id = 1 AND attendee_id IS NULL AND email <> '' AND lower(email) = (SELECT lower(trim(email)) FROM (SELECT a.* FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id WHERE e.id = 153));
+INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_name, designation, company, email, photo_url, at_booth, speaker, attendee_id, pass, pass_given, added_by)
+  SELECT a.event_id, 12, CASE WHEN instr(trim(a.name), ' ') > 0 THEN substr(trim(a.name), 1, instr(trim(a.name), ' ') - 1) ELSE trim(a.name) END, CASE WHEN instr(trim(a.name), ' ') > 0 THEN trim(substr(trim(a.name), instr(trim(a.name), ' ') + 1)) ELSE '' END, COALESCE(a.job_title, ''), (SELECT company_name FROM exhibitors WHERE id = 12), lower(trim(a.email)),
+    CASE WHEN a.avatar_url LIKE '/api/uploads/%' OR a.avatar_url LIKE '/images/%' THEN a.avatar_url ELSE '' END, 1,
+    CASE WHEN lower(COALESCE(a.badge_type, '')) LIKE '%speaker%' THEN 1 ELSE 0 END, a.id, COALESCE(a.badge_type, ''), '', 'badge'
+  FROM attendees a JOIN exhibitors e ON e.attendee_id = a.id
+  WHERE e.id = 153 AND EXISTS (SELECT 1 FROM exhibitors WHERE id = 12) AND trim(COALESCE(a.email, '')) <> ''
+    AND NOT EXISTS (SELECT 1 FROM exhibitor_team t WHERE t.event_id = a.event_id AND (t.attendee_id = a.id OR lower(t.email) = lower(trim(a.email))));
+UPDATE exhibitors SET contact_email = (SELECT contact_email FROM exhibitors WHERE id = 153) WHERE id = 12 AND COALESCE(trim(contact_email), '') = '' AND EXISTS (SELECT 1 FROM exhibitors WHERE id = 153);
+UPDATE exhibitor_team SET exhibitor_id = 12, updated_at = CURRENT_TIMESTAMP WHERE exhibitor_id = 153;
+UPDATE OR IGNORE exhibitor_leads SET exhibitor_id = 12 WHERE exhibitor_id = 153;
+UPDATE OR IGNORE booth_visits SET exhibitor_id = 12 WHERE exhibitor_id = 153;
+UPDATE mp_companies SET exhibitor_id = 12 WHERE exhibitor_id = 153;
+UPDATE mp_listings SET exhibitor_id = 12 WHERE exhibitor_id = 153;
+UPDATE OR IGNORE innovation_talks SET exhibitor_id = 12 WHERE exhibitor_id = 153;
+DELETE FROM exhibitor_leads WHERE exhibitor_id = 153;
+DELETE FROM booth_visits WHERE exhibitor_id = 153;
+DELETE FROM exhibitors WHERE id = 153 AND company_name = 'Asmadiya' AND NOT EXISTS (SELECT 1 FROM exhibitor_team_settings WHERE exhibitor_id = 153) AND NOT EXISTS (SELECT 1 FROM booth_allocations WHERE exhibitor_id = 153 AND status = 'confirmed' AND released_at IS NULL);
+
 -- A team member typed without an email who is now also listed with one: the email-less copy goes.
 DELETE FROM exhibitor_team WHERE exhibitor_id = 3 AND email = '' AND EXISTS (SELECT 1 FROM exhibitor_team t2 WHERE t2.exhibitor_id = 3 AND t2.id <> exhibitor_team.id AND t2.email <> '' AND lower(trim(t2.first_name)) = lower(trim(exhibitor_team.first_name)) AND lower(trim(t2.last_name)) = lower(trim(exhibitor_team.last_name)));
 DELETE FROM exhibitor_team WHERE exhibitor_id = 4 AND email = '' AND EXISTS (SELECT 1 FROM exhibitor_team t2 WHERE t2.exhibitor_id = 4 AND t2.id <> exhibitor_team.id AND t2.email <> '' AND lower(trim(t2.first_name)) = lower(trim(exhibitor_team.first_name)) AND lower(trim(t2.last_name)) = lower(trim(exhibitor_team.last_name)));
@@ -1529,6 +1592,7 @@ DELETE FROM exhibitor_team WHERE exhibitor_id = 6 AND email = '' AND EXISTS (SEL
 DELETE FROM exhibitor_team WHERE exhibitor_id = 8 AND email = '' AND EXISTS (SELECT 1 FROM exhibitor_team t2 WHERE t2.exhibitor_id = 8 AND t2.id <> exhibitor_team.id AND t2.email <> '' AND lower(trim(t2.first_name)) = lower(trim(exhibitor_team.first_name)) AND lower(trim(t2.last_name)) = lower(trim(exhibitor_team.last_name)));
 DELETE FROM exhibitor_team WHERE exhibitor_id = 10 AND email = '' AND EXISTS (SELECT 1 FROM exhibitor_team t2 WHERE t2.exhibitor_id = 10 AND t2.id <> exhibitor_team.id AND t2.email <> '' AND lower(trim(t2.first_name)) = lower(trim(exhibitor_team.first_name)) AND lower(trim(t2.last_name)) = lower(trim(exhibitor_team.last_name)));
 DELETE FROM exhibitor_team WHERE exhibitor_id = 11 AND email = '' AND EXISTS (SELECT 1 FROM exhibitor_team t2 WHERE t2.exhibitor_id = 11 AND t2.id <> exhibitor_team.id AND t2.email <> '' AND lower(trim(t2.first_name)) = lower(trim(exhibitor_team.first_name)) AND lower(trim(t2.last_name)) = lower(trim(exhibitor_team.last_name)));
+DELETE FROM exhibitor_team WHERE exhibitor_id = 12 AND email = '' AND EXISTS (SELECT 1 FROM exhibitor_team t2 WHERE t2.exhibitor_id = 12 AND t2.id <> exhibitor_team.id AND t2.email <> '' AND lower(trim(t2.first_name)) = lower(trim(exhibitor_team.first_name)) AND lower(trim(t2.last_name)) = lower(trim(exhibitor_team.last_name)));
 DELETE FROM exhibitor_team WHERE exhibitor_id = 14 AND email = '' AND EXISTS (SELECT 1 FROM exhibitor_team t2 WHERE t2.exhibitor_id = 14 AND t2.id <> exhibitor_team.id AND t2.email <> '' AND lower(trim(t2.first_name)) = lower(trim(exhibitor_team.first_name)) AND lower(trim(t2.last_name)) = lower(trim(exhibitor_team.last_name)));
 DELETE FROM exhibitor_team WHERE exhibitor_id = 17 AND email = '' AND EXISTS (SELECT 1 FROM exhibitor_team t2 WHERE t2.exhibitor_id = 17 AND t2.id <> exhibitor_team.id AND t2.email <> '' AND lower(trim(t2.first_name)) = lower(trim(exhibitor_team.first_name)) AND lower(trim(t2.last_name)) = lower(trim(exhibitor_team.last_name)));
 DELETE FROM exhibitor_team WHERE exhibitor_id = 19 AND email = '' AND EXISTS (SELECT 1 FROM exhibitor_team t2 WHERE t2.exhibitor_id = 19 AND t2.id <> exhibitor_team.id AND t2.email <> '' AND lower(trim(t2.first_name)) = lower(trim(exhibitor_team.first_name)) AND lower(trim(t2.last_name)) = lower(trim(exhibitor_team.last_name)));
