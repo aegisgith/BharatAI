@@ -1833,6 +1833,10 @@ export const settleTeam = async (c: any, ex: { id: number; event_id: number }): 
       const sets = Object.keys(v), vals = sets.map(k => (v as any)[k])
       return c.env.DB.prepare(`UPDATE exhibitor_team SET ${sets.map(k => `${k} = ?`).join(', ')} WHERE id = ?`).bind(...vals, m.id).run()
     }
+    // Given their pass in Admin (an Exhibitor badge) and put on the team so their leads and
+    // booth are the company's (linkBadgeHolderToCompany, 18 Nov 2026): the pass is Admin's,
+    // never this list's to count, change or take back.
+    if (m.added_by === 'badge' && !m.pass_given && m.attendee_id) continue
     if (!m.email) {
       if (m.attendee_id && m.pass_given) await hooks.releaseTeamPass?.(c, { attendeeId: Number(m.attendee_id), gave: m.pass_given, exhibitorId: ex.id })
       await save({ attendee_id: null, pass: '', pass_given: '', pass_note: 'Add their email address to issue a pass.' })
@@ -2625,6 +2629,49 @@ mp.post('/api/mp/admin/listings/bulk', async (c) => {
 // booking sheet (exhibitor_team_settings). A row with neither is a leftover, usually a
 // second row made by Add Attendee with an Exhibitor badge, not an exhibitor.
 export const DIRECTORY_SHOWN_SQL = `(EXISTS (SELECT 1 FROM booth_allocations ba WHERE ba.exhibitor_id = exhibitors.id AND ba.status = 'confirmed' AND ba.released_at IS NULL) OR EXISTS (SELECT 1 FROM exhibitor_team_settings ts WHERE ts.exhibitor_id = exhibitors.id))`
+
+// One company, one exhibitor row (18 Nov 2026). Giving someone an Exhibitor or Exhibition
+// Speaker badge in Admin used to make a new exhibitors row for that one person, so a
+// company ended up with up to seven rows (seven "CGI"s), the person's booth leads were
+// filed under their own row, and the booth contact's dashboard could open an empty copy.
+// Now, when the company is already an exhibitor (a confirmed stand or a booking row), the
+// person joins that company's team list instead, which is where leads, the lead console
+// and the dashboard look. Their pass stays the one Admin gave (settleTeam skips rows
+// added_by 'badge'). Returns the company's exhibitor id, or null when the company is not
+// an exhibitor yet (the caller then makes its row, as before).
+const companyKey = (s: string) => String(s || '').toLowerCase()
+  .replace(/\b(private|pvt|ltd|limited|llp|inc|technologies|technology|solutions|services|india|the|co|labs?|lab|software|systems|ai|global)\b/g, ' ')
+  .replace(/[^a-z0-9]/g, '')
+const sameCompany = (a: string, b: string) => !!a && !!b && (a === b || (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a))))
+export async function linkBadgeHolderToCompany(c: any, attendeeId: number): Promise<number | null> {
+  try {
+    const a = await c.env.DB.prepare('SELECT id, event_id, name, email, company, job_title, badge_type, avatar_url FROM attendees WHERE id = ?').bind(attendeeId).first() as any
+    if (!a || !String(a.company || '').trim()) return null
+    const key = companyKey(a.company)
+    const shown = ((await c.env.DB.prepare(`SELECT id, company_name FROM exhibitors WHERE event_id = ? AND ${DIRECTORY_SHOWN_SQL} ORDER BY id`).bind(a.event_id).all()).results || []) as any[]
+    const hits = shown.filter((e) => sameCompany(companyKey(e.company_name), key))
+    if (hits.length !== 1) return null
+    const ex = hits[0]
+    const email = String(a.email || '').trim().toLowerCase()
+    const badge = String(a.badge_type || '')
+    const speaker = /speaker/i.test(badge) ? 1 : 0
+    const onTeam = email ? await c.env.DB.prepare('SELECT id, attendee_id FROM exhibitor_team WHERE event_id = ? AND (attendee_id = ? OR lower(email) = ?) LIMIT 1').bind(a.event_id, a.id, email).first() as any : null
+    if (onTeam) {
+      // Already listed (by the booth contact, or the sheet): linked to this pass.
+      await c.env.DB.prepare("UPDATE exhibitor_team SET attendee_id = ?, speaker = CASE WHEN ? = 1 THEN 1 ELSE speaker END, pass = CASE WHEN pass = '' THEN ? ELSE pass END, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(a.id, speaker, badge, onTeam.id).run()
+      return Number(ex.id)
+    }
+    if (!email) return null
+    const name = String(a.name || '').trim()
+    const sp = name.indexOf(' ')
+    const photo = /^\/(api\/uploads|images)\//.test(String(a.avatar_url || '')) ? String(a.avatar_url) : ''
+    await c.env.DB.prepare(`INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_name, designation, company, email, photo_url, at_booth, speaker, attendee_id, pass, pass_given, added_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, '', 'badge')`)
+      .bind(a.event_id, ex.id, sp > 0 ? name.slice(0, sp) : name, sp > 0 ? name.slice(sp + 1) : '', String(a.job_title || ''), ex.company_name, email, photo, speaker, a.id, badge).run()
+    return Number(ex.id)
+  } catch { return null } // before 0050 (no team list): the old way
+}
 // exhibitors.description on imported rows is an internal booking note ("Imported from
 // the Confirmed Booth sheet. Owner: ..."). Never shown to an attendee.
 export const INTERNAL_NOTE_RE = /^\s*imported from|owner\s*:/i

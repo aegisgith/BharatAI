@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 // @ts-ignore - JSON import, bundled by Vite
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
-import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers } from './routes/marketplace'
+import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers, linkBadgeHolderToCompany } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots, syncTalkSessions, talkRemoved, withAttendeePhotos } from './routes/conference'
 import siteLive from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
@@ -15775,7 +15775,8 @@ app.put('/api/admin/attendees/:id', async (c) => {
   const exhibitorBadges = ['exhibitor', 'exhibitor booth', 'exhibition speaker']
   if (exhibitorBadges.some(eb => (b.badge_type || '').toLowerCase().includes(eb))) {
     const existing = await c.env.DB.prepare('SELECT id FROM exhibitors WHERE attendee_id = ?').bind(id).first()
-    if (!existing) {
+    // A company already exhibiting gets this person on its team, not a second row (18 Nov 2026).
+    if (!existing && !(await linkBadgeHolderToCompany(c, Number(id)))) {
       const attendee = await c.env.DB.prepare('SELECT event_id, company, email FROM attendees WHERE id = ?').bind(id).first() as any
       if (attendee) {
         await c.env.DB.prepare(
@@ -15824,7 +15825,8 @@ app.patch('/api/admin/attendees/:id', async (c) => {
     const exhibitorBadges = ['exhibitor', 'exhibitor booth', 'exhibition speaker']
     if (exhibitorBadges.some(eb => (body.badge_type || '').toLowerCase().includes(eb))) {
       const existing = await c.env.DB.prepare('SELECT id FROM exhibitors WHERE attendee_id = ?').bind(id).first()
-      if (!existing) {
+      // A company already exhibiting gets this person on its team, not a second row (18 Nov 2026).
+      if (!existing && !(await linkBadgeHolderToCompany(c, Number(id)))) {
         const attendee = await c.env.DB.prepare('SELECT event_id, company, email FROM attendees WHERE id = ?').bind(id).first() as any
         if (attendee) {
           await c.env.DB.prepare('INSERT INTO exhibitors (event_id, company_name, contact_email, attendee_id) VALUES (?,?,?,?)').bind(attendee.event_id, attendee.company || '', attendee.email || '', id).run()
@@ -15906,7 +15908,8 @@ app.post('/api/admin/attendees', async (c) => {
 
     // Auto-create exhibitor if badge is exhibitor-related
     const exhibitorBadges = ['exhibitor', 'exhibitor booth', 'exhibition speaker']
-    if (exhibitorBadges.some(b => (badge_type || '').toLowerCase().includes(b))) {
+    // A company already exhibiting gets this person on its team, not a second row (18 Nov 2026).
+    if (exhibitorBadges.some(b => (badge_type || '').toLowerCase().includes(b)) && !(await linkBadgeHolderToCompany(c, Number(result.meta.last_row_id)))) {
       await c.env.DB.prepare(
         'INSERT INTO exhibitors (event_id, company_name, contact_email, attendee_id) VALUES (?,?,?,?)'
       ).bind(event_id, company || name.trim(), normalizedEmail, result.meta.last_row_id).run()
@@ -17339,6 +17342,8 @@ app.post('/api/admin/exhibitors/sync', async (c) => {
 
   let created = 0
   for (const a of attendees as any[]) {
+    // A company already exhibiting gets this person on its team, not a second row (18 Nov 2026).
+    if (await linkBadgeHolderToCompany(c, Number(a.id))) continue
     await c.env.DB.prepare(
       'INSERT INTO exhibitors (event_id, company_name, contact_email, attendee_id) VALUES (?,?,?,?)'
     ).bind(a.event_id, a.company || 'TBD', a.email || '', a.id).run()
