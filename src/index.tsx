@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
 import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers, linkBadgeHolderToCompany } from './routes/marketplace'
-import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots, syncTalkSessions, talkRemoved, withAttendeePhotos, withTalkPhotos } from './routes/conference'
+import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots, syncTalkSessions, talkRemoved, withAttendeePhotos, withTalkPhotos, withSessionPhotos } from './routes/conference'
 import siteLive, { configureSiteLive } from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief } from './routes/talk-brief'
@@ -742,7 +742,8 @@ app.get('/api/events/:id/sessions', async (c) => {
   query += ' ORDER BY start_time ASC'
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all()
-  return c.json(fillVenues(results as any[]))
+  // Each speaker's photo for the app's schedule cards (withSessionPhotos, 18 Nov 2026).
+  return c.json(await withSessionPhotos(c, Number(eventId) || 1, fillVenues(results as any[])))
 })
 
 app.get('/api/events/:id/sessions/tracks', async (c) => {
@@ -34724,8 +34725,22 @@ function mainPageScript(): string {
       loadSchedule();
     }
 
+    // A speaker's photo on a schedule card: the server sends speaker_photos (name as
+    // the card writes it, lowercased -> photo) from the speakers list, so a photo saved
+    // in Admin shows here; anyone not on the list keeps their initials.
+    function sessionSpeakerPhoto(s, name) {
+      var m = s && s.speaker_photos;
+      if (!m) return '';
+      var k = String(name || '').trim().toLowerCase();
+      var u = m[k] || '';
+      if (!u) { var p = k.match(/^(.+?)\\s*\\((.+?)\\)$/); if (p) u = m[p[1].trim()] || ''; }
+      return /^(\\/|https:\\/\\/)/.test(u) ? u : '';
+    }
+    function scheduleFace(s, name) {
+      return sessionSpeakerPhoto(s, name) || getAvatarUrl(null, name, 40);
+    }
     function renderScheduleSessionCard(s) {
-      const hasMod = !!s.speaker_name && s.speaker_name.toLowerCase().includes('(moderator)');
+      const hasMod =!!s.speaker_name && s.speaker_name.toLowerCase().includes('(moderator)');
       const isPanel = s.speaker_name && ((s.speaker_name.includes(',') && (s.session_type === 'panel' || s.speaker_name.split(',').length >= 3)) || hasMod);
       let speakerHtml = '';
       if (isPanel && s.speaker_name) {
@@ -34744,7 +34759,7 @@ function mainPageScript(): string {
                 const isMod = pInfo.toLowerCase() === 'moderator' || pName.toLowerCase().includes('moderator');
                 const cleanName = pName.replace(/\\s*\\(moderator\\)/i, '').trim();
                 return \`<div class="flex items-center gap-2 glass-light rounded-xl px-3 py-2 \${isMod ? 'border border-amber-500/30' : ''}">
-                  <img src="\${getAvatarUrl(null, cleanName, 40)}" alt="\${esc(cleanName)}" class="w-8 h-8 rounded-full object-cover shrink-0">
+                  <img src="\${esc(scheduleFace(s, cleanName))}" alt="\${esc(cleanName)}" loading="lazy" class="w-8 h-8 rounded-full object-cover shrink-0">
                   <div class="min-w-0">
                     <div class="text-xs font-semibold text-white truncate">\${esc(cleanName)}</div>
                     \${pInfo ? \`<div class="text-[10px] text-gray-400 truncate">\${esc(pInfo)}</div>\` : ''}
@@ -34756,7 +34771,7 @@ function mainPageScript(): string {
           </div>\`;
       } else if (s.speaker_name) {
         speakerHtml = \`<div class="flex items-center gap-2 mt-2">
-          <img src="\${getAvatarUrl(null, s.speaker_name, 40)}" alt="\${esc(s.speaker_name)}" class="w-7 h-7 rounded-full object-cover shrink-0">
+          <img src="\${esc(scheduleFace(s, s.speaker_name))}" alt="\${esc(s.speaker_name)}" loading="lazy" class="w-7 h-7 rounded-full object-cover shrink-0">
           <span class="text-xs text-gray-300 font-medium">\${esc(s.speaker_name)}\${s.speaker_title ? ' <span class="text-gray-500 font-normal">· ' + esc(s.speaker_title) + '</span>' : ''}</span>
         </div>\`;
       }

@@ -1555,6 +1555,45 @@ export async function withAttendeePhotos(c: any, eventId: number, speakers: any[
   })
 }
 
+// The faces on the app's schedule (18 Nov 2026). The organiser: photos saved for
+// speakers in Admin never showed in the app. A session carries only its typed line of
+// names, so the app's schedule card drew every speaker as initials. Each session now
+// carries speaker_photos: the name as the card writes it (lowercased) -> that speaker's
+// photo (their own, else the one on their pass), for everyone on the line who is on the
+// speakers list. Read-time, so a photo saved in Admin shows on the next load.
+export function sessionPhotoMap(line: any, byNorm: Map<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  const put = (name: string) => { const u = byNorm.get(normName(name)); if (u) out[name.toLowerCase()] = u }
+  const text = String(line || '').trim()
+  if (!text) return out
+  put(text)
+  for (const part of text.split(',')) {
+    const p = part.trim()
+    const m = p.match(/^(.+?)\s*\((.+?)\)$/)
+    const name = (m ? m[1] : p).replace(/\s*\(moderator\)/i, '').trim()
+    if (name) put(name)
+  }
+  return out
+}
+export async function withSessionPhotos(c: any, eventId: number, sessions: any[]): Promise<any[]> {
+  if (!sessions.some(s => String(s.speaker_name || '').trim())) return sessions
+  let speakers: any[] = []
+  try {
+    speakers = await all(c, 'SELECT id, name, email, photo_url FROM speakers WHERE event_id = ? AND is_published = 1', eventId)
+    speakers = await withAttendeePhotos(c, eventId, speakers)
+  } catch { return sessions }
+  const byNorm = new Map<string, string>()
+  for (const sp of speakers) {
+    const k = normName(sp.name), u = String(sp.photo_url || '')
+    if (k && /^(\/|https:\/\/)/.test(u) && !byNorm.has(k)) byNorm.set(k, u)
+  }
+  if (!byNorm.size) return sessions
+  return sessions.map(s => {
+    const photos = sessionPhotoMap(s.speaker_name, byNorm)
+    return Object.keys(photos).length ? { ...s, speaker_photos: photos } : s
+  })
+}
+
 // The same for an Innovation Talk (18 Nov 2026): a talk with no photo of its own, and a
 // pass under the speaker's email (or, on an Exhibition Speaker or Speaker pass, their
 // name) with a profile photo: that photo, in the app, Admin and on the website. Dipti
