@@ -78,7 +78,7 @@ const EXHIBITORS = [
   { name: 'Evoke Technologies', file: 'Evoke Technologies logo.jpg', db: [27, 'Evoke Technologies'] },
   { name: 'FTA Global', file: '4 Nov New logo/FTA GLOBAL.jpg' },
   // Startup Pod, 18 Nov 2026 (organiser, logo by chat; baked with bake(), grey field whitened).
-  { name: 'GeNext Genomics', db: [118, 'GeNext Genomics Pvt Ltd'] },
+  { name: 'GeNext Genomics', db: [118, 'GeNext Genomics Pvt Ltd'], untilApp: true }, // until exhibitor-genext-genomics-2026-11-18.sql runs
   { name: 'Gupshup.ai', file: 'gupshup ai logo.jpg' },
   { name: 'Harrier Information Systems', file: 'Harrier Information Systems Pvt. Ltd. logo.jpg', db: [25, 'Harrier Information Systems Pvt. Ltd.'], optical: 1.1 },
   { name: 'Image Infosystems', file: 'Image Infosystem.jpg', db: [4, 'Image Infosystem'], optical: 1.3 },

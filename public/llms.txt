@@ -181,6 +181,7 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - Eurys Infosystems
 - Evoke Technologies
 - FTA Global
+- GeNext Genomics
 - Gupshup.ai
 - Harrier Information Systems
 - Image Infosystems
