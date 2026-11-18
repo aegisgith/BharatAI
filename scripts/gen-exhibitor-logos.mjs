@@ -48,19 +48,19 @@ const OUT = 'public/images/exhibitors'
 // every Pages build, draws the wall from the app's public exhibitor list (Admin ->
 // Exhibitors): add, edit, delete or upload a logo there and the website follows on
 // the next deploy. This list then only says how each logo looks (its file, `optical`,
-// `dark`), matched by `db` id or by name. `untilApp: true` keeps a company on the wall
-// while the app does not have it yet (scripts/sql/exhibitors-sync-2026-11-18.sql
-// adds them); drop the flag once that file has run.
+// `dark`), matched by `db` id or by name. `untilApp: true` on an entry keeps a company
+// on the wall while the app does not have it yet (none now: the 18 Nov sync SQL ran
+// that day); remove the flag as soon as the app has the company.
 const EXHIBITORS = [
-  { name: 'Actin Technologies', file: 'Actin Technologies logo.jpg', untilApp: true },
-  { name: 'Aegis School of Data Science & AI', file: 'Our Logo/logo-aegis (1) (1).webp', optical: 1.15, untilApp: true },
-  { name: 'AI Products Factory', file: 'Our Logo/AI Product Factory/aipf-logo-horizontal-transparent.png', untilApp: true },
+  { name: 'Actin Technologies', file: 'Actin Technologies logo.jpg' },
+  { name: 'Aegis School of Data Science & AI', file: 'Our Logo/logo-aegis (1) (1).webp', optical: 1.15 },
+  { name: 'AI Products Factory', file: 'Our Logo/AI Product Factory/aipf-logo-horizontal-transparent.png' },
   // Back on 18 Nov 2026 (organiser): logos restored from before 91bc99b; no source file.
   { name: 'Amnex Infotechnologies', db: [22, 'Amnex technologies'] },
   { name: 'Indigloo Software', db: [32, 'Indigloo Software Pvt Ltd'] },
   // 18 Nov 2026, sent by the organiser on WhatsApp (baked with this script's bake(), grey field whitened).
-  { name: 'Kavion.ai', untilApp: true },
-  { name: 'Yarnit', untilApp: true },
+  { name: 'Kavion.ai' },
+  { name: 'Yarnit' },
   { name: 'Ai Vie Insights', file: 'Ai Vie Insights Private Limited.jpg', db: [9, 'Ai Vie Insights Private Limited'] },
   { name: 'AlgoAnalytics', file: 'Algo Analytics.jpg', db: [6, 'Algo Analytics'] },
   { name: 'Aria Telecom', file: 'Aria Telecom Solutions Pvt. Ltd.jpg', dark: true }, // white wordmark on navy
@@ -87,7 +87,7 @@ const EXHIBITORS = [
   { name: 'JoyVibe', file: 'joyvibe_logo.jpg', optical: 1.15 },
   { name: 'Kadeep.ai', file: 'Kadeep Ai logo.jpg', db: [26, 'kadeep.ai'] },
   { name: 'Kirusa', file: 'Kirusa Inc.jpg', db: [20, 'Kirusa Inc'] },
-  { name: 'Lenixvision', file: 'Lenixvision Smart Eyewear Logo.png', optical: 1.2, untilApp: true },
+  { name: 'Lenixvision', file: 'Lenixvision Smart Eyewear Logo.png', optical: 1.2 },
   { name: 'LightMetrics', file: 'LightMetrics logo.jpg' },
   // The ministry's own logo (organiser, 4 Oct), replacing an old Azadi Ka Amrit Mahotsav graphic.
   { name: 'Ministry of Tribal Affairs', file: 'Minsitry of Tribal Affairs  Logo.png', db: [24, 'Ministry of Tribal Affairs'], optical: 1.3 },
@@ -102,7 +102,7 @@ const EXHIBITORS = [
   { name: 'P99Soft', file: 'P99SOFT Logo.jpg', dark: true }, // white mark on dark teal
   { name: 'Paisani Technology Services', file: 'Paisani Technology Services_.jpg', db: [13, 'Paisani Technology Services'], optical: 1.2 }, // thin script
   { name: 'Phoebetal Technologies', file: 'Phoebetal Technologies Pvt Ltd.jpg', db: [30, 'Phoebetal Technologies Pvt Ltd'] },
-  { name: 'Pramaana Labs', file: 'pramaana labs logo.jpg', untilApp: true },
+  { name: 'Pramaana Labs', file: 'pramaana labs logo.jpg' },
   { name: 'Qapitol AI', file: 'Qapitol AI logo.jpg', db: [2, 'Qapitol AI'] },
   { name: 'RedFerns Tech', file: 'RedFerns Tech Private Limited.jpg', db: [29, 'RedFerns Tech Private Limited'] },
   { name: 'Rightangle Technologies', file: '4 Nov New logo/Rightangle Technologies Pvt. Ltd_' }, // no extension; it is a JPEG
@@ -112,7 +112,7 @@ const EXHIBITORS = [
   { name: 'Trust3 AI', file: 'Trust3 AI Logo.png' },
   { name: 'ValuEnable', file: 'Valuenable pvt ltd.jpg' },
   { name: 'Vassar Labs', file: 'Vassar Lab logo.jpg' },
-  { name: 'Wissen Technology', file: 'Wissen Technology Logo.jpg', dark: true, untilApp: true }, // white mark on navy
+  { name: 'Wissen Technology', file: 'Wissen Technology Logo.jpg', dark: true }, // white mark on navy
   { name: 'Wyn Labs', file: 'Wyn Labs.jpg', db: [17, 'Wyn Labs'] },
   { name: 'Xtant Tech', file: 'Xtant Tech.png', dark: true }, // white wordmark on a big black square
   { name: 'Zanopy AI', file: 'Zanopy AI.jpg', db: [21, 'Zanopy AI'] },
