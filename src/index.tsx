@@ -34709,7 +34709,8 @@ function mainPageScript(): string {
     }
 
     function renderScheduleSessionCard(s) {
-      const isPanel = s.speaker_name && s.speaker_name.includes(',') && (s.session_type === 'panel' || s.speaker_name.split(',').length >= 3);
+      const hasMod = !!s.speaker_name && s.speaker_name.toLowerCase().includes('(moderator)');
+      const isPanel = s.speaker_name && ((s.speaker_name.includes(',') && (s.session_type === 'panel' || s.speaker_name.split(',').length >= 3)) || hasMod);
       let speakerHtml = '';
       if (isPanel && s.speaker_name) {
         const panelists = s.speaker_name.split(',').map(p => p.trim()).filter(Boolean);
@@ -34717,7 +34718,7 @@ function mainPageScript(): string {
           <div class="mt-3 pt-3 border-t border-white/5">
             <div class="flex items-center gap-1.5 mb-2.5">
               <i class="fas fa-microphone-alt text-primary-400 text-xs"></i>
-              <span class="text-xs font-semibold text-gray-300">Panelists</span>
+              <span class="text-xs font-semibold text-gray-300">\${s.session_type === 'panel' ? 'Panelists' : 'Speakers'}</span>
             </div>
             <div class="flex flex-wrap gap-2">
               \${panelists.map(p => {
@@ -41833,7 +41834,7 @@ function adminPageHTML(): string {
     <div id="modal-box" class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;"></div>
   </div>
 
-  <script src="/static/conference-admin.js?v=20261117"></script>
+  <script src="/static/conference-admin.js?v=20261118"></script>
   <script src="/static/speaker-brief.js?v=20261116c"></script>
   <script src="/static/talk-brief.js?v=20261116"></script>
   <script src="/static/event-week.js?v=20261116"></script>

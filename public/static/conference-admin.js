@@ -477,6 +477,7 @@
       '<div class="cm-f"><label for="cm-s-end">Ends</label><input id="cm-s-end" type="time" step="300" class="cm-in" value="' + esc(end) + '" data-cm-input="s-check"></div></div>' +
       '<div class="cm-durs" style="margin:-8px 0 14px"><span class="cm-help" style="margin:4px 4px 0 0">Length:</span>' + [5, 8, 10, 15, 20, 30, 45, 60, 90, 120].map(function (m) { return '<button type="button" class="cm-dur" data-cm="dur" data-k="' + m + '">' + (m < 60 ? m + ' min' : (m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) : '')) + '</button>'; }).join('') + '</div>' +
       '<div class="cm-f" style="margin-top:-6px"><button type="button" class="cm-btn is-small" data-cm="find-slot"><i class="fas fa-wand-magic-sparkles"></i>Find a free slot</button> <span class="cm-help" style="display:inline">A time when a hall is free and none of its speakers is on stage elsewhere.</span><div id="cm-s-slots"></div></div>' +
+      '<div class="cm-f"><label for="cm-s-mod">Moderator <em>(any speaker; shown as Moderator in the app and on the website)</em></label><select id="cm-s-mod" class="cm-in" data-cm-input="mod"></select></div>' +
       '<div class="cm-f"><span class="cm-lbl">Speakers <em>in the order the app should list them</em></span><div id="cm-s-people"></div>' +
         '<div class="cm-pick"><input id="cm-s-pick" class="cm-in" placeholder="Add a speaker: type a name or organisation" autocomplete="off" data-cm-input="pick" aria-label="Add a speaker"><div id="cm-s-pick-list"></div></div>' +
         '<button type="button" class="cm-btn is-small" style="margin-top:8px" data-cm="new-in-session"><i class="fas fa-user-plus"></i>New speaker, with email and mobile</button><div id="cm-s-newsp"></div></div>' +
@@ -500,8 +501,22 @@
     liveCheck();
     setTimeout(function () { var t = $('cm-s-title'); if (t && !s.id) t.focus(); }, 60);
   }
+  // The Moderator box: everyone in this session first, then every other speaker. Picking
+  // someone not in the session adds them to it as its moderator.
+  function drawMod() {
+    var sel = $('cm-s-mod'); if (!sel || !ED) return;
+    var cur = ED.people.filter(function (p) { return p.role === 'moderator'; })[0];
+    var inS = {}; ED.people.forEach(function (p) { inS[p.speaker_id] = 1; });
+    var opt = function (sp) { return '<option value="' + sp.id + '"' + (cur && Number(cur.speaker_id) === Number(sp.id) ? ' selected' : '') + '>' + esc(sp.name + (sp.organisation ? ' · ' + sp.organisation : '') + (Number(sp.is_published) === 0 ? ' (hidden)' : '')) + '</option>'; };
+    var mine = ED.people.map(function (p) { return speakerById(p.speaker_id); }).filter(Boolean);
+    var rest = (S.d.speakers || []).filter(function (sp) { return !inS[sp.id]; }).sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+    sel.innerHTML = '<option value="">No moderator</option>' +
+      (mine.length ? '<optgroup label="In this session">' + mine.map(opt).join('') + '</optgroup>' : '') +
+      (rest.length ? '<optgroup label="Everyone else on the speakers list">' + rest.map(opt).join('') + '</optgroup>' : '');
+  }
   function drawPeople() {
     var box = $('cm-s-people'); if (!box || !ED) return;
+    drawMod();
     if (!ED.people.length) { box.innerHTML = '<div class="cm-help" style="margin:0 0 4px">No speakers yet.</div>'; return; }
     var roles = S.d.speaker_roles || Object.keys(ROLE_WORD);
     box.innerHTML = '<div class="cm-people">' + ED.people.map(function (p, i) {
@@ -1997,7 +2012,13 @@
       else if (k === 'show-free') { S.showFree = el.checked; body(); }
       else if (k === 'dim') { S.dim = el.checked; body(); }
       else if (k === 's-check') liveCheck();
-      else if (k === 'role') { ED.people[Number(el.getAttribute('data-i'))].role = el.value; }
+      else if (k === 'role') { ED.people[Number(el.getAttribute('data-i'))].role = el.value; drawMod(); }
+      else if (k === 'mod' && ED) {
+        var mid = Number(el.value) || 0, ty = ($('cm-s-type') || {}).value;
+        ED.people.forEach(function (p) { if (p.role === 'moderator' && Number(p.speaker_id) !== mid) p.role = ty === 'panel' ? 'panellist' : ty === 'keynote' ? 'keynote' : 'speaker'; });
+        if (mid) { var mp = ED.people.filter(function (p) { return Number(p.speaker_id) === mid; })[0]; if (mp) mp.role = 'moderator'; else ED.people.push({ speaker_id: mid, role: 'moderator' }); }
+        drawPeople();
+      }
       else if (k === 'a-email') { var a = $('cm-a-aud'); if (a) a.style.display = el.checked ? 'block' : 'none'; }
       else if (k === 'a-session') {
         var sp = speakerById(el.getAttribute('data-id')); var s = sessionById(el.value);

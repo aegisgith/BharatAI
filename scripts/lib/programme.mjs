@@ -208,6 +208,9 @@ export function programmeFromApp(programme) {
         const panellist = (p) => ({ name: p.name, org: p.organisation || p.info || '', role: p.role || '', photo: p.photo_url || '', ...(p.speaker_id ? { listed: true } : {}) })
         item.panel = rest.map(panellist)
         if (mod) item.moderator = panellist(mod)
+      } else if (mod) {
+        // Only a moderator so far: shown as the moderator, not as the speaker.
+        item.moderator = { name: mod.name, org: mod.organisation || mod.info || '', role: mod.role || '', photo: mod.photo_url || '', ...(mod.speaker_id ? { listed: true } : {}) }
       } else if (people.length === 1) {
         // A listed speaker: the designation and organisation Admin holds. Someone typed
         // by hand: the title line as typed ("Designation, Organisation").
