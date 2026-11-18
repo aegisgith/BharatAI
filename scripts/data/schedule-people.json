@@ -5,6 +5,7 @@
     { "name": "Hon’ble Shri Dattatray Bharane", "role": "Minister of Agriculture", "org": "Government of Maharashtra", "photo": "images/speaker-dattatray-bharane-sq.webp", "logo": "images/logo-maharashtra.webp" },
     { "name": "Hon’ble Smt. Aditi Tatkare", "role": "Minister of Women and Child Development", "org": "Government of Maharashtra", "photo": "images/aditi-tatkare.jpg", "logo": "images/logo-maharashtra.webp", "crop": { "left": 0.27, "top": 0.02, "size": 0.4 } },
     { "name": "Hon’ble Shri Sanjay Rathod", "role": "Minister of Soil and Water Conservation", "org": "Government of Maharashtra", "photo": "images/sanjay-rathod.jpg", "logo": "images/logo-maharashtra.webp", "crop": { "left": 0.12, "top": 0, "size": 0.563 } },
+    { "name": "Hon’ble Shri Chhagan Bhujbal", "role": "Minister of Food, Civil Supplies and Consumer Protection", "org": "Government of Maharashtra", "photo": "images/speaker-chhagan-bhujbal-sq.webp", "logo": "images/logo-maharashtra.webp" },
     { "name": "Shri Virendra Singh (IAS)", "role": "Secretary", "org": "Electronics, IT and AI Department, Government of Maharashtra", "photo": "images/speaker-virendra-singh-sq.webp", "logo": "images/logo-maharashtra.webp" },
     { "name": "Shri K.K. Singh", "role": "Joint Secretary", "org": "Ministry of Electronics & IT (MeitY), Government of India", "photo": "images/speaker-kk-singh-v2.jpg", "logo": "images/logo-meity.webp" },
     { "name": "Shri Praveen Pardeshi", "role": "CEO; Chief Economic Advisor to the Chief Minister", "org": "MITRA, Government of Maharashtra", "photo": "images/speaker-praveen-pardeshi.webp", "logo": "images/logo-mitra.webp", "crop": { "left": 0.22, "top": 0, "size": 0.7 } },
@@ -19,7 +20,7 @@
     { "name": "Shri Bhanudas Palwe (IAS)", "role": "Commissioner of Fisheries", "org": "Government of Maharashtra", "photo": "images/speaker-bhanudas-palwe-sq.webp", "logo": "images/logo-maharashtra.webp" },
     { "name": "Shri Srinivas Kancharla", "role": "Program Specialist", "org": "Office of the Principal Scientific Adviser to the Government of India", "photo": "images/talks/srinivas-kancharla.webp", "logo": "images/logo-psa.webp" },
     { "name": "Dr. Vishal Deo", "role": "Scientist-C", "org": "ICMR-NIRDH", "logo": "images/org-logos/icmr.webp" },
-    { "name": "Cmde Dr. Jadumani Jena (retd.)", "role": "Director", "org": "Bharat AI Innovation, Exhibition & Conference", "logo": "images/logo-nav.webp" },
+    { "name": "Cmde Dr. Jadumani Jena (retd.)", "role": "Director", "org": "Bharat AI Innovation, Exhibition & Conference", "photo": "images/speaker-jadumani-jena-sq.webp", "logo": "images/logo-nav.webp" },
 
     { "name": "Mr. Bhupesh Daheria", "role": "CEO; Trustee, Aegis Knowledge Trust", "org": "Aegis School of Data Science & AI", "photo": "images/speaker-bhupesh-daheria-panel.webp", "logo": "images/logo-aegis.webp" },
     { "name": "Dr. Abhijit Gangopadhyay", "role": "Dean", "org": "Aegis School of Data Science & AI", "photo": "images/speaker-abhijit-gangopadhyay.webp", "logo": "images/logo-aegis.webp", "crop": { "left": 0.04, "top": 0.2, "size": 0.42 } },
@@ -28,7 +29,7 @@
     { "name": "Ratan Kumar Kesh", "role": "Executive Director & COO", "org": "Bandhan Bank", "photo": "images/speaker-ratan-kumar-kesh-bandhan.webp", "logo": "images/logo-bandhan.webp" },
     { "name": "Sarosh Amaria", "role": "MD", "org": "Tata Capital", "photo": "images/speaker-sarosh-amaria-sq.webp" },
     { "name": "Pravin Kumar", "role": "Chief Market Information Security Officer & Data Protection Officer", "org": "National Payments Corporation of India (NPCI)", "photo": "images/speaker-pravin-kumar.jpg", "logo": "images/org-logos/favicon-npci.org.in.png" },
-    { "name": "Mayur Kapur", "role": "Asia Chief Strategy Officer", "org": "TransUnion", "logo": "images/org-logos/transunion.webp" },
+    { "name": "Mayur Kapur", "role": "Asia Chief Strategy Officer", "org": "TransUnion", "photo": "images/speaker-mayur-kapur-sq.webp", "logo": "images/org-logos/transunion.webp" },
     { "name": "Shailesh Dhuri", "role": "CEO", "org": "Decimal Point Analytics", "photo": "images/speaker-shailesh-dhuri-final.webp", "logo": "images/org-logos/favicon-decimalpointanalytics.com.png" },
 
     { "name": "Abhay Sharma", "role": "Partner & Practice Leader", "org": "IBM", "photo": "images/speaker-abhay-sharma.webp", "logo": "images/logo-ibm.webp" },
@@ -49,7 +50,7 @@
     { "name": "Ganesh Joshi", "role": "AVP – IT & Chief Information Officer", "org": "Nilons Enterprises", "photo": "images/speaker-ganesh-joshi-sq.webp" },
     { "name": "Ms. Surbhi Gupta", "role": "Chief Digital Officer", "org": "Birla Opus Paints", "photo": "images/speaker-surbhi-gupta-sq.webp" },
     { "name": "Raveesh Dewan", "role": "President & CEO", "org": "Joget Inc.", "photo": "images/talks/raveesh-dewan.webp" },
-    { "name": "Ashwani Kumar", "role": "Senior Director of Engineering, AI Platform", "org": "Nielsen" },
+    { "name": "Ashwani Kumar", "role": "Senior Director of Engineering, AI Platform", "org": "Nielsen", "photo": "images/speaker-ashwani-kumar-sq.webp" },
     { "name": "Abhay Tewari", "role": "MD & CEO", "org": "Star Union Dai-ichi Life Insurance", "photo": "images/speaker-abhay-tewari-sq.webp" },
     { "name": "Shallu Kaushik", "role": "Chief Digital Officer", "org": "Tata Capital", "photo": "images/speaker-shallu-kaushik-sq.webp" },
     { "name": "Dr. Pawan Chawla", "role": "Senior VP & CISO", "org": "Tata AIA Life Insurance", "photo": "images/speaker-pawan-chawla-sq.webp" },
@@ -79,22 +80,24 @@
     { "name": "Ramanarayana Parhi", "role": "VP & CIO", "org": "Alkem Laboratories", "photo": "images/speaker-ramanarayana-parhi-alkem.webp", "logo": "images/org-logos/favicon-alkemlabs.com.png", "crop": { "left": 0.49, "top": 0.16, "size": 0.5 } },
     { "name": "Joy Chakraborty", "role": "Deputy CEO", "org": "P. D. Hinduja National Hospital & Medical Research Centre", "photo": "images/speaker-joy-chakraborty.jpg", "logo": "images/org-logos/favicon-hindujahospital.com.png" },
     { "name": "Dheeraj Sinha", "role": "EVP & Global CIO", "org": "Sun Pharma", "photo": "images/speaker-dheeraj-sinha.webp", "logo": "images/org-logos/favicon-sunpharma.com.png" },
-    { "name": "Apsara Mokashi", "role": "Global Head of Account Operations", "org": "Thoughtworks", "logo": "images/org-logos/thoughtworks.webp" },
+    { "name": "Apsara Mokashi", "role": "Global Head of Account Operations", "org": "Thoughtworks", "photo": "images/speaker-apsara-mokashi-sq.webp", "logo": "images/org-logos/thoughtworks.webp" },
 
     { "name": "Rahul Molasi", "role": "DGM L&OD; Head CoE, Digital, Managerial and Learning Analytics", "org": "Sun Pharma", "photo": "images/speaker-rahul-molasi.jpg", "logo": "images/org-logos/favicon-sunpharma.com.png" },
     { "name": "Abdul Hai Mattoo", "role": "CVP & Head of Training", "org": "Axis Max Life Insurance", "photo": "images/speaker-abdul-hai-mattoo.jpg", "logo": "images/org-logos/favicon-axismaxlife.com.png" },
-    { "name": "Rakhi Prasad", "role": "Co-Founder", "org": "ClarityX", "logo": "images/org-logos/clarityx.webp" },
+    { "name": "Rakhi Prasad", "role": "Co-Founder", "org": "ClarityX", "photo": "images/speaker-rakhi-prasad-sq.webp", "logo": "images/org-logos/clarityx.webp" },
     { "name": "Arvind Shah", "role": "Chief Distribution Officer", "org": "SAMA Insurance" },
-    { "name": "Gaurav Arora", "role": "Chief Headhunter & CEO", "org": "MSA Consulting Services" },
+    { "name": "Gaurav Arora", "role": "Chief Headhunter & CEO", "org": "MSA Consulting Services", "photo": "images/speaker-gaurav-arora-sq.webp" },
     { "name": "Rinoo Rajesh", "role": "President", "org": "PMI Pune-Deccan India Chapter", "photo": "images/speaker-rinoo-rajesh.webp", "crop": { "left": 0.185, "top": 0.04, "size": 0.55 }, "logo": "images/org-logos/pmi-pune.webp" },
 
-    { "name": "Shekar Sivasubramanian", "role": "CEO", "org": "Wadhwani Institute for Artificial Intelligence", "logo": "images/org-logos/wadhwani-ai.webp" },
+    { "name": "Shekar Sivasubramanian", "role": "CEO", "org": "Wadhwani Institute for Artificial Intelligence", "photo": "images/speaker-shekar-sivasubramanian-sq.webp", "logo": "images/org-logos/wadhwani-ai.webp" },
     { "name": "Dr. Sameer Agarwal", "role": "Executive Vice President", "org": "Molecule AI", "photo": "images/speaker-sameer-agarwal-sq.webp", "logo": "images/org-logos/molecule-ai.webp" },
     { "name": "Manish K. Prahlad", "role": "Co-Founder and CEO", "org": "Verdant Impact", "logo": "images/org-logos/verdant-impact.webp", "photo": "images/speaker-manish-prahlad-sq.webp" },
     { "name": "Dr. Omprakash Mandge", "role": "Principal", "org": "MET", "photo": "images/speaker-omprakash-mandge-sq.webp", "logo": "images/org-logos/met.webp" },
 
     { "name": "Virendra Pal", "role": "AI & FinTech Expert", "org": "", "photo": "images/speaker-virendra-pal.webp" },
     { "name": "Dr. Parijat Shukla", "role": "PhD, Iowa State University", "org": "", "photo": "images/speaker-parijat-shukla-sq.webp" },
-    { "name": "KrishnaKanth Naik", "role": "Program Manager", "org": "IBM Career Education", "photo": "images/speaker-krishnakanth-naik.webp", "logo": "images/logo-ibm.webp" }
+    { "name": "KrishnaKanth Naik", "role": "Program Manager", "org": "IBM Career Education", "photo": "images/speaker-krishnakanth-naik.webp", "logo": "images/logo-ibm.webp" },
+    { "name": "Rohini Ramnathan", "role": "Chief Content Officer", "org": "Fever Network", "photo": "images/speaker-rohini-ramnathan-sq.webp" },
+    { "name": "Fal Ghancha", "role": "Founder and CTO, 72 Street AI; Co-Founder, ApexCXOs", "org": "72 Street AI", "photo": "images/speaker-fal-ghancha-sq.webp" }
   ]
 }

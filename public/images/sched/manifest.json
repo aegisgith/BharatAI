@@ -81,8 +81,23 @@
    "w": 144,
    "h": 144
   },
+  "vishal-deo": {
+   "src": "images/sched/vishal-deo.webp?v=4b828b93",
+   "w": 144,
+   "h": 144
+  },
   "reny-varghese": {
    "src": "images/sched/reny-varghese.webp?v=cab7c892",
+   "w": 144,
+   "h": 144
+  },
+  "princee-sabharwal": {
+   "src": "images/sched/princee-sabharwal.webp?v=72ac0067",
+   "w": 144,
+   "h": 144
+  },
+  "vijay-talreja": {
+   "src": "images/sched/vijay-talreja.webp?v=0cca4301",
    "w": 144,
    "h": 144
   },
@@ -106,8 +121,8 @@
    "w": 144,
    "h": 144
   },
-  "shivendra-singh": {
-   "src": "images/sched/shivendra-singh.webp?v=a57b5ed0",
+  "shishir-sharan": {
+   "src": "images/sched/shishir-sharan.webp?v=a2b84669",
    "w": 144,
    "h": 144
   },
@@ -121,13 +136,8 @@
    "w": 144,
    "h": 144
   },
-  "prakash-kumar": {
-   "src": "images/sched/prakash-kumar.webp?v=6f1b4a1b",
-   "w": 144,
-   "h": 144
-  },
-  "shishir-sharan": {
-   "src": "images/sched/shishir-sharan.webp?v=a2b84669",
+  "apsara-mokashi": {
+   "src": "images/sched/apsara-mokashi.webp?v=33c86d56",
    "w": 144,
    "h": 144
   },
@@ -136,33 +146,18 @@
    "w": 144,
    "h": 144
   },
-  "tarun-chugh": {
-   "src": "images/sched/tarun-chugh.webp?v=7609c92c",
+  "sarosh-amaria": {
+   "src": "images/sched/sarosh-amaria.webp?v=a8133ac0",
    "w": 144,
    "h": 144
   },
-  "nilesh-shah": {
-   "src": "images/sched/nilesh-shah.webp?v=91e9905f",
-   "w": 144,
-   "h": 144
-  },
-  "ratan-kumar-kesh": {
-   "src": "images/sched/ratan-kumar-kesh.webp?v=0e2514e3",
-   "w": 144,
-   "h": 144
-  },
-  "pravin-kumar": {
-   "src": "images/sched/pravin-kumar.webp?v=754ec915",
+  "mayur-kapur": {
+   "src": "images/sched/mayur-kapur.webp?v=cf8ccef3",
    "w": 144,
    "h": 144
   },
   "kiran-nambiar": {
    "src": "images/sched/kiran-nambiar.webp?v=b6acad14",
-   "w": 144,
-   "h": 144
-  },
-  "sarosh-amaria": {
-   "src": "images/sched/sarosh-amaria.webp?v=a8133ac0",
    "w": 144,
    "h": 144
   },
@@ -178,6 +173,16 @@
   },
   "abdul-hai-mattoo": {
    "src": "images/sched/abdul-hai-mattoo.webp?v=34a39032",
+   "w": 144,
+   "h": 144
+  },
+  "rakhi-prasad": {
+   "src": "images/sched/rakhi-prasad.webp?v=0f5b330e",
+   "w": 144,
+   "h": 144
+  },
+  "gaurav-arora": {
+   "src": "images/sched/gaurav-arora.webp?v=8bdd9d20",
    "w": 144,
    "h": 144
   },
@@ -271,8 +276,18 @@
    "w": 144,
    "h": 144
   },
+  "kushan-shah": {
+   "src": "images/sched/kushan-shah.webp?v=ce62553e",
+   "w": 144,
+   "h": 144
+  },
   "mukesh-jain": {
    "src": "images/sched/mukesh-jain.webp?v=ae3a9ca7",
+   "w": 144,
+   "h": 144
+  },
+  "fal-ghancha": {
+   "src": "images/sched/fal-ghancha.webp?v=c5642994",
    "w": 144,
    "h": 144
   },
@@ -311,6 +326,11 @@
    "w": 144,
    "h": 144
   },
+  "jadumani-jena": {
+   "src": "images/sched/jadumani-jena.webp?v=8d595dfc",
+   "w": 144,
+   "h": 144
+  },
   "gaurav-jha": {
    "src": "images/sched/gaurav-jha.webp?v=a474a519",
    "w": 144,
@@ -321,8 +341,8 @@
    "w": 144,
    "h": 144
   },
-  "jagbir-singh": {
-   "src": "images/sched/jagbir-singh.webp?v=901662b1",
+  "chhagan-bhujbal": {
+   "src": "images/sched/chhagan-bhujbal.webp?v=e36c2d9a",
    "w": 144,
    "h": 144
   },
@@ -338,6 +358,11 @@
   },
   "vishal-rally": {
    "src": "images/sched/vishal-rally.webp?v=a6aa51bb",
+   "w": 144,
+   "h": 144
+  },
+  "mohit-kataria": {
+   "src": "images/sched/mohit-kataria.webp?v=8bf7f2f6",
    "w": 144,
    "h": 144
   },
@@ -366,6 +391,11 @@
    "w": 144,
    "h": 144
   },
+  "shivendra-singh": {
+   "src": "images/sched/shivendra-singh.webp?v=a57b5ed0",
+   "w": 144,
+   "h": 144
+  },
   "manoj-agarwal": {
    "src": "images/sched/manoj-agarwal.webp?v=f9849856",
    "w": 144,
@@ -386,16 +416,6 @@
    "w": 144,
    "h": 144
   },
-  "manish-k-prahlad": {
-   "src": "images/sched/manish-k-prahlad.webp?v=b2117806",
-   "w": 144,
-   "h": 144
-  },
-  "omprakash-mandge": {
-   "src": "images/sched/omprakash-mandge.webp?v=a542f2a5",
-   "w": 144,
-   "h": 144
-  },
   "santosh-vyas": {
    "src": "images/sched/santosh-vyas.webp?v=dc524c50",
    "w": 144,
@@ -403,6 +423,16 @@
   },
   "ravi-ranjan-singh": {
    "src": "images/sched/ravi-ranjan-singh.webp?v=bb339657",
+   "w": 144,
+   "h": 144
+  },
+  "manish-k-prahlad": {
+   "src": "images/sched/manish-k-prahlad.webp?v=b2117806",
+   "w": 144,
+   "h": 144
+  },
+  "omprakash-mandge": {
+   "src": "images/sched/omprakash-mandge.webp?v=a542f2a5",
    "w": 144,
    "h": 144
   },
@@ -418,6 +448,11 @@
   },
   "vineet-upadhayay": {
    "src": "images/sched/vineet-upadhayay.webp?v=6f365857",
+   "w": 144,
+   "h": 144
+  },
+  "saumya-phor": {
+   "src": "images/sched/saumya-phor.webp?v=d63cbb6d",
    "w": 144,
    "h": 144
   },
@@ -441,18 +476,13 @@
    "w": 144,
    "h": 144
   },
-  "saumya-phor": {
-   "src": "images/sched/saumya-phor.webp?v=d63cbb6d",
+  "arindam-ghosh": {
+   "src": "images/sched/arindam-ghosh.webp?v=c9efe632",
    "w": 144,
    "h": 144
   },
   "selva-soorya": {
    "src": "images/sched/selva-soorya.webp?v=3b66ca25",
-   "w": 144,
-   "h": 144
-  },
-  "mohit-kataria": {
-   "src": "images/sched/mohit-kataria.webp?v=8bf7f2f6",
    "w": 144,
    "h": 144
   },
@@ -466,18 +496,28 @@
    "w": 144,
    "h": 144
   },
-  "meghavi-shah": {
-   "src": "images/sched/meghavi-shah.webp?v=bd800cd9",
-   "w": 144,
-   "h": 144
-  },
   "srinivas-kancharla": {
    "src": "images/sched/srinivas-kancharla.webp?v=c127e659",
    "w": 144,
    "h": 144
   },
+  "meghavi-shah": {
+   "src": "images/sched/meghavi-shah.webp?v=bd800cd9",
+   "w": 144,
+   "h": 144
+  },
+  "shekar-sivasubramanian": {
+   "src": "images/sched/shekar-sivasubramanian.webp?v=f91e0fdc",
+   "w": 144,
+   "h": 144
+  },
   "parijat-shukla": {
    "src": "images/sched/parijat-shukla.webp?v=278465c4",
+   "w": 144,
+   "h": 144
+  },
+  "krishnan-raghavan": {
+   "src": "images/sched/krishnan-raghavan.webp?v=7f025e65",
    "w": 144,
    "h": 144
   },
@@ -491,13 +531,8 @@
    "w": 144,
    "h": 144
   },
-  "saurabh-kushwah": {
-   "src": "images/sched/saurabh-kushwah.webp?v=ee4e173c",
-   "w": 144,
-   "h": 144
-  },
-  "pramod-prakash": {
-   "src": "images/sched/pramod-prakash.webp?v=a7139bf0",
+  "rohini-ramnathan": {
+   "src": "images/sched/rohini-ramnathan.webp?v=ddb97d48",
    "w": 144,
    "h": 144
   },
@@ -506,18 +541,18 @@
    "w": 144,
    "h": 144
   },
-  "abhishek-talwar": {
-   "src": "images/sched/abhishek-talwar.webp?v=d9dc6a15",
-   "w": 144,
-   "h": 144
-  },
   "sankalp-rawal": {
    "src": "images/sched/sankalp-rawal.webp?v=65d99731",
    "w": 144,
    "h": 144
   },
-  "simon-david-hunter": {
-   "src": "images/sched/simon-david-hunter.webp?v=21c46e53",
+  "abhishek-talwar": {
+   "src": "images/sched/abhishek-talwar.webp?v=d9dc6a15",
+   "w": 144,
+   "h": 144
+  },
+  "kinnari-dave": {
+   "src": "images/sched/kinnari-dave.webp?v=8e83d596",
    "w": 144,
    "h": 144
   },
@@ -576,8 +611,58 @@
    "w": 144,
    "h": 144
   },
+  "prakash-kumar": {
+   "src": "images/sched/prakash-kumar.webp?v=6f1b4a1b",
+   "w": 144,
+   "h": 144
+  },
+  "tarun-chugh": {
+   "src": "images/sched/tarun-chugh.webp?v=7609c92c",
+   "w": 144,
+   "h": 144
+  },
+  "ratan-kumar-kesh": {
+   "src": "images/sched/ratan-kumar-kesh.webp?v=0e2514e3",
+   "w": 144,
+   "h": 144
+  },
+  "pravin-kumar": {
+   "src": "images/sched/pravin-kumar.webp?v=754ec915",
+   "w": 144,
+   "h": 144
+  },
+  "jagbir-singh": {
+   "src": "images/sched/jagbir-singh.webp?v=901662b1",
+   "w": 144,
+   "h": 144
+  },
+  "ashwani-kumar": {
+   "src": "images/sched/ashwani-kumar.webp?v=0d203320",
+   "w": 144,
+   "h": 144
+  },
   "devendra-fadnavis": {
    "src": "images/sched/devendra-fadnavis.webp?v=c9485428",
+   "w": 144,
+   "h": 144
+  },
+  "nilesh-shah": {
+   "src": "images/sched/nilesh-shah.webp?v=91e9905f",
+   "w": 144,
+   "h": 144
+  },
+  "simon-david-hunter": {
+   "src": "images/sched/simon-david-hunter.webp?v=21c46e53",
+   "w": 144,
+   "h": 144
+  },
+  "saurabh-kushwah": {
+   "src": "images/sched/saurabh-kushwah.webp?v=ee4e173c",
+   "w": 144,
+   "h": 144
+  },
+  "pramod-prakash": {
+   "src": "images/sched/pramod-prakash.webp?v=a7139bf0",
    "w": 144,
    "h": 144
   },
@@ -693,12 +778,12 @@
    "lw": 75,
    "lh": 26
   },
-  "images/exhibitors/oranje-ai.webp": {
-   "src": "images/sched/logo-oranje-ai.webp?v=13d30d18",
-   "w": 184,
-   "h": 75,
-   "lw": 69,
-   "lh": 28
+  "images/exhibitors/daten-technology-solutions.webp": {
+   "src": "images/sched/logo-daten-technology-solutions.webp?v=c9d469a8",
+   "w": 94,
+   "h": 80,
+   "lw": 44,
+   "lh": 38
   },
   "images/exhibitors/eurys-infosystems.webp": {
    "src": "images/sched/logo-eurys-infosystems.webp?v=bea3aec6",
@@ -721,39 +806,11 @@
    "lw": 40,
    "lh": 40
   },
-  "images/exhibitors/daten-technology-solutions.webp": {
-   "src": "images/sched/logo-daten-technology-solutions.webp?v=c9d469a8",
-   "w": 94,
-   "h": 80,
-   "lw": 44,
-   "lh": 38
-  },
   "images/exhibitors/nobroker.webp": {
    "src": "images/sched/logo-nobroker.webp?v=c1b7daa0",
    "w": 80,
    "h": 80,
    "lw": 40,
-   "lh": 40
-  },
-  "images/logo-bajaj-life.webp": {
-   "src": "images/sched/logo-bajaj-life.webp?v=a6091aba",
-   "w": 93,
-   "h": 62,
-   "lw": 51,
-   "lh": 34
-  },
-  "images/logo-bandhan.webp": {
-   "src": "images/sched/logo-bandhan.webp?v=7ba62583",
-   "w": 184,
-   "h": 55,
-   "lw": 83,
-   "lh": 25
-  },
-  "images/org-logos/favicon-npci.org.in.png": {
-   "src": "images/sched/logo-npci-org-in.webp?v=329dffc1",
-   "w": 31,
-   "h": 43,
-   "lw": 29,
    "lh": 40
   },
   "images/org-logos/transunion.webp": {
@@ -924,13 +981,6 @@
    "lw": 64,
    "lh": 29
   },
-  "images/org-logos/favicon-myvi.in.png": {
-   "src": "images/sched/logo-myvi-in.webp?v=54d6bbbf",
-   "w": 53,
-   "h": 49,
-   "lw": 42,
-   "lh": 39
-  },
   "images/org-logos/favicon-comviva.com.png": {
    "src": "images/sched/logo-comviva-com.webp?v=f84806b4",
    "w": 60,
@@ -944,6 +994,13 @@
    "h": 80,
    "lw": 51,
    "lh": 34
+  },
+  "images/exhibitors/nu10-technologies.webp": {
+   "src": "images/sched/logo-nu10-technologies.webp?v=8c090094",
+   "w": 184,
+   "h": 73,
+   "lw": 70,
+   "lh": 28
   },
   "images/exhibitors/kadeep-ai.webp": {
    "src": "images/sched/logo-kadeep-ai.webp?v=6ae55508",
@@ -980,26 +1037,19 @@
    "lw": 41,
    "lh": 40
   },
+  "images/exhibitors/oranje-ai.webp": {
+   "src": "images/sched/logo-oranje-ai.webp?v=13d30d18",
+   "w": 184,
+   "h": 75,
+   "lw": 69,
+   "lh": 28
+  },
   "images/exhibitors/rightangle-technologies.webp": {
    "src": "images/sched/logo-rightangle-technologies.webp?v=20527f89",
    "w": 93,
    "h": 80,
    "lw": 44,
    "lh": 38
-  },
-  "images/org-logos/verdant-impact.webp": {
-   "src": "images/sched/logo-verdant-impact.webp?v=d7cf6613",
-   "w": 84,
-   "h": 80,
-   "lw": 41,
-   "lh": 39
-  },
-  "images/org-logos/met.webp": {
-   "src": "images/sched/logo-met.webp?v=c4efd477",
-   "w": 123,
-   "h": 80,
-   "lw": 52,
-   "lh": 34
   },
   "images/org-logos/kemin.webp": {
    "src": "images/sched/logo-kemin.webp?v=30199890",
@@ -1014,6 +1064,20 @@
    "h": 80,
    "lw": 65,
    "lh": 29
+  },
+  "images/org-logos/verdant-impact.webp": {
+   "src": "images/sched/logo-verdant-impact.webp?v=d7cf6613",
+   "w": 84,
+   "h": 80,
+   "lw": 41,
+   "lh": 39
+  },
+  "images/org-logos/met.webp": {
+   "src": "images/sched/logo-met.webp?v=c4efd477",
+   "w": 123,
+   "h": 80,
+   "lw": 52,
+   "lh": 34
   },
   "images/exhibitors/joyvibe.webp": {
    "src": "images/sched/logo-joyvibe.webp?v=0c6d28ba",
@@ -1036,19 +1100,19 @@
    "lw": 53,
    "lh": 33
   },
-  "images/org-logos/favicon-godigit.com.png": {
-   "src": "images/sched/logo-godigit-com.webp?v=83ec1516",
-   "w": 64,
-   "h": 64,
-   "lw": 40,
-   "lh": 40
-  },
   "images/exhibitors/cloud-crane.webp": {
    "src": "images/sched/logo-cloud-crane.webp?v=8f559217",
    "w": 136,
    "h": 80,
    "lw": 55,
    "lh": 32
+  },
+  "images/org-logos/favicon-godigit.com.png": {
+   "src": "images/sched/logo-godigit-com.webp?v=83ec1516",
+   "w": 64,
+   "h": 64,
+   "lw": 40,
+   "lh": 40
   },
   "images/exhibitors/oliai.webp": {
    "src": "images/sched/logo-oliai.webp?v=009ecc20",
@@ -1057,25 +1121,11 @@
    "lw": 62,
    "lh": 30
   },
-  "images/exhibitors/nu10-technologies.webp": {
-   "src": "images/sched/logo-nu10-technologies.webp?v=8c090094",
-   "w": 184,
-   "h": 73,
-   "lw": 70,
-   "lh": 28
-  },
   "images/exhibitors/teenage-works.webp": {
    "src": "images/sched/logo-teenage-works.webp?v=055d8743",
    "w": 184,
    "h": 66,
    "lw": 74,
-   "lh": 27
-  },
-  "images/exhibitors/assessfy.webp": {
-   "src": "images/sched/logo-assessfy.webp?v=2398d21b",
-   "w": 184,
-   "h": 67,
-   "lw": 73,
    "lh": 27
   },
   "images/logo-psa.webp": {
@@ -1084,6 +1134,13 @@
    "h": 34,
    "lw": 92,
    "lh": 17
+  },
+  "images/exhibitors/assessfy.webp": {
+   "src": "images/sched/logo-assessfy.webp?v=2398d21b",
+   "w": 184,
+   "h": 67,
+   "lw": 73,
+   "lh": 27
   },
   "images/org-logos/wadhwani-ai.webp": {
    "src": "images/sched/logo-wadhwani-ai.webp?v=441b7eb3",
@@ -1095,20 +1152,6 @@
   "images/exhibitors/joget.webp": {
    "src": "images/sched/logo-joget.webp?v=f9ba4047",
    "w": 79,
-   "h": 80,
-   "lw": 40,
-   "lh": 40
-  },
-  "images/org-logos/bullet-microdrama.webp": {
-   "src": "images/sched/logo-bullet-microdrama.webp?v=0cf279a1",
-   "w": 80,
-   "h": 80,
-   "lw": 40,
-   "lh": 40
-  },
-  "images/org-logos/favicon-zee.com.png": {
-   "src": "images/sched/logo-zee-com.webp?v=654784fe",
-   "w": 80,
    "h": 80,
    "lw": 40,
    "lh": 40
@@ -1175,6 +1218,48 @@
    "h": 80,
    "lw": 53,
    "lh": 33
+  },
+  "images/logo-bajaj-life.webp": {
+   "src": "images/sched/logo-bajaj-life.webp?v=a6091aba",
+   "w": 93,
+   "h": 62,
+   "lw": 51,
+   "lh": 34
+  },
+  "images/logo-bandhan.webp": {
+   "src": "images/sched/logo-bandhan.webp?v=7ba62583",
+   "w": 184,
+   "h": 55,
+   "lw": 83,
+   "lh": 25
+  },
+  "images/org-logos/favicon-npci.org.in.png": {
+   "src": "images/sched/logo-npci-org-in.webp?v=329dffc1",
+   "w": 31,
+   "h": 43,
+   "lw": 29,
+   "lh": 40
+  },
+  "images/org-logos/favicon-myvi.in.png": {
+   "src": "images/sched/logo-myvi-in.webp?v=54d6bbbf",
+   "w": 53,
+   "h": 49,
+   "lw": 42,
+   "lh": 39
+  },
+  "images/org-logos/bullet-microdrama.webp": {
+   "src": "images/sched/logo-bullet-microdrama.webp?v=0cf279a1",
+   "w": 80,
+   "h": 80,
+   "lw": 40,
+   "lh": 40
+  },
+  "images/org-logos/favicon-zee.com.png": {
+   "src": "images/sched/logo-zee-com.webp?v=654784fe",
+   "w": 80,
+   "h": 80,
+   "lw": 40,
+   "lh": 40
   },
   "images/org-logos/favicon-alkemlabs.com.png": {
    "src": "images/sched/logo-alkemlabs-com.webp?v=764d6c2f",

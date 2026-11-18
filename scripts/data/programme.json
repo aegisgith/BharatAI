@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-16T14:42:33.022Z",
+ "generated_at": "2026-11-18T04:01:07.795Z",
  "live": true,
  "event": {
   "id": 1,
@@ -110,13 +110,27 @@
    ]
   },
   {
+   "id": 235,
+   "title": "Lamp Lighting Ceremony",
+   "description": "",
+   "session_type": "ceremony",
+   "track": "",
+   "room": "Homi J. Bhabha Hall",
+   "start_time": "2026-11-20 09:35",
+   "end_time": "2026-11-20 09:40",
+   "speaker_name": "",
+   "speaker_title": "",
+   "links": [],
+   "people": []
+  },
+  {
    "id": 113,
-   "title": "Inauguration and Chief Guest Keynote",
+   "title": "Inauguration and Special Address",
    "description": "Chief guest to be announced.",
    "session_type": "keynote",
    "track": "",
    "room": "Homi J. Bhabha Hall",
-   "start_time": "2026-11-20 09:35",
+   "start_time": "2026-11-20 09:40",
    "end_time": "2026-11-20 10:00",
    "speaker_name": "",
    "speaker_title": "",
@@ -486,7 +500,7 @@
    "room": "Kalam Theatre",
    "start_time": "2026-11-20 11:30",
    "end_time": "2026-11-20 12:30",
-   "speaker_name": "Joy Chakraborty (P. D. Hinduja National Hospital & Medical Research Centre), Dheeraj Sinha (Sun Pharma), Vishal Deo (Indian Council of Medical Research -), Reny Varghese (Zynova Shalby Hospitals)",
+   "speaker_name": "Joy Chakraborty (P. D. Hinduja National Hospital & Medical Research Centre), Dheeraj Sinha (Sun Pharma), Vishal Deo (Indian Council of Medical Research -), Reny Varghese (Zynova Shalby Hospitals), Princee Sabharwal (GOQii), Vijay Talreja (Bynocs)",
    "speaker_title": "",
    "links": [
     {
@@ -503,6 +517,14 @@
     },
     {
      "speaker_id": 111,
+     "role": "panellist"
+    },
+    {
+     "speaker_id": 145,
+     "role": "panellist"
+    },
+    {
+     "speaker_id": 147,
      "role": "panellist"
     }
    ],
@@ -528,7 +550,7 @@
      "name": "Vishal Deo",
      "role": "Scientist",
      "organisation": "Indian Council of Medical Research -",
-     "photo_url": "",
+     "photo_url": "/images/speakers/vishal-deo.webp",
      "part": "panellist"
     },
     {
@@ -536,7 +558,23 @@
      "name": "Reny Varghese",
      "role": "Chief Operating Officer",
      "organisation": "Zynova Shalby Hospitals",
-     "photo_url": "",
+     "photo_url": "/images/speakers/reny-varghese.webp",
+     "part": "panellist"
+    },
+    {
+     "speaker_id": 145,
+     "name": "Princee Sabharwal",
+     "role": "Vice President - Digital Health",
+     "organisation": "GOQii",
+     "photo_url": "/images/speakers/princee-sabharwal.webp",
+     "part": "panellist"
+    },
+    {
+     "speaker_id": 147,
+     "name": "Vijay Talreja",
+     "role": "Chief Executive Officer",
+     "organisation": "Bynocs",
+     "photo_url": "/images/speakers/vijay-talreja.webp",
      "part": "panellist"
     }
    ]
@@ -621,7 +659,7 @@
    "start_time": "2026-11-20 11:51",
    "end_time": "2026-11-20 11:58",
    "speaker_name": "Ankit Kumar",
-   "speaker_title": "Founder and CEO, Xtant Tech",
+   "speaker_title": "Founder and CEO, Xtant Dot Tech",
    "links": [],
    "people": [
     {
@@ -633,21 +671,21 @@
    ]
   },
   {
-   "id": 175,
-   "title": "Innovation Talk: Oranje AI",
-   "description": "Your Brand Now Has a Brain",
+   "id": 177,
+   "title": "Innovation Talk: Daten Technology Solutions",
+   "description": "",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
    "start_time": "2026-11-20 12:01",
    "end_time": "2026-11-20 12:08",
-   "speaker_name": "Shivendra Singh",
-   "speaker_title": "Founder, Oranje AI",
+   "speaker_name": "Shishir Sharan",
+   "speaker_title": "CEO, Daten Technology Solutions",
    "links": [],
    "people": [
     {
      "speaker_id": null,
-     "name": "Shivendra Singh",
+     "name": "Shishir Sharan",
      "info": "",
      "part": ""
     }
@@ -663,7 +701,7 @@
    "start_time": "2026-11-20 12:11",
    "end_time": "2026-11-20 12:18",
    "speaker_name": "Divyanshi Saxena",
-   "speaker_title": "Sr. Manager – Sales, Eurys Infosystems",
+   "speaker_title": "Sr. Manager – Sales, Eurys Infosystems Pvt. Ltd.",
    "links": [],
    "people": [
     {
@@ -677,12 +715,12 @@
   {
    "id": 193,
    "title": "Innovation Talk: FTA Global",
-   "description": "Judgement wins the Moment: Big AI, Focused AI and What India should build",
+   "description": "Judgement wins the Moment: Big AI, Focused AI, and What India Should Build",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
    "start_time": "2026-11-20 12:20",
-   "end_time": "2026-11-20 12:40",
+   "end_time": "2026-11-20 12:30",
    "speaker_name": "Senthil Kumar Hariram",
    "speaker_title": "Founder & Managing Director, FTA Global",
    "links": [],
@@ -692,34 +730,6 @@
      "name": "Senthil Kumar Hariram",
      "info": "",
      "part": ""
-    }
-   ]
-  },
-  {
-   "id": 118,
-   "title": "Keynote",
-   "description": "",
-   "session_type": "keynote",
-   "track": "",
-   "room": "Homi J. Bhabha Hall",
-   "start_time": "2026-11-20 12:30",
-   "end_time": "2026-11-20 12:40",
-   "speaker_name": "Shri Prakash Kumar",
-   "speaker_title": "Additional Director, IndiaAI Mission, MeitY",
-   "links": [
-    {
-     "speaker_id": 123,
-     "role": "keynote"
-    }
-   ],
-   "people": [
-    {
-     "speaker_id": 123,
-     "name": "Shri Prakash Kumar",
-     "role": "Additional Director, Ministry of Electronics & Information Technology, Government of India",
-     "organisation": "IndiaAI Mission",
-     "photo_url": "/images/speaker-prakash-kumar-sq.webp",
-     "part": "keynote"
     }
    ]
   },
@@ -745,37 +755,16 @@
    ]
   },
   {
-   "id": 177,
-   "title": "Innovation Talk: Daten Technology Solutions",
-   "description": "",
+   "id": 149,
+   "title": "Innovation Talk: NoBroker",
+   "description": "Reimagining Marketplaces in the era of AI Agents",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
-   "start_time": "2026-11-20 12:41",
-   "end_time": "2026-11-20 12:48",
-   "speaker_name": "Shishir Sharan",
-   "speaker_title": "CEO, Daten Technology Solutions",
-   "links": [],
-   "people": [
-    {
-     "speaker_id": null,
-     "name": "Shishir Sharan",
-     "info": "",
-     "part": ""
-    }
-   ]
-  },
-  {
-   "id": 149,
-   "title": "Innovation Talk: NoBroker",
-   "description": "",
-   "session_type": "talk",
-   "track": "Innovation Talks",
-   "room": "Kalam Theatre",
-   "start_time": "2026-11-20 12:50",
-   "end_time": "2026-11-20 13:10",
+   "start_time": "2026-11-20 12:30",
+   "end_time": "2026-11-20 12:52",
    "speaker_name": "Akhil Gupta",
-   "speaker_title": "Founder, NoBroker",
+   "speaker_title": "Founder, NoBroker.com",
    "links": [
     {
      "speaker_id": 28,
@@ -794,14 +783,56 @@
    ]
   },
   {
+   "id": 236,
+   "title": "Innovation Talk: Decimal Point Analytics",
+   "description": "Speaker to be announced.",
+   "session_type": "talk",
+   "track": "Innovation Talks",
+   "room": "Homi J. Bhabha Hall",
+   "start_time": "2026-11-20 12:30",
+   "end_time": "2026-11-20 12:45",
+   "speaker_name": "",
+   "speaker_title": "",
+   "links": [],
+   "people": []
+  },
+  {
+   "id": 152,
+   "title": "GeoAI Forest Encroachment Monitoring",
+   "description": "Innovation Talk",
+   "session_type": "talk",
+   "track": "Government & Public Sector AI",
+   "room": "Homi J. Bhabha Hall",
+   "start_time": "2026-11-20 12:45",
+   "end_time": "2026-11-20 13:00",
+   "speaker_name": "Shri Vivek Khandekar (IFS)",
+   "speaker_title": "Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department",
+   "links": [
+    {
+     "speaker_id": 119,
+     "role": "speaker"
+    }
+   ],
+   "people": [
+    {
+     "speaker_id": 119,
+     "name": "Shri Vivek Khandekar (IFS)",
+     "role": "Principal Chief Conservator of Forests (Social Forestry)",
+     "organisation": "Maharashtra Forest Department",
+     "photo_url": "/images/speaker-vivek-khandekar-sq.webp",
+     "part": "speaker"
+    }
+   ]
+  },
+  {
    "id": 194,
    "title": "Innovation Talk: Wyn Labs",
    "description": "Speaker to be announced.",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
-   "start_time": "2026-11-20 12:51",
-   "end_time": "2026-11-20 12:58",
+   "start_time": "2026-11-20 12:54",
+   "end_time": "2026-11-20 13:02",
    "speaker_name": "",
    "speaker_title": "",
    "links": [],
@@ -842,8 +873,8 @@
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
-   "start_time": "2026-11-20 13:01",
-   "end_time": "2026-11-20 13:08",
+   "start_time": "2026-11-20 13:04",
+   "end_time": "2026-11-20 13:12",
    "speaker_name": "",
    "speaker_title": "",
    "links": [],
@@ -870,8 +901,8 @@
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
-   "start_time": "2026-11-20 13:10",
-   "end_time": "2026-11-20 13:20",
+   "start_time": "2026-11-20 13:15",
+   "end_time": "2026-11-20 13:25",
    "speaker_name": "",
    "speaker_title": "",
    "links": [],
@@ -886,83 +917,19 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-20 14:00",
    "end_time": "2026-11-20 15:00",
-   "speaker_name": "Tarun Chugh (Bajaj Life Insurance Company), Nilesh Shah (Kotak Mahindra Asset Management), Ratan Kumar Kesh (Bandhan Bank), Pravin Kumar (National Payments Corporation of India), Shailesh Dhuri (Moderator), Kiran Nambiar (MyFi), Sarosh Amaria (Tata Capital), Mayur Kapur (TransUnion)",
+   "speaker_name": "Sarosh Amaria (Tata Capital), Mayur Kapur (TransUnion), Kiran Nambiar (MyFi), Shailesh Dhuri (Moderator)",
    "speaker_title": "",
    "links": [
     {
-     "speaker_id": 26,
-     "role": "panellist"
-    },
-    {
-     "speaker_id": 7,
-     "role": "panellist"
-    },
-    {
-     "speaker_id": 18,
-     "role": "panellist"
-    },
-    {
-     "speaker_id": 33,
+     "speaker_id": 144,
      "role": "panellist"
     },
     {
      "speaker_id": 11,
      "role": "moderator"
-    },
-    {
-     "speaker_id": 144,
-     "role": "panellist"
     }
    ],
    "people": [
-    {
-     "speaker_id": 26,
-     "name": "Tarun Chugh",
-     "role": "MD & CEO",
-     "organisation": "Bajaj Life Insurance Company",
-     "photo_url": "/images/speaker-tarun-chugh.webp",
-     "part": "panellist"
-    },
-    {
-     "speaker_id": 7,
-     "name": "Nilesh Shah",
-     "role": "Managing Director",
-     "organisation": "Kotak Mahindra Asset Management",
-     "photo_url": "/images/speaker-nilesh-shah-sq.webp",
-     "part": "panellist"
-    },
-    {
-     "speaker_id": 18,
-     "name": "Ratan Kumar Kesh",
-     "role": "Executive Director & COO",
-     "organisation": "Bandhan Bank",
-     "photo_url": "/images/speaker-ratan-kumar-kesh-bandhan.webp",
-     "part": "panellist"
-    },
-    {
-     "speaker_id": 33,
-     "name": "Pravin Kumar",
-     "role": "Chief Market Information Security Officer & Data Protection Officer",
-     "organisation": "National Payments Corporation of India (NPCI)",
-     "photo_url": "/images/speaker-pravin-kumar.jpg",
-     "part": "panellist"
-    },
-    {
-     "speaker_id": 11,
-     "name": "Shailesh Dhuri",
-     "role": "Chief Executive Officer",
-     "organisation": "Decimal Point Analytics",
-     "photo_url": "/images/speaker-shailesh-dhuri-final.webp",
-     "part": "moderator"
-    },
-    {
-     "speaker_id": 144,
-     "name": "Kiran Nambiar",
-     "role": "CEO & Co-founder",
-     "organisation": "MyFi",
-     "photo_url": "/images/speakers/kiran-nambiar.webp",
-     "part": "panellist"
-    },
     {
      "speaker_id": null,
      "name": "Sarosh Amaria",
@@ -974,6 +941,22 @@
      "name": "Mayur Kapur",
      "info": "TransUnion",
      "part": ""
+    },
+    {
+     "speaker_id": 144,
+     "name": "Kiran Nambiar",
+     "role": "CEO & Co-founder",
+     "organisation": "MyFi",
+     "photo_url": "/images/speakers/kiran-nambiar.webp",
+     "part": "panellist"
+    },
+    {
+     "speaker_id": 11,
+     "name": "Shailesh Dhuri",
+     "role": "Chief Executive Officer",
+     "organisation": "Decimal Point Analytics",
+     "photo_url": "/images/speaker-shailesh-dhuri-final.webp",
+     "part": "moderator"
     }
    ]
   },
@@ -1281,34 +1264,6 @@
    ]
   },
   {
-   "id": 152,
-   "title": "GeoAI Forest Encroachment Monitoring",
-   "description": "Innovation Talk",
-   "session_type": "talk",
-   "track": "Government & Public Sector AI",
-   "room": "Kalam Theatre",
-   "start_time": "2026-11-20 15:00",
-   "end_time": "2026-11-20 15:20",
-   "speaker_name": "Shri Vivek Khandekar (IFS)",
-   "speaker_title": "Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department",
-   "links": [
-    {
-     "speaker_id": 119,
-     "role": "speaker"
-    }
-   ],
-   "people": [
-    {
-     "speaker_id": 119,
-     "name": "Shri Vivek Khandekar (IFS)",
-     "role": "Principal Chief Conservator of Forests (Social Forestry)",
-     "organisation": "Maharashtra Forest Department",
-     "photo_url": "/images/speaker-vivek-khandekar-sq.webp",
-     "part": "speaker"
-    }
-   ]
-  },
-  {
    "id": 198,
    "title": "Innovation Talk: Image Infosystems",
    "description": "",
@@ -1429,7 +1384,7 @@
      "name": "Vishal Deo",
      "role": "Scientist",
      "organisation": "Indian Council of Medical Research -",
-     "photo_url": "",
+     "photo_url": "/images/speakers/vishal-deo.webp",
      "part": "speaker"
     }
    ]
@@ -1444,7 +1399,7 @@
    "start_time": "2026-11-20 15:44",
    "end_time": "2026-11-20 15:54",
    "speaker_name": "Dr. Anand Deshpande",
-   "speaker_title": "CSO, AlgoAnalytics",
+   "speaker_title": "Co-Founder & Chief Strategy Officer, AlgoAnalytics",
    "links": [],
    "people": [
     {
@@ -1491,7 +1446,7 @@
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
    "start_time": "2026-11-20 15:56",
-   "end_time": "2026-11-20 16:06",
+   "end_time": "2026-11-20 16:16",
    "speaker_name": "",
    "speaker_title": "",
    "links": [],
@@ -1526,20 +1481,6 @@
    "people": []
   },
   {
-   "id": 201,
-   "title": "Innovation Talk: Cosmica Telematics",
-   "description": "Speaker to be announced.",
-   "session_type": "talk",
-   "track": "Innovation Talks",
-   "room": "Aryabhata Theatre",
-   "start_time": "2026-11-20 16:08",
-   "end_time": "2026-11-20 16:18",
-   "speaker_name": "",
-   "speaker_title": "",
-   "links": [],
-   "people": []
-  },
-  {
    "id": 129,
    "title": "Ganesh Kavach App",
    "description": "Innovation Talk",
@@ -1568,48 +1509,6 @@
    ]
   },
   {
-   "id": 229,
-   "title": "Vansampada: Integrated Digital Platform for Forest Rights Governance",
-   "description": "Innovation Talk",
-   "session_type": "talk",
-   "track": "Government & Public Sector AI",
-   "room": "Kalam Theatre",
-   "start_time": "2026-11-20 16:15",
-   "end_time": "2026-11-20 16:30",
-   "speaker_name": "Smt. Laghima Tiwari (IAS)",
-   "speaker_title": "Project Officer, Integrated Tribal Development Project (ITDP), Taloda",
-   "links": [],
-   "people": [
-    {
-     "speaker_id": null,
-     "name": "Smt. Laghima Tiwari (IAS)",
-     "info": "",
-     "part": ""
-    }
-   ]
-  },
-  {
-   "id": 233,
-   "title": "Vansampada: Integrated Digital Platform for Forest Rights Governance",
-   "description": "Innovation Talk",
-   "session_type": "talk",
-   "track": "Government & Public Sector AI",
-   "room": "Kalam Theatre",
-   "start_time": "2026-11-20 16:15",
-   "end_time": "2026-11-20 16:30",
-   "speaker_name": "Smt. Laghima Tiwari (IAS)",
-   "speaker_title": "Project Officer, Integrated Tribal Development Project (ITDP), Taloda",
-   "links": [],
-   "people": [
-    {
-     "speaker_id": null,
-     "name": "Smt. Laghima Tiwari (IAS)",
-     "info": "",
-     "part": ""
-    }
-   ]
-  },
-  {
    "id": 202,
    "title": "Innovation Talk: Harrier Information Systems",
    "description": "Speaker to be announced.",
@@ -1632,7 +1531,7 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-20 16:30",
    "end_time": "2026-11-20 17:30",
-   "speaker_name": "Ms. Surbhi Gupta (Birla Opus Paints), Abhay Sharma (IBM), Akhil Gupta (NoBroker), Raveesh Dewan (Joget Inc.), Khushan Shah (Fynd), Mukesh Jain (Moderator)",
+   "speaker_name": "Ms. Surbhi Gupta (Birla Opus Paints), Abhay Sharma (IBM), Akhil Gupta (NoBroker.com), Raveesh Dewan (Joget Inc.), Kushan Shah (Fynd), Mukesh Jain (Moderator)",
    "speaker_title": "",
    "links": [
     {
@@ -1695,10 +1594,10 @@
     },
     {
      "speaker_id": 113,
-     "name": "Khushan Shah",
+     "name": "Kushan Shah",
      "role": "Chief Technology and Product Officer",
      "organisation": "Fynd",
-     "photo_url": "",
+     "photo_url": "/images/speakers/khushan-shah.webp",
      "part": "panellist"
     },
     {
@@ -1742,7 +1641,7 @@
   {
    "id": 203,
    "title": "Innovation Talk: Ai Vie Insights",
-   "description": "",
+   "description": "Everyday AI for enterprise applications",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
@@ -1770,7 +1669,7 @@
    "start_time": "2026-11-20 16:44",
    "end_time": "2026-11-20 16:54",
    "speaker_name": "Dhiman Bhattacharya",
-   "speaker_title": "Business Head, Insurance AI & Distribution Enablement Products, ValuEnable",
+   "speaker_title": "Business Head, Insurance AI & Distribution, ValuEnable",
    "links": [],
    "people": [
     {
@@ -1867,7 +1766,7 @@
      "name": "Vishal Deo",
      "role": "Scientist",
      "organisation": "Indian Council of Medical Research -",
-     "photo_url": "",
+     "photo_url": "/images/speakers/vishal-deo.webp",
      "part": "speaker"
     }
    ]
@@ -1889,7 +1788,7 @@
   {
    "id": 183,
    "title": "Innovation Talk: Gupshup.ai",
-   "description": "",
+   "description": "Conversational AI for Business",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
@@ -1909,8 +1808,8 @@
   },
   {
    "id": 231,
-   "title": "Innovation Talk",
-   "description": "",
+   "title": "AI-Driven Land Demand-Supply Intelligence for MIDC",
+   "description": "Innovation Talk",
    "session_type": "talk",
    "track": "Government & Public Sector AI",
    "room": "Homi J. Bhabha Hall",
@@ -2034,18 +1933,39 @@
    ]
   },
   {
-   "id": 136,
-   "title": "Keynote",
-   "description": "Speaker to be announced.",
-   "session_type": "keynote",
+   "id": 237,
+   "title": "Lamp Lighting Ceremony",
+   "description": "",
+   "session_type": "ceremony",
    "track": "",
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-21 09:05",
-   "end_time": "2026-11-21 09:30",
+   "end_time": "2026-11-21 09:10",
    "speaker_name": "",
    "speaker_title": "",
    "links": [],
    "people": []
+  },
+  {
+   "id": 136,
+   "title": "Inauguration and Special Address: AI for Viksit Maharashtra",
+   "description": "",
+   "session_type": "keynote",
+   "track": "",
+   "room": "Homi J. Bhabha Hall",
+   "start_time": "2026-11-21 09:10",
+   "end_time": "2026-11-21 09:30",
+   "speaker_name": "Hon’ble Shri Chhagan Bhujbal",
+   "speaker_title": "Minister of Food, Civil Supplies and Consumer Protection, Government of Maharashtra",
+   "links": [],
+   "people": [
+    {
+     "speaker_id": null,
+     "name": "Hon’ble Shri Chhagan Bhujbal",
+     "info": "",
+     "part": ""
+    }
+   ]
   },
   {
    "id": 137,
@@ -2055,14 +1975,10 @@
    "track": "Telecom AI",
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-21 09:30",
-   "end_time": "2026-11-21 10:30",
-   "speaker_name": "Jagbir Singh (Vodafone Idea), Manish Agrawal (Comviva), Ashutosh Agrawal (Globe Teleservices), Vishal Rally (Tata Tele Business Services)",
+   "end_time": "2026-11-21 10:20",
+   "speaker_name": "Manish Agrawal (Comviva), Ashutosh Agrawal (Globe Teleservices), Vishal Rally (Tata Tele Business Services)",
    "speaker_title": "",
    "links": [
-    {
-     "speaker_id": 27,
-     "role": "panellist"
-    },
     {
      "speaker_id": 15,
      "role": "panellist"
@@ -2077,14 +1993,6 @@
     }
    ],
    "people": [
-    {
-     "speaker_id": 27,
-     "name": "Jagbir Singh",
-     "role": "Chief Technology & Information Officer",
-     "organisation": "Vodafone Idea Limited",
-     "photo_url": "/images/speaker-jagbir-singh.webp",
-     "part": "panellist"
-    },
     {
      "speaker_id": 15,
      "name": "Manish Agrawal",
@@ -2133,6 +2041,27 @@
    ]
   },
   {
+   "id": 219,
+   "title": "Innovation Talk: Nu10 Technologies",
+   "description": "Moving From AI Pilots to AI-Native Enterprise: Reimagining Business Processes, Operating Models and Enterprise Growth with Agentic AI",
+   "session_type": "talk",
+   "track": "Innovation Talks",
+   "room": "Kalam Theatre",
+   "start_time": "2026-11-21 10:00",
+   "end_time": "2026-11-21 10:20",
+   "speaker_name": "Mohit Kataria",
+   "speaker_title": "Chief Business Officer & Co-Founder, Nu10 Technologies",
+   "links": [],
+   "people": [
+    {
+     "speaker_id": null,
+     "name": "Mohit Kataria",
+     "info": "",
+     "part": ""
+    }
+   ]
+  },
+  {
    "id": 211,
    "title": "Innovation Talk: Evoke Technologies",
    "description": "From Data to AI Value in 90 Days",
@@ -2142,7 +2071,7 @@
    "start_time": "2026-11-21 10:14",
    "end_time": "2026-11-21 10:26",
    "speaker_name": "Ferosh Sethumadhavan",
-   "speaker_title": "Senior Director – Technology Practices, Evoke Technologies",
+   "speaker_title": "Associate Vice President, Evoke Technologies Private Limited",
    "links": [],
    "people": [
     {
@@ -2154,29 +2083,15 @@
    ]
   },
   {
-   "id": 212,
-   "title": "Innovation Talk: Info Science Labs",
-   "description": "Speaker to be announced.",
-   "session_type": "talk",
-   "track": "Innovation Talks",
-   "room": "Aryabhata Theatre",
-   "start_time": "2026-11-21 10:28",
-   "end_time": "2026-11-21 10:40",
-   "speaker_name": "",
-   "speaker_title": "",
-   "links": [],
-   "people": []
-  },
-  {
    "id": 138,
    "title": "Building the Enterprise AI Workforce: Talent, Delivery and the Rise of Forward-Deployed Engineering",
    "description": "Panel: Enterprise AI",
    "session_type": "panel",
    "track": "Enterprise AI",
    "room": "Homi J. Bhabha Hall",
-   "start_time": "2026-11-21 10:30",
-   "end_time": "2026-11-21 11:30",
-   "speaker_name": "Dr. Ashish Tendulkar (Google), Sudhir Kumar Rai (Trellix), Ashwani Kumar (Nielsen), Mahalakshmi AV (AWS), Mr. Bhupesh Daheria (Moderator)",
+   "start_time": "2026-11-21 10:20",
+   "end_time": "2026-11-21 11:20",
+   "speaker_name": "Dr. Ashish Tendulkar (Google), Sudhir Kumar Rai (Trellix), Mahalakshmi AV (AWS), Mr. Bhupesh Daheria (Moderator)",
    "speaker_title": "",
    "links": [
     {
@@ -2185,10 +2100,6 @@
     },
     {
      "speaker_id": 129,
-     "role": "panellist"
-    },
-    {
-     "speaker_id": 94,
      "role": "panellist"
     },
     {
@@ -2218,14 +2129,6 @@
      "part": "panellist"
     },
     {
-     "speaker_id": 94,
-     "name": "Ashwani Kumar",
-     "role": "Senior Director of Engineering, AI Platform",
-     "organisation": "Nielsen",
-     "photo_url": "",
-     "part": "panellist"
-    },
-    {
      "speaker_id": 125,
      "name": "Mahalakshmi AV",
      "role": "Head of Sales, West and South India",
@@ -2242,6 +2145,34 @@
      "part": "moderator"
     }
    ]
+  },
+  {
+   "id": 222,
+   "title": "Innovation Talk: Tudip Technologies",
+   "description": "Speaker to be announced.",
+   "session_type": "talk",
+   "track": "Innovation Talks",
+   "room": "Kalam Theatre",
+   "start_time": "2026-11-21 10:20",
+   "end_time": "2026-11-21 10:40",
+   "speaker_name": "",
+   "speaker_title": "",
+   "links": [],
+   "people": []
+  },
+  {
+   "id": 201,
+   "title": "Innovation Talk: Cosmica Telematics",
+   "description": "Speaker to be announced.",
+   "session_type": "talk",
+   "track": "Innovation Talks",
+   "room": "Aryabhata Theatre",
+   "start_time": "2026-11-21 10:28",
+   "end_time": "2026-11-21 10:40",
+   "speaker_name": "",
+   "speaker_title": "",
+   "links": [],
+   "people": []
   },
   {
    "id": 157,
@@ -2265,9 +2196,30 @@
    ]
   },
   {
+   "id": 175,
+   "title": "Innovation Talk: Oranje AI",
+   "description": "Your Brand Now Has a Brain",
+   "session_type": "talk",
+   "track": "Innovation Talks",
+   "room": "Aryabhata Theatre",
+   "start_time": "2026-11-21 10:42",
+   "end_time": "2026-11-21 10:50",
+   "speaker_name": "Shivendra Singh",
+   "speaker_title": "Founder, Oranje AI",
+   "links": [],
+   "people": [
+    {
+     "speaker_id": null,
+     "name": "Shivendra Singh",
+     "info": "",
+     "part": ""
+    }
+   ]
+  },
+  {
    "id": 213,
    "title": "Innovation Talk: Rightangle Technologies",
-   "description": "Managing the environmental impact of AI",
+   "description": "Sustainable AI: Intelligence Without Excess",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
@@ -2294,7 +2246,7 @@
    "room": "Kalam Theatre",
    "start_time": "2026-11-21 11:00",
    "end_time": "2026-11-21 12:00",
-   "speaker_name": "Shri Bhanudas Palwe (Commissioner of Fisheries Maharashtra), Dr. Vivek Mohanrao Bhoite (KVK Baramati, ICAR-ATARI), Parag Dabhade (Agriculture Department, Government of Maharashtra), Manish K. Prahlad (Verdant Impact), Dr. Omprakash Mandge (MET), Dr. Santosh Vyas (Kemin Animal Nutrition & Health), Shri Ravi Ranjan Singh (Department of Agriculture & Farmers Welfare, Govt of India)",
+   "speaker_name": "Shri Bhanudas Palwe (Government of Maharashtra), Dr. Vivek Mohanrao Bhoite (ICAR-ATARI), Parag Dabhade (AI & Agritech Innovation Center), Dr. Santosh Vyas (Kemin Industries South Asia Pvt Ltd), Shri Ravi Ranjan Singh (Department of Agriculture & Farmers Welfare), Manish K. Prahlad (Verdant Impact), Dr. Omprakash Mandge (MET)",
    "speaker_title": "",
    "links": [
     {
@@ -2344,18 +2296,6 @@
      "part": "panellist"
     },
     {
-     "speaker_id": null,
-     "name": "Manish K. Prahlad",
-     "info": "Verdant Impact",
-     "part": ""
-    },
-    {
-     "speaker_id": null,
-     "name": "Dr. Omprakash Mandge",
-     "info": "MET",
-     "part": ""
-    },
-    {
      "speaker_id": 112,
      "name": "Dr. Santosh Vyas",
      "role": "Director - Research & Development",
@@ -2370,6 +2310,22 @@
      "organisation": "Department of Agriculture & Farmers Welfare, Government of India",
      "photo_url": "/images/speaker-ravi-ranjan-singh-sq.webp",
      "part": "panellist"
+    },
+    {
+     "speaker_id": 148,
+     "name": "Mr. Manish K. Prahlad",
+     "role": "Co-Founder and CEO",
+     "organisation": "Verdant Impact",
+     "photo_url": "/images/speakers/manish-k-prahlad.webp",
+     "part": ""
+    },
+    {
+     "speaker_id": 149,
+     "name": "Dr. Omprakash Mandge",
+     "role": "Academic Leader | IC Principal | AI Expert | PhD, Principal",
+     "organisation": "MET",
+     "photo_url": "",
+     "part": ""
     }
    ]
   },
@@ -2411,7 +2367,7 @@
   {
    "id": 182,
    "title": "Innovation Talk: Aria Telecom",
-   "description": "Sovereign AI in Action: Building Secure, Customizable and Full-Stack AI for Indian Enterprises",
+   "description": "Intelligence Without Boundaries. building Secure, Customizable and Multilingual AI by ARIA Telecom",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
@@ -2451,13 +2407,34 @@
    ]
   },
   {
+   "id": 216,
+   "title": "Innovation Talk: Cloud Crane",
+   "description": "Personal Software: The Next Step After App Marketplaces",
+   "session_type": "talk",
+   "track": "Innovation Talks",
+   "room": "Aryabhata Theatre",
+   "start_time": "2026-11-21 11:36",
+   "end_time": "2026-11-21 11:44",
+   "speaker_name": "Saumya Phor",
+   "speaker_title": "CEO, Cloud Crane",
+   "links": [],
+   "people": [
+    {
+     "speaker_id": null,
+     "name": "Saumya Phor",
+     "info": "",
+     "part": ""
+    }
+   ]
+  },
+  {
    "id": 140,
    "title": "Reinventing Insurance for Bharat with AI: Expanding Access, Trust and Inclusion",
    "description": "Panel: Insurance",
    "session_type": "panel",
    "track": "BFSI & FinTech AI",
    "room": "Homi J. Bhabha Hall",
-   "start_time": "2026-11-21 11:30",
+   "start_time": "2026-11-21 11:40",
    "end_time": "2026-11-21 12:30",
    "speaker_name": "Sandeep Kumar (Go Digit Insurance), Abhay Tewari (Star Union Dai-ichi Life Insurance), Shallu Kaushik (Tata Capital), Dr. Pawan Chawla (Tata AIA Life Insurance), Arindam Ghosh (Star Union Dai-ichi Life Insurance)",
    "speaker_title": "",
@@ -2521,29 +2498,8 @@
      "name": "Arindam Ghosh",
      "role": "Chief Distribution Officer & Joint President",
      "organisation": "Star Union Dai-ichi Life Insurance",
-     "photo_url": "",
+     "photo_url": "/images/speakers/arindam-ghosh.webp",
      "part": "panellist"
-    }
-   ]
-  },
-  {
-   "id": 216,
-   "title": "Innovation Talk: Cloud Crane",
-   "description": "Personal Software: The Next Step After App Marketplaces",
-   "session_type": "talk",
-   "track": "Innovation Talks",
-   "room": "Aryabhata Theatre",
-   "start_time": "2026-11-21 11:36",
-   "end_time": "2026-11-21 11:44",
-   "speaker_name": "Saumya Phor",
-   "speaker_title": "CEO, Cloud Crane",
-   "links": [],
-   "people": [
-    {
-     "speaker_id": null,
-     "name": "Saumya Phor",
-     "info": "",
-     "part": ""
     }
    ]
   },
@@ -2564,40 +2520,19 @@
   {
    "id": 218,
    "title": "Innovation Talk: OliAI",
-   "description": "Building Intelligence Engine for Enterprises",
+   "description": "Conversation Intelligence for Modern Enterprises",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
    "start_time": "2026-11-21 11:56",
    "end_time": "2026-11-21 12:04",
    "speaker_name": "Selva Soorya",
-   "speaker_title": "Co-Founder & CEO, OliAI",
+   "speaker_title": "Founder & CEO, OliAI",
    "links": [],
    "people": [
     {
      "speaker_id": null,
      "name": "Selva Soorya",
-     "info": "",
-     "part": ""
-    }
-   ]
-  },
-  {
-   "id": 219,
-   "title": "Innovation Talk: Nu10 Technologies",
-   "description": "Moving From AI Pilots to AI-Native Enterprise: Reimagining Business Processes, Operating Models and Enterprise Growth with Agentic AI",
-   "session_type": "talk",
-   "track": "Innovation Talks",
-   "room": "Kalam Theatre",
-   "start_time": "2026-11-21 12:00",
-   "end_time": "2026-11-21 12:20",
-   "speaker_name": "Mohit Kataria",
-   "speaker_title": "Chief Business Officer & Co-Founder, Nu10 Technologies",
-   "links": [],
-   "people": [
-    {
-     "speaker_id": null,
-     "name": "Mohit Kataria",
      "info": "",
      "part": ""
     }
@@ -2613,7 +2548,7 @@
    "start_time": "2026-11-21 12:06",
    "end_time": "2026-11-21 12:14",
    "speaker_name": "Vyom Patel",
-   "speaker_title": "Co-Founder & CTO, Teenage Works",
+   "speaker_title": "Co-Founder & CTO, TeenageWorks",
    "links": [],
    "people": [
     {
@@ -2625,8 +2560,8 @@
    ]
   },
   {
-   "id": 221,
-   "title": "Innovation Talk: Indigloo Software",
+   "id": 240,
+   "title": "Innovation Talk: Genext Genomics",
    "description": "Speaker to be announced.",
    "session_type": "talk",
    "track": "Innovation Talks",
@@ -2639,28 +2574,14 @@
    "people": []
   },
   {
-   "id": 222,
-   "title": "Innovation Talk: Tudip Technologies",
-   "description": "Speaker to be announced.",
-   "session_type": "talk",
-   "track": "Innovation Talks",
-   "room": "Kalam Theatre",
-   "start_time": "2026-11-21 12:20",
-   "end_time": "2026-11-21 12:40",
-   "speaker_name": "",
-   "speaker_title": "",
-   "links": [],
-   "people": []
-  },
-  {
-   "id": 223,
-   "title": "Innovation Talk: Aegis Super Intelligence Lab",
+   "id": 241,
+   "title": "Innovation Talk: Indifour Consult",
    "description": "Speaker to be announced.",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
    "start_time": "2026-11-21 12:26",
-   "end_time": "2026-11-21 12:36",
+   "end_time": "2026-11-21 12:34",
    "speaker_name": "",
    "speaker_title": "",
    "links": [],
@@ -2695,25 +2616,18 @@
    ]
   },
   {
-   "id": 224,
-   "title": "Innovation Talk: Assessfy",
-   "description": "Improving Learning Outcomes with AI: From Assessment to Measurable Impact",
+   "id": 242,
+   "title": "Innovation Talk: Sequretek IT Solutions",
+   "description": "Speaker to be announced.",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
-   "start_time": "2026-11-21 12:38",
-   "end_time": "2026-11-21 12:48",
-   "speaker_name": "Meghavi Shah",
-   "speaker_title": "Head Alliance, Assessfy",
+   "start_time": "2026-11-21 12:36",
+   "end_time": "2026-11-21 12:44",
+   "speaker_name": "",
+   "speaker_title": "",
    "links": [],
-   "people": [
-    {
-     "speaker_id": null,
-     "name": "Meghavi Shah",
-     "info": "",
-     "part": ""
-    }
-   ]
+   "people": []
   },
   {
    "id": 184,
@@ -2724,6 +2638,20 @@
    "room": "Kalam Theatre",
    "start_time": "2026-11-21 12:40",
    "end_time": "2026-11-21 13:00",
+   "speaker_name": "",
+   "speaker_title": "",
+   "links": [],
+   "people": []
+  },
+  {
+   "id": 223,
+   "title": "Innovation Talk: Aegis Super Intelligence Lab",
+   "description": "Speaker to be announced.",
+   "session_type": "talk",
+   "track": "Innovation Talks",
+   "room": "Aryabhata Theatre",
+   "start_time": "2026-11-21 12:46",
+   "end_time": "2026-11-21 12:56",
    "speaker_name": "",
    "speaker_title": "",
    "links": [],
@@ -2751,18 +2679,25 @@
    ]
   },
   {
-   "id": 225,
-   "title": "Innovation Talk: Aegis School of Data Science & AI",
-   "description": "Speaker to be announced.",
+   "id": 224,
+   "title": "Innovation Talk: Assessfy",
+   "description": "Improving Learning Outcomes with AI: From Assessment to Measurable Impact",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
-   "start_time": "2026-11-21 12:50",
-   "end_time": "2026-11-21 13:00",
-   "speaker_name": "",
-   "speaker_title": "",
+   "start_time": "2026-11-21 12:58",
+   "end_time": "2026-11-21 13:08",
+   "speaker_name": "Meghavi Shah",
+   "speaker_title": "Head Alliance, Assessfy",
    "links": [],
-   "people": []
+   "people": [
+    {
+     "speaker_id": null,
+     "name": "Meghavi Shah",
+     "info": "",
+     "part": ""
+    }
+   ]
   },
   {
    "id": 159,
@@ -2787,6 +2722,20 @@
    "room": "Raman Theatre",
    "start_time": "2026-11-21 13:00",
    "end_time": "2026-11-21 14:00",
+   "speaker_name": "",
+   "speaker_title": "",
+   "links": [],
+   "people": []
+  },
+  {
+   "id": 225,
+   "title": "Innovation Talk: Aegis School of Data Science & AI",
+   "description": "Speaker to be announced.",
+   "session_type": "talk",
+   "track": "Innovation Talks",
+   "room": "Aryabhata Theatre",
+   "start_time": "2026-11-21 13:10",
+   "end_time": "2026-11-21 13:20",
    "speaker_name": "",
    "speaker_title": "",
    "links": [],
@@ -2864,10 +2813,24 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-21 14:15",
    "end_time": "2026-11-21 15:15",
-   "speaker_name": "",
-   "speaker_title": "",
-   "links": [],
-   "people": []
+   "speaker_name": "Krishnan Raghavan",
+   "speaker_title": "Chief Technical Officer (CTO) & Co-founder, Pramaana Labs Inc.",
+   "links": [
+    {
+     "speaker_id": 150,
+     "role": "speaker"
+    }
+   ],
+   "people": [
+    {
+     "speaker_id": 150,
+     "name": "Krishnan Raghavan",
+     "role": "Chief Technical Officer (CTO) & Co-founder",
+     "organisation": "Pramaana Labs Inc.",
+     "photo_url": "/images/speakers/krishnan-raghavan.webp",
+     "part": "speaker"
+    }
+   ]
   },
   {
    "id": 187,
@@ -2899,22 +2862,15 @@
    "room": "Kalam Theatre",
    "start_time": "2026-11-21 15:00",
    "end_time": "2026-11-21 15:20",
-   "speaker_name": "Raveesh Dewan",
-   "speaker_title": "President & CEO, Joget",
-   "links": [
-    {
-     "speaker_id": 93,
-     "role": "speaker"
-    }
-   ],
+   "speaker_name": "Anoop Nair",
+   "speaker_title": "VP, Joget INC",
+   "links": [],
    "people": [
     {
-     "speaker_id": 93,
-     "name": "Raveesh Dewan",
-     "role": "President & CEO",
-     "organisation": "Joget Inc.",
-     "photo_url": "/images/talks/raveesh-dewan.webp",
-     "part": "speaker"
+     "speaker_id": null,
+     "name": "Anoop Nair",
+     "info": "",
+     "part": ""
     }
    ]
   },
@@ -2927,7 +2883,7 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-21 15:15",
    "end_time": "2026-11-21 16:15",
-   "speaker_name": "Mr. Namit Sharma (Arre Studios), Saurabh Kushwah (BULLET Microdrama · ZEEL), Pramod Prakash (Zee Entertainment Enterprises), Simon David Hunter (Moderator)",
+   "speaker_name": "Mr. Namit Sharma (Arre Studios), Rohini Ramnathan (Fever Network), Amita Madhvani (Ram Madhvani Films), Sankalp Rawal, Abhishek Talwar (Biplo World), Kinnari Dave (Shemaroo Entertainment Ltd.)",
    "speaker_title": "",
    "links": [
     {
@@ -2943,11 +2899,15 @@
      "role": "panellist"
     },
     {
+     "speaker_id": 107,
+     "role": "panellist"
+    },
+    {
      "speaker_id": 108,
      "role": "panellist"
     },
     {
-     "speaker_id": 107,
+     "speaker_id": 146,
      "role": "panellist"
     }
    ],
@@ -2959,30 +2919,6 @@
      "organisation": "Arre Studios",
      "photo_url": "/images/speakers/namit-sharma.webp",
      "part": "panellist"
-    },
-    {
-     "speaker_id": 89,
-     "name": "Saurabh Kushwah",
-     "role": "Co-Founder & Chief Product and Technology Officer",
-     "organisation": "BULLET Microdrama · ZEEL",
-     "photo_url": "/images/speaker-saurabh-kushwah-sq.webp",
-     "part": ""
-    },
-    {
-     "speaker_id": 91,
-     "name": "Pramod Prakash",
-     "role": "Chief Technology Officer",
-     "organisation": "Zee Entertainment Enterprises",
-     "photo_url": "/images/speaker-pramod-prakash-sq.webp",
-     "part": ""
-    },
-    {
-     "speaker_id": 124,
-     "name": "Simon David Hunter",
-     "role": "President, Asian Screen Institute (ASI), Singapore",
-     "organisation": "Former President, New York Film Academy (NYFA)",
-     "photo_url": "/images/speaker-simon-david-hunter-sq.webp",
-     "part": "moderator"
     },
     {
      "speaker_id": 109,
@@ -3001,6 +2937,14 @@
      "part": "panellist"
     },
     {
+     "speaker_id": 107,
+     "name": "Sankalp Rawal",
+     "role": "screenwriter, director, and performance poet",
+     "organisation": "",
+     "photo_url": "/images/speakers/sankalp-rawal.webp",
+     "part": "panellist"
+    },
+    {
      "speaker_id": 108,
      "name": "Abhishek Talwar",
      "role": "Co-Founder",
@@ -3009,11 +2953,11 @@
      "part": "panellist"
     },
     {
-     "speaker_id": 107,
-     "name": "Sankalp Rawal",
-     "role": "screenwriter, director, and performance poet",
-     "organisation": "",
-     "photo_url": "/images/speakers/sankalp-rawal.webp",
+     "speaker_id": 146,
+     "name": "Kinnari Dave",
+     "role": "Business Head, ShemarooMe",
+     "organisation": "Shemaroo Entertainment Ltd.",
+     "photo_url": "/images/speakers/kinnari-dave.webp",
      "part": "panellist"
     }
    ]
@@ -3028,7 +2972,7 @@
    "start_time": "2026-11-21 15:20",
    "end_time": "2026-11-21 15:40",
    "speaker_name": "Harshal Wakharkar",
-   "speaker_title": "Sales Manager, Intangles",
+   "speaker_title": "Sales Manager, Intangles Lab Pvt Ltd",
    "links": [],
    "people": [
     {
@@ -3283,27 +3227,6 @@
   },
   {
    "id": 230,
-   "title": "Closing Note",
-   "description": "",
-   "session_type": "keynote",
-   "track": "",
-   "room": "Homi J. Bhabha Hall",
-   "start_time": "2026-11-21 18:00",
-   "end_time": "2026-11-21 18:05",
-   "speaker_name": "Ms. Anita Ram",
-   "speaker_title": "Head, Industry & Innovation Ecosystem Partnership",
-   "links": [],
-   "people": [
-    {
-     "speaker_id": null,
-     "name": "Ms. Anita Ram",
-     "info": "",
-     "part": ""
-    }
-   ]
-  },
-  {
-   "id": 234,
    "title": "Closing Note",
    "description": "",
    "session_type": "keynote",
@@ -3668,7 +3591,7 @@
    "role": "Co-Founder & Chief Product and Technology Officer",
    "organisation": "BULLET Microdrama · ZEEL",
    "topic": "AI in Media",
-   "photo_url": "/images/speaker-saurabh-kushwah-sq.webp",
+   "photo_url": "/images/speakers/saurabh-kushwah.webp",
    "bio": "",
    "linkedin_url": "",
    "is_featured": 0,
@@ -4354,7 +4277,7 @@
    "role": "Scientist",
    "organisation": "Indian Council of Medical Research -",
    "topic": "",
-   "photo_url": "",
+   "photo_url": "/images/speakers/vishal-deo.webp",
    "bio": "",
    "linkedin_url": "",
    "is_featured": 0,
@@ -4382,7 +4305,7 @@
    "role": "Chief Operating Officer",
    "organisation": "Zynova Shalby Hospitals",
    "topic": "",
-   "photo_url": "",
+   "photo_url": "/images/speakers/reny-varghese.webp",
    "bio": "",
    "linkedin_url": "",
    "is_featured": 0,
@@ -4434,13 +4357,13 @@
   {
    "id": 113,
    "slug": "khushan-shah",
-   "name": "Khushan Shah",
+   "name": "Kushan Shah",
    "role": "Chief Technology and Product Officer",
    "organisation": "Fynd",
    "topic": "GenAI & Agentic AI",
-   "photo_url": "",
+   "photo_url": "/images/speakers/khushan-shah.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/kushanshah/",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 73
@@ -4466,7 +4389,7 @@
    "role": "Chief Distribution Officer & Joint President",
    "organisation": "Star Union Dai-ichi Life Insurance",
    "topic": "AI in Insurance",
-   "photo_url": "",
+   "photo_url": "/images/speakers/arindam-ghosh.webp",
    "bio": "",
    "linkedin_url": "",
    "is_featured": 0,
@@ -4500,6 +4423,90 @@
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 76
+  },
+  {
+   "id": 145,
+   "slug": "princee-sabharwal",
+   "name": "Princee Sabharwal",
+   "role": "Vice President - Digital Health",
+   "organisation": "GOQii",
+   "topic": "",
+   "photo_url": "/images/speakers/princee-sabharwal.webp",
+   "bio": "",
+   "linkedin_url": "",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 77
+  },
+  {
+   "id": 146,
+   "slug": "kinnari-dave",
+   "name": "Kinnari Dave",
+   "role": "Business Head, ShemarooMe",
+   "organisation": "Shemaroo Entertainment Ltd.",
+   "topic": "",
+   "photo_url": "/images/speakers/kinnari-dave.webp",
+   "bio": "",
+   "linkedin_url": "https://www.linkedin.com/in/kinnaritd/",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 78
+  },
+  {
+   "id": 147,
+   "slug": "vijay-talreja",
+   "name": "Vijay Talreja",
+   "role": "Chief Executive Officer",
+   "organisation": "Bynocs",
+   "topic": "",
+   "photo_url": "/images/speakers/vijay-talreja.webp",
+   "bio": "",
+   "linkedin_url": "",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 79
+  },
+  {
+   "id": 148,
+   "slug": "manish-k-prahlad",
+   "name": "Mr. Manish K. Prahlad",
+   "role": "Co-Founder and CEO",
+   "organisation": "Verdant Impact",
+   "topic": "",
+   "photo_url": "/images/speakers/manish-k-prahlad.webp",
+   "bio": "",
+   "linkedin_url": "",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 80
+  },
+  {
+   "id": 149,
+   "slug": "omprakash-mandge",
+   "name": "Dr. Omprakash Mandge",
+   "role": "Academic Leader | IC Principal | AI Expert | PhD, Principal",
+   "organisation": "MET",
+   "topic": "",
+   "photo_url": "",
+   "bio": "",
+   "linkedin_url": "",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 81
+  },
+  {
+   "id": 150,
+   "slug": "krishnan-raghavan",
+   "name": "Krishnan Raghavan",
+   "role": "Chief Technical Officer (CTO) & Co-founder",
+   "organisation": "Pramaana Labs Inc.",
+   "topic": "Verifiable, Deterministic AI for Governance and Regulation",
+   "photo_url": "/images/speakers/krishnan-raghavan.webp",
+   "bio": "",
+   "linkedin_url": "",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 82
   }
  ],
  "talks": [
@@ -4540,15 +4547,15 @@
    "status": "confirmed"
   },
   {
-   "id": 8,
-   "company": "Oranje AI",
-   "speaker_name": "Shivendra Singh",
-   "speaker_title": "Founder",
-   "topic": "Your Brand Now Has a Brain",
+   "id": 41,
+   "company": "Daten Technology Solutions",
+   "speaker_name": "Shishir Sharan",
+   "speaker_title": "CEO",
+   "topic": "",
    "starts_at": "2026-11-20 12:01",
    "duration_min": 7,
    "hall": "Aryabhata Theatre",
-   "photo_url": "/images/talks/shivendra-singh.webp",
+   "photo_url": "/images/talks/shishir-sharan.webp",
    "status": "confirmed"
   },
   {
@@ -4570,21 +4577,9 @@
    "speaker_title": "Founder & Managing Director",
    "topic": "Judgement wins the Moment: Big AI, Focused AI, and What India Should Build",
    "starts_at": "2026-11-20 12:20",
-   "duration_min": 20,
+   "duration_min": 10,
    "hall": "Aryabhata Theatre",
    "photo_url": "/images/talks/senthil-kumar-hariram.webp",
-   "status": "confirmed"
-  },
-  {
-   "id": 41,
-   "company": "Daten Technology Solutions",
-   "speaker_name": "Shishir Sharan",
-   "speaker_title": "CEO",
-   "topic": "",
-   "starts_at": "2026-11-20 12:41",
-   "duration_min": 7,
-   "hall": "Aryabhata Theatre",
-   "photo_url": "/images/talks/shishir-sharan.webp",
    "status": "confirmed"
   },
   {
@@ -4593,9 +4588,9 @@
    "speaker_name": "Akhil Gupta",
    "speaker_title": "Founder & CTPO",
    "topic": "Reimagining Marketplaces in the era of AI Agents",
-   "starts_at": "2026-11-20 12:50",
-   "duration_min": 20,
-   "hall": "Kalam Theatre",
+   "starts_at": "2026-11-20 12:30",
+   "duration_min": 22,
+   "hall": "Aryabhata Theatre",
    "photo_url": "/images/talks/akhil-gupta.webp",
    "status": "confirmed"
   },
@@ -4780,6 +4775,18 @@
    "status": "confirmed"
   },
   {
+   "id": 39,
+   "company": "Nu10 Technologies",
+   "speaker_name": "Mohit Kataria",
+   "speaker_title": "Chief Business Officer & Co-Founder",
+   "topic": "",
+   "starts_at": "2026-11-21 10:00",
+   "duration_min": 20,
+   "hall": "Kalam Theatre",
+   "photo_url": "/images/talks/mohit-kataria.webp",
+   "status": "confirmed"
+  },
+  {
    "id": 25,
    "company": "Evoke Technologies Private Limited",
    "speaker_name": "Ferosh Sethumadhavan",
@@ -4789,6 +4796,18 @@
    "duration_min": 12,
    "hall": "Aryabhata Theatre",
    "photo_url": "/images/talks/ferosh-sethumadhavan.webp",
+   "status": "confirmed"
+  },
+  {
+   "id": 8,
+   "company": "Oranje AI",
+   "speaker_name": "Shivendra Singh",
+   "speaker_title": "Founder",
+   "topic": "Your Brand Now Has a Brain",
+   "starts_at": "2026-11-21 10:42",
+   "duration_min": 8,
+   "hall": "Aryabhata Theatre",
+   "photo_url": "/images/talks/shivendra-singh.webp",
    "status": "confirmed"
   },
   {
@@ -4888,18 +4907,6 @@
    "status": "confirmed"
   },
   {
-   "id": 39,
-   "company": "Nu10 Technologies",
-   "speaker_name": "Mohit Kataria",
-   "speaker_title": "Chief Business Officer & Co-Founder",
-   "topic": "",
-   "starts_at": "2026-11-21 12:00",
-   "duration_min": 20,
-   "hall": "Kalam Theatre",
-   "photo_url": "/images/talks/mohit-kataria.webp",
-   "status": "confirmed"
-  },
-  {
    "id": 50,
    "company": "TeenageWorks",
    "speaker_name": "Vyom Patel",
@@ -4917,7 +4924,7 @@
    "speaker_name": "Meghavi Shah",
    "speaker_title": "Head Alliance",
    "topic": "Improving Learning Outcomes with AI: From Assessment to Measurable Impact",
-   "starts_at": "2026-11-21 12:38",
+   "starts_at": "2026-11-21 12:58",
    "duration_min": 10,
    "hall": "Aryabhata Theatre",
    "photo_url": "/images/talks/meghavi-shah.webp",
@@ -4944,7 +4951,7 @@
    "starts_at": "2026-11-21 15:00",
    "duration_min": 20,
    "hall": "Aryabhata Theatre",
-   "photo_url": "",
+   "photo_url": "/images/speakers/talk-anoop-nair.webp",
    "status": "confirmed"
   },
   {
@@ -5032,6 +5039,30 @@
    "status": "confirmed"
   },
   {
+   "id": 56,
+   "company": "Algo Analytics",
+   "speaker_name": "Dr. Anand Deshpande",
+   "speaker_title": "CSO",
+   "topic": "",
+   "starts_at": null,
+   "duration_min": 10,
+   "hall": "",
+   "photo_url": "/images/talks/anand-deshpande.webp",
+   "status": "confirmed"
+  },
+  {
+   "id": 57,
+   "company": "Ai Vie Insights Private Limited",
+   "speaker_name": "Ambrish Agarwal",
+   "speaker_title": "Director",
+   "topic": "Everyday AI for enterprise applications",
+   "starts_at": null,
+   "duration_min": 10,
+   "hall": "",
+   "photo_url": "/images/talks/ambrish-agarwal.webp",
+   "status": "confirmed"
+  },
+  {
    "id": 5,
    "company": "SEEM ( brand in fintech and sustainability consulting)",
    "speaker_name": "Seema Sutradhar",
@@ -5096,7 +5127,7 @@
    "company": "Maharashtra Industrial Development Corporation (MIDC)",
    "speaker_name": "Dr. Kunal Khemnar (IAS)",
    "speaker_title": "Joint Chief Executive Officer",
-   "topic": "",
+   "topic": "AI-Driven Land Demand-Supply Intelligence for MIDC",
    "starts_at": null,
    "duration_min": null,
    "hall": "Aryabhata Theatre",
