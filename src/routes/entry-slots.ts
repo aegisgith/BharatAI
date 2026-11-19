@@ -192,10 +192,14 @@ export function firstName(name: any): string {
   return w === w.toUpperCase() || w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w
 }
 
-// A free pass holder of the conference: the only people an entry time is for.
+// A free pass holder of the conference: the only people an entry time is for. Not an
+// exhibitor's guest (registration_source 'exhibitor:<id>', given from the exhibitor's
+// dashboard since 19 Nov, routes/team-guests.ts): they come when their host expects them,
+// with no entry time and no email from us.
 function freeHolder(a: any): boolean {
   if (!a || Number(a.main_event ?? 1) === 0) return false
   if (TEAM_ONLY.includes(String(a.badge_type || '').trim())) return false
+  if (/^exhibitor:/i.test(String(a.registration_source || '').trim())) return false
   const nk = hooks.notifyKind ? hooks.notifyKind(a) : 'free'
   return nk === 'free' || nk === 'unpaid'
 }
@@ -300,7 +304,7 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean; 
 async function freeHolders(c: any): Promise<any[]> {
   const cl = hooks.clauses ? await hooks.clauses(c) : { mc: '', noEmail: '' }
   const rows = await all(c, `SELECT id, event_id, name, email, city, company, badge_type, payment_status, main_event, rsvp_status, rsvp_at, pass_downloaded_at,
-      entry_status, entry_slot, unsubscribed_at FROM attendees WHERE event_id = 1${cl.mc} ORDER BY id`)
+      entry_status, entry_slot, unsubscribed_at, registration_source FROM attendees WHERE event_id = 1${cl.mc} ORDER BY id`)
   return rows.filter(freeHolder)
 }
 const waitingRow = (a: any) => hooks.waitlisted ? hooks.waitlisted(a) : String(a.entry_status || '') === 'waitlisted'

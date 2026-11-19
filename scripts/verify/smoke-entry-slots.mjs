@@ -102,6 +102,7 @@ person(27, 'Campus Only', 'campus@example.com', { main_event: 0 });
 person(28, 'Team Member', 'team@example.com', { badge_type: 'Organiser' });
 person(29, 'WhatsApp Guest', 'wa919820000029@no-email.invalid');
 person(30, 'Exhibitor', 'ex@example.com', { badge_type: 'Exhibitor', payment_status: 'waived' });
+person(31, 'Exhibitor Guest', 'xguest@example.com', { registration_source: 'exhibitor:7', rsvp_status: 'confirmed' }); // given by an exhibitor: no entry time
 
 // ---- the plan before anything is written ----
 let st = await hit('GET', '/api/admin/entry-slots/status', undefined, ADMIN);
@@ -137,6 +138,7 @@ check('declined and maybe still get one (everybody gets a chance)', [FRI_PM, SAT
 check('an unpaid VIP (a free pass for now) gets one; the unsubscribed and the no-marketing ones too', !!slotOf(21) && !!slotOf(25) && !!slotOf(26), '');
 check('left alone: the paid Delegate, the exhibitor, the organiser, campus-only, the waiting list, and the entry time already told',
   slotOf(20) === null && slotOf(30) === null && slotOf(28) === null && slotOf(27) === null && slotOf(22) === null && slotOf(23) === null && slotOf(24) === 'Day 2, 2 pm to 6 pm', '');
+check('an exhibitor\'s guest (a Visitor Pass from the exhibitor\'s dashboard) gets no entry time and is not counted', slotOf(31) === null, String(slotOf(31)));
 check('assign wrote an audit row', q("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'entry_slots.assign'")[0].n === 1, '');
 r = await hit('POST', '/api/admin/entry-slots/assign', {}, ADMIN);
 check('assign again: nothing left to give, nobody moved', r.json.assigned === 0 && slotOf(1) === FRI_AM, JSON.stringify(r.json));
@@ -193,6 +195,10 @@ r = await hit('POST', '/api/admin/attendees/1/send-entry-slot', {}, ADMIN);
 check('after 9 pm IST a send waits (409, paused)', r.status === 409 && r.json?.paused === true, r.status + ' ' + JSON.stringify(r.json));
 r = await hit('POST', '/api/admin/attendees/20/send-entry-slot', {}, ADMIN);
 check('a paid pass is skipped', r.json?.skipped === true, JSON.stringify(r.json));
+db.run("UPDATE attendees SET entry_slot = ? WHERE id = 31", [FRI_PM]);
+r = await hit('POST', '/api/admin/attendees/31/send-entry-slot', {}, ADMIN);
+check('an exhibitor\'s guest is never sent the entry-time email, even with a time typed by hand', r.json?.skipped === true, JSON.stringify(r.json));
+db.run("UPDATE attendees SET entry_slot = NULL WHERE id = 31");
 // From 8:30 am for this email only (the organiser: "start sending from morning 8:30 AM").
 FAKE_NOW = RealDate.parse('2026-11-18T02:50:00Z'); // Wednesday 8:20 IST
 r = await hit('POST', '/api/admin/attendees/1/send-entry-slot', {}, ADMIN);
