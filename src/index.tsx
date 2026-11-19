@@ -8142,7 +8142,9 @@ const randomCode = (): string => {
 const NEUTRAL_SIGNIN_REPLY = 'If that email is registered, a sign-in link and code are on their way.'
 const LOGIN_RATE_WINDOW_MIN = 15
 const LOGIN_RATE_MAX = 4
-const LOGIN_TOKEN_MINUTES = 15
+// 30 since 19 Nov 2026 (was 15): company mailboxes on Microsoft 365 were answering
+// "server busy" and taking the code email minutes later, on the eve of the event.
+const LOGIN_TOKEN_MINUTES = 30
 const LOGIN_MAX_ATTEMPTS = 5
 
 // Issues a single-use token + code for an email, storing only their hashes.
@@ -8182,26 +8184,15 @@ async function createLoginToken(c: any, eventId: any, email: string, ttlMinutes:
   const code = randomCode()
   const ttl = `+${Math.max(1, Math.round(ttlMinutes))} minutes`
   const budget = Math.max(1, Math.round(maxUses))
-  // A new sign-in code supersedes the codes outstanding for this address, so an
-  // old code cannot be reused: six digits are guessable, one live code at a time.
-  // An email link supersedes nothing. Until 4 Nov 2026 every new row retired all
-  // the rest, and every email mints a link (account-ready, networking, payment,
-  // the reminders, the help steps), so each email killed the links in the one
-  // before it: with the account-ready and networking emails going out five
-  // minutes apart, the first email's link lived five minutes. Each link is its
-  // own door for its full seven days; whoever can read the inbox can already
-  // click the newest one.
-  if (budget === 1) {
-    try {
-      await c.env.DB.prepare(
-        "UPDATE login_tokens SET used_at = datetime('now') WHERE event_id = ? AND email = ? AND used_at IS NULL AND COALESCE(max_uses, 1) = 1"
-      ).bind(eventId, email).run()
-    } catch (_) {
-      await c.env.DB.prepare(
-        "UPDATE login_tokens SET used_at = datetime('now') WHERE event_id = ? AND email = ? AND used_at IS NULL"
-      ).bind(eventId, email).run()
-    }
-  }
+  // Nothing is retired here: not a link, and since 19 Nov 2026 not a code either.
+  // Until 4 Nov 2026 every new row retired all the rest, so each email killed the
+  // links in the one before it. Until 19 Nov a new sign-in code still retired the
+  // codes before it, and that was what shut people out: the email is slow, the
+  // person taps again, the first email lands, and its code is "not correct". In
+  // the two days before the event 19 of 70 people asked more than once and 13 of
+  // the 70 never got in. Every code now works for its own 30 minutes, whichever
+  // email arrives first; redeemLoginToken() counts wrong tries across all of them,
+  // so more live codes do not mean more guesses.
   // max_uses arrived in 0037. Naming a column SQLite does not have fails the
   // whole statement at parse time, so a database one migration behind takes the
   // second path and issues an ordinary single-use token - which signs people in
@@ -8229,11 +8220,44 @@ async function redeemLoginToken(c: any, eventId: any, email: string, token?: str
   // email carries its own link (createLoginToken), so the newest row is not the
   // one in the email being opened. Until 4 Nov 2026 only the newest row was read,
   // so an older email's link was "not correct" - and counted as a wrong attempt
-  // against the newest link, five of which retired that one too. A code is still
-  // the newest code row only: six digits are guessable, so one live code, guarded
-  // by the attempts counter; a multi-use link's row carries a code nobody was shown.
+  // against the newest link, five of which retired that one too. A multi-use
+  // link's row carries a code nobody was shown, so a typed code is only ever
+  // checked against code rows.
   // Same fallback as the insert: pre-0037 databases have neither column, and a
   // SELECT that names one would fail outright rather than degrade.
+  //
+  // A typed code (19 Nov 2026): any code this address was sent that is still
+  // live, not only the newest, so a slow email and a second tap no longer leave
+  // the person holding a dead code. Six digits are guessable, so wrong tries are
+  // counted across all the live codes together (kept on the newest row): five,
+  // and every one of them is retired. A sign-in spends them all as well.
+  if (!token) {
+    let live: any[] = []
+    try {
+      live = ((await c.env.DB.prepare(`SELECT id, code_hash, attempts FROM login_tokens WHERE ${LIVE} AND COALESCE(max_uses, 1) = 1 ORDER BY id DESC LIMIT 20`)
+        .bind(eventId, email).all()).results || []) as any[]
+    } catch (_) {
+      live = ((await c.env.DB.prepare(`SELECT id, code_hash, attempts FROM login_tokens WHERE ${LIVE} ORDER BY id DESC LIMIT 20`)
+        .bind(eventId, email).all()).results || []) as any[]
+    }
+    if (!live.length) return { ok: false, reason: 'That link or code has expired. Please request a new one.' }
+    const retireAll = async () => {
+      await c.env.DB.prepare(`UPDATE login_tokens SET used_at = datetime('now') WHERE id IN (${live.map(() => '?').join(',')})`)
+        .bind(...live.map(r => r.id)).run()
+    }
+    const tries = live.reduce((n, r) => n + (Number(r.attempts) || 0), 0)
+    if (tries >= LOGIN_MAX_ATTEMPTS) {
+      await retireAll()
+      return { ok: false, reason: 'Too many attempts. Please request a new code.' }
+    }
+    const typed = code ? await sha256Hex(code) : ''
+    if (!typed || !live.some(r => safeEqualA(typed, String(r.code_hash || '')))) {
+      await c.env.DB.prepare('UPDATE login_tokens SET attempts = attempts + 1 WHERE id = ?').bind(live[0].id).run()
+      return { ok: false, reason: 'That code is not correct.' }
+    }
+    await retireAll()
+    return { ok: true }
+  }
   let row: any = null
   try {
     row = token
@@ -10002,7 +10026,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
   const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
   // Was `?email=<address>&action=magic-login` — no token at all, so anyone could
   // construct the "magic link" for any address without receiving the mail. It now
-  // carries a single-use token that expires in 15 minutes.
+  // carries a single-use token that expires in 30 minutes (LOGIN_TOKEN_MINUTES).
   let loginCode = ''
   // Asked for by the /register paid form when the address already holds a pass
   // (5 Nov 2026: that form used to end at a four-second message and nothing else).
@@ -10035,7 +10059,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
         ? `You are already registered with us, so there is nothing to fill in again. The button below signs you in and opens payment for your <strong>${payName}</strong>. No password needed.`
         : 'Click the button below to sign in to the Bharat AI Innovation 2026. This link will log you in automatically — no password needed.'}</p>
       <div style="text-align:center;margin:24px 0;">
-        ${loginCode ? `<p style="color:#444;font-size:14px;margin:0 0 18px;">Or enter this code in the app:<br><span style="display:inline-block;margin-top:8px;font-family:monospace;font-size:28px;letter-spacing:6px;font-weight:bold;color:#1E2140;">${loginCode}</span><br><span style="font-size:12px;color:#888;">Expires in 15 minutes. Never share it &mdash; we will not ask you for it.</span></p>` : ''}
+        ${loginCode ? `<p style="color:#444;font-size:14px;margin:0 0 18px;">Or enter this code in the app:<br><span style="display:inline-block;margin-top:8px;font-family:monospace;font-size:28px;letter-spacing:6px;font-weight:bold;color:#1E2140;">${loginCode}</span><br><span style="font-size:12px;color:#888;">Works for 30 minutes. Never share it &mdash; we will not ask you for it.</span></p>` : ''}
         <a href="${magicLink}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
           ${payName ? 'Sign in and pay' : '🔑 Sign In Now'}
         </a>
@@ -30105,7 +30129,7 @@ function mainPageHTML(): string {
           <div id="signin-code-field" class="hidden">
             <label class="text-xs text-gray-400 mb-1 block">6-digit code from your email</label>
             <input type="text" id="signin-code" inputmode="numeric" autocomplete="one-time-code" maxlength="12" placeholder="000000" class="w-full px-4 py-3 rounded-xl text-sm" style="letter-spacing:0.4em;font-family:monospace;">
-            <p class="text-[11px] text-gray-500 mt-1">Expires in 15 minutes. Clicking the link in the email works too.</p>
+            <p class="text-[11px] text-gray-500 mt-1">The code works for 30 minutes. Not in your inbox? Look in Spam or Promotions. Tapping the link in the email works too.</p>
           </div>
           <button type="submit" class="w-full py-3 rounded-xl font-bold text-white transition-all hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.3);">
             <i class="fas fa-sign-in-alt mr-2"></i>Sign In
@@ -33870,7 +33894,7 @@ function mainPageScript(): string {
           if (codeField) codeField.classList.remove('hidden');
           // The server answers the same for an address it does not know (so the
           // box cannot be used to test addresses); the words do not promise more.
-          errorEl.textContent = 'If this address is registered, we have emailed it a sign-in link and a 6-digit code. Enter the code below.';
+          errorEl.textContent = 'If this address is registered, we have emailed it a sign-in link and a 6-digit code. It can take a minute or two. Enter the code below.';
           // Green, not the error red: the theme sets that red with !important.
           errorEl.style.setProperty('color', '#15803d', 'important');
           errorEl.classList.remove('hidden');

@@ -1,9 +1,10 @@
 // The sign-in token rules on their own (4 Nov 2026), against the built worker on
 // real SQLite with the production schema: a link is found by its own hash among
 // the live rows (expired, used up, a budget of uses, two live links, a stale one),
-// a code is the newest code row (wrong attempts, too many, a link minted after
-// it), a new code retires the codes before it and no link, a new email link
-// retires nothing, the two-minute rule and the rate window are as before.
+// a typed code is any live code row (wrong attempts counted across them, too many,
+// a link minted after it), a new code retires nothing (19 Nov 2026: a slow email
+// and a second tap left people holding a dead code), a new email link retires
+// nothing, the two-minute rule and the rate window are as before.
 // Run after `npm run build`:  node scripts/verify/unit-login-tokens.mjs
 import { makeWorld, checker, ADMIN, sha, hex, settle } from './login-world.mjs';
 
@@ -61,15 +62,31 @@ r = await login({ code: '222222' });
 check('a typed code is checked against the code row even when a link was minted after it, and is spent on first use', r.status === 200 && !!codeRow().used_at, r.status + ' ' + JSON.stringify(codeRow()));
 check('the link minted after it is untouched', tok(AFTER).uses === 0 && !tok(AFTER).used_at && tok(AFTER).attempts === 0, JSON.stringify(tok(AFTER)));
 
-// ---- minting: a new code retires the codes before it, a new email link retires nothing ----
+// ---- minting: a new code retires nothing, and neither does a new email link ----
 door('c-c', sha('333333'), 1, '-20 minutes', '+15 minutes');
 const linksBefore = liveLinks();
 r = await hit('POST', '/api/events/1/attendees/send-magic-link', { email: EMAIL }); await settle();
-check('a new sign-in code retires the live code before it and no link', r.status === 200 && !!byHash('c-c').used_at && liveLinks() === linksBefore, r.status + ' c-c=' + JSON.stringify(byHash('c-c')) + ' links=' + liveLinks() + '/' + linksBefore);
+check('a new sign-in code retires neither the live code before it nor any link', r.status === 200 && !byHash('c-c').used_at && liveLinks() === linksBefore, r.status + ' c-c=' + JSON.stringify(byHash('c-c')) + ' links=' + liveLinks() + '/' + linksBefore);
 const code = codeIn(sent[sent.length - 1]);
-check('the sign-in email shows the new code', /^\d{6}$/.test(code), 'code=' + JSON.stringify(code) + ' mails=' + sent.length);
+check('the sign-in email shows the new code, and says how long it works', /^\d{6}$/.test(code) && /Works for 30 minutes/.test(String(sent[sent.length - 1].html || JSON.stringify(sent[sent.length - 1]))), 'code=' + JSON.stringify(code) + ' mails=' + sent.length);
+check('the new code lives 30 minutes', q("SELECT CAST(ROUND((julianday(expires_at) - julianday(created_at)) * 1440) AS INTEGER) AS m FROM login_tokens WHERE id = ?", codeRow().id)[0].m === 30, JSON.stringify(codeRow()));
+// The slow email: the person tapped again, then the FIRST email arrived.
+for (let i = 0; i < 2; i++) r = await login({ code: '000000' });
+check('two wrong tries with two codes live are counted on the newest', r.status === 401 && /not correct/.test(r.text) && codeRow().attempts === 2 && !byHash('c-c').used_at, r.status + ' ' + JSON.stringify(codeRow()));
+r = await login({ code: '333333' });
+check('the EARLIER code still signs in after a newer one was asked for', r.status === 200 && r.json?.id === ID, r.status + ' ' + r.text.slice(0, 120));
+check('one sign-in spends every code outstanding', !!byHash('c-c').used_at && !!codeRow().used_at, JSON.stringify([byHash('c-c'), codeRow()]));
 r = await login({ code });
-check('the new code signs in, once', r.status === 200 && !!codeRow().used_at, r.status + ' ' + r.text.slice(0, 120));
+check('so the newer code is refused afterwards, as expired', r.status === 401 && /expired/.test(r.text), r.status + ' ' + r.text.slice(0, 120));
+// Wrong tries are counted across all the live codes together, not per code.
+door('c-e', sha('555555'), 1, '-9 minutes', '+15 minutes');
+for (let i = 0; i < 3; i++) r = await login({ code: '000000' });
+door('c-f', sha('666666'), 1, '-8 minutes', '+15 minutes');
+for (let i = 0; i < 2; i++) r = await login({ code: '000000' });
+check('three wrong tries, a new code, two more: all five still answered "not correct"', r.status === 401 && /not correct/.test(r.text) && !byHash('c-e').used_at && !byHash('c-f').used_at, r.status + ' ' + r.text);
+r = await login({ code: '555555' });
+check('after five wrong tries across two codes, a right one is "too many attempts" and both are retired', r.status === 401 && /Too many/.test(r.text) && !!byHash('c-e').used_at && !!byHash('c-f').used_at, r.status + ' ' + r.text);
+db.run("UPDATE login_tokens SET created_at = datetime('now', '-20 minutes') WHERE token_hash IN ('c-e', 'c-f')");
 door('c-d', sha('444444'), 1, '-19 minutes', '+15 minutes');
 r = await hit('POST', '/api/admin/help-mail/send', { email: EMAIL, topic: 'app' }, ADMIN); await settle();
 check('a new email link (the help steps) retires neither the live code nor any link', r.status === 200 && !byHash('c-d').used_at && liveLinks() === linksBefore + 1, r.status + ' ' + r.text.slice(0, 120) + ' c-d=' + JSON.stringify(byHash('c-d')) + ' links=' + liveLinks());

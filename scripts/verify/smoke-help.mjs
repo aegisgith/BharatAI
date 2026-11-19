@@ -233,7 +233,7 @@ check("login: a typed code is checked against the code row, not a newer email li
 r = await hit('POST', '/api/events/1/attendees/send-magic-link', { email: 'oldlink@example.com' });
 check('sign-in code: a new code leaves every emailed link alive', r.status === 200 && codes().length === 2 && !codes()[1].used_at && links().length === 3 && links().every(x => !x.used_at), r.status + ' codes=' + JSON.stringify(codes()) + ' links=' + JSON.stringify(links()));
 r = await hit('POST', '/api/events/1/attendees/send-magic-link', { email: 'oldlink@example.com' });
-check('sign-in code: a new code retires the code before it, and only that', r.status === 200 && codes().length === 3 && !!codes()[1].used_at && !codes()[2].used_at && links().every(x => !x.used_at), r.status + ' codes=' + JSON.stringify(codes()));
+check('sign-in code: a new code retires nothing, not the code before it and not a link (19 Nov 2026)', r.status === 200 && codes().length === 3 && !codes()[1].used_at && !codes()[2].used_at && links().every(x => !x.used_at), r.status + ' codes=' + JSON.stringify(codes()));
 // The two sign-in emails are not the minute clock's.
 sent.length = 0;
 
