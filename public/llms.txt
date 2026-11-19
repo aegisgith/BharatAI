@@ -72,10 +72,7 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 
 - **Hon’ble Shri Eknath Shinde** — Deputy Chief Minister, Government of Maharashtra (Special Address)
 - **Hon’ble Shri Chandrakant Dada Patil** — Minister, Higher & Technical Education, Government of Maharashtra (Keynote Address)
-- **Hon’ble Shri Dattatray Bharane** — Minister, Agriculture, Government of Maharashtra (Keynote Address)
 - **Hon’ble Smt. Aditi Tatkare** — Minister, Women & Child Development, Government of Maharashtra (Keynote Address)
-- **Hon’ble Shri Sanjay Rathod** — Minister, Soil & Water Conservation, Government of Maharashtra (Keynote Address)
-- **Hon’ble Shri Ashish Nandkishore Jaiswal** — Minister of State, Finance, Planning, Agriculture, Assistance & Rehabilitation, Government of Maharashtra (Minister of State)
 - **Shri Virendra Singh (IAS)** — Secretary, Electronics, Information Technology & Artificial Intelligence Department, Government of Maharashtra (AI in Governance)
 - **Shri Bhim Singh** — Secretary and CEO, State Rural Development Agency, Government of Chhattisgarh
 - **Shri Vivek Khandekar (IFS)** — Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department
@@ -93,13 +90,14 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 - **Bhupesh Daheria** — CEO, Aegis School of Data Science & AI, Trustee, Aegis Knowledge Trust (AI Talent)
 - **Shri Sachin Itkar** — Vice President, Maharashtra Economic Development Council (MEDC)
 - **Tarun Chugh** — MD & CEO, Bajaj Life Insurance Company (AI in Insurance)
-- **Simon David Hunter** — President, Asian Screen Institute (ASI), Singapore, Former President, New York Film Academy (NYFA) (AI in Film & Media)
+- **Simon Hunter** — President, Asian Screen Institute (ASI), Singapore, Former President, New York Film Academy (NYFA) (AI in Film & Media)
 - **Saurabh Kushwah** — Co-Founder & Chief Product and Technology Officer, BULLET Microdrama · ZEEL (AI in Media)
 - **Pramod Prakash** — Chief Technology Officer, Zee Entertainment Enterprises (AI in Media)
 - **Ms. Surbhi Gupta** — Chief Digital Officer, Birla Opus Paints (AI for Bharat)
 - **Mahalakshmi AV** — Head of Sales, West and South India, AWS (Enterprise AI)
 - **Arun Menon** — Chief Operating Officer and Chief Technology & Strategy Officer, Jade Global (Enterprise AI)
-- **Sushil Vishwakarma** — Director, Integrated Technology & Innovation Leader, Whirlpool Corporation (Enterprise AI)
+- **Sushil Vishwakarma** — Director, Integrated Technology & Innovation Leader, Whirlpool Asia LLP (Enterprise AI)
+- **Dr. Rajkumar Upadhyay** — CEO & Chairman, C-DOT (AI in Telecom)
 - **Amod Deshpande** — Head of India, Engineering & Operations, Allvue Systems (Enterprise AI)
 - **Ganesh Joshi** — AVP – IT & Chief Information Officer, Nilons Enterprises (Enterprise AI)
 - **Raveesh Dewan** — President & CEO, Joget Inc. (GenAI & Agentic AI)
@@ -149,11 +147,35 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 - **Mr. Namit Sharma** — Chief Executive Officer, Arre Studios (Content, Creativity & AI: Redefining Media, Personalization, and Digital Experiences)
 - **Dr. Santosh Vyas** — Director - Research & Development, Kemin Industries South Asia Pvt Ltd (AI in Agriculture)
 - **Ashwani Kumar** — Senior Director of Engineering, AI Platform, Nielsen (Enterprise AI)
-- **Khushan Shah** — Chief Technology and Product Officer, Fynd (GenAI & Agentic AI)
+- **Kushan Shah** — Chief Technology and Product Officer, Fynd (GenAI & Agentic AI)
 - **Rajat Nigam** — Head of Technology and Media Operations, JioStar India
 - **Arindam Ghosh** — Chief Distribution Officer & Joint President, Star Union Dai-ichi Life Insurance (AI in Insurance)
 - **Fal Ghancha** — Founder and CTO, 72 Street AI; Co-Founder, ApexCXOs, 72 Street AI (Trustworthy AI)
 - **Kiran Nambiar** — CEO & Co-founder, MyFi (AI Democratizing and Driving Financial Inclusion)
+- **Princee Sabharwal** — Vice President - Digital Health, GOQii
+- **Kinnari Dave** — Business Head, ShemarooMe, Shemaroo Entertainment Ltd.
+- **Vijay Talreja** — Chief Executive Officer, Bynocs
+- **Mr. Manish K. Prahlad** — Co-Founder and CEO, Verdant Impact
+- **Dr. Omprakash Mandge** — Academic Leader | IC Principal | AI Expert | PhD, Principal, MET
+- **Krishnan Raghavan** — Chief Technical Officer (CTO) & Co-founder, Pramaana Labs Inc. (Verifiable, Deterministic AI for Governance and Regulation)
+- **Gaurav P. Desai** — Talent and Strategic Partnership Lead, Rose Audio Visuals
+- **Janhvi Kumar** — Chief Business Officer, Medicircle
+- **Manish P. Daga** — Managing Director, Cotton Guru
+- **Anu Chaudhuri Ghosh** — Head - Marketing & Business Development, Star Union Dai-Ichi Life Insurance
+- **Subrat Pani** — Co-Founder, OneAssist Consumer Solutions
+- **Ajay Patel** — CEO, Share India Insurance Brokers Private Limited
+- **Mayur Kapur** — Chief Strategy Officer - Asia, TransUnion
+- **Mr. Sarosh Amaria** — Managing Director, Tata Capital Housing Finance Limited
+- **Girish Malhotra** — Head - New Economy Group, IDFC FIRST Bank
+- **Ashish Sharma** — Head - Product, Program & Strategy, New Economy Group, IDFC FIRST Bank
+- **Ankita Sejpal** — Vice President and Head- Learning and Development and Content, Turtlemint
+- **Falguni Vasu** — CEO, Sejal Insurance
+- **Sanjeev Deshpande** — Founder& Chairman, Kavion.ai (Kavion.ai)
+- **Shyam Pardeshi** — COO, Decimal Point Analytics (DPA's Innovation Talk)
+- **Rakhi Prasad** — Co Founder, ClarityX
+- **Mr. Prakash Ranjalkar** — Director, Helios Towers
+- **Arvind Shah** — CDO, Sama Insurance
+- **Shreenivas Chetlapalli** — VP, Jade Global
 
 <!-- speakers:end -->
 
@@ -169,6 +191,7 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - AlgoAnalytics
 - Amnex Infotechnologies
 - Aria Telecom
+- Ary-Soft
 - Ary-Soft
 - Asmadiya Technologies
 - Assessfy
@@ -200,6 +223,7 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - Ministry of Tribal Affairs
 - NoBroker
 - Nu10 Technologies
+- Nu10 Technologies
 - OliAI
 - OneVio
 - Oranje AI
@@ -221,6 +245,7 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - Wyn Labs
 - Xtant Tech
 - Yarnit
+- Yarnit Innovations
 - Zanopy AI
 
 Digital media partner: The Mainstream.
@@ -229,7 +254,9 @@ Digital media partner: The Mainstream.
 <!-- talks:start (generated by scripts/gen-innovation-talks.mjs) -->
 ## Innovation Talk & Showcase speakers
 
-54 stage talks by exhibitors and government departments at Bharat AI Innovation 2026, 20–21 November, WTC Mumbai (hall and times to be announced):
+56 stage talks by exhibitors and government departments at Bharat AI Innovation 2026, 20–21 November, WTC Mumbai (hall and times to be announced):
+- **Mohit Kataria** (Chief Business Officer & Co-Founder, Nu10 Technologies) — From AI Pilots to AI-Native Enterprises: Reimagining Business Processes, Operating Models and Enterprise Growth with Agentic AI
+- **Ganesh Nagarajan** (Deputy Secretary, Ministry of Tribal Affairs) — Adi Vaani: Taking India's Tribal Languages from the Margins to the Mainstream with AI
 - **Dipak Zope** (Chief Executive Officer, Paisani Technology Services) — Embedded and automotive
 - **Shashank KP** (Chief Technology Officer, RedFerns Tech) — From Intelligence to Innovation: Building the Next Wave
 - **Ankit Kumar** (Founder and CEO, Xtant Dot Tech) — xGMS, proprietary AI governance management system developed by Xtant.tech.
@@ -237,13 +264,13 @@ Digital media partner: The Mainstream.
 - **Divyanshi Saxena** (Sr. Manager – Sales, Eurys Infosystems Pvt. Ltd.) — Pioneering the Shift from E-Governance to AI-Governance using conversational AI
 - **Senthil Kumar Hariram** (Founder & Managing Director, FTA Global) — Judgement wins the Moment: Big AI, Focused AI, and What India Should Build
 - **Akhil Gupta** (Founder & CTPO, NoBroker, ConvoZen) — Reimagining Marketplaces in the era of AI Agents
-- **Dr. Raja N. Moorthy** (Chief Operating Officer, Kirusa)
+- **Dr. Raja N. Moorthy** (Chief Operating Officer, Kirusa) — Corpusio-- An optimised resource  efficient RAG platform for private AI.
 - **Amritesh Kumar** (Product Head, Phoebetal Technologies) — AVISA One : From Health Signals to Connected Care - The power of Personalised AI care
 - **Saurabh Singh** (CEO & Co-Founder, Zanopy AI) — Don’t Just Build with AI. Sell with It.
 - **Mr. Anand Natarajan** (Director & Chief Technical Officer, Image Infosystems)
-- **Dr Rahul Ghodke** (Senior Vice President & Business Unit leader., CGI) — Your Next Colleague Is an AI: Lessons from Delivering Technology Operations for Global Clients
 - **Mayank Sen Sharma** (Co-Founder, Dysosphere) — Edge AI
 - **Dr. Anand Deshpande** (Co-Founder & Chief Strategy Officer, AlgoAnalytics) — AI-based Business Transformations in Manufacturing and Industrial Domains
+- **Dr. Pushkar Patwardhan** (Co-founder and Head of Cloud Engineering, LightMetrics) — From Roadside Risk to Real-Time Response: Building AI That Acts in Time
 - **Ambrish Agarwal** (Director, Ai Vie Insights) — Everyday AI for enterprise applications
 - **Dhiman Bhattacharya** (Business Head, Insurance AI & Distribution, ValuEnable) — Valuenable's AI Agent Assist
 - **Kiran Kumar V** (AVP - Product, Saranyu Technologies) — Beyond Translation: Solving the Real Challenges of AI Dubbing for Indian Audiences.
@@ -252,33 +279,33 @@ Digital media partner: The Mainstream.
 - **Shashi Bhushan** (Vice President – Sales & Head of Public Sector Sales (India), Gupshup.ai) — Conversational AI for Business
 - **Gaurav Jha** (Founder and CEO, Origins AI)
 - **Deepak Ramteke** (CEO & Founder, Kadeep.ai) — The Shift: From Software Testing to Engineering Release Confidence
-- **Mohit Kataria** (Chief Business Officer & Co-Founder, Nu10 Technologies) — Moving From AI Pilots to AI-Native Enterprise: Reimagining Business Processes, Operating Models and Enterprise Growth with Agentic AI
 - **Ferosh Sethumadhavan** (Associate Vice President, Evoke Technologies Private Limited) — From Data to AI Value in 90 Days
 - **Shivendra Singh** (Founder, Oranje AI) — Your Brand Now Has a Brain
-- **Manoj Agarwal** (Director, Rightangle Technologies) — Sustainable AI: Intelligence Without Excess
-- **Taranjiet Kaur Oberai** (Founder, JoyVibe) — Building a Human-Led Wellbeing Ecosystem from Bharat
-- **Aditi Saini** (Marketing Strategist, Aria Telecom) — Intelligence Without Boundaries. building Secure, Customizable and Multilingual AI by ARIA Telecom
-- **Vineet Upadhayay** (AI Head, P99Soft) — AI Governance - Observability and Security
-- **Saumya Phor** (CEO, Cloud Crane) — Personal Software: The Next Step After App Marketplaces
-- **Chirag Phor** (CTO, Cloud Crane) — Personal Software: The Next Step After App Marketplaces
+- **Dipti Agrawal** (Co-Founder and CEO, Tudip Technologies Pvt Ltd) — From Data to Decisions: Democratising Enterprise Intelligence Through Conversational AI
+- **Anoop Nair** (VP, Joget INC) — The Last Mile of AI: Where Models Become Business Value
+- **Harshal Wakharkar** (Sales Manager, Intangles Lab Pvt Ltd) — Beyond Tracking: Intelligent Fleet Telematics for Driving Behaviour, Fleet Health & Video Intelligence.
+- **Dr Rahul Ghodke** (Senior Vice President & Business Unit leader., CGI) — Your Next Colleague Is an AI: Lessons from Delivering Technology Operations for Global Clients
+- **Taranjiet Kaur Oberai** (Co Founder, JoyVibe) — Building a Human-Led Wellbeing Ecosystem from Bharat
+- **Azharuddin Khan** (Associate Manager, Tech and Strategy Office, Jade Global) — AI Landscape Today
+- **Saumya Phor** (CEO, Cloud Crane) — The next step of software distribution
+- **Chirag Phor** (CTO, Cloud Crane) — The next step of software distribution
 - **Selva Soorya** (Founder & CEO, OliAI) — Conversation Intelligence for Modern Enterprises
 - **Aravind Raj** (Co-Founder & CTO, OliAI) — Building Intelligence Engine for Enterprises
 - **Vyom Patel** (Co-Founder & CTO, TeenageWorks) — Teen V1: World's Most Affordable Voice Model
-- **Meghavi Shah** (Head Alliance, Assessfy) — Improving Learning Outcomes with AI: From Assessment to Measurable Impact
-- **Ganesh Nagarajan** (Deputy Secretary, Ministry of Tribal Affairs) — Adi Vaani: Taking India's Tribal Languages from the Margins to the Mainstream with AI
-- **Anoop Nair** (VP, Joget INC) — The Last Mile of AI: Where Models Become Business Value
-- **Harshal Wakharkar** (Sales Manager, Intangles Lab Pvt Ltd) — Beyond Tracking: Intelligent Fleet Telematics for Driving Behaviour, Fleet Health & Video Intelligence.
-- **Dr. Pushkar Patwardhan** (Co-founder and Head of Cloud Engineering, LightMetrics) — From Roadside Risk to Real-Time Response: Building AI That Acts in Time
 - **Ashish Kumar Mishra** (CEO & MD, Asmadiya Technologies) — AI Innovation & Asmadiya products
 - **Shuvam Giri** (CTO, Asmadiya Technologies) — AI Innovation & Asmadiya products
+- **Aditi Saini** (Marketing Strategist, Aria Telecom) — Intelligence Without Boundaries. building Secure, Customizable and Multilingual AI by ARIA Telecom
+- **Vineet Upadhayay** (AI Head, P99Soft) — AI Governance - Observability and Security
+- **Meghavi Shah** (Head Alliance, Assessfy) — Improving Learning Outcomes with AI: From Assessment to Measurable Impact
 - **Shishir Sharan** (CEO, Daten Intelligenz Software, AIGyan Technologies)
 - **Dr Rahul Ghodke** (Senior Vice President & Business Unit leader., CGI) — Your Next Colleague Is an AI: Lessons from Delivering Technology Operations for Global Clients
 - **Shashank KP** (CTO, RedFerns Tech Private Limited) — From Intelligence to Innovation: Building the Next Wave
 - **Dr. Anand Deshpande** (CSO, Algo Analytics) — AI-based Business Transformations in Manufacturing and Industrial Domains
 - **Ambrish Agarwal** (Director, Ai Vie Insights Private Limited) — Everyday AI for enterprise applications
+- **Saurabh Singh** (CEO & Co-Founder, Zanopy AI) — Don’t Just Build with AI. Sell with It.
 - **Seema Sutradhar** (Founder & CEO, SEEM ( brand in fintech and sustainability consulting)) — Digital Transformation in systemically important banks and others
 - **Sushil Sani** (Engineering Manager, Trust3 AI) — Trust3AI Security Governance
-- **Azharuddin Khan** (Associate Manager, Tech and Strategy Office, Jade Global) — The importance of becoming AI-native in today's landscape
+- **Manoj Agarwal** (Director, Rightangle Technologies) — Sustainable AI: Intelligence Without Excess
 - **Shri Vivek Khandekar (IFS)** (Principal Chief Conservator of Forests (Social Forestry), Maharashtra Forest Department) — GeoAI Forest Encroachment Monitoring & Ganesh Kavach App
 - **Srinivas Kancharla** (Program Specialist, Office of the Principal Scientific Adviser to the Government of India) — The AI components of MANTHAN–UTTHAN: the platform's capabilities, innovations and potential impact
 - **Dr. Kunal Khemnar (IAS)** (Joint Chief Executive Officer, Maharashtra Industrial Development Corporation (MIDC)) — AI-Driven Land Demand-Supply Intelligence for MIDC

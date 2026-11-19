@@ -175,8 +175,10 @@
     .gv-stage { background: var(--off-white); }
     .gv-sub { margin: 2.25rem 0 1.1rem; font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; color: var(--charcoal); text-align: center; }
     .gv-sub:first-of-type { margin-top: 0; }
-    .gv-mins { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem 0.6rem; }
-    .gv-mins li { text-align: center; }
+    .gv-mins { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1.25rem 0.6rem; }
+    .gv-mins li { text-align: center; grid-column: span 2; }
+    .gv-mins li:nth-child(3n+1):nth-last-child(2) { grid-column: 2 / span 2; }
+    .gv-mins li:nth-child(3n+1):last-child { grid-column: 3 / span 2; }
     .gv-mins img { display: block; width: min(100%, 92px); height: auto; aspect-ratio: 1; margin: 0 auto 0.5rem; border-radius: 50%; object-fit: cover; background: #E3E6F6; box-shadow: 0 0 0 3px #fff, 0 0 0 5px #FF9933; }
     .gv-mins b { display: block; font-size: 0.82rem; line-height: 1.25; color: var(--charcoal); }
     .gv-mins span { display: block; margin-top: 0.2rem; font-size: 0.72rem; line-height: 1.32; color: var(--dark-grey); }
@@ -487,9 +489,7 @@
                 <li><img width="150" height="150" loading="lazy" decoding="async" src="images/chandrakant-patil.jpg" alt="" style="object-position:50% 22%"><b>Hon’ble Shri Chandrakant Dada Patil</b><span>Minister of Higher and Technical Education, Maharashtra</span></li>
                 <li><img width="150" height="150" loading="lazy" decoding="async" src="images/dattatray-bharane.avif" alt="" style="object-position:28% 22%"><b>Hon’ble Shri Dattatray Bharane</b><span>Minister of Agriculture, Maharashtra</span></li>
                 <li><img width="150" height="150" loading="lazy" decoding="async" src="images/aditi-tatkare.jpg" alt="" style="object-position:46% 18%"><b>Hon’ble Smt. Aditi Tatkare</b><span>Minister of Women and Child Development, Maharashtra</span></li>
-                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/sanjay-rathod.jpg" alt="" style="object-position:37% 25%"><b>Hon’ble Shri Sanjay Rathod</b><span>Minister of Soil and Water Conservation, Maharashtra</span></li>
-                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/speaker-ashish-jaiswal-sq.webp" alt=""><b>Hon’ble Shri Ashish Nandkishore Jaiswal</b><span>Minister of State for Finance, Planning and Agriculture, Maharashtra</span></li>
-            </ul>
+                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/sanjay-rathod.jpg" alt="" style="object-position:37% 25%"><b>Hon’ble Shri Sanjay Rathod</b><span>Minister of Soil and Water Conservation, Maharashtra</span></li>            </ul>
 
             <h3 class="gv-sub reveal">Government speakers</h3>
             <ul class="gv-offs reveal">
