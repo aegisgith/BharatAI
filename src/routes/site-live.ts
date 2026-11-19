@@ -92,7 +92,7 @@ export function renderLivePage(template: string, programme: any): string {
   const S = programmeFromApp(programme)
   const directory = directoryWithTalks()
   resolvePeople(S, { directory, talkFiles, onDisk: (f: string) => !!f })
-  const r = renderConference(S, { tracks: (TRACKS as any).tracks, pictures })
+  const r = renderConference(S, { tracks: (TRACKS as any).tracks, pictures, logoOf: (f: string) => logos[f] || null })
   const eol = template.includes('\r\n') ? '\r\n' : '\n'
   let out = lfOnly(template)
   out = fillBlock(out, 'schedule', r.schedule)

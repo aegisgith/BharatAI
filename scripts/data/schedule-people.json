@@ -33,6 +33,7 @@
     { "name": "Abhay Sharma", "role": "Partner & Practice Leader", "org": "IBM", "photo": "images/speaker-abhay-sharma.webp", "logo": "images/logo-ibm.webp" },
     { "name": "Akhil Gupta", "role": "Founder", "org": "NoBroker", "photo": "images/speaker-akhil-gupta.webp", "logo": "images/org-logos/favicon-nobroker.in.png" },
     { "name": "Mukesh Jain", "role": "Global EVP & CTO", "org": "Capgemini", "photo": "images/speaker-mukesh-jain-capgemini.webp", "logo": "images/org-logos/favicon-capgemini.com.png" },
+    { "name": "Alexey Gvintovkin", "role": "Founder", "org": "EXENI", "photo": "images/speaker-alexey-gvintovkin-sq.webp", "logo": "images/org-logos/exeni.webp" },
 
     { "name": "Jagbir Singh", "role": "Chief Technology & Information Officer", "org": "Vodafone Idea", "photo": "images/speaker-jagbir-singh.webp", "logo": "images/org-logos/favicon-myvi.in.png" },
     { "name": "Manish Agrawal", "role": "President & COO", "org": "Comviva", "photo": "images/speaker-manish-agarwal-comviva.webp", "logo": "images/org-logos/favicon-comviva.com.png" },

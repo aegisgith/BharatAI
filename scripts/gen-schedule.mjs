@@ -41,7 +41,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlink
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import sharp from 'sharp'
-import { makeDirectory, resolvePeople, renderConference, fillBlock, fillFaq, slugOf, norm } from './lib/programme.mjs'
+import { makeDirectory, resolvePeople, renderConference, fillBlock, fillFaq, slugOf, norm, poweredLogoFiles } from './lib/programme.mjs'
 
 const PAGE = 'public/conference.html'
 const THUMBS = 'images/sched'
@@ -155,6 +155,9 @@ for (const s of S.sessions) {
 // Every logo the directory knows, baked too, so the worker can draw a person the
 // directory names who joins a panel after this build.
 for (const p of PEOPLE) if (p.logo && !manifest.logos[p.logo]) { const m = await bakeLogo(p.logo); manifest.logos[p.logo] = { src: m.src, w: m.w, h: m.h, lw: m.lw, lh: m.lh } }
+// A session's sponsor ("Powered by EXENI." in its description): its logo in org-logos/, else
+// the exhibitor wall's.
+for (const s of S.sessions) { const f = s.poweredBy ? poweredLogoFiles(s.poweredBy).find(onDisk) : ''; if (f && !manifest.logos[f]) { const m = await bakeLogo(f); manifest.logos[f] = { src: m.src, w: m.w, h: m.h, lw: m.lw, lh: m.lh } } }
 for (const p of PEOPLE) if (p.photo && !manifest.photos[norm(p.name).replace(/ /g, '-')]) { const q = { slug: norm(p.name).replace(/ /g, '-'), photo: p.photo, crop: p.crop || null }; const t = await bakePhoto(q); manifest.photos[q.slug] = { src: t.src, w: t.w, h: t.h } }
 const kept = new Set([...[...made.values()].map((m) => m.name), 'manifest.json'])
 for (const f of readdirSync(join('public', THUMBS))) {
@@ -164,7 +167,7 @@ for (const f of readdirSync(join('public', THUMBS))) {
 }
 
 const pictures = (p) => ({ thumb: p.thumb || null, mark: p.mark || null })
-const r = renderConference(S, { tracks: TRACKS, pictures })
+const r = renderConference(S, { tracks: TRACKS, pictures, logoOf: (f) => manifest.logos[f] || null })
 
 // Replace the text between each pair of markers, keeping the file's line endings.
 const src = readFileSync(PAGE, 'utf8')

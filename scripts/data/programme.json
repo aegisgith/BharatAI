@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-19T14:04:52.798Z",
+ "generated_at": "2026-11-19T14:28:37.143Z",
  "live": true,
  "event": {
   "id": 1,
@@ -1497,7 +1497,7 @@
   {
    "id": 130,
    "title": "Human × AI: The Partnership Powering the Autonomous Enterprise",
-   "description": "Panel: Agentic AI",
+   "description": "Panel: Agentic AI. Powered by EXENI.",
    "session_type": "panel",
    "track": "GenAI & Agentic AI",
    "room": "Homi J. Bhabha Hall",

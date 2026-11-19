@@ -85,6 +85,19 @@ export const dayLongText = (ymd) => { const d = dateOf(ymd); return `${d.getUTCD
 const TYPE_MAP = { keynote: 'keynote', talk: 'talk', panel: 'panel', workshop: 'workshop', break: 'break', networking: 'networking', ceremony: 'keynote', exhibition: 'break' }
 const firstSentence = (s) => { const m = String(s || '').match(/^(.*?[.!?])(\s+|$)([\s\S]*)$/); return m ? [m[1].trim(), m[3].trim()] : [String(s || '').trim(), ''] }
 
+// "Powered by EXENI." anywhere in a session's description (Admin -> Conference) names the
+// session's sponsor (19 Nov 2026). The sentence leaves the note; the schedule draws
+// "Powered by" with the sponsor's logo (images/org-logos/<slug>.webp, else the exhibitor
+// wall's images/exhibitors/<slug>.webp), or its name in words.
+export function poweredBy(desc) {
+  const text = String(desc || '').trim()
+  const m = text.match(/(^|[.!?]\s+)Powered by\s+([^.!?]+?)\s*(?:[.!?]|$)/i)
+  if (!m) return { name: '', rest: text }
+  const rest = (text.slice(0, m.index) + (m[1] ? m[1].trim() : '') + ' ' + text.slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim()
+  return { name: m[2].trim(), rest }
+}
+export const poweredLogoFiles = (name) => [`images/org-logos/${slugOf(name)}.webp`, `images/exhibitors/${slugOf(name)}.webp`]
+
 // What kind of item it is, in the website's words: the label the schedule prints for
 // breaks and networking ("Lunch", "Evening"), and for a panel its subject ("Panel: BFSI").
 export function labelFor(s, type, desc) {
@@ -173,10 +186,12 @@ export function programmeFromApp(programme) {
     const day = dayNo.get(String(s.start_time || '').slice(0, 10))
     if (!day) continue
     const type = TYPE_MAP[s.session_type] || 'talk'
-    const desc = String(s.description || '').trim()
+    const sponsor = poweredBy(s.description)
+    const desc = sponsor.rest
     const label = labelFor(s, type, desc)
     const item = { hall: hallKey(s.room), day, start: String(s.start_time).slice(11, 16), end: String(s.end_time).slice(11, 16), type, label, id: Number(s.id) }
     if (s.track) item.track = s.track
+    if (sponsor.name) item.poweredBy = sponsor.name
     const title = String(s.title || '').trim()
     const co = title.match(/^innovation talk\s*[:\-–]\s*(.+)$/i)
     const people = s.people || peopleOf(s, speakersByNorm)
@@ -309,7 +324,7 @@ const listWords = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join
 // Renders the schedule block, the Tracks block and the FAQ sentence. `pictures(p)` gives
 // a person's small photo {src,w,h} as `thumb` and logo {src,w,h,lw,lh} as `mark`, or
 // nothing; S.sessions must have been through resolvePeople().
-export function renderConference(S, { tracks = [], pictures = () => ({}) } = {}) {
+export function renderConference(S, { tracks = [], pictures = () => ({}), logoOf = () => null } = {}) {
   const days = S.days || ['2026-11-20', '2026-11-21']
   const dayNos = days.map((_, i) => i + 1)
   const hall = (key) => S.halls.find((x) => x.key === key) || { key, name: key }
@@ -337,16 +352,25 @@ export function renderConference(S, { tracks = [], pictures = () => ({}) } = {})
     return out
   }
   const sentence = (tag, ls, cls = '') => (ls.length || tag ? `<p${cls ? ` class="${cls}"` : ''}>${tag}${ls.join('. ')}${ls.length ? '.' : ''}</p>` : '')
+  // The sponsor's logo at 34px high (the baked copy is about twice that), or its name.
+  const powered = (s) => {
+    if (!s.poweredBy) return ''
+    const m = poweredLogoFiles(s.poweredBy).map((f) => logoOf(f)).find(Boolean)
+    const mark = m && m.src && m.w && m.h
+      ? `<img width="${Math.round((34 * m.w) / m.h)}" height="34" loading="lazy" decoding="async" src="${esc(m.src)}" alt="${esc(s.poweredBy)}">`
+      : `<b>${esc(s.poweredBy)}</b>`
+    return `<p class="sch-powered"><span>Powered by</span>${mark}</p>`
+  }
   const item = (s, tag = '', id = '') => {
     const ppl = s.people || []
     const note = s.note ? [esc(s.note.replace(/\.$/, ''))] : []
     const info = []
     if (!ppl.length) {
-      info.push(`<h4>${esc(heading(s))}</h4>`, sentence(tag, [...words(s), ...note]))
+      info.push(`<h4>${esc(heading(s))}</h4>`, sentence(tag, [...words(s), ...note]), powered(s))
     } else if (!s.title && ppl.length === 1) {
-      info.push(card(ppl[0], 'div', 'h4', ' sch-lead'), sentence(tag, [...words(s), ...note], 'sch-note'))
+      info.push(card(ppl[0], 'div', 'h4', ' sch-lead'), sentence(tag, [...words(s), ...note], 'sch-note'), powered(s))
     } else {
-      info.push(`<h4>${esc(heading(s))}</h4>`, sentence(tag, words(s)))
+      info.push(`<h4>${esc(heading(s))}</h4>`, sentence(tag, words(s)), powered(s))
       info.push(`<ul class="sch-people">${ppl.map((p) => card(p, 'li', 'div')).join('')}</ul>`)
       info.push(sentence('', note, 'sch-note'))
     }

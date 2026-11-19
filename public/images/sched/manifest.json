@@ -287,7 +287,7 @@
    "h": 144
   },
   "alexey-gvintovkin": {
-   "src": "images/sched/alexey-gvintovkin.webp?v=53974f7a",
+   "src": "images/sched/alexey-gvintovkin.webp?v=9d458623",
    "w": 144,
    "h": 144
   },
@@ -1011,6 +1011,13 @@
    "h": 58,
    "lw": 42,
    "lh": 38
+  },
+  "images/org-logos/exeni.webp": {
+   "src": "images/sched/logo-exeni.webp?v=cea98118",
+   "w": 178,
+   "h": 80,
+   "lw": 65,
+   "lh": 29
   },
   "images/exhibitors/ai-vie-insights.webp": {
    "src": "images/sched/logo-ai-vie-insights.webp?v=9ce9e792",

@@ -1,5 +1,5 @@
 {
-  "source": "the app (Admin → Conference), 2026-11-19T14:04:52.798Z",
+  "source": "the app (Admin → Conference), 2026-11-19T14:28:37.143Z",
   "days": [
     "2026-11-20",
     "2026-11-21"
@@ -1115,6 +1115,7 @@
       "label": "Panel: Agentic AI",
       "id": 130,
       "track": "GenAI & Agentic AI",
+      "poweredBy": "EXENI",
       "title": "Human × AI: The Partnership Powering the Autonomous Enterprise",
       "panel": [
         {
@@ -2365,8 +2366,8 @@
       "label": "Panel: Education",
       "id": 145,
       "track": "Education & Skills AI",
+      "poweredBy": "Assessfy",
       "title": "Improving Learning Outcomes with AI: From Assessment to Measurable Impact",
-      "note": "Powered by Assessfy.",
       "panel": [
         {
           "name": "Dr. Saurabh N. Mehta",
