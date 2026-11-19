@@ -46,7 +46,8 @@
 // 12 Nov 2026 (bhai-v33): pass-render.js?v=20261112b: the Organiser pass in black and saffron, and the
 // Student and Influencer passes printed as themselves, not VISITOR PASS.
 // 14 Nov 2026 (bhai-v37): pass-render.js?v=20261114: the Expo Pass (Rs 999) printed as itself.
-const VERSION = 'bhai-v40';
+// 19 Nov 2026 (bhai-v41): Shri Ashish Nandkishore Jaiswal off the speakers list; drop saved copies.
+const VERSION = 'bhai-v41';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 // The badge desk's scanner page, kept so it opens with no internet (12 Nov 2026).
