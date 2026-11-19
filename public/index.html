@@ -786,15 +786,20 @@
             display: inline-block; font-family: var(--font-body); font-size: 0.64rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.35;
             color: var(--indigo); text-align: center; /* no box round it (the organiser, 17 Nov 2026) */
         }
+        /* A lone last tile (seven partners since EXENI, 19 Nov 2026) sits in the middle of its row. */
+        .ptile:last-child:nth-child(odd) { grid-column: 1 / -1; justify-self: center; width: calc(50% - 0.425rem); }
         @media (min-width: 900px) {
             .ptiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
             .ptile-stage { height: 128px; padding: 1.1rem 1.5rem; }
             .ptile-cap { padding: 1rem 1.15rem 0.9rem; }
             .ptile-role { font-size: 0.7rem; }
+            .ptile:last-child:nth-child(odd) { grid-column: auto; justify-self: stretch; width: auto; }
+            .ptile:last-child:nth-child(3n+1) { grid-column: 2; }
         }
-        /* All six in one row (the organiser, 17 Nov 2026): the grid takes the whole container width. */
+        /* All in one row (the organiser, 17 Nov 2026; seven since 19 Nov): the grid takes the whole container width. */
         @media (min-width: 1024px) {
-            .ptiles { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.9rem; max-width: none; }
+            .ptile:last-child:nth-child(3n+1) { grid-column: auto; }
+            .ptiles { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.9rem; max-width: none; }
             .ptile-stage { height: 112px; padding: 0.9rem 1rem; }
             .ptile-cap { padding: 0.8rem 0.85rem 0.7rem; }
             .ptile-role { font-size: 0.6rem; letter-spacing: 0.06em; }
@@ -965,6 +970,10 @@
                 <li class="ptile reveal reveal-delay-2">
                     <div class="ptile-cap"><span class="ptile-role">Analytics Partner</span></div>
                     <div class="ptile-stage"><img width="880" height="303" loading="lazy" decoding="async" src="images/org-logos/decimal-point-analytics.webp" alt="Decimal Point Analytics"></div>
+                </li>
+                <li class="ptile reveal reveal-delay-3">
+                    <div class="ptile-cap"><span class="ptile-role">Partner</span></div>
+                    <div class="ptile-stage"><img width="640" height="288" loading="lazy" decoding="async" src="images/org-logos/exeni.webp" alt="EXENI"></div>
                 </li>
             </ul>
         </div>
