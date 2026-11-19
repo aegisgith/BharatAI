@@ -73,9 +73,12 @@ function directoryWithTalks() {
 
 // Where an exhibitor speaker's photo and the company's logo are, as far as the manifest
 // knows; a photo the app holds is used as it is.
+// A row found only by company (the app changed the speaker) gives the logo, never the old
+// speaker's photo (Paisani, 19 Nov 2026: Dipak Zope's face under Archana's name).
 function talkFiles(talk: any) {
-  const j = talkJsonByName.get(norm(talk.name)) || talkJsonByCo.get(talk.company)
-  const slug = talk.slug || j?.slug || slugOf(talk.name)
+  const byName = talkJsonByName.get(norm(talk.name))
+  const j = byName || talkJsonByCo.get(talk.company)
+  const slug = talk.slug || byName?.slug || slugOf(talk.name)
   const photo = photos[slug] ? `images/talks/${slug}.webp` : String(talk.photo || '').replace(/^\/(?!api\/)/, '')
   const logoFile = [talk.logoFile, j?.logoFile, `images/exhibitors/${slugOf(talk.company)}.webp`].find((f) => f && logos[f]) || ''
   return { photo, logo: logoFile, crop: null }

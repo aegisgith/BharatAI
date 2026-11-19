@@ -1587,6 +1587,15 @@ export async function withSessionPhotos(c: any, eventId: number, sessions: any[]
     const k = normName(sp.name), u = String(sp.photo_url || '')
     if (k && /^(\/|https:\/\/)/.test(u) && !byNorm.has(k)) byNorm.set(k, u)
   }
+  // An Innovation Talk's speaker is rarely on the speakers list: the talk's own photo
+  // (19 Nov 2026: Archana Ambekar Shedge showed initials on her talk in the app).
+  try {
+    const talks = await all(c, "SELECT speaker_name, speaker_photo_url FROM innovation_talks WHERE event_id = ? AND COALESCE(status, 'confirmed') <> 'cancelled'", eventId)
+    for (const t of talks) {
+      const k = normName(t.speaker_name), u = String(t.speaker_photo_url || '')
+      if (k && /^(\/|https:\/\/)/.test(u) && !byNorm.has(k)) byNorm.set(k, u)
+    }
+  } catch { /* no talks list yet */ }
   if (!byNorm.size) return sessions
   return sessions.map(s => {
     const photos = sessionPhotoMap(s.speaker_name, byNorm)

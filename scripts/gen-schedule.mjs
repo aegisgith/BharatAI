@@ -80,9 +80,13 @@ for (const s of S.sessions) {
 }
 // An exhibitor's speaker: the photo and logo the Innovation Talks wall already uses, or
 // the photo the app holds for them.
+// A row found only by company (the app changed the speaker) gives the company's logo,
+// never its old speaker's photo: Paisani's talk showed Dipak Zope's face under Archana
+// Ambekar Shedge's name (19 Nov 2026).
 function talkFiles(talk) {
-  const fromJson = TALKS_JSON.find((t) => norm(t.name) === norm(talk.name)) || talkJsonByCo.get(talk.company)
-  const slug = talk.slug || fromJson?.slug || slugOf(talk.name)
+  const byName = TALKS_JSON.find((t) => norm(t.name) === norm(talk.name))
+  const fromJson = byName || talkJsonByCo.get(talk.company)
+  const slug = talk.slug || byName?.slug || slugOf(talk.name)
   const photo = [`images/talks/${slug}.webp`, String(talk.photo || '').replace(/^\//, '')].find(onDisk) || ''
   const logo = [talk.logoFile, fromJson?.logoFile, `images/exhibitors/${slugOf(talk.company)}.webp`].find(onDisk) || ''
   return { photo, logo, crop: null }
