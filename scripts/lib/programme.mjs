@@ -352,12 +352,12 @@ export function renderConference(S, { tracks = [], pictures = () => ({}), logoOf
     return out
   }
   const sentence = (tag, ls, cls = '') => (ls.length || tag ? `<p${cls ? ` class="${cls}"` : ''}>${tag}${ls.join('. ')}${ls.length ? '.' : ''}</p>` : '')
-  // The sponsor's logo at 34px high (the baked copy is about twice that), or its name.
+  // The sponsor's logo at 48px high (the baked copy is 80px), or its name.
   const powered = (s) => {
     if (!s.poweredBy) return ''
     const m = poweredLogoFiles(s.poweredBy).map((f) => logoOf(f)).find(Boolean)
     const mark = m && m.src && m.w && m.h
-      ? `<img width="${Math.round((34 * m.w) / m.h)}" height="34" loading="lazy" decoding="async" src="${esc(m.src)}" alt="${esc(s.poweredBy)}">`
+      ? `<img width="${Math.round((48 * m.w) / m.h)}" height="48" loading="lazy" decoding="async" src="${esc(m.src)}" alt="${esc(s.poweredBy)}">`
       : `<b>${esc(s.poweredBy)}</b>`
     return `<p class="sch-powered"><span>Powered by</span>${mark}</p>`
   }

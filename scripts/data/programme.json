@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-19T14:28:37.143Z",
+ "generated_at": "2026-11-19T14:35:54.847Z",
  "live": true,
  "event": {
   "id": 1,
@@ -1589,7 +1589,7 @@
      "name": "Alexey Gvintovkin",
      "role": "EXENI Founder",
      "organisation": "EXENI",
-     "photo_url": "/images/speakers/alexey-gvintovkin.webp",
+     "photo_url": "/images/speaker-alexey-gvintovkin-sq.webp",
      "part": "panellist"
     }
    ]
@@ -4912,7 +4912,7 @@
    "role": "EXENI Founder",
    "organisation": "EXENI",
    "topic": "Human × AI: The Partnership Powering the Autonomous Enterprise",
-   "photo_url": "/images/speakers/alexey-gvintovkin.webp",
+   "photo_url": "/images/speaker-alexey-gvintovkin-sq.webp",
    "bio": "",
    "linkedin_url": "",
    "is_featured": 1,
