@@ -389,6 +389,10 @@
         }
         .exhibition-hero h1 span { color: var(--saffron); }
         .exhibition-hero-sub { font-size: 1.1rem; color: rgba(255,255,255,0.6); max-width: 620px; margin: 0 auto 2.5rem; line-height: 1.7; }
+        .hero-powered { display: flex; align-items: center; justify-content: center; gap: 0.7rem; margin: 0 0 1.4rem; }
+        .hero-powered span { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.85); white-space: nowrap; }
+        .hero-powered img { width: 156px; height: auto; border-radius: 6px; box-shadow: 0 8px 22px -8px rgba(0,0,0,0.7); }
+        @media (min-width: 1024px) { .hero-powered { gap: 0.9rem; margin-bottom: 1.6rem; } .hero-powered span { font-size: 0.8rem; } .hero-powered img { width: 196px; } }
         .exhibition-hero-pills {
             display: flex; align-items: center; justify-content: center; gap: 0.85rem; flex-wrap: wrap;
         }
@@ -637,6 +641,7 @@
         <div class="container exhibition-hero-content">
             <div class="exhibition-hero-eyebrow"><i class="fas fa-store"></i> The Exhibition</div>
             <h1>AI Innovation <span>Exhibition</span> 2026</h1>
+            <div class="hero-powered"><span>Powered by</span><img width="640" height="212" decoding="async" src="/images/logo-idfc-first-bank.webp" alt="IDFC FIRST Bank"></div>
             <p class="exhibition-hero-sub">The exhibition floor at WTC Mumbai. 5,000+ visitors over 2 days — enterprise buyers, government officials, investors, and AI professionals, all specifically registered to evaluate AI solutions.</p>
             <div class="exhibition-hero-pills">
                 <span class="exhibition-pill"><i class="fas fa-th-large"></i> 8 Industry Zones</span>

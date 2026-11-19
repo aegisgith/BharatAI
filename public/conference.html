@@ -636,6 +636,10 @@
             .trk-s { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; }
             .trk-kind { grid-row: auto; margin: 0 0 0.15rem; }
         }
+        .hero-powered { display: flex; align-items: center; justify-content: center; gap: 0.7rem; margin: 0.2rem 0 1.2rem; }
+        .hero-powered span { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.85); white-space: nowrap; }
+        .hero-powered img { width: 156px; height: auto; border-radius: 6px; box-shadow: 0 8px 22px -8px rgba(0,0,0,0.7); }
+        @media (min-width: 1024px) { .hero-powered { gap: 0.9rem; margin-bottom: 1.4rem; } .hero-powered span { font-size: 0.8rem; } .hero-powered img { width: 196px; } }
     </style>
 </head>
 <body>
@@ -677,6 +681,7 @@
         <div class="page-header-content container">
             <span class="page-header-eyebrow"><i class="fas fa-microphone-alt"></i> The Conference</span>
             <h1><span class="cf-w"><span style="--i:0">Bharat</span></span> <span class="cf-w"><span style="--i:1">AI</span></span> <span class="cf-w"><span style="--i:2">Innovation</span></span><br><span class="cf-w"><span style="--i:3">Conference</span></span> <span class="cf-w"><span style="--i:4">2026</span></span></h1>
+            <div class="hero-powered"><span>Powered by</span><img width="640" height="212" decoding="async" src="/images/logo-idfc-first-bank.webp" alt="IDFC FIRST Bank"></div>
             <p>Leading Speakers &nbsp;·&nbsp; 10+ Tracks &nbsp;·&nbsp; 5 Halls &nbsp;·&nbsp; Leaders’ Evening</p>
         </div>
     </section>
