@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-19T10:58:56.953Z",
+ "generated_at": "2026-11-19T13:53:14.766Z",
  "live": true,
  "event": {
   "id": 1,
@@ -917,7 +917,7 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-20 14:00",
    "end_time": "2026-11-20 15:00",
-   "speaker_name": "Tarun Chugh (Bajaj Life Insurance Company), Nilesh Shah (Kotak Mahindra Asset Management), Ratan Kumar Kesh (Bandhan Bank), Mr. Sarosh Amaria (Tata Capital Housing Finance Limited), Mayur Kapur (TransUnion), Abhay Tewari (Star Union Dai-ichi Life Insurance), Shailesh Dhuri (Moderator)",
+   "speaker_name": "Tarun Chugh (Bajaj Life Insurance Company), Nilesh Shah (Kotak Mahindra Asset Management), Ratan Kumar Kesh (Bandhan Bank), Mr. Sarosh Amaria (Tata Capital Housing Finance Limited), Mayur Kapur (TransUnion), Abhay Tewari (Star Union Dai-ichi Life Insurance), Shailesh Dhuri (Moderator), Kiran Nambiar (MyFi)",
    "speaker_title": "",
    "links": [
     {
@@ -947,6 +947,10 @@
     {
      "speaker_id": 11,
      "role": "moderator"
+    },
+    {
+     "speaker_id": 144,
+     "role": "panellist"
     }
    ],
    "people": [
@@ -1005,6 +1009,14 @@
      "organisation": "Decimal Point Analytics",
      "photo_url": "/images/speaker-shailesh-dhuri-final.webp",
      "part": "moderator"
+    },
+    {
+     "speaker_id": 144,
+     "name": "Kiran Nambiar",
+     "role": "CEO & Co-founder",
+     "organisation": "MyFi",
+     "photo_url": "/images/speakers/kiran-nambiar.webp",
+     "part": "panellist"
     }
    ]
   },
@@ -1017,7 +1029,7 @@
    "room": "Kalam Theatre",
    "start_time": "2026-11-20 14:00",
    "end_time": "2026-11-20 15:00",
-   "speaker_name": "Rahul Molasi (Sun Pharma), Rinoo Rajesh, Rakhi Prasad (ClarityX), Arvind Shah (Sama Insurance)",
+   "speaker_name": "Rahul Molasi (Sun Pharma), Rinoo Rajesh, Rakhi Prasad (ClarityX), Arvind Shah (Sama Insurance), Rajib Lochan Mahalik (Moderator)",
    "speaker_title": "",
    "links": [
     {
@@ -1035,6 +1047,10 @@
     {
      "speaker_id": 168,
      "role": "panellist"
+    },
+    {
+     "speaker_id": 171,
+     "role": "moderator"
     }
    ],
    "people": [
@@ -1069,6 +1085,14 @@
      "organisation": "Sama Insurance",
      "photo_url": "/images/speakers/arvind-shah.webp",
      "part": "panellist"
+    },
+    {
+     "speaker_id": 171,
+     "name": "Rajib Lochan Mahalik",
+     "role": "Managing Director",
+     "organisation": "Technocracy Private Limited",
+     "photo_url": "/images/speakers/rajib-lochan-mahalik.webp",
+     "part": "moderator"
     }
    ]
   },
@@ -1507,7 +1531,7 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-20 16:30",
    "end_time": "2026-11-20 17:30",
-   "speaker_name": "Abhay Sharma (IBM), Akhil Gupta (NoBroker.com), Raveesh Dewan (Joget Inc.), Mukesh Jain (Capgemini), Kushan Shah (Fynd), Bhupesh Daheria (Moderator)",
+   "speaker_name": "Abhay Sharma (IBM), Akhil Gupta (NoBroker.com), Raveesh Dewan (Joget Inc.), Mukesh Jain (Capgemini), Kushan Shah (Fynd), Bhupesh Daheria (Moderator), Alexey Gvintovkin (EXENI)",
    "speaker_title": "",
    "links": [
     {
@@ -1533,6 +1557,10 @@
     {
      "speaker_id": 10,
      "role": "moderator"
+    },
+    {
+     "speaker_id": 172,
+     "role": "panellist"
     }
    ],
    "people": [
@@ -1583,6 +1611,14 @@
      "organisation": "Trustee, Aegis Knowledge Trust",
      "photo_url": "/images/speaker-bhupesh-daheria.jpg",
      "part": "moderator"
+    },
+    {
+     "speaker_id": 172,
+     "name": "Alexey Gvintovkin",
+     "role": "EXENI Founder",
+     "organisation": "EXENI",
+     "photo_url": "/images/speakers/alexey-gvintovkin.webp",
+     "part": "panellist"
     }
    ]
   },
@@ -2061,7 +2097,7 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-21 10:20",
    "end_time": "2026-11-21 11:20",
-   "speaker_name": "Dr. Ashish Tendulkar (Google), Sudhir Kumar Rai (Trellix), Mahalakshmi AV (AWS), Bhupesh Daheria (Moderator), Shreenivas Chetlapalli (Jade Global)",
+   "speaker_name": "Dr. Ashish Tendulkar (Google), Sudhir Kumar Rai (Trellix), Mahalakshmi AV (AWS), Bhupesh Daheria (Moderator), Shreenivas Chetlapalli (Jade Global), Rajib Lochan Mahalik (Technocracy Private Limited)",
    "speaker_title": "",
    "links": [
     {
@@ -2082,6 +2118,10 @@
     },
     {
      "speaker_id": 169,
+     "role": "panellist"
+    },
+    {
+     "speaker_id": 171,
      "role": "panellist"
     }
    ],
@@ -2124,6 +2164,14 @@
      "role": "VP",
      "organisation": "Jade Global",
      "photo_url": "/images/speakers/shreenivas-chetlapalli.webp",
+     "part": "panellist"
+    },
+    {
+     "speaker_id": 171,
+     "name": "Rajib Lochan Mahalik",
+     "role": "Managing Director",
+     "organisation": "Technocracy Private Limited",
+     "photo_url": "/images/speakers/rajib-lochan-mahalik.webp",
      "part": "panellist"
     }
    ]
@@ -2242,7 +2290,7 @@
    "room": "Kalam Theatre",
    "start_time": "2026-11-21 11:00",
    "end_time": "2026-11-21 12:00",
-   "speaker_name": "Dr. Vivek Mohanrao Bhoite (ICAR-ATARI), Parag Dabhade (AI & Agritech Innovation Center), Dr. Santosh Vyas (Moderator), Shri Ravi Ranjan Singh (Department of Agriculture & Farmers Welfare), Mr. Manish K. Prahlad (Verdant Impact), Dr. Omprakash Mandge (MET)",
+   "speaker_name": "Dr. Vivek Mohanrao Bhoite (ICAR-ATARI), Parag Dabhade (AI & Agritech Innovation Center), Dr. Santosh Vyas (Moderator), Shri Ravi Ranjan Singh (Department of Agriculture & Farmers Welfare), Mr. Manish K. Prahlad (Verdant Impact), Dr. Omprakash Mandge (MET), Manish P. Daga (Cotton Guru)",
    "speaker_title": "",
    "links": [
     {
@@ -2267,6 +2315,10 @@
     },
     {
      "speaker_id": 149,
+     "role": "panellist"
+    },
+    {
+     "speaker_id": 153,
      "role": "panellist"
     }
    ],
@@ -2317,6 +2369,14 @@
      "role": "Academic Leader | IC Principal | AI Expert | PhD, Principal",
      "organisation": "MET",
      "photo_url": "/images/speaker-omprakash-mandge-sq.webp",
+     "part": "panellist"
+    },
+    {
+     "speaker_id": 153,
+     "name": "Manish P. Daga",
+     "role": "Managing Director",
+     "organisation": "Cotton Guru",
+     "photo_url": "/images/speakers/manish-p-daga.webp",
      "part": "panellist"
     }
    ]
@@ -3278,14 +3338,21 @@
    "start_time": "2026-11-21 17:04",
    "end_time": "2026-11-21 17:14",
    "speaker_name": "Meghavi Shah",
-   "speaker_title": "Head Alliance, Assessfy",
-   "links": [],
+   "speaker_title": "Head Alliances, Assessfy",
+   "links": [
+    {
+     "speaker_id": 170,
+     "role": "speaker"
+    }
+   ],
    "people": [
     {
-     "speaker_id": null,
+     "speaker_id": 170,
      "name": "Meghavi Shah",
-     "info": "",
-     "part": ""
+     "role": "Head Alliances",
+     "organisation": "Assessfy",
+     "photo_url": "/images/speakers/meghavi-shah.webp",
+     "part": "speaker"
     }
    ]
   },
@@ -3381,6 +3448,20 @@
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 2
+  },
+  {
+   "id": 173,
+   "slug": "mangal-prabhat-lodha",
+   "name": "Hon’ble Shri Mangal Prabhat Lodha",
+   "role": "Minister, Skill, Employment, Entrepreneurship & Innovation",
+   "organisation": "Government of Maharashtra",
+   "topic": "Keynote Address",
+   "photo_url": "/images/mangal-prabhat-lodha.webp",
+   "bio": "",
+   "linkedin_url": "",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 3
   },
   {
    "id": 1,
@@ -4837,6 +4918,48 @@
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 100
+  },
+  {
+   "id": 170,
+   "slug": "meghavi-shah",
+   "name": "Meghavi Shah",
+   "role": "Head Alliances",
+   "organisation": "Assessfy",
+   "topic": "",
+   "photo_url": "/images/speakers/meghavi-shah.webp",
+   "bio": "",
+   "linkedin_url": "https://www.linkedin.com/in/meghavi-shah-175790371/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base_contact_details%3BRTOum2l4Qh%2B4iTYqm7C4OA%3D%3D",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 101
+  },
+  {
+   "id": 171,
+   "slug": "rajib-lochan-mahalik",
+   "name": "Rajib Lochan Mahalik",
+   "role": "Managing Director",
+   "organisation": "Technocracy Private Limited",
+   "topic": "",
+   "photo_url": "/images/speakers/rajib-lochan-mahalik.webp",
+   "bio": "",
+   "linkedin_url": "https://www.linkedin.com/in/rajiblochanmahalik/",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 102
+  },
+  {
+   "id": 172,
+   "slug": "alexey-gvintovkin",
+   "name": "Alexey Gvintovkin",
+   "role": "EXENI Founder",
+   "organisation": "EXENI",
+   "topic": "Human × AI: The Partnership Powering the Autonomous Enterprise",
+   "photo_url": "/images/speakers/alexey-gvintovkin.webp",
+   "bio": "",
+   "linkedin_url": "",
+   "is_featured": 1,
+   "is_published": 1,
+   "sort_order": 103
   }
  ],
  "talks": [

@@ -1,5 +1,5 @@
 {
-  "source": "the app (Admin → Conference), 2026-11-19T10:58:56.953Z",
+  "source": "the app (Admin → Conference), 2026-11-19T13:53:14.766Z",
   "days": [
     "2026-11-20",
     "2026-11-21"
@@ -722,6 +722,13 @@
           "role": "MD & CEO",
           "photo": "/images/speaker-abhay-tewari-sq.webp",
           "listed": true
+        },
+        {
+          "name": "Kiran Nambiar",
+          "org": "MyFi",
+          "role": "CEO & Co-founder",
+          "photo": "/images/speakers/kiran-nambiar.webp",
+          "listed": true
         }
       ],
       "moderator": {
@@ -771,7 +778,14 @@
           "photo": "/images/speakers/arvind-shah.webp",
           "listed": true
         }
-      ]
+      ],
+      "moderator": {
+        "name": "Rajib Lochan Mahalik",
+        "org": "Technocracy Private Limited",
+        "role": "Managing Director",
+        "photo": "/images/speakers/rajib-lochan-mahalik.webp",
+        "listed": true
+      }
     },
     {
       "hall": "raman",
@@ -1152,6 +1166,13 @@
           "org": "Fynd",
           "role": "Chief Technology and Product Officer",
           "photo": "/images/speakers/khushan-shah.webp",
+          "listed": true
+        },
+        {
+          "name": "Alexey Gvintovkin",
+          "org": "EXENI",
+          "role": "EXENI Founder",
+          "photo": "/images/speakers/alexey-gvintovkin.webp",
           "listed": true
         }
       ],
@@ -1589,6 +1610,13 @@
           "role": "VP",
           "photo": "/images/speakers/shreenivas-chetlapalli.webp",
           "listed": true
+        },
+        {
+          "name": "Rajib Lochan Mahalik",
+          "org": "Technocracy Private Limited",
+          "role": "Managing Director",
+          "photo": "/images/speakers/rajib-lochan-mahalik.webp",
+          "listed": true
         }
       ],
       "moderator": {
@@ -1728,6 +1756,13 @@
           "org": "MET",
           "role": "Academic Leader | IC Principal | AI Expert | PhD, Principal",
           "photo": "/images/speaker-omprakash-mandge-sq.webp",
+          "listed": true
+        },
+        {
+          "name": "Manish P. Daga",
+          "org": "Cotton Guru",
+          "role": "Managing Director",
+          "photo": "/images/speakers/manish-p-daga.webp",
           "listed": true
         }
       ],

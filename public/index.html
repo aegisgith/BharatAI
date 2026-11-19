@@ -87,6 +87,7 @@
       "performer": [
         { "@type": "Person", "name": "Hon’ble Shri Eknath Shinde", "jobTitle": "Deputy Chief Minister", "worksFor": { "@type": "GovernmentOrganization", "name": "Government of Maharashtra" }, "image": "https://bharataiinnovation.com/images/eknath-shinde.webp" },
         { "@type": "Person", "name": "Hon’ble Shri Chandrakant Dada Patil", "jobTitle": "Minister, Higher & Technical Education", "worksFor": { "@type": "GovernmentOrganization", "name": "Government of Maharashtra" }, "image": "https://bharataiinnovation.com/images/chandrakant-patil.jpg" },
+        { "@type": "Person", "name": "Hon’ble Shri Mangal Prabhat Lodha", "jobTitle": "Minister, Skill, Employment, Entrepreneurship & Innovation", "worksFor": { "@type": "GovernmentOrganization", "name": "Government of Maharashtra" }, "image": "https://bharataiinnovation.com/images/mangal-prabhat-lodha.webp" },
         { "@type": "Person", "name": "Hon’ble Smt. Aditi Tatkare", "jobTitle": "Minister, Women & Child Development", "worksFor": { "@type": "GovernmentOrganization", "name": "Government of Maharashtra" }, "image": "https://bharataiinnovation.com/images/aditi-tatkare.jpg" },
         { "@type": "Person", "name": "Shri Virendra Singh (IAS)", "jobTitle": "Secretary", "worksFor": { "@type": "GovernmentOrganization", "name": "Electronics, Information Technology & Artificial Intelligence Department, Government of Maharashtra" }, "image": "https://bharataiinnovation.com/images/speaker-virendra-singh-sq.webp" },
         { "@type": "Person", "name": "Shri Bhim Singh", "jobTitle": "Secretary and CEO", "worksFor": { "@type": "GovernmentOrganization", "name": "State Rural Development Agency, Government of Chhattisgarh" }, "image": "https://bharataiinnovation.com/images/speaker-bhim-singh-sq.webp" },
@@ -190,7 +191,10 @@
         { "@type": "Person", "name": "Rakhi Prasad", "jobTitle": "Co Founder", "worksFor": { "@type": "Organization", "name": "ClarityX" }, "image": "https://bharataiinnovation.com/images/speakers/rakhi-prasad.webp" },
         { "@type": "Person", "name": "Mr. Prakash Ranjalkar", "jobTitle": "Director", "worksFor": { "@type": "Organization", "name": "Helios Towers" }, "image": "https://bharataiinnovation.com/images/speakers/prakash-ranjalkar.webp" },
         { "@type": "Person", "name": "Arvind Shah", "jobTitle": "CDO", "worksFor": { "@type": "Organization", "name": "Sama Insurance" }, "image": "https://bharataiinnovation.com/images/speakers/arvind-shah.webp" },
-        { "@type": "Person", "name": "Shreenivas Chetlapalli", "jobTitle": "VP", "worksFor": { "@type": "Organization", "name": "Jade Global" }, "image": "https://bharataiinnovation.com/images/speakers/shreenivas-chetlapalli.webp" }
+        { "@type": "Person", "name": "Shreenivas Chetlapalli", "jobTitle": "VP", "worksFor": { "@type": "Organization", "name": "Jade Global" }, "image": "https://bharataiinnovation.com/images/speakers/shreenivas-chetlapalli.webp" },
+        { "@type": "Person", "name": "Meghavi Shah", "jobTitle": "Head Alliances", "worksFor": { "@type": "Organization", "name": "Assessfy" }, "image": "https://bharataiinnovation.com/images/speakers/meghavi-shah.webp" },
+        { "@type": "Person", "name": "Rajib Lochan Mahalik", "jobTitle": "Managing Director", "worksFor": { "@type": "Organization", "name": "Technocracy Private Limited" }, "image": "https://bharataiinnovation.com/images/speakers/rajib-lochan-mahalik.webp" },
+        { "@type": "Person", "name": "Alexey Gvintovkin", "jobTitle": "EXENI Founder", "worksFor": { "@type": "Organization", "name": "EXENI" }, "image": "https://bharataiinnovation.com/images/speakers/alexey-gvintovkin.webp" }
       ],
       "keywords": "AI conference India, GenAI summit, artificial intelligence exhibition, machine learning conference, LLM conference, AI startups India, enterprise AI, Bharat AI",
       "url": "https://bharataiinnovation.com"
@@ -582,8 +586,11 @@
         .show-all[aria-expanded="true"] .chev { transform: translateY(1px) rotate(-135deg); }
 
         /* --- Speakers: keynote photographs, then a dense grid of faces --- */
-        .keynotes { list-style: none; margin: 0 0 1.75rem; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
-        .keynote { position: relative; aspect-ratio: 3 / 4; border-radius: 18px; overflow: hidden; background: var(--charcoal); }
+        .keynotes { list-style: none; margin: 0 0 1.75rem; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.6rem; }
+        .keynote { position: relative; aspect-ratio: 3 / 4; border-radius: 18px; overflow: hidden; background: var(--charcoal); grid-column: span 2; }
+        /* Three a row; a last row of one or two sits in the middle, not on the left */
+        .keynote:nth-child(3n+1):nth-last-child(2) { grid-column: 2 / span 2; }
+        .keynote:nth-child(3n+1):last-child { grid-column: 3 / span 2; }
         .keynote img { position: absolute; inset: 0; width: 100%; height: 100% !important; max-width: none; object-fit: cover; object-position: var(--pos, 50% 20%); }
         .keynote div { position: absolute; left: 0; right: 0; bottom: 0; padding: 3rem 0.9rem 0.9rem; color: #fff;
             background: linear-gradient(to top, rgba(10,12,28,0.96) 0%, rgba(10,12,28,0.78) 45%, rgba(10,12,28,0) 100%); }
@@ -1039,6 +1046,10 @@
                 <li class="keynote">
                     <img width="535" height="449" loading="lazy" decoding="async" src="images/chandrakant-patil.jpg" alt="Hon’ble Shri Chandrakant Dada Patil, Minister of Higher and Technical Education, Government of Maharashtra" style="--pos:50% 22%;">
                     <div><span class="kn-tag">Keynote · higher education</span><b>Hon’ble Shri Chandrakant Dada Patil</b><span class="kn-role">Minister of Higher &amp; Technical Education, Maharashtra</span></div>
+                </li>
+                <li class="keynote">
+                    <img width="640" height="480" loading="lazy" decoding="async" src="images/mangal-prabhat-lodha.webp" alt="Hon’ble Shri Mangal Prabhat Lodha, Minister of Skill, Employment, Entrepreneurship and Innovation, Government of Maharashtra" style="--pos:47% 22%;">
+                    <div><span class="kn-tag">Keynote · skills and jobs</span><b>Hon’ble Shri Mangal Prabhat Lodha</b><span class="kn-role">Minister of Skill, Employment, Entrepreneurship &amp; Innovation, Maharashtra</span></div>
                 </li>
                 <li class="keynote">
                     <img width="1013" height="675" loading="lazy" decoding="async" src="images/aditi-tatkare.jpg" alt="Hon’ble Smt. Aditi Tatkare, Minister of Women and Child Development, Government of Maharashtra" style="--pos:46% 18%;">
@@ -1939,6 +1950,31 @@
                         <h4>Shreenivas Chetlapalli</h4>
                         <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">VP</p>
                         <p class="spk-org" style="font-size:0.78rem;">Jade Global</p>
+                    </div>
+
+                    <!-- Meghavi Shah -->
+                    <div class="speaker-card reveal reveal-delay-2" style="text-align:center;align-items:center;">
+                        <img width="400" height="400" loading="lazy" decoding="async" src="images/speakers/meghavi-shah.webp" alt="Meghavi Shah, Head Alliances, Assessfy" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
+                        <h4>Meghavi Shah</h4>
+                        <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Head Alliances</p>
+                        <p class="spk-org" style="font-size:0.78rem;">Assessfy</p>
+                    </div>
+
+                    <!-- Rajib Lochan Mahalik -->
+                    <div class="speaker-card reveal reveal-delay-3" style="text-align:center;align-items:center;">
+                        <img width="400" height="400" loading="lazy" decoding="async" src="images/speakers/rajib-lochan-mahalik.webp" alt="Rajib Lochan Mahalik, Managing Director, Technocracy Private Limited" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
+                        <h4>Rajib Lochan Mahalik</h4>
+                        <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">Managing Director</p>
+                        <p class="spk-org" style="font-size:0.78rem;">Technocracy Private Limited</p>
+                    </div>
+
+                    <!-- Alexey Gvintovkin -->
+                    <div class="speaker-card reveal reveal-delay-1" style="text-align:center;align-items:center;">
+                        <img width="400" height="400" loading="lazy" decoding="async" src="images/speakers/alexey-gvintovkin.webp" alt="Alexey Gvintovkin, EXENI Founder, EXENI" class="speaker-photo" style="aspect-ratio:1;border-radius:50%;width:160px;height:160px;margin:0 auto;">
+                        <h4>Alexey Gvintovkin</h4>
+                        <p style="font-size:0.82rem;color:var(--saffron);font-weight:600;margin:0;">EXENI Founder</p>
+                        <p class="spk-org" style="font-size:0.78rem;">EXENI</p>
+                        <span class="speaker-topic" style="margin-top:0.5rem;">Human × AI: The Partnership Powering the Autonomous Enterprise</span>
                     </div>
                     <!-- speakers:end -->
                 </div>
