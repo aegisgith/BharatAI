@@ -20,7 +20,12 @@ import { Hono } from 'hono'
 //   - the rest of Mumbai: shared out evenly over Friday afternoon, Saturday morning and
 //     Saturday afternoon, a company or college kept together.
 // The waiting list (closed 14 Nov) is let in separately on the 19th: entry_status becomes
-// 'confirmed' with an entry time, Saturday morning (or any time when they live outside).
+// 'confirmed' with an entry time, either day at any time (the organiser, 19 Nov, on the
+// numbers: Friday about 650 at the busiest hour, Saturday about 400, the floor about 1,000;
+// it had been Saturday morning for Mumbai).
+// Those who tapped "I can't make it" after the email are offered either day, any time, by a
+// second run (kind 'entry_reoffer', the organiser, 19 Nov): their entry time changes as their
+// email goes.
 // A person with an entry time already keeps it: assigning again fills only the empty ones.
 //
 // The entry time is told, not enforced: the badge desk shows it on the scan (amber "not their
@@ -43,8 +48,9 @@ export const SLOTS: Record<SlotKey, { text: string; short: string; day: string; 
   'any': { text: 'Friday 20 or Saturday 21 Nov, any time from 8:30 am', short: 'Either day', day: '', from: 8 * 60 + 30, to: 18 * 60 },
 }
 const SPLIT: SlotKey[] = ['fri-pm', 'sat-am', 'sat-pm']
-export const WAITLIST_SLOT: SlotKey = 'sat-am'
+export const WAITLIST_SLOT: SlotKey = 'any'
 export const CAMPAIGN_KIND = 'entry_slot'
+export const REOFFER_KIND = 'entry_reoffer'
 const TEAM_ONLY = ['Organiser', 'Support Staff']
 const IST_MS = 330 * 60000
 // Thirty minutes either side still counts as on time at the desk.
@@ -156,7 +162,9 @@ export function planSlots(rows: any[]): Map<number, SlotKey> {
   }
   return out
 }
-export function waitlistSlotFor(a: any): SlotKey { return isLocal(zoneOf(a?.city)) ? WAITLIST_SLOT : 'any' }
+// Everyone on the waiting list: either day, any time (19 Nov). Kept as a function so the
+// rule can differ by person again.
+export function waitlistSlotFor(_a: any): SlotKey { return WAITLIST_SLOT }
 
 // The key of a stored entry time ('' when an organiser typed something else).
 export function slotKeyOf(text: any): SlotKey | '' {
@@ -194,15 +202,17 @@ function freeHolder(a: any): boolean {
 
 // ---------- the email ----------
 
-export function subjectFor(a: any): string {
+export function subjectFor(a: any, reoffer = false): string {
   const first = firstName(a?.name)
   const lead = first ? first + ', ' : ''
   const slot = String(a?.entry_slot || '').trim()
+  if (reoffer) return lead + (first ? 'no' : 'No') + ' problem: come any time on Friday 20 or Saturday 21 Nov'
   if (String(a?.entry_status || '') === 'confirmed') return lead + (first ? 'good' : 'Good') + ' news: your Free Visitor Pass is confirmed for ' + slot
   return lead + (first ? 'your' : 'Your') + ' entry time for Bharat AI Innovation: ' + slot
 }
 
-export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean } = {}): Promise<{ subject: string; html: string }> {
+// opts.reoffer: the "you can't make it, come any time" version; a carries the new entry time.
+export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean; reoffer?: boolean } = {}): Promise<{ subject: string; html: string }> {
   const appUrl = hooks.appUrl ? await hooks.appUrl(c) : SITE + '/app'
   const email = String(a.email || '').trim()
   const first = firstName(a.name)
@@ -228,7 +238,9 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean }
     : key === 'any' ? 'Come on either day, at any time from 8:30 am. If you are travelling to Mumbai, the mornings are the best part of each day.'
     : 'The exhibition floor is open all afternoon. Come to the badge desk in this time.'
   const stay = key === 'any' ? 'Once you are in, stay as long as you like.' : 'Once you are in, stay as long as you like that day.'
-  const intro = fromWaitlist
+  const intro = opts.reoffer
+    ? 'You told us you can&rsquo;t make it at the entry time we gave you. No problem: your <strong>Free Visitor Pass</strong> for Bharat AI Innovation 2026 now works at any time, on either day. Your new entry time:'
+    : fromWaitlist
     ? 'Good news: a place has opened up for you. Your <strong>Free Visitor Pass</strong> for Bharat AI Innovation 2026 is confirmed, with this entry time:'
     : 'Your <strong>Free Visitor Pass</strong> for Bharat AI Innovation 2026 has an entry time. We give free passes an entry time so that everyone who registered gets a chance to come in. Yours is:'
 
@@ -246,7 +258,7 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean }
     step('Come in your entry time', 'There is no on-spot registration at the venue. Please keep to your time, so the floor stays comfortable and everyone gets their turn.'),
   ]
   // No Expo Pass offer in this email (the organiser, 17 Nov 23:58: "remove this it does not look good").
-  const header = hooks.emailHeader ? hooks.emailHeader(fromWaitlist ? 'Your Free Visitor Pass is confirmed' : 'Your entry time', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai') : ''
+  const header = hooks.emailHeader ? hooks.emailHeader(opts.reoffer ? 'Come on either day' : fromWaitlist ? 'Your Free Visitor Pass is confirmed' : 'Your entry time', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai') : ''
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -279,7 +291,7 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean }
   </div>
 </body>
 </html>`
-  return { subject: subjectFor(a), html }
+  return { subject: subjectFor(a, !!opts.reoffer), html }
 }
 
 // ---------- who ----------
@@ -309,8 +321,29 @@ export async function entrySlotAudienceRows(c: any, _audience = 'all', clauses?:
     .map((a: any) => ({ id: a.id, name: a.name, email: a.email, slot: slotKeyOf(a.entry_slot) || 'other' }))
 }
 
-async function openRun(c: any): Promise<any> {
-  return await c.env.DB.prepare(`SELECT * FROM campaigns WHERE kind = '${CAMPAIGN_KIND}' AND status IN ('running', 'paused') ORDER BY id DESC LIMIT 1`).first().catch(() => null)
+async function openRun(c: any, kind = CAMPAIGN_KIND): Promise<any> {
+  return await c.env.DB.prepare(`SELECT * FROM campaigns WHERE kind = '${kind}' AND status IN ('running', 'paused') ORDER BY id DESC LIMIT 1`).first().catch(() => null)
+}
+
+// When the first entry-time run was made: an answer given after it is a fresh one.
+async function askedSince(c: any): Promise<string> {
+  return String(((await c.env.DB.prepare(`SELECT MIN(created_at) AS t FROM campaigns WHERE kind = '${CAMPAIGN_KIND}'`).first().catch(() => null)) as any)?.t || '')
+}
+
+// "Come any time instead" (19 Nov): free pass holders who tapped "I can't make it" after the
+// entry-time email went, whose entry time is not already either day, not yet on such a run.
+const REOFFER_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+    WHERE cp.kind = '${REOFFER_KIND}' AND cr.attendee_id IS NOT NULL AND cr.status IN ('pending', 'sending', 'sent'))`
+export async function entryReofferAudienceRows(c: any, _audience = 'all', clauses?: { mc: string; noEmail?: string }): Promise<any[]> {
+  const since = await askedSince(c)
+  if (!since) return []
+  const cl = clauses || (hooks.clauses ? await hooks.clauses(c) : { mc: '', noEmail: '' })
+  const noEmail = cl.noEmail ? ` AND ${cl.noEmail}` : ''
+  const rows = await all(c, `SELECT * FROM attendees WHERE event_id = 1 AND email IS NOT NULL AND TRIM(email) != '' AND COALESCE(TRIM(entry_slot), '') NOT IN ('', ?)
+      AND unsubscribed_at IS NULL AND LOWER(COALESCE(rsvp_status, '')) = 'declined' AND rsvp_at >= ?${noEmail}${cl.mc}${REOFFER_NOT_YET_SQL} ORDER BY id`, SLOTS.any.text, since)
+  return rows
+    .filter((a: any) => validEmail(a.email) && freeHolder(a) && !waitingRow(a))
+    .map((a: any) => ({ id: a.id, name: a.name, email: a.email, slot: slotKeyOf(a.entry_slot) || 'other' }))
 }
 
 async function writeSlots(c: any, pairs: [number, SlotKey][], confirm: boolean) {
@@ -339,8 +372,19 @@ es.get('/api/admin/entry-slots/status', async (c) => {
         WHERE cp.kind = '${CAMPAIGN_KIND}' AND cr.status = 'sent' AND cr.attendee_id IS NOT NULL`)).map((r: any) => Number(r.id)))
     // A fresh answer: one given since the first entry-time run was made (the email's two
     // buttons, or the app). Older yeses, most from October, are not counted here.
-    const since = String(((await c.env.DB.prepare(`SELECT MIN(created_at) AS t FROM campaigns WHERE kind = '${CAMPAIGN_KIND}'`).first().catch(() => null)) as any)?.t || '')
-    const fresh = (a: any, s: string) => !!since && String(a.rsvp_status || '') === s && String(a.rsvp_at || '') >= since
+    const since = await askedSince(c)
+    // Those offered either day (entry_reoffer): their "can't" was about the old time, so it
+    // counts only when given again after that email.
+    const offered = new Map<number, string>()
+    for (const r of await all(c, `SELECT cr.attendee_id AS id, cr.sent_at FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+        WHERE cp.kind = '${REOFFER_KIND}' AND cr.status = 'sent' AND cr.attendee_id IS NOT NULL`)) offered.set(Number(r.id), String(r.sent_at || ''))
+    const fresh = (a: any, s: string) => {
+      if (!since || String(a.rsvp_status || '') !== s || String(a.rsvp_at || '') < since) return false
+      const o = offered.get(Number(a.id))
+      return s !== 'declined' || o === undefined || String(a.rsvp_at || '') >= o
+    }
+    let offeredYes = 0
+    for (const a of rows) { const o = offered.get(Number(a.id)); if (o !== undefined && String(a.rsvp_status || '') === 'confirmed' && String(a.rsvp_at || '') >= o) offeredYes++ }
     const given: Record<string, number> = {}, sent: Record<string, number> = {}, planned: Record<string, number> = {}, wlPlan: Record<string, number> = {}
     const yesNow: Record<string, number> = {}, noNow: Record<string, number> = {}
     for (const k of SLOT_ORDER) { given[k] = 0; sent[k] = 0; planned[k] = 0; wlPlan[k] = 0; yesNow[k] = 0; noNow[k] = 0 }
@@ -362,10 +406,13 @@ es.get('/api/admin/entry-slots/status', async (c) => {
     for (const a of wl) wlPlan[waitlistSlotFor(a)]++
     const run = await openRun(c)
     const toSend = (await entrySlotAudienceRows(c)).length
+    const roRun = await openRun(c, REOFFER_KIND)
+    const runOut = (r: any) => r ? { id: r.id, status: r.status, title: r.title, total: r.total, sent: r.sent, failed: r.failed } : null
     return c.json({
       slots: SLOT_ORDER.map(k => ({ key: k, text: SLOTS[k].text, short: SLOTS[k].short, given: given[k], sent: sent[k], planned: planned[k], waitlist: wlPlan[k], yes_now: yesNow[k], no_now: noNow[k] })),
       without: open.length, other, waiting, let_in: letIn, to_send: toSend, asked_since: since,
-      open_run: run ? { id: run.id, status: run.status, title: run.title, total: run.total, sent: run.sent, failed: run.failed } : null,
+      reoffer: { to_send: (await entryReofferAudienceRows(c)).length, sent: offered.size, yes_after: offeredYes, open_run: runOut(roRun) },
+      open_run: runOut(run),
       window: sendWindow().window,
     })
   } catch (e: any) {
@@ -417,6 +464,48 @@ es.post('/api/admin/attendees/:id/send-entry-slot', async (c) => {
   const res = await hooks.sendEmail(c, a.email, mail.subject, mail.html)
   if (!res.ok) return c.json({ error: res.error || 'Not sent' }, 502)
   return c.json({ success: true, sent_to: a.email, slot: a.entry_slot })
+})
+
+// "Come any time instead", to ONE attendee, for the campaign pump. Their entry time becomes
+// either day once the email has gone (a failed send leaves them as they were, for a new run).
+es.post('/api/admin/attendees/:id/send-entry-reoffer', async (c) => {
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
+  if (!a) return c.json({ error: 'Attendee not found' }, 404)
+  if (!a.email || !validEmail(a.email)) return c.json({ skipped: true, reason: 'No usable email address' })
+  if (a.unsubscribed_at) return c.json({ skipped: true, reason: 'Unsubscribed' })
+  if (!freeHolder(a)) return c.json({ skipped: true, reason: 'Holds ' + (String(a.badge_type || '').trim() || 'another pass') + ' now: no entry time needed' })
+  if (waitingRow(a)) return c.json({ skipped: true, reason: 'Still on the waiting list' })
+  if (!String(a.entry_slot || '').trim()) return c.json({ skipped: true, reason: 'No entry time' })
+  if (slotKeyOf(a.entry_slot) === 'any') return c.json({ skipped: true, reason: 'Already either day' })
+  if (String(a.rsvp_status || '').trim().toLowerCase() !== 'declined') return c.json({ skipped: true, reason: 'Answered again since: ' + (String(a.rsvp_status || '').trim() || 'no answer') })
+  const win = sendWindow()
+  if (!win.open && c.req.query('force') !== '1') {
+    return c.json({ paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win }, 409)
+  }
+  if (!hooks.sendEmail) return c.json({ error: 'Email is not set up on this server.' }, 503)
+  const moved = { ...a, entry_slot: SLOTS.any.text }
+  const mail = await entrySlotEmail(c, moved, { reoffer: true })
+  const res = await hooks.sendEmail(c, a.email, mail.subject, mail.html)
+  if (!res.ok) return c.json({ error: res.error || 'Not sent' }, 502)
+  await c.env.DB.prepare('UPDATE attendees SET entry_slot = ? WHERE id = ?').bind(SLOTS.any.text, a.id).run()
+  return c.json({ success: true, sent_to: a.email, slot: SLOTS.any.text, was: a.entry_slot })
+})
+
+// The "come any time" email before it goes: how many, from which entry time, and one real
+// recipient's email. Sends nothing, mints no token, moves nobody.
+es.get('/api/admin/entry-slots/reoffer-preview', async (c) => {
+  const rows = await entryReofferAudienceRows(c)
+  const counts: Record<string, number> = { total: rows.length }
+  for (const r of rows) counts[r.slot] = (counts[r.slot] || 0) + 1
+  const open = await openRun(c, REOFFER_KIND)
+  const out = { counts, slots: SLOT_ORDER.map(k => ({ key: k, text: SLOTS[k].text, short: SLOTS[k].short })), window: sendWindow().window,
+    open_run: open ? { id: open.id, status: open.status, title: open.title } : null }
+  const sample = rows[0] ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(rows[0].id).first() as any : null
+  if (!sample) return c.json({ ...out, sample: null })
+  const mail = await entrySlotEmail(c, { ...sample, entry_slot: SLOTS.any.text }, { preview: true, reoffer: true })
+  return c.json({ ...out, subject: mail.subject,
+    sample: { id: sample.id, name: sample.name, email: sample.email, was: sample.entry_slot },
+    html: hooks.decorate ? await hooks.decorate(c, mail.html, sample.email) : mail.html })
 })
 
 // The email before it goes: how many per entry time and one real recipient's email for

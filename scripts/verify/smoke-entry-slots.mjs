@@ -112,7 +112,7 @@ check('status: 22 free holders without an entry time (campus-only, organiser, pa
 check('plan: Friday morning 4 (keen + pass saved + a colleague), either day 2 (Bengaluru, Pune)', by('fri-am').planned === 4 && by('any').planned === 2, JSON.stringify(st.json.slots));
 check('plan: the other 16 shared evenly over three half-days (6/5/5 or so), the college of three kept together',
   [by('fri-pm').planned, by('sat-am').planned, by('sat-pm').planned].every(n => n >= 5 && n <= 6) && by('fri-pm').planned + by('sat-am').planned + by('sat-pm').planned === 16, JSON.stringify(st.json.slots));
-check('plan: the waiting list, Mumbai to Saturday morning and Delhi to either day', by('sat-am').waitlist === 1 && by('any').waitlist === 1, JSON.stringify(st.json.slots));
+check('plan: the waiting list, Mumbai and Delhi alike, to either day (the organiser, 19 Nov)', by('sat-am').waitlist === 0 && by('any').waitlist === 2, JSON.stringify(st.json.slots));
 check('nothing written by the status', q("SELECT COUNT(*) AS n FROM attendees WHERE entry_slot IS NOT NULL")[0].n === 1, '');
 
 // ---- the email can be read BEFORE the entry times are given (the organiser, 17 Nov 23:30:
@@ -123,8 +123,8 @@ check('early preview: only the hand-told one to send, the plan counted per entry
   JSON.stringify({ counts: early.json?.counts, planned: early.json?.planned, slot: early.json?.slot, sample: early.json?.sample }));
 check('early preview: the subject and the big entry time read Friday 20 Nov, 8:30 am to 1 pm', /^Asha, your entry time for Bharat AI Innovation: Friday 20 Nov, 8:30 am to 1 pm$/.test(early.json.subject) && early.json.html.includes(FRI_AM), early.json.subject);
 early = await hit('GET', '/api/admin/entry-slots/preview?slot=waitlist', undefined, ADMIN);
-check('early preview (waiting list): the "good news" version with Saturday morning, as the Mumbai one on the list would get it',
-  early.json.slot === 'waitlist' && /good news: your Free Visitor Pass is confirmed for Saturday 21 Nov, 8:30 am to 1 pm$/.test(early.json.subject) && early.json.sample?.name === 'Waiting Mumbai' && early.json.html.includes('a place has opened up'), early.json.subject);
+check('early preview (waiting list): the "good news" version with either day, as the Mumbai one on the list would get it',
+  early.json.slot === 'waitlist' && /good news: your Free Visitor Pass is confirmed for Friday 20 or Saturday 21 Nov, any time from 8:30 am$/.test(early.json.subject) && early.json.sample?.name === 'Waiting Mumbai' && early.json.html.includes('a place has opened up'), early.json.subject);
 check('early previews wrote nothing', q("SELECT COUNT(*) AS n FROM attendees WHERE entry_slot IS NOT NULL")[0].n === 1 && q("SELECT entry_status FROM attendees WHERE id = 22")[0].entry_status === 'waitlisted' && count('login_tokens') === 0, '');
 
 // ---- give the entry times ----
@@ -206,17 +206,64 @@ FAKE_NOW = RealDate.parse('2026-11-19T03:45:00Z'); // Thursday 19 Nov, 9:15 IST
 
 // ---- the waiting list, let in on the 19th ----
 r = await hit('POST', '/api/admin/entry-slots/let-in-waitlist', {}, ADMIN);
-check('let in: 2 confirmed, Mumbai to Saturday morning, Delhi to either day', r.status === 200 && r.json.let_in === 2 && slotOf(22) === SAT_AM && slotOf(23) === ANY &&
+check('let in: 2 confirmed, both to either day', r.status === 200 && r.json.let_in === 2 && slotOf(22) === ANY && slotOf(23) === ANY &&
   q("SELECT COUNT(*) AS n FROM attendees WHERE id IN (22, 23) AND entry_status = 'confirmed' AND entry_decided_at IS NOT NULL")[0].n === 2, JSON.stringify(r.json));
 r = await hit('POST', '/api/admin/campaigns', { kind: 'entry_slot', audience: 'all' }, ADMIN);
 check('the next run is only the two let in', r.status === 201 && r.json.total === 2, JSON.stringify(r.json));
 const before2 = sent.length;
 await hit('POST', `/api/admin/campaigns/${r.json.id}/pump`, { batch: 8 }, ADMIN);
 const wlMail = sent.slice(before2).find(m => JSON.stringify(m.Recipients).includes('wait1@example.com'));
-check('their email: "a place has opened up", confirmed for Saturday morning, in the subject too',
-  !!wlMail && wlMail.Content.Body[0].Content.includes('a place has opened up') && /good news: your Free Visitor Pass is confirmed for Saturday 21 Nov, 8:30 am to 1 pm/.test(wlMail.Content.Subject), wlMail?.Content?.Subject);
+check('their email: "a place has opened up", confirmed for either day, in the subject too',
+  !!wlMail && wlMail.Content.Body[0].Content.includes('a place has opened up') && /good news: your Free Visitor Pass is confirmed for Friday 20 or Saturday 21 Nov, any time from 8:30 am/.test(wlMail.Content.Subject), wlMail?.Content?.Subject);
 st = await hit('GET', '/api/admin/entry-slots/status', undefined, ADMIN);
 check('status after: nobody waiting, 2 let in, nothing left to send', st.json.waiting === 0 && st.json.let_in === 2 && st.json.to_send === 0 && st.json.without === 0, JSON.stringify(st.json));
+
+// ---- "come on either day" for those who said they can't make their time (19 Nov) ----
+const rsvpIn = (addr, status) => {
+  const m = [...sent].reverse().find(x => JSON.stringify(x.Recipients).includes(addr));
+  const b = m?.Content?.Body?.[0]?.Content || '';
+  return ((b.match(new RegExp('href="(https://bharataiinnovation\\.com/api/rsvp\\?[^"]*status=' + status + '[^"]*)"')) || [])[1] || '').replace('https://bharataiinnovation.com', '');
+};
+const free1 = (slot) => q("SELECT id, email FROM attendees WHERE entry_slot = ? AND badge_type = 'Visitor Pass' AND unsubscribed_at IS NULL ORDER BY id LIMIT 1", slot)[0];
+const noA = free1(FRI_PM), noB = free1(SAT_AM);
+const ravi = q('SELECT id, email FROM attendees WHERE id = 2')[0], far = q('SELECT id, email FROM attendees WHERE id = 5')[0];
+for (const p of [noA, noB, ravi, far]) await hit('GET', rsvpIn(p.email, 'declined'));
+// SQLite's datetime('now') is the real clock, to the second: put the email run and these
+// answers on Wednesday, so "after the either-day email" is not decided by the same second.
+db.run("UPDATE campaigns SET created_at = '2026-11-18 03:00:00' WHERE kind = 'entry_slot'");
+db.run('UPDATE attendees SET rsvp_at = ? WHERE id IN (?, ?, ?, ?)', ['2026-11-18 10:00:00', noA.id, noB.id, ravi.id, far.id]);
+check('four tapped "I can\'t make it" from their email', q("SELECT COUNT(*) AS n FROM attendees WHERE id IN (?, ?, ?, ?) AND rsvp_status = 'declined' AND rsvp_at IS NOT NULL", noA.id, noB.id, ravi.id, far.id)[0].n === 4, [noA.id, noB.id, ravi.id, far.id].join(','));
+st = await hit('GET', '/api/admin/entry-slots/status', undefined, ADMIN);
+check('status: 3 to offer either day (the one already on either day is not)', st.json.reoffer?.to_send === 3 && st.json.reoffer?.sent === 0 && !st.json.reoffer?.open_run, JSON.stringify(st.json.reoffer));
+const before3 = { sent: sent.length, tokens: count('login_tokens'), camps: count('campaigns') };
+const rp = await hit('GET', '/api/admin/entry-slots/reoffer-preview', undefined, ADMIN);
+check('preview: 3, from Friday morning, Friday afternoon and Saturday morning; the subject; the new time in the box; buttons not live',
+  rp.status === 200 && rp.json.counts?.total === 3 && rp.json.counts['fri-am'] === 1 && rp.json.counts['fri-pm'] === 1 && rp.json.counts['sat-am'] === 1 &&
+  /no problem: come any time on Friday 20 or Saturday 21 Nov$/.test(rp.json.subject) && rp.json.html.includes(ANY) && rp.json.html.includes('can&rsquo;t make it at the entry time we gave you') && rp.json.html.includes('Are you coming?') && !rp.json.html.includes('/api/rsvp?') && !rp.json.html.includes('Expo Pass'),
+  JSON.stringify(rp.json?.counts) + ' ' + rp.json?.subject);
+check('the preview sent nothing, minted no token, made no run and moved nobody', sent.length === before3.sent && count('login_tokens') === before3.tokens && count('campaigns') === before3.camps && slotOf(noA.id) === FRI_PM && slotOf(ravi.id) === FRI_AM, '');
+r = await hit('POST', '/api/admin/campaigns', { kind: 'entry_reoffer', audience: 'all' }, ADMIN);
+const roCamp = r.json?.id;
+check('a run of kind entry_reoffer: 3 people, titled', r.status === 201 && r.json.total === 3 && r.json.title === 'Free Visitor Pass: come on either day', JSON.stringify(r.json));
+await hit('GET', rsvpIn(ravi.email, 'confirmed'));
+const before4 = sent.length;
+r = await hit('POST', `/api/admin/campaigns/${roCamp}/pump`, { batch: 8 }, ADMIN);
+const roRec = q("SELECT status, COUNT(*) AS n FROM campaign_recipients WHERE campaign_id = ? GROUP BY status", roCamp);
+const rn = (s) => (roRec.find(x => x.status === s) || {}).n || 0;
+check('the run sends 2; Ravi said yes again before his turn and is skipped, his Friday morning kept', rn('sent') === 2 && rn('skipped') === 1 && slotOf(ravi.id) === FRI_AM, JSON.stringify(roRec));
+check('the two sent now have either day', slotOf(noA.id) === ANY && slotOf(noB.id) === ANY, slotOf(noA.id) + ' | ' + slotOf(noB.id));
+const roMail = sent.slice(before4).find(m => JSON.stringify(m.Recipients).includes(noA.email));
+check('their email: the subject, either day in the box, signed Yes / Can\'t links, a sign-in token',
+  !!roMail && /no problem: come any time on Friday 20 or Saturday 21 Nov$/.test(roMail.Content.Subject) && roMail.Content.Body[0].Content.includes(ANY) && /status=confirmed[^"]*sig=[0-9a-f]{32}/.test(roMail.Content.Body[0].Content) && /token=/.test(roMail.Content.Body[0].Content), roMail?.Content?.Subject);
+await hit('GET', rsvpIn(noA.email, 'confirmed'));
+st = await hit('GET', '/api/admin/entry-slots/status', undefined, ADMIN);
+check('status: 2 offered, 1 said yes since; either day counts that yes, and the old "can\'t" of the other one is not counted against either day',
+  st.json.reoffer?.sent === 2 && st.json.reoffer?.yes_after === 1 && st.json.reoffer?.to_send === 0 && by('any').yes_now === 1 && by('any').no_now === 1, JSON.stringify(st.json.reoffer) + ' ' + JSON.stringify(by('any')));
+r = await hit('POST', '/api/admin/campaigns', { kind: 'entry_reoffer', audience: 'all' }, ADMIN);
+check('a second "either day" run finds nobody', r.status === 400, JSON.stringify(r.json));
+FAKE_NOW = RealDate.parse('2026-11-19T16:00:00Z'); // Thursday 21:30 IST
+r = await hit('POST', `/api/admin/attendees/${noB.id}/send-entry-reoffer`, {}, ADMIN);
+check('the "either day" email skips one already on either day', r.json?.skipped === true && /either day/.test(r.json?.reason || ''), JSON.stringify(r.json));
 
 // ---- the badge desk ----
 const passTok = (id) => id + '.' + createHmac('sha256', 'smoke-session').update('pass:' + id).digest('hex').slice(0, 24);

@@ -10,7 +10,7 @@ import siteLive, { configureSiteLive } from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief } from './routes/talk-brief'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
-import entrySlots, { configureEntrySlots, entrySlotAudienceRows, inSlot as entryInSlot } from './routes/entry-slots'
+import entrySlots, { configureEntrySlots, entrySlotAudienceRows, entryReofferAudienceRows, inSlot as entryInSlot } from './routes/entry-slots'
 import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql } from './routes/workshop-reminder'
 import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
@@ -20765,6 +20765,7 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'workshop_invite' ? `/api/admin/attendees/${r.attendee_id}/send-workshop-invite`
     : kind === 'event_week' ? `/api/admin/attendees/${r.attendee_id}/send-event-week`
     : kind === 'entry_slot' ? `/api/admin/attendees/${r.attendee_id}/send-entry-slot`
+    : kind === 'entry_reoffer' ? `/api/admin/attendees/${r.attendee_id}/send-entry-reoffer`
     : kind === 'offer' ? '/api/admin/offers/send'
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
@@ -20834,6 +20835,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
   // Entry times (routes/entry-slots.ts): about their own entry, so a "no" to marketing does
   // not hold it back; an unsubscribe does.
   if (kind === 'entry_slot') return entrySlotAudienceRows(c, audience, { mc, noEmail: NO_EMAIL_SQL() })
+  if (kind === 'entry_reoffer') return entryReofferAudienceRows(c, audience, { mc, noEmail: NO_EMAIL_SQL() })
   if (kind === 'networking') {
     // Every conference registrant not on a networking run yet. Paid passes and
     // senior titles first: theirs are the requests the others receive. Last, anyone
@@ -20873,7 +20875,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week', 'entry_slot'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week', 'entry_slot', 'entry_reoffer'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
@@ -20929,6 +20931,7 @@ app.post('/api/admin/campaigns', async (c) => {
     : kind === 'networking' ? 'Networking app email'
     : kind === 'event_week' ? 'Get ready for 20 and 21 Nov'
     : kind === 'entry_slot' ? 'Free Visitor Pass: your entry time'
+    : kind === 'entry_reoffer' ? 'Free Visitor Pass: come on either day'
     : kind === 'thankyou' ? 'Post-event thank you'
     : kind === 'profile_reminder' ? 'Complete your profile'
     : kind === 'waitlist_confirm' ? 'Waiting list: your Free Visitor Pass is confirmed'
@@ -20994,7 +20997,7 @@ async function tickCampaigns(c: any): Promise<any[]> {
     try {
       // The event-week email is not paced by the send gap (routes/event-week.ts): ten a
       // minute, so a few thousand go in a day and not a week.
-      const r = await pumpCampaign(c, k.id, k.kind === 'event_week' || k.kind === 'entry_slot' ? 10 : 1, 'Bearer ' + secret)
+      const r = await pumpCampaign(c, k.id, k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
       out.push({ id: k.id, sent: r.body?.sent ?? null, remaining: r.body?.remaining ?? null, wait_seconds: r.body?.wait_seconds ?? 0 })
     } catch (e: any) { out.push({ id: k.id, error: String(e?.message || e).slice(0, 200) }) }
   }
@@ -41869,7 +41872,7 @@ function adminPageHTML(): string {
   <script src="/static/speaker-brief.js?v=20261116c"></script>
   <script src="/static/talk-brief.js?v=20261116"></script>
   <script src="/static/event-week.js?v=20261116"></script>
-  <script src="/static/entry-slots.js?v=20261118"></script>
+  <script src="/static/entry-slots.js?v=20261119"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
   <script src="/static/exhibitor-media.js?v=20261118b"></script>
   <script src="/static/workshop-reminder.js?v=2026111503"></script>

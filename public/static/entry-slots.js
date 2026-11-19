@@ -71,6 +71,18 @@
     else if (d.to_send) buttons += btn('preview', 'Preview &amp; send to ' + d.to_send, !d.without);
     else if (d.without || d.waiting) buttons += btn('preview', 'Read the email first');
     if (d.waiting) buttons += btn('letin', 'Let the waiting list in (' + d.waiting + ')');
+    // "Come any time instead" for those who said they can't make their time (19 Nov).
+    var ro = d.reoffer || {}, roRun = ro.open_run, roLine = '';
+    if (roRun || ro.to_send || ro.sent) {
+      var roText = [];
+      if (roRun) roText.push('<span class="text-amber-300">The &ldquo;come on either day&rdquo; run is ' + esc(roRun.status) + '</span>: ' + roRun.sent + ' of ' + roRun.total + ' sent.');
+      else if (ro.to_send) roText.push(ro.to_send + ' said they can&rsquo;t make their entry time.');
+      if (ro.sent) roText.push(ro.sent + ' were offered either day; <span class="text-green-300 font-semibold">' + (ro.yes_after || 0) + '</span> said yes since.');
+      var roBtns = roRun ? btn('ro-preview', 'Preview') + (roRun.status === 'running' ? btn('ro-pause', 'Pause', true) : btn('ro-resume', 'Resume', true))
+        : (ro.to_send ? btn('ro-preview', 'Offer them either day (' + ro.to_send + ')', true) : '');
+      roLine = '<div class="flex items-center justify-between gap-3 flex-wrap mt-3 pt-2 border-t border-white/5">' +
+        '<p class="text-[11px] text-gray-400">' + roText.join(' ') + '</p><div class="flex gap-1.5 flex-wrap">' + roBtns + '</div></div>';
+    }
     el.innerHTML = '<div class="mt-4 pt-3 border-t border-white/10">' +
       '<div class="flex items-center justify-between gap-3 flex-wrap mb-2">' +
         '<div><h4 class="text-xs font-semibold text-gray-200"><i class="fas fa-clock text-primary-400 mr-1.5"></i>Entry times for the Free Visitor Pass</h4>' +
@@ -78,7 +90,8 @@
         '<div class="flex gap-1.5 flex-wrap">' + buttons + '</div></div>' +
       '<table class="w-full text-xs"><thead><tr class="text-[10px] uppercase tracking-wide text-gray-500"><th class="text-left font-medium pb-1">Entry time</th><th class="text-left font-medium pb-1 hidden sm:table-cell"></th>' +
         '<th class="text-right font-medium pb-1 pr-3">Given</th><th class="text-right font-medium pb-1 pr-3">Emailed</th><th class="text-right font-medium pb-1 pr-3" title="Tapped Yes, I\'m coming in the email or the app since the email went">Yes</th><th class="text-right font-medium pb-1 pr-3" title="Tapped I can\'t make it since the email went">Can&rsquo;t</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<p class="text-[11px] text-gray-500 mt-2">Friday morning: Mumbai and Thane side who said "I&rsquo;m coming" or saved the pass, with their colleagues. Either day: those who live outside Mumbai. The rest share the other three half-days, colleagues together. The email asks "Are you coming?": Yes and Can&rsquo;t count answers given since it went, not older ones. The desk shows the time on the scan; it does not turn anyone away.</p>' +
+      roLine +
+      '<p class="text-[11px] text-gray-500 mt-2">Friday morning: Mumbai and Thane side who said "I&rsquo;m coming" or saved the pass, with their colleagues. Either day: those who live outside Mumbai, the waiting list once let in, and those offered either day after saying they can&rsquo;t make their time. The rest share the other three half-days, colleagues together. The email asks "Are you coming?": Yes and Can&rsquo;t count answers given since it went, not older ones. The desk shows the time on the scan; it does not turn anyone away.</p>' +
       '</div>';
     wire(el);
   }
@@ -107,7 +120,7 @@
   function openLetIn() {
     var d = S.d || {}, list = (d.slots || []).filter(function (s) { return s.waitlist; });
     openModal('<h3 class="text-lg font-bold mb-2"><i class="fas fa-user-check text-primary-400 mr-2"></i>Let the waiting list in (' + d.waiting + ')</h3>' +
-      '<p class="text-xs text-gray-400 mb-3">Each gets a confirmed Free Visitor Pass with this entry time. Their pass works at the desk from now. Then press Preview &amp; send: their email says a place has opened up.</p>' +
+      '<p class="text-xs text-gray-400 mb-3">Each gets a confirmed Free Visitor Pass for either day, any time. Their pass works at the desk from now. Then press Preview &amp; send: their email says a place has opened up.</p>' +
       '<ul class="text-sm space-y-1 mb-4">' + list.map(function (s) { return '<li><span class="font-semibold text-white">' + s.waitlist + '</span> &middot; ' + esc(s.text) + '</li>'; }).join('') + '</ul>' +
       '<div class="flex gap-2"><button type="button" data-es="close" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">Cancel</button>' +
       '<button type="button" data-es="letin-go" class="flex-1 py-2.5 rounded-xl text-sm bg-amber-600 hover:bg-amber-500 text-white font-semibold">Let them in</button></div>');
@@ -171,6 +184,40 @@
     load();
   }
 
+  // ---------- "come on either day", for those who said they can't make their time ----------
+  async function openReoffer() {
+    openModal('<div class="py-10 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>');
+    var d;
+    try {
+      d = await api.get('/api/admin/entry-slots/reoffer-preview');
+      if (d && d.error) throw new Error(d.error);
+    } catch (e) { openModal('<p class="text-sm text-red-400">Could not build the preview: ' + esc(errText(e)) + '</p>'); return; }
+    var cnt = d.counts || {}, total = cnt.total || 0, run = d.open_run;
+    var from = (d.slots || []).filter(function (s) { return cnt[s.key]; }).map(function (s) { return esc(s.short) + ' ' + cnt[s.key]; });
+    if (cnt.other) from.push('other times ' + cnt.other);
+    var body = d.sample
+      ? '<p class="text-xs text-gray-400 mb-1">As ' + esc(d.sample.name) + ' will get it (was ' + esc(d.sample.was) + '). The buttons are not live in this preview.</p>' +
+        '<p class="text-sm font-semibold text-white mb-2">Subject: ' + esc(d.subject) + '</p>' +
+        '<iframe id="es-ro-frame" sandbox="" title="Email preview" class="w-full rounded-xl bg-white" style="height:56vh;border:1px solid rgba(0,0,0,0.1);"></iframe>'
+      : '<p class="text-sm text-gray-400 py-8 text-center">Nobody is waiting for this email.</p>';
+    var act = run ? '' : (total ? 'Send to ' + total + ' ' + (total === 1 ? 'person' : 'people') : '');
+    openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-calendar-check text-primary-400 mr-2"></i>&ldquo;Come on either day&rdquo;: check it before it goes</h3>' +
+      '<p class="text-xs text-gray-400 mb-3">' + total + ' said &ldquo;I can&rsquo;t make it&rdquo; to their entry time' + (from.length ? ' (' + from.join(', ') + ')' : '') + '. Each one&rsquo;s entry time becomes &ldquo;either day, any time&rdquo; as their email goes.</p>' + body +
+      '<div class="flex gap-2 mt-4">' +
+        '<button type="button" data-es="close" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">' + (act ? 'Cancel' : 'Close') + '</button>' +
+        (act ? '<button type="button" data-es="ro-go" class="flex-1 py-2.5 rounded-xl text-sm bg-amber-600 hover:bg-amber-500 text-white font-semibold">' + act + '</button>' : '') +
+      '</div>' +
+      (act ? '<p class="text-[11px] text-gray-500 mt-2">It goes ' + esc(d.window || '8:30am to 9pm IST') + ', ten a minute from the server&rsquo;s clock, faster while this tab is open. Nobody is sent it twice; anyone who has said yes since is skipped.</p>' : '') +
+      (run ? '<p class="text-[11px] text-amber-300 mt-2">A run is already ' + esc(run.status) + ': pause or resume it from the strip.</p>' : ''));
+    var f = $('es-ro-frame'); if (f) f.srcdoc = d.html;
+    wire($('modal-box'));
+  }
+  async function goReoffer() {
+    closeModal();
+    await startCampaign('entry_reoffer', { audience: 'all', title: 'Free Visitor Pass: come on either day' });
+    load();
+  }
+
   // ---------- buttons ----------
   function wire(root) {
     if (!root || root.getAttribute('data-es-wired')) return;
@@ -190,6 +237,11 @@
       if (a === 'resume' && run) { await resumeCampaign(run.id); return load(); }
       if (a === 'close') return closeModal();
       if (a === 'go') return go();
+      var roRun = S.d && S.d.reoffer && S.d.reoffer.open_run;
+      if (a === 'ro-preview') return openReoffer();
+      if (a === 'ro-go') return goReoffer();
+      if (a === 'ro-pause' && roRun) { await pauseCampaignFromList(roRun.id); return load(); }
+      if (a === 'ro-resume' && roRun) { await resumeCampaign(roRun.id); return load(); }
     });
   }
 
