@@ -71,10 +71,11 @@ const initDashboard = async () => {
     document.getElementById('dash-company-name').textContent = name
     const tn = document.getElementById('dash-topbar-name'); if (tn) tn.textContent = name
     const av = document.getElementById('dash-avatar'); if (av) av.textContent = name.charAt(0).toUpperCase()
-    await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadBooth(), loadLeads(), loadReports(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries(), loadDelhi()])
+    await Promise.all([loadStats(), loadListings(), loadStage(), loadTeam(), loadGuests(), loadBooth(), loadLeads(), loadReports(), loadInquiries(), loadReviews(), loadProfile(), loadRecentInquiries(), loadDelhi()])
     // The "add your team" email signs in to /marketplace/dashboard#team.
     if (location.hash === '#team' && teamInfo && teamInfo.eligible) switchSection('team')
     if (location.hash === '#leads' && leadsInfo && leadsInfo.exhibitor) switchSection('leads')
+    if (location.hash === '#guests' && guestInfo && guestInfo.eligible) switchSection('guests')
   } catch (err) { showToast('Failed to load dashboard', true) }
 }
 
@@ -228,6 +229,9 @@ const renderTodo = () => {
     + step(listed, 'List your AI product',
       live ? 'Live on the AI Marketplace.' : listed ? 'In review. We email you as soon as it is live.' : 'Free with your booth. Takes about five minutes.',
       listed ? '' : '<a href="/marketplace?submit=true" class="mp-btn-primary text-sm py-2 px-4" style="display:inline-block;text-decoration:none">List your product</a>')
+    + (guestInfo && guestInfo.eligible ? step(guestInfo.used > 0, 'Invite your visitors',
+      guestInfo.used ? `${plural(guestInfo.used, 'Visitor Pass', 'Visitor Passes')} given${guestInfo.counts && guestInfo.counts.to_send ? `, ${guestInfo.counts.to_send} still to send` : ''}.` : `Give your customers and guests a free Visitor Pass, up to ${esc(guestInfo.limit)}. One at a time, or a CSV or Excel sheet.`,
+      `<button type="button" class="${guestInfo.used ? 'mp-btn-secondary' : 'mp-btn-primary'} text-sm py-2 px-4" data-goto="guests">${guestInfo.used ? 'Open' : 'Invite visitors'}</button>`) : '')
     + (teamOn ? step(people.length > 0 && !noPhoto, 'Add your team and their photos',
       people.length ? `${people.length} ${people.length === 1 ? 'person' : 'people'} added${noPhoto ? `. ${noPhoto} ${noPhoto === 1 ? 'photo is' : 'photos are'} missing.` : '.'}` : 'Who is coming: at the booth, on stage, or both. Passes are issued from this list.',
       `<button type="button" class="${people.length && !noPhoto ? 'mp-btn-secondary' : 'mp-btn-primary'} text-sm py-2 px-4" data-goto="team">${people.length ? 'Open' : 'Add your team'}</button>`) : '')
@@ -568,6 +572,46 @@ const downloadFor = async (m, btn, kind) => {
     }
   } catch (err) { showToast(err.message, true) }
   finally { btn.disabled = false; btn.innerHTML = html }
+}
+
+// ── Visitor passes (19 Nov 2026) ──
+// The organiser: "give option to all exhibitors to issue visitor passes from their
+// dashboard", "upload csv, excel or type individual ones". The sheet is the organising
+// team's Register guests (public/static/team-guest.js) opened for an exhibitor: a
+// Visitor Pass only, up to the company's limit; the exhibitor sends each pass link from
+// their own WhatsApp, SMS or email. The server is src/routes/team-guests.ts.
+let guestInfo = null
+const loadGuests = async () => {
+  try { guestInfo = await api('/api/mp/dashboard/guests') } catch { guestInfo = null }
+  const on = !!(guestInfo && guestInfo.eligible)
+  const nav = document.getElementById('dash-nav-guests'); if (nav) nav.classList.toggle('hidden', !on)
+  if (on) renderGuests()
+  renderTodo()
+}
+const openGuests = (tab) => {
+  if (!window.TeamGuest) { showToast('Could not load the invitation form. Refresh the page and try again.', true); return }
+  window.TeamGuest.open(tab, { exhibitor: true, onClose: loadGuests })
+}
+const renderGuests = () => {
+  const box = document.getElementById('guests-card'); if (!box) return
+  const g = guestInfo, c = g.counts || {}, left = Math.max(0, Number(g.left) || 0)
+  box.innerHTML = `<h3>Invite your visitors</h3>
+    <p class="text-sm" style="line-height:1.6;margin:0 0 10px">Give your customers, partners and guests a free <strong>Visitor Pass</strong> to come and see you${g.booth ? ` at <strong>Booth ${esc(g.booth)}</strong>` : ''} on 20 and 21 November. Type in one person, or upload a CSV or Excel sheet. Each person gets their own pass link, which you send them from your own WhatsApp, SMS or email. We do not send anything for you.</p>
+    <p class="team-pass-meter"><strong>${esc(g.used)}</strong> of ${esc(g.limit)} Visitor Passes given${g.used ? ` · ${esc(c.sent || 0)} sent · ${esc(c.to_send || 0)} still to send` : ''}${left ? '' : ' · <strong>no more left</strong>'}</p>
+    <div class="team-form-actions" style="flex-wrap:wrap">
+      <button type="button" class="mp-btn-primary" data-guests="one"${left ? '' : ' disabled'}><i class="fas fa-user-plus mr-1"></i> Add one person</button>
+      <button type="button" class="mp-btn-secondary" style="min-height:44px" data-guests="list"${left ? '' : ' disabled'}><i class="fas fa-file-upload mr-1"></i> Upload CSV or Excel</button>
+      <button type="button" class="mp-btn-secondary" style="min-height:44px" data-guests="send"${g.used ? '' : ' disabled'}><i class="fas fa-paper-plane mr-1"></i> Send passes${c.to_send ? ` (${esc(c.to_send)})` : ''}</button>
+    </div>
+    <p class="text-xs text-slate-500" style="margin:12px 0 0;line-height:1.6">A sheet needs a <strong>Name</strong> and a <strong>Mobile</strong> column; <strong>Organisation</strong>, <strong>Designation</strong> and <strong>Email</strong> if you have them. Up to 300 people a sheet. <a href="/api/mp/dashboard/guests/template.csv" download="guest-list.csv" style="color:#C84F00;font-weight:600;text-decoration:underline">Download a blank sheet</a>.<br>Your visitors show their pass and a government photo ID at the entry desk. ${left ? `You can give ${esc(left)} more.` : 'For more passes, use Report a problem.'}</p>`
+  box.querySelectorAll('[data-guests]').forEach(b => b.addEventListener('click', () => openGuests(b.getAttribute('data-guests'))))
+  // The people invited so far, newest first: name, organisation, and whether the pass was sent.
+  const list = document.getElementById('guests-list'); if (!list) return
+  const gs = g.guests || []
+  list.classList.toggle('hidden', !gs.length)
+  list.innerHTML = gs.length ? `<h3>Invited so far</h3>
+    <ul class="connect-people">${gs.slice(0, 200).map(x => `<li><span>${esc(x.name)}${x.company ? ` <span class="text-xs text-slate-500">· ${esc(x.company)}</span>` : ''}</span><span class="${x.sent_at ? 'pay-paid' : 'pay-pending'}"><i class="fas ${x.sent_at ? 'fa-check-circle' : 'fa-circle'}"></i> ${x.sent_at ? 'Sent' : 'Not sent yet'}</span></li>`).join('')}</ul>
+    ${gs.length > 200 ? `<p class="text-xs text-slate-500">and ${esc(gs.length - 200)} more. Open Send passes to see everyone.</p>` : ''}` : ''
 }
 
 // ── Leads ──

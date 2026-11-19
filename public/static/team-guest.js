@@ -12,6 +12,10 @@
  * is sent from here by itself: a tap opens the team member's WhatsApp (the app on a
  * phone, WhatsApp Web on a laptop) with the message written, and they press Send there.
  * The tap marks the guest as sent, with Undo, so a long list can be worked through.
+ *
+ * 19 Nov 2026: exhibitors get the same sheet on /marketplace/dashboard (Visitor passes),
+ * opened as TeamGuest.open(tab, EXHIBITOR options): a Visitor Pass only, the company's
+ * limit shown, a Send by email button, and the server under /api/mp/dashboard/guests.
  */
 (function (global) {
   'use strict';
@@ -23,6 +27,30 @@
   ];
   var XLSX_SRC = '/js/vendor/xlsx.full.min.js?v=0.18.5b';
   var MAX_ROWS = 300;
+
+  // Who is using the sheet. The team's is the default; open() takes the exhibitor's.
+  var TEAM = {
+    base: '/api/team/guests',
+    title: 'Register guests',
+    passes: PASSES,
+    leadOne: 'For a guest you have only a mobile number for. You get the pass link to send them on WhatsApp.',
+    again: 'Register another guest',
+    everyone: true,
+    email: false,
+    onClose: null
+  };
+  var EXHIBITOR = {
+    base: '/api/mp/dashboard/guests',
+    title: 'Invite visitors',
+    passes: [PASSES[0]],
+    leadOne: 'Your guest gets a free Visitor Pass. Then send them the pass link from your own WhatsApp, SMS or email.',
+    again: 'Invite another visitor',
+    everyone: false,
+    email: true
+  };
+  var cfg = TEAM;
+  var limitInfo = null;          // { limit, used, left } for an exhibitor
+  function onePass() { return cfg.passes.length === 1; }
 
   var ua = navigator.userAgent || '';
   var onPhone = /Android|iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -117,7 +145,10 @@
     + '.tg-g a.wa.again{background:#fff;border:1px solid #C9CEE3;color:#1E2140;}'
     + '.tg-empty{font-size:14px;color:#6B7194;margin:0;}'
     + '.tg-tog{display:flex;align-items:center;gap:8px;font-size:13px;color:#4A5070;margin:0 0 10px;min-height:32px;}'
-    + '.tg-tog input{width:18px;height:18px;accent-color:#C84F00;}';
+    + '.tg-tog input{width:18px;height:18px;accent-color:#C84F00;}'
+    + '.tg-fixed{display:flex;gap:10px;align-items:baseline;padding:12px;border:1px solid #C84F00;background:#FFF7F0;border-radius:12px;margin:0 0 14px;}'
+    + '.tg-fixed b{font-size:15px;}.tg-fixed span{font-size:13px;color:#4A5070;}'
+    + '.tg-left{margin:0 0 14px;padding:10px 12px;border-radius:12px;background:#F1F3FA;font-size:14px;color:#1E2140;}';
 
   var WA_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.7.3-.2.3-.9.9-.9 2.2s.9 2.5 1 2.7c.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.1-1.2l-.6-.3z"/></svg>';
 
@@ -141,12 +172,23 @@
   }
 
   function loadList() {
-    return api('GET', '/api/team/guests' + (everyone ? '?all=1' : '')).then(function (r) {
+    return api('GET', cfg.base + (everyone && cfg.everyone ? '?all=1' : '')).then(function (r) {
       if (r.status === 200 && r.data && Array.isArray(r.data.guests)) {
         guests = r.data.guests;
         counts = r.data.counts || { total: guests.length, sent: 0, to_send: guests.length };
+        limitInfo = typeof r.data.limit === 'number' ? { limit: r.data.limit, used: r.data.used || 0, left: r.data.left || 0 } : null;
       }
     }).catch(function () {});
+  }
+  // How many more an exhibitor may give, above the form and the upload.
+  function leftHTML() {
+    if (!limitInfo) return '';
+    if (limitInfo.left <= 0) return '<div class="tg-note" role="status">You have given all ' + limitInfo.limit + ' Visitor Passes your company can give. For more, use Report a problem on your dashboard.</div>';
+    return '<p class="tg-left">You can give <b>' + limitInfo.left + '</b> more Visitor Pass' + (limitInfo.left === 1 ? '' : 'es') + ' (' + limitInfo.used + ' of ' + limitInfo.limit + ' given).</p>';
+  }
+  function counted(n) {
+    if (!limitInfo || !n) return;
+    limitInfo.used += n; limitInfo.left = Math.max(0, limitInfo.limit - limitInfo.used);
   }
   function recount() {
     var sent = guests.filter(function (g) { return g.sent_at; }).length;
@@ -185,7 +227,7 @@
       return (current.note ? '<div class="tg-note" role="status">' + esc(current.note) + '</div>'
         : '<div class="tg-done" role="status"><h3>Pass ready for ' + esc(current.name) + '</h3><p>' + esc(current.badge_type) + ' &middot; ' + esc(current.ref) + ' &middot; ' + esc(current.mobile) + '</p></div>')
         + kitHTML(current)
-        + '<button type="button" class="tg-go" id="tg-again">Register another guest</button>';
+        + '<button type="button" class="tg-go" id="tg-again">' + esc(cfg.again) + '</button>';
     }
     var v = formValues, err = formError || {};
     var field = function (id, label, opts) {
@@ -199,7 +241,8 @@
         + '</div>';
     };
     return (err.error && !err.field ? '<div class="tg-alert" role="alert">' + esc(err.error) + '</div>' : '')
-      + '<p class="tg-lead">For a guest you have only a mobile number for. You get the pass link to send them on WhatsApp.</p>'
+      + '<p class="tg-lead">' + esc(cfg.leadOne) + '</p>'
+      + leftHTML()
       + '<form id="tg-form" novalidate>'
       + field('name', 'Guest&rsquo;s name', { max: 120, help: 'As it should be printed on the pass.' })
       + field('mobile', 'Mobile number', { type: 'tel', mode: 'tel', max: 20, help: '10 digits. For a number outside India, start with + and the country code.' })
@@ -212,8 +255,10 @@
   }
   function passRadios(pass, bad, name) {
     name = name || 'pass';
+    // One pass to give (an exhibitor's Visitor Pass): said, not asked; the sheet says nothing.
+    if (onePass()) return name === 'pass' ? '<div class="tg-fixed"><b>' + esc(cfg.passes[0].label) + '</b><span>' + esc(cfg.passes[0].note) + '</span></div>' : '';
     return '<fieldset class="tg-passes"><legend class="tg-legend">' + (name === 'pass' ? 'Pass' : 'Pass for rows that do not say') + '</legend>'
-      + PASSES.map(function (p) {
+      + cfg.passes.map(function (p) {
           return '<label class="tg-pass' + (p.key === pass ? ' on' : '') + '"><input type="radio" name="' + name + '" value="' + p.key + '"' + (p.key === pass ? ' checked' : '') + '>'
             + '<span><b>' + p.label + '</b><span>' + p.note + '</span></span></label>';
         }).join('')
@@ -228,6 +273,7 @@
       +   '<button type="button" class="tg-sec" data-copy="' + g.id + '">Copy the message</button>'
       +   (onPhone ? '<a class="tg-sec" href="' + esc(g.sms_url) + '">Send by SMS</a>' : '')
       + '</div>'
+      + (cfg.email && g.email_url ? '<div class="tg-row"><a class="tg-sec" data-send="' + g.id + '" href="' + esc(g.email_url) + '">Send by email</a></div>' : '')
       + '<div class="tg-row"><a class="tg-sec" href="' + esc(g.pass_url) + '" target="_blank" rel="noopener">Open the pass</a></div>';
   }
   function onPassChange(e) {
@@ -260,10 +306,10 @@
     busy = true;
     var btn = document.getElementById('tg-go');
     if (btn) { btn.disabled = true; btn.textContent = 'Making the pass\u2026'; }
-    api('POST', '/api/team/guests', v).then(function (r) {
+    api('POST', cfg.base, v).then(function (r) {
       busy = false;
       if (r.status === 201 && r.data.guest) {
-        putGuest(r.data.guest);
+        putGuest(r.data.guest); counted(1);
         current = r.data.guest; formError = null; formValues = { pass: 'visitor' };
         render(); scrollTop(); focusFirst('[data-send]');
       } else if (r.status === 409 && r.data.guest) {
@@ -283,10 +329,12 @@
 
   // ---- Upload a list ----
   function listHTML() {
-    var out = '<p class="tg-lead">A .csv or .xlsx sheet with the columns <b>Name</b> and <b>Mobile</b>; <b>Pass</b> (Visitor, Delegate or VIP), <b>Organisation</b>, <b>Designation</b> and <b>Email</b> if you have them. Up to ' + MAX_ROWS + ' guests a sheet.</p>'
+    var out = (onePass()
+        ? '<p class="tg-lead">A CSV or Excel sheet (.csv, .xlsx) with the columns <b>Name</b> and <b>Mobile</b>; <b>Organisation</b>, <b>Designation</b> and <b>Email</b> if you have them. Everyone on it gets a free Visitor Pass. Up to ' + MAX_ROWS + ' guests a sheet.</p>' + leftHTML()
+        : '<p class="tg-lead">A .csv or .xlsx sheet with the columns <b>Name</b> and <b>Mobile</b>; <b>Pass</b> (Visitor, Delegate or VIP), <b>Organisation</b>, <b>Designation</b> and <b>Email</b> if you have them. Up to ' + MAX_ROWS + ' guests a sheet.</p>')
       + '<label class="tg-file"><input type="file" id="tg-file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">'
       + (sheet ? esc(sheet.name) + ' \u00b7 choose another' : 'Choose the sheet') + '</label>'
-      + '<p class="tg-small">No sheet yet? <a class="tg-link" href="/api/team/guests/template.csv" download="guest-list.csv">Download a blank one</a> and fill it in.</p>';
+      + '<p class="tg-small">No sheet yet? <a class="tg-link" href="' + esc(cfg.base) + '/template.csv" download="guest-list.csv">Download a blank one</a> and fill it in.</p>';
     if (uploaded) {
       var c = uploaded.counts;
       out += '<div class="tg-done" role="status"><h3>' + c.added + ' guest' + (c.added === 1 ? '' : 's') + ' registered</h3>'
@@ -309,8 +357,8 @@
       var rows = sheet.inputs;
       out += '<div class="tg-sum"><span>' + rows.length + ' row' + (rows.length === 1 ? '' : 's') + '</span>'
         + (sheet.missing ? '<span class="warn">' + sheet.missing + ' without a name or a mobile</span>' : '') + '</div>'
-        + '<table class="tg-table"><thead><tr><th>Name</th><th>Mobile</th><th>Pass</th></tr></thead><tbody>'
-        + rows.slice(0, 5).map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.mobile) + '</td><td>' + esc(r.pass || '') + '</td></tr>'; }).join('')
+        + '<table class="tg-table"><thead><tr><th>Name</th><th>Mobile</th>' + (onePass() ? '' : '<th>Pass</th>') + '</tr></thead><tbody>'
+        + rows.slice(0, 5).map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.mobile) + '</td>' + (onePass() ? '' : '<td>' + esc(r.pass || '') + '</td>') + '</tr>'; }).join('')
         + (rows.length > 5 ? '<tr><td colspan="3">and ' + (rows.length - 5) + ' more</td></tr>' : '')
         + '</tbody></table>'
         + '<form id="tg-sheetform" novalidate>' + passRadios(sheetPass, '', 'sheetpass')
@@ -417,10 +465,11 @@
     busy = true;
     var btn = document.getElementById('tg-upload');
     if (btn) { btn.disabled = true; btn.textContent = 'Registering\u2026'; }
-    api('POST', '/api/team/guests/bulk', { rows: sheet.rows, default_pass: sheetPass }).then(function (r) {
+    api('POST', cfg.base + '/bulk', { rows: sheet.rows, default_pass: sheetPass }).then(function (r) {
       busy = false;
       if (r.status === 201 && r.data.results) {
         uploaded = r.data;
+        counted((r.data.counts && r.data.counts.added) || 0);
         r.data.results.forEach(function (x) { if (x.guest) putGuest(x.guest); });
         sheet = null;
         render(); scrollTop();
@@ -446,7 +495,7 @@
       out += '<div class="tg-done" role="status"><h3>Every pass is sent</h3><p>' + counts.sent + ' of ' + counts.total + '. Tap a name below to send one again.</p></div>';
     }
     out += '<div class="tg-chips">' + chip('to_send', 'To send', counts.to_send) + chip('sent', 'Sent', counts.sent) + chip('all', 'All', counts.total) + '</div>'
-      + '<label class="tg-tog"><input type="checkbox" id="tg-everyone"' + (everyone ? ' checked' : '') + '> Show guests the whole team registered</label>';
+      + (cfg.everyone ? '<label class="tg-tog"><input type="checkbox" id="tg-everyone"' + (everyone ? ' checked' : '') + '> Show guests the whole team registered</label>' : '');
     if (!shown.length) {
       out += '<p class="tg-empty">' + (guests.length ? 'Nobody here.' : 'No guests yet. Add one, or upload a list.') + '</p>';
     } else {
@@ -466,7 +515,7 @@
     var g = byId(id);
     if (!g) return;
     if (!g.sent_at) { g.sent_at = new Date().toISOString(); recount(); }
-    api('POST', '/api/team/guests/' + id + '/sent').then(function (r) {
+    api('POST', cfg.base + '/' + id + '/sent').then(function (r) {
       if (r.status === 200 && r.data.sent_at) { var x = byId(id); if (x) x.sent_at = r.data.sent_at; }
       if (tab === 'send') render();
     }).catch(function () {});
@@ -477,7 +526,7 @@
     var g = byId(id);
     if (!g) return;
     g.sent_at = null; recount(); render();
-    api('POST', '/api/team/guests/' + id + '/unsent').catch(function () {});
+    api('POST', cfg.base + '/' + id + '/unsent').catch(function () {});
   }
 
   // ---------- plumbing ----------
@@ -538,18 +587,25 @@
     document.removeEventListener('keydown', onKey);
     document.documentElement.style.overflow = '';
     if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch (e) {} }
+    if (typeof cfg.onClose === 'function') { try { cfg.onClose(); } catch (e) {} }
   }
 
-  function open(which) {
+  // which: 'one' | 'list' | 'send'. opts: none for the team; for an exhibitor,
+  // { exhibitor: true, onClose: fn } (or any of the EXHIBITOR keys to override).
+  function open(which, opts) {
     ensureStyle();
     if (root) return;
+    opts = opts || {};
+    cfg = {};
+    [TEAM, opts.exhibitor ? EXHIBITOR : {}, opts].forEach(function (o) { Object.keys(o).forEach(function (k) { cfg[k] = o[k]; }); });
+    guests = []; counts = { total: 0, sent: 0, to_send: 0 }; everyone = false; limitInfo = null; filter = 'to_send';
     lastFocus = document.activeElement;
     tab = which || 'one';
     current = null; formError = null; formValues = { pass: 'visitor' }; sheet = null; uploaded = null;
     root = document.createElement('div');
     root.className = 'tg-back';
     root.innerHTML = '<div class="tg-sheet" role="dialog" aria-modal="true" aria-labelledby="tg-title">'
-      + '<div class="tg-top"><div class="tg-head"><h2 id="tg-title">Register guests</h2><button type="button" class="tg-x" aria-label="Close">&times;</button></div>'
+      + '<div class="tg-top"><div class="tg-head"><h2 id="tg-title">' + esc(cfg.title) + '</h2><button type="button" class="tg-x" aria-label="Close">&times;</button></div>'
       + '<div class="tg-tabs" role="tablist"></div></div>'
       + '<div class="tg-body"></div></div>';
     root.addEventListener('click', onClick);

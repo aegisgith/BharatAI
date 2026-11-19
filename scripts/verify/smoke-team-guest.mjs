@@ -212,7 +212,7 @@ check('not for anyone signed out', r.status === 401);
 
 // ---- the app ----
 const appJs = (await hit('GET', '/app.js')).text;
-check('the app offers "Register guests" to the team only, from the account menu', appJs.includes("(isTeamMember() ? item('fa-user-plus', 'Register guests'") && appJs.includes("String(currentUser.badge_type || '') === 'Organiser'") && appJs.includes("s.src = '/static/team-guest.js?v=20261116b'"));
+check('the app offers "Register guests" to the team only, from the account menu', appJs.includes("(isTeamMember() ? item('fa-user-plus', 'Register guests'") && appJs.includes("String(currentUser.badge_type || '') === 'Organiser'") && appJs.includes("s.src = '/static/team-guest.js?v=20261119'"));
 
 console.log(fails() ? `\n${fails()} FAILED` : '\nAll team-guest checks passed');
 process.exit(fails() ? 1 : 0);

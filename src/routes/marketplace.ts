@@ -2866,4 +2866,19 @@ export const exhibitorOfCompanySession = async (c: any): Promise<{ id: number; c
   return ex ? { ...ex, by: String(company.email || '') } : null
 }
 
+// The exhibitor behind the signed-in dashboard account, for "Visitor passes" (19 Nov
+// 2026, routes/team-guests.ts): whether anyone is signed in at all (so an expired
+// sign-in is told to sign in again), and the booth as the dashboard shows it.
+export const guestExhibitorOf = async (c: any): Promise<{ signedIn: boolean; ex: { id: number; company_name: string; booth: string; event_id: number; by: string } | null }> => {
+  const company = await getCompanyFromSession(c) as any
+  if (!company) return { signedIn: false, ex: null }
+  if (company.role === 'admin') return { signedIn: true, ex: null }
+  let ex: Awaited<ReturnType<typeof teamExhibitorOf>> = null
+  try { ex = await teamExhibitorOf(c, company) } catch { ex = null }
+  if (!ex) return { signedIn: true, ex: null }
+  let booths: string[] = []
+  try { booths = (await teamAllowance(c, ex.id)).booths } catch { booths = [] }
+  return { signedIn: true, ex: { id: ex.id, company_name: ex.company_name, booth: booths.join(', ') || ex.booth_number || '', event_id: ex.event_id, by: String(company.email || '') } }
+}
+
 export default mp

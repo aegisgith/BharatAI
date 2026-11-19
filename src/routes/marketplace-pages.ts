@@ -688,6 +688,7 @@ export function marketplaceDashboardPageHTML(): string {
       <button class="dash-sidebar-item dash-sidebar-active" data-section="overview"><i class="fas fa-chart-pie"></i> Overview</button>
       <button class="dash-sidebar-item" data-section="listings"><i class="fas fa-boxes"></i> My Listings</button>
       <button class="dash-sidebar-item hidden" data-section="team" id="dash-nav-team"><i class="fas fa-users"></i> Your Team</button>
+      <button class="dash-sidebar-item hidden" data-section="guests" id="dash-nav-guests"><i class="fas fa-ticket-alt"></i> Visitor passes</button>
       <button class="dash-sidebar-item hidden" data-section="leads" id="dash-nav-leads"><i class="fas fa-qrcode"></i> Leads</button>
       <button class="dash-sidebar-item hidden" data-section="branding" id="dash-nav-branding"><i class="fas fa-store"></i> Booth Branding</button>
       <button class="dash-sidebar-item hidden" data-section="connect" id="dash-nav-connect"><i class="fas fa-handshake"></i> Bharat AI Connect</button>
@@ -803,6 +804,14 @@ export function marketplaceDashboardPageHTML(): string {
           <button type="button" id="team-cancel" class="mp-btn-secondary">Cancel</button>
         </div>
       </form>
+    </section>
+
+    <!-- Visitor passes (19 Nov 2026): the exhibitor invites its own guests, one by one or from a CSV/Excel sheet;
+         the sheet is public/static/team-guest.js, the server src/routes/team-guests.ts -->
+    <section id="section-guests" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-ticket-alt mr-2"></i>Visitor passes</h2></div>
+      <div id="guests-card" class="dash-card"></div>
+      <div id="guests-list" class="dash-card hidden"></div>
     </section>
 
     <!-- Leads: visitors whose badge the team scanned at the booth, and those who tapped Visit Booth in the app -->
@@ -972,7 +981,8 @@ export function marketplaceDashboardPageHTML(): string {
     </div>
   </div>
 
-  <script src="/static/marketplace-dashboard.js?v=11"></script>
+  <script src="/static/team-guest.js?v=20261119"></script>
+  <script src="/static/marketplace-dashboard.js?v=12"></script>
 </body>
 </html>`
 }

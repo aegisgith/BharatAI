@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 // @ts-ignore - JSON import, bundled by Vite
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
-import mp, { configureMarketplace, exhibitorOfCompanySession, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers, linkBadgeHolderToCompany } from './routes/marketplace'
+import mp, { configureMarketplace, exhibitorOfCompanySession, guestExhibitorOf, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers, linkBadgeHolderToCompany } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots, syncTalkSessions, talkRemoved, withAttendeePhotos, withTalkPhotos, withSessionPhotos } from './routes/conference'
 import siteLive, { configureSiteLive } from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
@@ -498,7 +498,9 @@ app.route('/', mp)
 configureTeamGuests({ me: (c: any) => verifyAttendeeSession(c), mobileHolder: (c: any, e: number, m: unknown) => mobileHolder(c, e, m),
   columns: (c: any) => attendeeColumns(c), passToken: (c: any, id: number) => signPassToken(c, id),
   readPassToken: (c: any, tok: string) => verifyPassToken(c, tok), audit,
-  lunch: (b: string) => LUNCH_BY_PASS[b], validEmail: (e: string) => validEmailSyntax(e) })
+  lunch: (b: string) => LUNCH_BY_PASS[b], validEmail: (e: string) => validEmailSyntax(e),
+  // 19 Nov 2026: exhibitors give Visitor Passes from /marketplace/dashboard the same way.
+  exhibitor: (c: any) => guestExhibitorOf(c) })
 app.route('/', teamGuests)
 
 // Who an admin email may be sent from (13 Nov 2026): the event's own address, or one of
@@ -1852,6 +1854,7 @@ function sourceLabel(source: unknown): string {
   if (raw.startsWith('campus:')) return 'Campus panel - ' + raw.slice('campus:'.length)
   if (raw.startsWith('ref:')) return 'Invited by an attendee'
   if (raw.startsWith('team:')) return 'Guest of the team (pass on WhatsApp)'
+  if (raw.startsWith('exhibitor:')) return 'Guest of an exhibitor (Visitor Pass from their dashboard)'
   const known: Record<string, string> = {
     networking_app: 'Networking app',
     website: 'Website',
@@ -32967,7 +32970,7 @@ function mainPageScript(): string {
     function openTeamGuest() {
       if (window.TeamGuest) { window.TeamGuest.open(); return; }
       const s = document.createElement('script');
-      s.src = '/static/team-guest.js?v=20261116b';
+      s.src = '/static/team-guest.js?v=20261119';
       s.onload = function () { if (window.TeamGuest) window.TeamGuest.open(); };
       s.onerror = function () { s.remove(); showToast('Could not open it. Check your internet and try again.', 'error'); };
       document.head.appendChild(s);
