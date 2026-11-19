@@ -567,9 +567,10 @@ check('Preview shows the Delegate offer as the first senior Visitor gets it, and
 {
   // Organiser, 14 Nov 2026: the names on stage are the hook, so they come before the
   // list of what the pass includes, and in the inbox line before the email is opened.
-  const stage = (h, pass) => h.includes('Hon&rsquo;ble Shri Eknath Shinde') && h.includes('Global EVP and CTO, Capgemini') && h.includes('Director, UIDAI') &&
+  // 19 Nov 2026, the organiser: "remove all ministers from email".
+  const stage = (h, pass) => !/Hon&rsquo;ble|Eknath Shinde|Ministers, Government|ministers/i.test(h) && h.includes('Global EVP and CTO, Capgemini') && h.includes('Director, UIDAI') &&
     h.indexOf('Who you will hear on stage') > 0 && h.indexOf('Who you will hear on stage') < h.indexOf('&#10003;') &&
-    /display:none[^>]*>Hear Deputy CM Eknath Shinde, five Maharashtra ministers/.test(h) &&
+    /display:none[^>]*>Hear MeitY, UIDAI, IndiaAI Mission/.test(h) &&
     h.includes(`the <strong>${pass}</strong> includes all of it`) && h.includes('https://bharataiinnovation.com/conference"') && !h.includes('<strong>On stage:</strong>');
   const st = await adminGet('/api/admin/campaigns/upgrade-preview?audience=students');
   check('both offers name who is on stage, above the list of what the pass includes and in the inbox line', stage(r.json?.html || '', 'Delegate Pass') && stage(st.json?.html || '', 'Student Pass'), (r.json?.html || '').slice(0, 200));

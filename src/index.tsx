@@ -20389,19 +20389,11 @@ const EMAIL_INNOVATION_TALKS = 40
 // Who the upgrade emails name on stage (organiser, 14 Nov 2026: "add these speakers
 // so they have a hook"). Only people the published programme lists (/conference,
 // scripts/data/schedule.json), every one in a conference session a Delegate or
-// Student Pass enters, none only at the VIP evening. Ministers, then officials by
-// government rank (Secretary, PCCF, Joint Secretary, Pardeshi/Dhavse, the rest), then
-// industry. Written by hand: take a name out the day it leaves the programme, and
-// keep EMAIL_STAGE_PREHEADER's count of ministers true.
+// Student Pass enters, none only at the VIP evening. No ministers (the organiser, 19 Nov
+// 2026: "remove all ministers from email"): officials by government rank (Secretary,
+// PCCF, Joint Secretary, Pardeshi/Dhavse, the rest), then industry. Written by hand:
+// take a name out the day it leaves the programme, and keep EMAIL_STAGE_PREHEADER true.
 const EMAIL_STAGE_GROUPS: [string, [string, string][]][] = [
-  ['Ministers, Government of Maharashtra', [
-    ['Hon&rsquo;ble Shri Eknath Shinde', 'Deputy Chief Minister'],
-    ['Hon&rsquo;ble Shri Chandrakant Dada Patil', 'Higher and Technical Education'],
-    ['Hon&rsquo;ble Shri Dattatray Bharane', 'Agriculture'],
-    ['Hon&rsquo;ble Smt. Aditi Tatkare', 'Women and Child Development'],
-    ['Hon&rsquo;ble Shri Sanjay Rathod', 'Soil and Water Conservation'],
-    ['Hon&rsquo;ble Shri Ashish Nandkishore Jaiswal', 'Minister of State, Finance and Planning'],
-  ]],
   ['Government and policymakers', [
     ['Shri Virendra Singh (IAS)', 'Secretary, IT and AI Department, Maharashtra'],
     ['Shri Vivek Khandekar (IFS)', 'Principal Chief Conservator of Forests, Maharashtra'],
@@ -20419,7 +20411,7 @@ const EMAIL_STAGE_GROUPS: [string, [string, string][]][] = [
   ]],
 ]
 // The inbox line before the email is opened: the names are the reason to open it.
-const EMAIL_STAGE_PREHEADER = 'Hear Deputy CM Eknath Shinde, five Maharashtra ministers, MeitY, UIDAI and Capgemini on stage.'
+const EMAIL_STAGE_PREHEADER = 'Hear MeitY, UIDAI, IndiaAI Mission, Maharashtra&rsquo;s IT and AI Secretary and Capgemini on stage.'
 
 // The names box, high in the email. passName is the pass that includes the conference.
 function emailStageBox(passName: string, programmeHref: string): string {
