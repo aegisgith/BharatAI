@@ -70,8 +70,9 @@ const sa = card('Mayur Kapur');
 check('no photo on file: initials, with the designation and organisation', /sch-initials" aria-hidden="true">MK</.test(sa) && /sch-role">Asia Chief Strategy Officer</.test(sa) && /sch-org">TransUnion</.test(sa), sa.slice(0, 300));
 const kkAll = [...hall0.matchAll(/images\/sched\/k-k-singh\.webp\?v=([0-9a-f]{8})/g)].map((m) => m[1]);
 check('the same person is the same picture in a keynote and in a panel', kkAll.length === 2 && kkAll[0] === kkAll[1], kkAll.join(','));
-const minister = item(hall0, 'Chandrakant Dada Patil');
-check('a keynote with no title: the speaker is the heading, with designation, government and its seal', /has-lead/.test(minister) && /<h4>Hon’ble Shri Chandrakant Dada Patil<\/h4>/.test(minister) && /sch-role">Minister/.test(minister) && /sch-org">Government of Maharashtra</.test(minister) && /logo-maharashtra\.webp/.test(minister), minister.slice(0, 300));
+// Patil's keynote was the example until he was taken off (19 Nov 2026); Tatkare's is the same shape.
+const minister = item(hall0, 'Aditi Tatkare');
+check('a keynote with no title: the speaker is the heading, with designation, government and its seal', /has-lead/.test(minister) && /<h4>Hon’ble Smt\. Aditi Tatkare<\/h4>/.test(minister) && /sch-role">Minister/.test(minister) && /sch-org">Government of Maharashtra</.test(minister) && /logo-maharashtra\.webp/.test(minister), minister.slice(0, 300));
 const expoAt = block.indexOf('<!-- ARYABHATA THEATRE -->');
 const expo = block.slice(expoAt, block.indexOf('<!-- ', expoAt + 10) > 0 ? block.indexOf('<!-- ', expoAt + 10) : undefined);
 const talk = item(expo, 'Innovation Talk: RedFerns Tech');

@@ -91,13 +91,13 @@ const LAPTOP = { viewport: { width: 1306, height: 760 } };
 
       // A keynote with no title: the speaker is the heading.
       const lead = await p.evaluate(() => {
-        const item = [...document.querySelectorAll('#hall-0 .schedule-panel.active .schedule-item.has-lead')].find((i) => /Chandrakant Dada Patil/.test(i.textContent));
+        const item = [...document.querySelectorAll('#hall-0 .schedule-panel.active .schedule-item.has-lead')].find((i) => /Aditi Tatkare/.test(i.textContent));
         item.scrollIntoView({ block: 'center' });
         const box = (el) => { const r = el.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; };
         const h = item.querySelector('h4'), ph = item.querySelector('.sch-photo'), logo = item.querySelector('.sch-logo'), who = item.querySelector('.sch-who');
         return { h4: h.textContent, photo: box(ph), logo: box(logo), who: box(who), heading: box(h), text: item.textContent.replace(/\s+/g, ' '), logoLoaded: logo.naturalWidth > 0 };
       });
-      check(name + ': a keynote names the speaker as its heading, with designation and government', lead.h4 === 'Hon’ble Shri Chandrakant Dada Patil' && /Minister of Higher and Technical Education/.test(lead.text) && /Government of Maharashtra/.test(lead.text), lead.text);
+      check(name + ': a keynote names the speaker as its heading, with designation and government', lead.h4 === 'Hon’ble Smt. Aditi Tatkare' && /Minister.*Women/.test(lead.text) && /Government of Maharashtra/.test(lead.text), lead.text);
       check(name + ': the keynote photo is a little larger, and the seal is beside the words, not over them', lead.photo.w >= 55 && lead.photo.w <= 61 && lead.logoLoaded && lead.logo.l >= lead.heading.l && lead.logo.r <= lead.who.r + 0.5 && lead.photo.r <= lead.heading.l, JSON.stringify([lead.photo.w, lead.logo, lead.who]));
 
       // The tabs still work, and the other tabs show their people.

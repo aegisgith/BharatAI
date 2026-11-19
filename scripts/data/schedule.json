@@ -1,5 +1,5 @@
 {
-  "source": "the app (Admin → Conference), 2026-11-19T13:53:14.766Z",
+  "source": "the app (Admin → Conference), 2026-11-19T14:04:52.798Z",
   "days": [
     "2026-11-20",
     "2026-11-21"
@@ -121,22 +121,6 @@
       "id": 113,
       "title": "Inauguration and Special Address",
       "note": "Chief guest to be announced."
-    },
-    {
-      "hall": "bhabha",
-      "day": 1,
-      "start": "10:00",
-      "end": "10:20",
-      "type": "keynote",
-      "label": "Keynote",
-      "id": 114,
-      "speaker": {
-        "name": "Hon’ble Shri Chandrakant Dada Patil",
-        "role": "Minister, Higher & Technical Education",
-        "org": "Government of Maharashtra",
-        "photo": "/images/chandrakant-patil.jpg",
-        "listed": true
-      }
     },
     {
       "hall": "kalam",

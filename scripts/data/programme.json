@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-19T13:53:14.766Z",
+ "generated_at": "2026-11-19T14:04:52.798Z",
  "live": true,
  "event": {
   "id": 1,
@@ -136,34 +136,6 @@
    "speaker_title": "",
    "links": [],
    "people": []
-  },
-  {
-   "id": 114,
-   "title": "Keynote",
-   "description": "",
-   "session_type": "keynote",
-   "track": "",
-   "room": "Homi J. Bhabha Hall",
-   "start_time": "2026-11-20 10:00",
-   "end_time": "2026-11-20 10:20",
-   "speaker_name": "Hon’ble Shri Chandrakant Dada Patil",
-   "speaker_title": "Minister of Higher and Technical Education, Government of Maharashtra",
-   "links": [
-    {
-     "speaker_id": 116,
-     "role": "keynote"
-    }
-   ],
-   "people": [
-    {
-     "speaker_id": 116,
-     "name": "Hon’ble Shri Chandrakant Dada Patil",
-     "role": "Minister, Higher & Technical Education",
-     "organisation": "Government of Maharashtra",
-     "photo_url": "/images/chandrakant-patil.jpg",
-     "part": "keynote"
-    }
-   ]
   },
   {
    "id": 219,
@@ -3434,20 +3406,6 @@
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 1
-  },
-  {
-   "id": 116,
-   "slug": "chandrakant-dada-patil",
-   "name": "Hon’ble Shri Chandrakant Dada Patil",
-   "role": "Minister, Higher & Technical Education",
-   "organisation": "Government of Maharashtra",
-   "topic": "Keynote Address",
-   "photo_url": "/images/chandrakant-patil.jpg",
-   "bio": "",
-   "linkedin_url": "",
-   "is_featured": 0,
-   "is_published": 1,
-   "sort_order": 2
   },
   {
    "id": 173,

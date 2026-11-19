@@ -118,13 +118,13 @@ check('no search-engine event or price of its own', !graph.some((g) => g['@type'
 // ---- the people it names are still on the site, as what the page says they are ----
 const home = read('public/index.html');
 const llms = read('public/llms.txt');
-for (const [name, words] of [['Chirag Paswan', 'Union Minister of Food Processing Industries'], ['Chandrakant Dada Patil', 'Minister of Higher and Technical Education'], ['Mangal Prabhat Lodha', 'Minister of Skill, Employment'],['Dattatray Bharane', 'Minister of Agriculture'], ['K.K. Singh', 'Joint Secretary, MeitY'], ['Virendra Singh', 'Secretary'], ['Akshay Yadava', 'Director, Unique Identification Authority'], ['Prakash Kumar', 'Additional Director'], ['Vivek Khandekar', 'Principal Chief Conservator of Forests'], ['Aditi Tatkare', 'Minister of Women and Child Development'], ['Sanjay Rathod', 'Minister of Soil and Water Conservation'],['Kunal Khemnar', 'Joint Chief Executive Officer'], ['Praveen Pardeshi', 'MITRA'], ['Suhas Mapari', 'Joint Secretary'], ['Kaustubh Dhavse', 'Chief Advisor'], ['Parag Dabhade', 'CTO'], ['Sudeep Shrivastava', 'Joint Secretary, MeitY; COO, IndiaAI Mission']]) {
+for (const [name, words] of [['Chirag Paswan', 'Union Minister of Food Processing Industries'], ['Mangal Prabhat Lodha', 'Minister of Skill, Employment'],['Dattatray Bharane', 'Minister of Agriculture'], ['K.K. Singh', 'Joint Secretary, MeitY'], ['Virendra Singh', 'Secretary'], ['Akshay Yadava', 'Director, Unique Identification Authority'], ['Prakash Kumar', 'Additional Director'], ['Vivek Khandekar', 'Principal Chief Conservator of Forests'], ['Aditi Tatkare', 'Minister of Women and Child Development'], ['Sanjay Rathod', 'Minister of Soil and Water Conservation'],['Kunal Khemnar', 'Joint Chief Executive Officer'], ['Praveen Pardeshi', 'MITRA'], ['Suhas Mapari', 'Joint Secretary'], ['Kaustubh Dhavse', 'Chief Advisor'], ['Parag Dabhade', 'CTO'], ['Sudeep Shrivastava', 'Joint Secretary, MeitY; COO, IndiaAI Mission']]) {
   check(`${name} is on the page and still on the home page`, has(name) && new RegExp(`alt="[^"]*${name.replace(/\./g, '\\.')}[^"]*${words.replace(/[.,;]/g, '.')}`).test(home), name);
 }
 const count = (cls) => (html.split('<ul class="' + cls)[1] || '').split('</ul>')[0].split('<li>').length - 1;
-// 19 Nov 2026: Shri Ashish Nandkishore Jaiswal off, Shri Mangal Prabhat Lodha on (keynote). Six again;
-// a short last row is centred if the count changes.
-check('six Ministers, rows of three with a short last row centred', count('gv-mins') === 6 && html.includes('.gv-mins li:nth-child(3n+1):nth-last-child(2)'), count('gv-mins'));
+// 19 Nov 2026: Shri Ashish Nandkishore Jaiswal and Shri Chandrakant Dada Patil off, Shri Mangal Prabhat
+// Lodha on (keynote). Five: rows of three, the short last row centred.
+check('five Ministers, rows of three with a short last row centred', count('gv-mins') === 5 && html.includes('.gv-mins li:nth-child(3n+1):nth-last-child(2)'), count('gv-mins'));
 check('the government speakers fill three rows of four on a laptop', count('gv-offs') >= 9 && count('gv-offs') <= 16, count('gv-offs'));
 check('the talks are the organiser\'s four (Dr. K. Mahesh dropped out, 13 Nov 2026)', (html.match(/<article class="gv-talk/g) || []).length === 4);
 for (const w of ['Prashant Mehra', 'Srinivas Kancharla Program Specialist', 'Office of the Principal Scientific Adviser to the Government of India', 'MANTHAN–UTTHAN', 'GeoAI Forest Encroachment Monitoring & Ganesh Kavach App']) check(`the talks name: ${w}`, has(w));

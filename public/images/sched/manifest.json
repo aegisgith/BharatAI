@@ -6,11 +6,6 @@
    "w": 144,
    "h": 144
   },
-  "chandrakant-dada-patil": {
-   "src": "images/sched/chandrakant-dada-patil.webp?v=7537129f",
-   "w": 144,
-   "h": 144
-  },
   "mohit-kataria": {
    "src": "images/sched/mohit-kataria.webp?v=8bf7f2f6",
    "w": 144,
@@ -671,6 +666,11 @@
    "w": 144,
    "h": 144
   },
+  "chandrakant-dada-patil": {
+   "src": "images/sched/chandrakant-dada-patil.webp?v=7537129f",
+   "w": 144,
+   "h": 144
+  },
   "dattatray-bharane": {
    "src": "images/sched/dattatray-bharane.webp?v=408deaf8",
    "w": 144,
@@ -760,19 +760,19 @@
    "lw": 73,
    "lh": 27
   },
-  "images/logo-maharashtra.webp": {
-   "src": "images/sched/logo-maharashtra.webp?v=29be969c",
-   "w": 52,
-   "h": 66,
-   "lw": 32,
-   "lh": 40
-  },
   "images/exhibitors/nu10-technologies.webp": {
    "src": "images/sched/logo-nu10-technologies.webp?v=6ddd2ac3",
    "w": 184,
    "h": 71,
    "lw": 71,
    "lh": 27
+  },
+  "images/logo-maharashtra.webp": {
+   "src": "images/sched/logo-maharashtra.webp?v=29be969c",
+   "w": 52,
+   "h": 66,
+   "lw": 32,
+   "lh": 40
   },
   "images/exhibitors/ministry-of-tribal-affairs.webp": {
    "src": "images/sched/logo-ministry-of-tribal-affairs.webp?v=6b48a183",
