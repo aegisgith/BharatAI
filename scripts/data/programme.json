@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-19T14:35:54.847Z",
+ "generated_at": "2026-11-19T15:21:35.075Z",
  "live": true,
  "event": {
   "id": 1,
@@ -588,13 +588,13 @@
    "room": "Aryabhata Theatre",
    "start_time": "2026-11-20 11:31",
    "end_time": "2026-11-20 11:38",
-   "speaker_name": "Dipak Zope",
-   "speaker_title": "Chief Executive Officer, Paisani Technology Services",
+   "speaker_name": "Ms. Archana Ambekar Shedge",
+   "speaker_title": "Head of AI Practice, Paisani Technology Services",
    "links": [],
    "people": [
     {
      "speaker_id": null,
-     "name": "Dipak Zope",
+     "name": "Ms. Archana Ambekar Shedge",
      "info": "",
      "part": ""
     }
@@ -4948,13 +4948,13 @@
   {
    "id": 37,
    "company": "Paisani Technology Services",
-   "speaker_name": "Dipak Zope",
-   "speaker_title": "Chief Executive Officer",
+   "speaker_name": "Ms. Archana Ambekar Shedge",
+   "speaker_title": "Head of AI Practice",
    "topic": "",
    "starts_at": "2026-11-20 11:31",
    "duration_min": 7,
    "hall": "Aryabhata Theatre",
-   "photo_url": "/images/talks/dipak-zope.webp",
+   "photo_url": "/images/speakers/talk-ms-archana-ambekar-shedge.webp",
    "status": "confirmed"
   },
   {

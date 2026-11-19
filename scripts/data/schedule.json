@@ -1,5 +1,5 @@
 {
-  "source": "the app (Admin → Conference), 2026-11-19T14:35:54.847Z",
+  "source": "the app (Admin → Conference), 2026-11-19T15:21:35.075Z",
   "days": [
     "2026-11-20",
     "2026-11-21"
@@ -418,11 +418,11 @@
       "track": "Innovation Talks",
       "company": "Paisani Technology Services",
       "talk": {
-        "name": "Dipak Zope",
-        "title": "Chief Executive Officer",
+        "name": "Ms. Archana Ambekar Shedge",
+        "title": "Head of AI Practice",
         "company": "Paisani Technology Services",
         "topic": "Embedded and automotive",
-        "photo": "/images/talks/dipak-zope.webp",
+        "photo": "/images/speakers/talk-ms-archana-ambekar-shedge.webp",
         "hall": "Aryabhata Theatre"
       }
     },
