@@ -11,7 +11,7 @@ import speakerBrief, { configureSpeakerBrief, saturdaySpeakerReminders } from '.
 import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/talk-brief'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
 import entrySlots, { configureEntrySlots, entrySlotAudienceRows, entryReofferAudienceRows, satOpenAudienceRows, inSlot as entryInSlot, satWindow } from './routes/entry-slots'
-import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql, saturdayWorkshopReminders } from './routes/workshop-reminder'
+import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql, saturdayWorkshopReminders, saturdayWorkshopOpenInvites } from './routes/workshop-reminder'
 import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import exhibitorMedia, { configureExhibitorMedia } from './routes/exhibitor-media'
@@ -9496,9 +9496,15 @@ async function workshopSwitchCloses(c: any): Promise<string> {
 const workshopInPass = (a: any): boolean => workshopTiers().includes(String(a?.badge_type || '')) || isWorkshopBonus(a)
 
 // Who may hold a seat, and why not when they may not.
+// From Friday 20 Nov 22:30 IST a Delegate or Expo Pass may book Saturday's workshop free
+// (the organiser, after poor turnout on Friday: "go ahead"). Booking only: receipts and
+// emails still say which passes include a workshop (workshopInPass).
+const WORKSHOP_OPEN_PASSES = ['Delegate Pass', 'Expo Pass']
+const WORKSHOP_OPEN_FROM = Date.parse('2026-11-20T17:00:00Z')
 function workshopEntitlement(a: any): { ok: boolean; why: string } {
   if (!a) return { ok: false, why: 'signin' }
-  if (!workshopInPass(a)) return { ok: false, why: 'tier' }
+  const openToPass = WORKSHOP_OPEN_PASSES.includes(String(a.badge_type || '')) && Date.now() >= WORKSHOP_OPEN_FROM
+  if (!workshopInPass(a) && !openToPass) return { ok: false, why: 'tier' }
   if (['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())) return { ok: false, why: 'unpaid' }
   return { ok: true, why: '' }
 }
@@ -17166,7 +17172,8 @@ app.post('/api/cron/tick', async (c) => {
   const satReminders = satWindow().open && (await settingValue(c, 'sat_reminders')) === 'on'
     ? { speakers: await saturdaySpeakerReminders(c, 10).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })),
         talks: await saturdayTalkReminders(c, 10).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })),
-        workshops: await saturdayWorkshopReminders(c, 10).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })) }
+        workshops: await saturdayWorkshopReminders(c, 10).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })),
+        workshop_open: await saturdayWorkshopOpenInvites(c, 20).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })) }
     : null
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
   return c.json({ ...out, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, meeting_nudges: meetingNudges, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests, talk_sessions: talkSessions, workshop_mail: workshopMail, sat_reminders: satReminders })

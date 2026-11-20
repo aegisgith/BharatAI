@@ -232,7 +232,10 @@ export function reminderEmailHTML(x: { kind: Kind; a: any; seat: Workshop | null
   const p = (t: string) => `<p style="font-size:15px;line-height:1.65;margin:0 0 14px">${t}</p>`
 
   let body = ''
-  if (kind === 'invite') {
+  if (kind === 'invite' && x.intro) {
+    body = p(escH(x.intro)) + x.options.map(w => card(w, true)).join('') + button(x.buttonText || 'Book my seat') +
+      p('<span style="font-size:13px;color:#555">Seats are limited and go first come, first served.</span>')
+  } else if (kind === 'invite') {
     const day = oneDay(x.options)
     const n = x.options.length
     body = p(`${day ? 'On ' + escH(day) + ', ' : 'At Bharat AI Innovation, '}${n === 1 ? 'a hands-on workshop runs' : escH(count(n)) + ' hands-on workshops run'}${day ? ' at Bharat AI Innovation' : ''}, ${n === 1 ? 'led' : 'each led'} by an industry expert. Pick the one you want and book your seat in the app.`) +
@@ -505,6 +508,41 @@ export async function saturdayWorkshopReminders(c: any, max = 10, nowMs = Date.n
           intro: 'One more hands-on workshop runs on Saturday 21 Nov, and you are welcome to join it with your pass. Here is everything for the day.', button: 'Open the app' }
       : { again: true, audit_action: SAT_ACTION })
     if (res.status === 200) out.sent++; else out.failed++
+  }
+  return out
+}
+
+// Saturday's workshop opened to Delegate and Expo passes, free (the organiser, 20 Nov night,
+// "go ahead", after poor turnout on Friday; the booking rule is workshopEntitlement in
+// index.tsx). One email each (admin_audit workshop.open_invite), sent by the minute clock
+// with the other Saturday reminders, likeliest first, until the seats are gone. Unsubscribed,
+// no-marketing, unpaid and the Delegate bonus holders (sent "choose your seat") are left out,
+// as is anyone with a Saturday seat already.
+const OPEN_ACTION = 'workshop.open_invite'
+export async function saturdayWorkshopOpenInvites(c: any, max = 20): Promise<{ sent: number; failed: number; left: number }> {
+  const out = { sent: 0, failed: 0, left: 0 }
+  const ctx = await context(c)
+  const options = ctx.workshops.filter(w => w.open && w.left > 0 && String(w.starts_at || '').slice(0, 10) === SAT_DAY)
+  if (!options.length || !hooks.sendEmail) return out
+  const rows = inviteOrder((await all(c, `SELECT a.id, a.event_id, a.name, a.email, a.badge_type, a.job_title, a.last_login_at FROM attendees a
+    WHERE a.badge_type IN ('Delegate Pass', 'Expo Pass') AND ${INVITE_WHERE}
+      AND NOT EXISTS (SELECT 1 FROM admin_audit x WHERE x.entity = 'attendee' AND x.entity_id = CAST(a.id AS TEXT) AND x.action = ?)
+      AND NOT EXISTS (SELECT 1 FROM workshop_seats s JOIN workshops w ON w.id = s.workshop_id WHERE s.attendee_id = a.id AND w.starts_at LIKE '${SAT_DAY}%')`, OPEN_ACTION))
+    .filter((r: any) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(r.email || '').trim())))
+  const where = await whereFn(c)
+  const header = hooks.emailHeader ? hooks.emailHeader('Saturday’s workshop, free for your pass', MUMBAI_WORDS.line) : ''
+  for (const a of rows) {
+    if (out.sent + out.failed >= max) { out.left++; continue }
+    const email = String(a.email).trim()
+    let href = ''
+    if (hooks.signInLink) { try { href = await hooks.signInLink(c, Number(a.event_id) || 1, email.toLowerCase()) } catch { href = '' } }
+    const mail = reminderEmailHTML({ kind: 'invite', a, seat: null, options, closes: ctx.closes, canSwitch: ctx.canSwitch, header, href: href || SITE + '/app?action=workshop', where, line: MUMBAI_WORDS.line,
+      subject: 'Free for your pass: Saturday’s hands-on workshop, ' + options[0].title,
+      intro: `Good news: Saturday’s hands-on workshop is now open to your ${String(a.badge_type || 'pass')}, at no extra cost. Seats are limited and go first come, first served: book yours in the app before you come.` })
+    const sent = await hooks.sendEmail(c, email, mail.subject, mail.html)
+    if (!sent.ok) { out.failed++; continue }
+    out.sent++
+    if (hooks.audit) { try { await hooks.audit(c, OPEN_ACTION, 'attendee', a.id, { kind: 'open_invite', to: email, workshop_id: options[0].id }) } catch { /* never fails a send */ } }
   }
   return out
 }
