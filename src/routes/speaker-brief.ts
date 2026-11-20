@@ -404,15 +404,46 @@ brief.put('/api/admin/speaker-briefs/note', async (c) => {
 // Preview ({ preview: true }) or send one speaker's brief. { anyway: true } is needed
 // to email a minister (the list never does it for you).
 brief.post('/api/admin/speakers/:id/brief', async (c) => {
-  const id = Number(c.req.param('id'))
+  const b = await c.req.json().catch(() => ({})) as any
+  return sendBrief(c, Number(c.req.param('id')), b)
+})
+
+// "Reminder for Saturday" (the organiser, 20 Nov night: "send reminder to all speakers with
+// schedule as well"): the brief with only their Saturday sessions, sent by the minute clock
+// (index.tsx, while app_settings.sat_reminders is 'on'), each speaker once, a few a minute.
+// Ministers, speakers with no address and sessions already started are left out. Kept apart
+// from the brief's own record (action speaker.reminder), so "changed since sent" is not disturbed.
+export const REMINDER_DAY = '2026-11-21'
+const REMINDER_ACTION = 'speaker.reminder'
+const istMs = (v: any) => { const t = Date.parse(String(v || '').replace(' ', 'T').slice(0, 16) + ':00+05:30'); return Number.isFinite(t) ? t : Infinity }
+export async function saturdaySpeakerReminders(c: any, max = 10, nowMs = Date.now()): Promise<{ sent: number; failed: number; left: number; skipped: number }> {
+  const out = { sent: 0, failed: 0, left: 0, skipped: 0 }
+  const done = new Set((await all(c, "SELECT entity_id FROM admin_audit WHERE entity = 'speaker' AND action = ?", REMINDER_ACTION).catch(() => [])).map((r: any) => String(r.entity_id)))
+  for (const { sp, slots } of await speakersWithSlots(c, 1)) {
+    if (done.has(String(sp.id))) continue
+    if (!slots.some((s: any) => String(s.start_time || '').slice(0, 10) === REMINDER_DAY && istMs(s.start_time) > nowMs)) continue
+    if (!String(sp.email || '').trim() || isProtocol(sp)) { out.skipped++; continue }
+    if (out.sent + out.failed >= max) { out.left++; continue }
+    const res = await sendBrief(c, Number(sp.id), {
+      only_day: REMINDER_DAY, update: false, audit_action: REMINDER_ACTION,
+      subject: 'Reminder: your session on Saturday 21 Nov at Bharat AI Innovation',
+      opening: 'A reminder for Saturday 21 Nov. Here is your session, its time and hall, and your pass. Thank you for speaking at Bharat AI Innovation 2026.',
+    })
+    if (res.status === 200) out.sent++; else out.failed++
+  }
+  return out
+}
+
+async function sendBrief(c: any, id: number, b: any): Promise<Response> {
   const spRow = await one(c, 'SELECT id, event_id FROM speakers WHERE id = ?', id)
   if (!spRow) return c.json({ error: 'That speaker is not on the list any more.' }, 404)
   const eventId = Number(spRow.event_id) || 1
   if (eventId !== 1) return c.json({ error: 'Speaker briefs are for the Mumbai event for now.' }, 409)
-  const b = await c.req.json().catch(() => ({})) as any
   const [mine] = await speakersWithSlots(c, eventId, id)
   if (!mine) return c.json({ error: 'That speaker is not on the list any more.' }, 404)
-  const { sp, slots } = mine
+  const { sp } = mine
+  // b.only_day (the Saturday reminder): only that day's sessions.
+  const slots = b.only_day ? mine.slots.filter((s: any) => String(s.start_time || '').slice(0, 10) === String(b.only_day)) : mine.slots
   if (!slots.length) return c.json({ error: sp.name + ' has no published session yet. Give them a session first.' }, 409)
   const note = b.note == null ? await savedNote(c) : String(b.note).replace(/\r\n/g, '\n').trim().slice(0, 1500)
   const words = wordsFor(await eventOf(c, eventId))
@@ -467,12 +498,12 @@ brief.post('/api/admin/speakers/:id/brief', async (c) => {
   const sent = await hooks.sendEmail(c, email, mail.subject, mail.html, Object.keys(opts).length ? opts : undefined)
   if (!sent.ok) return c.json({ error: sent.error || 'The email did not go.' }, 502)
   if (hooks.audit) {
-    try { await hooks.audit(c, AUDIT_ACTION, 'speaker', id, { name: sp.name, to: email, fp, kind: update ? 'update' : 'first', sessions: slots.map((s: any) => s.id), pass: passInfo ? passInfo.pass : null,
+    try { await hooks.audit(c, String(b.audit_action || AUDIT_ACTION), 'speaker', id, { name: sp.name, to: email, fp, kind: update ? 'update' : 'first', sessions: slots.map((s: any) => s.id), pass: passInfo ? passInfo.pass : null,
       edited, subject: mail.subject, cc: cc.list, from: from.email }) }
     catch { /* the audit log never fails a send */ }
   }
   return c.json({ success: true, to: email, cc: cc.list, from: from.email, kind: update ? 'update' : 'first', fp, pass: passInfo, subject: mail.subject, edited })
-})
+}
 
 // A published session as a calendar file, for the brief's "Outlook or Apple" link.
 brief.get('/api/sessions/:id/calendar.ics', async (c) => {

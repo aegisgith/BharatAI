@@ -272,12 +272,39 @@ tb.put('/api/admin/talk-briefs/note', async (c) => {
 // email a government official (the list never does it for you). { to } sends to another
 // address instead of the one on file (typed in the sheet).
 tb.post('/api/admin/innovation-talks/:id/brief', async (c) => {
-  const id = Number(c.req.param('id'))
+  const b = await c.req.json().catch(() => ({})) as any
+  return sendTalkBrief(c, Number(c.req.param('id')), b)
+})
+
+// "Reminder for Saturday" (the organiser, 20 Nov night: "send reminder to all speakers with
+// schedule as well"): each Saturday talk's brief once more, with a reminder subject, sent by
+// the minute clock (index.tsx, while app_settings.sat_reminders is 'on'), a few a minute.
+// Government officials, talks with no address and talks already started are left out.
+const REMINDER_DAY = '2026-11-21'
+const REMINDER_ACTION = 'innovation_talk.reminder'
+const istMs = (v: any) => { const t = Date.parse(String(v || '').replace(' ', 'T').slice(0, 16) + ':00+05:30'); return Number.isFinite(t) ? t : Infinity }
+export async function saturdayTalkReminders(c: any, max = 10, nowMs = Date.now()): Promise<{ sent: number; failed: number; left: number; skipped: number }> {
+  const out = { sent: 0, failed: 0, left: 0, skipped: 0 }
+  const talks = (await talksOf(c, 1)).filter(t => timed(t) && String(t.starts_at).slice(0, 10) === REMINDER_DAY && istMs(t.starts_at) > nowMs)
+  if (!talks.length) return out
+  const done = new Set((await all(c, "SELECT entity_id FROM admin_audit WHERE entity = 'innovation_talk' AND action = ?", REMINDER_ACTION).catch(() => [])).map((r: any) => String(r.entity_id)))
+  const contacts = hooks.contacts ? await hooks.contacts(c, 1) : {}
+  for (const t of talks) {
+    if (done.has(String(t.id))) continue
+    const ct = contacts[String(t.id)]
+    if (!ct || !String(ct.email || '').trim() || ct.protocol) { out.skipped++; continue }
+    if (out.sent + out.failed >= max) { out.left++; continue }
+    const res = await sendTalkBrief(c, Number(t.id), { update: false, audit_action: REMINDER_ACTION, subject: 'Reminder: your Innovation Talk on Saturday 21 Nov at Bharat AI Innovation' })
+    if (res.status === 200) out.sent++; else out.failed++
+  }
+  return out
+}
+
+async function sendTalkBrief(c: any, id: number, b: any): Promise<Response> {
   const t = await one(c, 'SELECT * FROM innovation_talks WHERE id = ?', id)
   if (!t) return c.json({ error: 'That talk is not there any more. Refresh the page.' }, 404)
   const eventId = Number(t.event_id) || 1
   if (eventId !== 1) return c.json({ error: 'Talk briefs are for the Mumbai event for now.' }, 409)
-  const b = await c.req.json().catch(() => ({})) as any
   if (!timed(t)) return c.json({ error: `${t.speaker_name || 'This talk'} has no time or hall yet. Set them on the talk first.` }, 409)
   const contacts = hooks.contacts ? await hooks.contacts(c, eventId) : {}
   const ct = contacts[String(id)] || { email: '', source: 'none', note: '', protocol: false }
@@ -315,11 +342,11 @@ tb.post('/api/admin/innovation-talks/:id/brief', async (c) => {
     try { await c.env.DB.prepare("UPDATE innovation_talks SET speaker_email = ? WHERE id = ? AND trim(ifnull(speaker_email, '')) = ''").bind(email, id).run() } catch { /* before 0052 */ }
   }
   if (hooks.audit) {
-    try { await hooks.audit(c, AUDIT_ACTION, 'innovation_talk', id, { speaker: t.speaker_name, company: t.company, to: email, source: typed ? 'typed' : ct.source, fp, kind: update ? 'update' : 'first', subject: mail.subject, pass: have ? have.badge_type : null }) }
+    try { await hooks.audit(c, String(b.audit_action || AUDIT_ACTION), 'innovation_talk', id, { speaker: t.speaker_name, company: t.company, to: email, source: typed ? 'typed' : ct.source, fp, kind: update ? 'update' : 'first', subject: mail.subject, pass: have ? have.badge_type : null }) }
     catch { /* the audit log never fails a send */ }
   }
   return c.json({ success: true, to: email, kind: update ? 'update' : 'first', fp, subject: mail.subject })
-})
+}
 
 // A timed talk as a calendar file, for the brief's "Outlook or Apple" link.
 tb.get('/api/innovation-talks/:id/calendar.ics', async (c) => {
