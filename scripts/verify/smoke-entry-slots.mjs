@@ -314,6 +314,24 @@ FAKE_NOW = RealDate.parse('2026-11-21T03:00:00Z'); // Saturday 8:30 IST
 r = await hit('POST', '/api/staff/scan', { token: passTok(2) }, ADMIN);
 check('desk, Saturday 8:30 am, a Friday-morning pass: on time (Saturday is open to all)', r.json.state === 'ok' && r.json.slot === FRI_AM && r.json.slot_now === true, JSON.stringify(r.json));
 
+// ---- Saturday's programme to everyone with a pass (the organiser, 20 Nov night) ----
+db.run("INSERT INTO speakers (id, event_id, slug, name, role, organisation, is_published) VALUES (901, 1, 'jane-doe', 'Jane Doe', 'CTO', 'Acme AI', 1), (902, 1, 'hon-x', 'Hon’ble Shri Minister X', 'Minister of Testing', 'Government of Maharashtra', 1)");
+db.run("INSERT INTO sessions (event_id, title, session_type, room, start_time, end_time, speaker_name) VALUES (1, 'AI in Banking panel', 'panel', 'Homi J. Bhabha Hall', '2026-11-21 11:00', '2026-11-21 12:00', 'Jane Doe (Acme AI), Hon’ble Shri Minister X (Government of Maharashtra)'), (1, 'Lunch', 'break', 'Homi J. Bhabha Hall', '2026-11-21 13:00', '2026-11-21 14:00', '')");
+db.run("INSERT INTO innovation_talks (event_id, speaker_name, company, topic, starts_at, duration_min, status) VALUES (1, 'Ravi Talker', 'StartCo', 'Agents for retail', '2026-11-21 12:30', 8, 'confirmed')");
+FAKE_NOW = RealDate.parse('2026-11-20T17:30:00Z'); // Friday 23:00 IST: not yet
+r = await hit('POST', '/api/admin/attendees/20/send-day2', {}, ADMIN);
+check('the Saturday programme waits until 6 am on Saturday (it says "today")', r.status === 409 && r.json?.paused === true, r.status + ' ' + JSON.stringify(r.json));
+FAKE_NOW = RealDate.parse('2026-11-21T01:00:00Z'); // Saturday 6:30 IST
+const b6 = sent.length;
+r = await hit('POST', '/api/admin/attendees/20/send-day2', {}, ADMIN);
+const d2paid = sent[b6]?.Content?.Body?.[0]?.Content || '';
+check('a Delegate: who is on stage (the panel, Jane Doe, the hall), the Innovation Talk, no minister, no lunch break',
+  r.status === 200 && /who is on stage, Saturday 21 Nov$/.test(sent[b6]?.Content?.Subject || '') && d2paid.includes('AI in Banking panel') && d2paid.includes('Jane Doe (Acme AI)') && d2paid.includes('Ravi Talker') && !/Hon’ble|Minister X/.test(d2paid) && !d2paid.includes('Lunch'), sent[b6]?.Content?.Subject);
+r = await hit('POST', '/api/admin/attendees/6/send-day2', {}, ADMIN);
+const d2free = sent[b6 + 1]?.Content?.Body?.[0]?.Content || '';
+check('a free pass: the Innovation Talks, not the conference sessions, and the line that the halls need a Delegate Pass',
+  r.status === 200 && /the Innovation Talks, Saturday 21 Nov$/.test(sent[b6 + 1]?.Content?.Subject || '') && d2free.includes('Ravi Talker') && !d2free.includes('AI in Banking panel') && d2free.includes('for Delegate Pass holders'), sent[b6 + 1]?.Content?.Subject);
+
 // ---- the app and the event-week email ----
 const appJs = await hit('GET', '/app.js');
 check('the app pass card says the entry time', appJs.text.includes(' is a free pass with an entry time') && appJs.text.includes("'Your entry time: ' + slotText"), appJs.status);

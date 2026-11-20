@@ -1,4 +1,6 @@
 import { Hono } from 'hono'
+import { adminReady, sessionsWithSpeakers, hallLabel, clock } from './conference'
+import { peopleOf, isProtocol } from './speaker-brief'
 
 // ==================== ENTRY TIMES FOR THE FREE VISITOR PASS (17 Nov 2026) ====================
 //
@@ -526,6 +528,110 @@ es.post('/api/admin/attendees/:id/send-entry-slot', async (c) => {
   const res = await hooks.sendEmail(c, a.email, mail.subject, mail.html)
   if (!res.ok) return c.json({ error: res.error || 'Not sent' }, 502)
   return c.json({ success: true, sent_to: a.email, slot: a.entry_slot })
+})
+
+// ---------- Saturday's programme, to everyone with a pass (20 Nov night) ----------
+// The organiser: "did u send details of speakers, innovation talk to free pass or delegates".
+// From 6 am Saturday (satWindow), a run of kind day2_programme: today's Innovation Talks on
+// the exhibition floor for everyone; the conference sessions (time, hall, speakers) and the
+// workshop for passes that enter the halls. No minister is named (the organiser, 19 Nov).
+export const DAY2_KIND = 'day2_programme'
+const FLOOR_ONLY = ['Expo Pass', 'Exhibitor', 'Exhibition Speaker']
+const SKIP_TYPES = /^(break|lunch|tea|networking|registration)$/i
+let progCache: { at: number; v: any } | null = null
+export async function dayTwoProgramme(c: any): Promise<{ sessions: any[]; talks: any[]; workshop: any | null }> {
+  if (progCache && Date.now() - progCache.at < 5 * 60000) return progCache.v
+  const speakers = await all(c, 'SELECT id, name, role, organisation FROM speakers WHERE event_id = 1').catch(() => [])
+  const byId = new Map(speakers.map((s: any) => [Number(s.id), s]))
+  const protocolNames = new Set(speakers.filter((s: any) => isProtocol(s)).map((s: any) => String(s.name || '').trim().toLowerCase()))
+  const minister = (n: string) => /^\s*hon[’']?ble\b/i.test(n) || protocolNames.has(n.trim().toLowerCase())
+  let sessions: any[] = []
+  try {
+    const r = await adminReady(c)
+    sessions = (await sessionsWithSpeakers(c, 1, speakers, r))
+      .filter((s: any) => s.status !== 'draft' && String(s.start_time || '').slice(0, 10) === OPEN_DAY && !SKIP_TYPES.test(String(s.session_type || '')))
+      .map((s: any) => {
+        const p = peopleOf(s, -1, byId)
+        const people = [...p.moderators, ...p.others].filter(x => !minister(x.name)).map(x => x.org ? `${x.name} (${x.org})` : x.name)
+        return { time: clock(s.start_time), end: clock(s.end_time), title: String(s.title || ''), hall: hallLabel(s.room), people, start: String(s.start_time || '') }
+      })
+      .filter((s: any) => s.title && !minister(s.title))
+  } catch { sessions = [] }
+  const talks = (await all(c, `SELECT * FROM innovation_talks WHERE event_id = 1 AND starts_at LIKE '${OPEN_DAY}%' AND COALESCE(status, '') <> 'cancelled' ORDER BY starts_at, id`).catch(() => []))
+    .filter((t: any) => String(t.speaker_name || '').trim() && !minister(String(t.speaker_name)))
+    .map((t: any) => ({ time: clock(t.starts_at), speaker: String(t.speaker_name || '').trim(), company: String(t.company || '').trim(), topic: String(t.topic || '').trim(), hall: hallLabel(t.hall || '') }))
+  const ws = await c.env.DB.prepare(`SELECT title, starts_at, room FROM workshops WHERE event_id = 1 AND starts_at LIKE '${OPEN_DAY}%' ORDER BY starts_at LIMIT 1`).first().catch(() => null) as any
+  const v = { sessions, talks, workshop: ws ? { title: String(ws.title || ''), time: clock(ws.starts_at), hall: hallLabel(ws.room) } : null }
+  progCache = { at: Date.now(), v }
+  return v
+}
+export function dayTwoEmail(a: any, prog: { sessions: any[]; talks: any[]; workshop: any | null }, header: string, appUrl: string): { subject: string; html: string } {
+  const first = firstName(a.name)
+  const nk = hooks.notifyKind ? hooks.notifyKind(a) : 'free'
+  const badge = String(a.badge_type || '').trim()
+  const halls = nk === 'paid' && !FLOOR_ONLY.includes(badge)
+  const workshopToo = nk === 'paid' && !['Exhibitor', 'Exhibition Speaker'].includes(badge)
+  const subject = (first ? first + ', ' : '') + (halls ? 'today at Bharat AI Innovation: who is on stage, Saturday 21 Nov' : 'today at Bharat AI Innovation: the Innovation Talks, Saturday 21 Nov')
+  const h2 = (t: string) => `<p style="margin:22px 0 8px;font-size:12px;letter-spacing:1.4px;font-weight:bold;color:#C84F00;text-transform:uppercase;">${t}</p>`
+  const row = (time: string, main: string, sub: string) => `<tr><td valign="top" style="padding:7px 12px 7px 0;font-size:13px;font-weight:bold;color:#1E2140;white-space:nowrap;">${esc(time)}</td>` +
+    `<td valign="top" style="padding:7px 0;border-bottom:1px solid #f0f0f4;"><p style="margin:0;font-size:14px;font-weight:bold;color:#1E2140;line-height:1.45;">${main}</p>${sub ? `<p style="margin:2px 0 0;font-size:12.5px;color:#666;line-height:1.5;">${sub}</p>` : ''}</td></tr>`
+  const table = (rows: string) => `<table role="presentation" style="width:100%;border-collapse:collapse;">${rows}</table>`
+  const talks = prog.talks.length ? h2('Innovation Talks on the exhibition floor') + table(prog.talks.map(t =>
+    row(t.time, esc(t.speaker) + (t.company ? ', ' + esc(t.company) : ''), [t.topic ? esc(t.topic) : '', t.hall ? esc(t.hall) : ''].filter(Boolean).join(' &middot; '))).join('')) : ''
+  const sessions = halls && prog.sessions.length ? h2('In the conference halls') + table(prog.sessions.map(s =>
+    row(s.time, esc(s.title), [s.hall ? esc(s.hall) : '', s.people.length ? esc(s.people.join(', ')) : ''].filter(Boolean).join(' &middot; '))).join('')) : ''
+  const workshop = workshopToo && prog.workshop ? `<div style="margin:20px 0 0;padding:14px 16px;background:#FFF8EC;border:1px solid #F3DDB0;border-radius:12px;">
+        <p style="margin:0 0 4px;font-size:14px;font-weight:bold;color:#1E2140;">Hands-on workshop: ${esc(prog.workshop.title)}</p>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#555;">${esc(prog.workshop.time)}, ${esc(prog.workshop.hall)}. Free with your pass: book a seat in the app before you go, seats are limited.</p></div>` : ''
+  const hallNote = !halls && nk !== 'paid' ? `<p style="margin:16px 0 0;font-size:13px;line-height:1.6;color:#555;">The conference sessions in the halls are for Delegate Pass holders.</p>` : ''
+  const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Today at World Trade Center, Mumbai. Doors open at 8:30 am.</div>
+  <div style="max-width:600px;margin:0 auto;padding:16px;">
+    <div style="border-radius:16px;overflow:hidden;">${header}</div>
+    <div style="background:white;border-radius:16px;padding:24px 22px;margin-top:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+      <p style="margin:0 0 10px;font-size:15px;color:#333;">Hi <strong>${esc(first || 'there')}</strong>,</p>
+      <p style="margin:0;font-size:14.5px;line-height:1.7;color:#444;">Here is ${halls ? 'who is on stage' : 'what is on the exhibition floor'} today, <strong>Saturday 21 Nov</strong>, at World Trade Center, Cuffe Parade, Mumbai. Doors open at <strong>8:30 am</strong>. Bring your pass on your phone and a government photo ID.</p>
+      ${talks}${sessions}${workshop}${hallNote}
+      <div style="text-align:center;margin:22px 0 6px;"><a href="${esc(appUrl)}" style="display:inline-block;padding:12px 24px;background:#C84F00;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:14px;">Open my pass in the app</a></div>
+      <p style="margin:18px 0 0;font-size:14px;line-height:1.6;color:#555;">See you today,<br><strong>Team Bharat AI Innovation</strong></p>
+    </div>
+    <p style="text-align:center;color:#999;font-size:12px;margin-top:16px;">Bharat AI Innovation Conference &amp; Exhibition 2026 &bull; World Trade Center, Mumbai &bull; Saturday 21 Nov 2026</p>
+  </div>
+</body>
+</html>`
+  return { subject, html }
+}
+es.post('/api/admin/attendees/:id/send-day2', async (c) => {
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
+  if (!a) return c.json({ error: 'Attendee not found' }, 404)
+  if (!a.email || !validEmail(a.email) || /@no-email\.invalid$/i.test(String(a.email))) return c.json({ skipped: true, reason: 'No usable email address' })
+  if (a.unsubscribed_at) return c.json({ skipped: true, reason: 'Unsubscribed' })
+  if (Number(a.main_event ?? 1) === 0) return c.json({ skipped: true, reason: 'Campus panel only' })
+  if (TEAM_ONLY.includes(String(a.badge_type || '').trim())) return c.json({ skipped: true, reason: 'Organising team' })
+  // Not before 6 am on Saturday itself: the email says "today".
+  const win = satWindow()
+  if ((!win.open || Date.now() < Date.parse('2026-11-21T00:30:00Z')) && c.req.query('force') !== '1') return c.json({ paused: true, reason: `Goes from 6am IST on Saturday 21 Nov (it is ${win.ist_time}).`, window: win }, 409)
+  if (!hooks.sendEmail) return c.json({ error: 'Email is not set up on this server.' }, 503)
+  const prog = await dayTwoProgramme(c)
+  if (!prog.talks.length && !prog.sessions.length) return c.json({ paused: true, reason: 'No programme for Saturday yet.' }, 409)
+  const appUrl = (hooks.appUrl ? await hooks.appUrl(c) : SITE + '/app') + '?email=' + encodeURIComponent(String(a.email).trim()) + '&action=download-pass'
+  const header = hooks.emailHeader ? hooks.emailHeader('Today: Saturday 21 Nov', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai') : ''
+  const mail = dayTwoEmail(a, prog, header, appUrl)
+  const html = hooks.decorate ? await hooks.decorate(c, mail.html, a.email) : mail.html
+  const res = await hooks.sendEmail(c, a.email, mail.subject, html)
+  if (!res.ok) return c.json({ error: res.error || 'Not sent' }, 502)
+  return c.json({ success: true, sent_to: a.email })
+})
+es.get('/api/admin/entry-slots/day2-preview', async (c) => {
+  const prog = await dayTwoProgramme(c)
+  const who = String(c.req.query('who') || 'paid')
+  const a = { name: 'Asha Rao', email: 'preview@example.com', badge_type: who === 'free' ? 'Visitor Pass' : who === 'expo' ? 'Expo Pass' : 'Delegate Pass', payment_status: 'paid' }
+  const header = hooks.emailHeader ? hooks.emailHeader('Today: Saturday 21 Nov', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai') : ''
+  const mail = dayTwoEmail(a, prog, header, '#preview')
+  return c.json({ counts: { sessions: prog.sessions.length, talks: prog.talks.length }, subject: mail.subject, html: mail.html })
 })
 
 // "Saturday is open to all", to ONE attendee, for the campaign pump.

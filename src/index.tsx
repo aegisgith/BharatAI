@@ -20805,6 +20805,7 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'entry_slot' ? `/api/admin/attendees/${r.attendee_id}/send-entry-slot`
     : kind === 'entry_reoffer' ? `/api/admin/attendees/${r.attendee_id}/send-entry-reoffer`
     : kind === 'sat_open' ? `/api/admin/attendees/${r.attendee_id}/send-sat-open`
+    : kind === 'day2_programme' ? `/api/admin/attendees/${r.attendee_id}/send-day2`
     : kind === 'offer' ? '/api/admin/offers/send'
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
@@ -21038,7 +21039,7 @@ async function tickCampaigns(c: any): Promise<any[]> {
     try {
       // The event-week email is not paced by the send gap (routes/event-week.ts): ten a
       // minute, so a few thousand go in a day and not a week.
-      const r = await pumpCampaign(c, k.id, k.kind === 'sat_open' ? 50 : k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
+      const r = await pumpCampaign(c, k.id, k.kind === 'sat_open' ? 50 : k.kind === 'day2_programme' ? 40 : k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
       out.push({ id: k.id, sent: r.body?.sent ?? null, remaining: r.body?.remaining ?? null, wait_seconds: r.body?.wait_seconds ?? 0 })
     } catch (e: any) { out.push({ id: k.id, error: String(e?.message || e).slice(0, 200) }) }
   }
