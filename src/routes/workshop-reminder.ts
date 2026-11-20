@@ -207,10 +207,10 @@ export function reminderSubject(kind: Kind, w: Workshop | null, options: Worksho
 // The email. href '#preview' is what a preview carries, so a preview never mints a
 // sign-in link. where(room) gives "Raman Theatre, First Floor, Centre One".
 export function reminderEmailHTML(x: { kind: Kind; a: any; seat: Workshop | null; options: Workshop[]; closes: string; canSwitch: boolean;
-    header: string; href: string; where: (room: string) => string; line: string }): { subject: string; html: string } {
+    header: string; href: string; where: (room: string) => string; line: string; subject?: string; intro?: string; buttonText?: string }): { subject: string; html: string } {
   const { kind, a, seat } = x
   const bonus = isWorkshopBonus(a)
-  const subject = reminderSubject(kind, seat, x.options, bonus)
+  const subject = x.subject || reminderSubject(kind, seat, x.options, bonus)
   const pass = String(a.badge_type || 'pass')
   const row = (k: string, v: string) => `<tr><td style="color:#6b7280;padding:2px 14px 2px 0;vertical-align:top;white-space:nowrap">${k}</td><td style="padding:2px 0">${v}</td></tr>`
   const card = (w: Workshop, withBring: boolean) => {
@@ -249,14 +249,14 @@ export function reminderEmailHTML(x: { kind: Kind; a: any; seat: Workshop | null
       (x.canSwitch && x.closes ? p(`<span style="font-size:13px;color:#555">You can change your choice until ${escH(closesText(x.closes))}.</span>`) : '')
   } else if (seat) {
     const bring = BRING[seat.slug]
-    body = p('Your workshop seat is booked. Here is everything for the day.') + card(seat, false) +
+    body = p(x.intro ? escH(x.intro) : 'Your workshop seat is booked. Here is everything for the day.') + card(seat, false) +
       (bring ? `<div style="border:1px solid #f3d9c6;border-radius:12px;padding:16px 18px;margin:6px 0 12px;background:#fff8f3">
         <div style="font-size:15px;font-weight:bold;color:#1e2140;margin:0 0 8px">Before you come</div>
         <ol style="margin:0;padding-left:20px;font-size:14px;line-height:1.65;color:#1e2140">${bring.steps.map(s => `<li style="margin:0 0 6px">${escH(s)}</li>`).join('')}</ol>
         ${bring.links.length ? `<p style="font-size:14px;margin:10px 0 0">${bring.links.map(l => `<a href="${escH(l.href)}" style="color:#C84F00;font-weight:bold">${escH(l.text)}</a>`).join('<br>')}</p>` : ''}
       </div>` : '') +
-      button('See my workshop in the app') +
-      (x.canSwitch && x.closes ? p(`<span style="font-size:13px;color:#555">Want a different workshop? You can switch in the app until ${escH(closesText(x.closes))}, while seats last.</span>`) : '')
+      button(x.buttonText || 'See my workshop in the app') +
+      (!x.intro && x.canSwitch && x.closes ? p(`<span style="font-size:13px;color:#555">Want a different workshop? You can switch in the app until ${escH(closesText(x.closes))}, while seats last.</span>`) : '')
   }
   const html = `<!DOCTYPE html><html><body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
   <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e7e9f5">
@@ -470,8 +470,46 @@ wr.get('/api/admin/workshop-reminders', async (c) => {
 // Preview ({ preview: true }) or send one person's email. { again: true } sends the
 // same kind again within AGAIN_HOURS of the last one.
 wr.post('/api/admin/attendees/:id/workshop-reminder', async (c) => {
-  const id = Number(c.req.param('id'))
   const b = await c.req.json().catch(() => ({})) as any
+  return sendReminder(c, Number(c.req.param('id')), b)
+})
+
+// Saturday's workshop (the organiser, 20 Nov night: "send tomorrows workshop details as
+// well", "we had poor workshop participation today"): sent by the minute clock (index.tsx,
+// while app_settings.sat_reminders is 'on'), each person once (admin_audit
+// workshop.sat_reminder), a few a minute, until the last Saturday workshop starts. A seat on
+// Saturday gets "Your workshop on Saturday" with what to bring; a workshop pass with no seat
+// gets "choose your seat" (only open workshops with room are listed); a Friday seat is left out.
+const SAT_DAY = '2026-11-21'
+const SAT_ACTION = 'workshop.sat_reminder'
+const istMs = (v: any) => { const t = Date.parse(String(v || '').replace(' ', 'T').slice(0, 16) + ':00+05:30'); return Number.isFinite(t) ? t : -Infinity }
+export async function saturdayWorkshopReminders(c: any, max = 10, nowMs = Date.now()): Promise<{ sent: number; failed: number; left: number }> {
+  const out = { sent: 0, failed: 0, left: 0 }
+  const ctx = await context(c)
+  const sat = ctx.workshops.filter(w => String(w.starts_at || '').slice(0, 10) === SAT_DAY)
+  if (!sat.length || !sat.some(w => istMs(w.starts_at) > nowMs)) return out
+  const done = new Set((await all(c, "SELECT entity_id FROM admin_audit WHERE entity = 'attendee' AND action = ?", SAT_ACTION).catch(() => [])).map((r: any) => String(r.entity_id)))
+  // Friday's seat holders are invited to Saturday's workshop too (the organiser: "send
+  // details to even todays workshop attendees and participants"): the first Saturday
+  // workshop still to start, shown as theirs, "you are welcome to join it with your pass".
+  const next = sat.filter(w => istMs(w.starts_at) > nowMs).sort((x, y) => istMs(x.starts_at) - istMs(y.starts_at))[0]
+  for (const a of await entitledPeople(c)) {
+    if (done.has(String(a.id))) continue
+    const seat = a.workshop_id == null ? null : (ctx.workshops.find(w => w.id === Number(a.workshop_id)) || null)
+    const friday = !!seat && String(seat.starts_at || '').slice(0, 10) < SAT_DAY
+    if (seat && !friday && !(String(seat.starts_at || '').slice(0, 10) === SAT_DAY && istMs(seat.starts_at) > nowMs)) continue
+    if (!seat && !choosable(ctx.workshops, String(a.badge_type || '')).length) continue
+    if (out.sent + out.failed >= max) { out.left++; continue }
+    const res = await sendReminder(c, Number(a.id), friday
+      ? { again: true, audit_action: SAT_ACTION, seat_id: next.id, subject: 'One more workshop on Saturday: ' + next.title,
+          intro: 'One more hands-on workshop runs on Saturday 21 Nov, and you are welcome to join it with your pass. Here is everything for the day.', button: 'Open the app' }
+      : { again: true, audit_action: SAT_ACTION })
+    if (res.status === 200) out.sent++; else out.failed++
+  }
+  return out
+}
+
+async function sendReminder(c: any, id: number, b: any): Promise<Response> {
   const [a] = await entitledPeople(c, id)
   if (!a) {
     const any = await one(c, 'SELECT id, name, badge_type, payment_status, email FROM attendees WHERE id = ?', id)
@@ -482,7 +520,10 @@ wr.post('/api/admin/attendees/:id/workshop-reminder', async (c) => {
     return c.json({ error: who + ' holds a ' + (any.badge_type || 'pass') + (st === 'pending' ? ' that is not paid yet' : st === 'refunded' ? ' that was refunded' : ' with no workshop in it') + '.' }, 409)
   }
   const ctx = await context(c)
-  const seat = a.workshop_id == null ? null : (ctx.workshops.find(w => w.id === Number(a.workshop_id)) || null)
+  // b.seat_id: the workshop to tell them about instead of their own seat (Saturday's, for
+  // Friday's seat holders; the clock's Saturday reminder only).
+  const seat = b.seat_id ? (ctx.workshops.find(w => w.id === Number(b.seat_id)) || null)
+    : a.workshop_id == null ? null : (ctx.workshops.find(w => w.id === Number(a.workshop_id)) || null)
   const kind: 'choose' | 'seat' = seat ? 'seat' : 'choose'
   const options = choosable(ctx.workshops, String(a.badge_type || ''))
   if (kind === 'choose' && !options.length) return c.json({ error: 'Every workshop is full or closed, so there is nothing to choose. Open one in the cards above first.' }, 409)
@@ -490,7 +531,8 @@ wr.post('/api/admin/attendees/:id/workshop-reminder', async (c) => {
   const header = hooks.emailHeader ? hooks.emailHeader(kind === 'choose' ? 'Choose your workshop' : 'Your workshop', MUMBAI_WORDS.line) : ''
   const last = (await lastSent(c)).get(id) || null
   const email = String(a.email).trim()
-  const build = (href: string) => reminderEmailHTML({ kind, a, seat, options, closes: ctx.closes, canSwitch: ctx.canSwitch, header, href, where, line: MUMBAI_WORDS.line })
+  const build = (href: string) => reminderEmailHTML({ kind, a, seat, options, closes: ctx.closes, canSwitch: ctx.canSwitch, header, href, where, line: MUMBAI_WORDS.line,
+    subject: b.seat_id ? String(b.subject || '') : '', intro: b.seat_id ? String(b.intro || '') : '', buttonText: b.seat_id ? String(b.button || '') : '' })
 
   if (b.preview) {
     const mail = build('#preview')
@@ -509,9 +551,11 @@ wr.post('/api/admin/attendees/:id/workshop-reminder', async (c) => {
   if (hooks.audit) {
     try { await hooks.audit(c, AUDIT_ACTION, 'attendee', id, { kind, to: email, workshop_id: seat ? seat.id : null, subject: mail.subject }) }
     catch { /* the audit log never fails a send */ }
+    // The Saturday reminder keeps its own mark too, so the clock sends it once.
+    if (b.audit_action) { try { await hooks.audit(c, String(b.audit_action), 'attendee', id, { kind, to: email, workshop_id: seat ? seat.id : null }) } catch { /* never fails a send */ } }
   }
   return c.json({ success: true, to: email, kind, subject: mail.subject })
-})
+}
 
 // ---------- passes without a workshop: the invitation and who tried ----------
 

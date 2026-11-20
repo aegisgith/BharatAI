@@ -11,7 +11,7 @@ import speakerBrief, { configureSpeakerBrief, saturdaySpeakerReminders } from '.
 import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/talk-brief'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
 import entrySlots, { configureEntrySlots, entrySlotAudienceRows, entryReofferAudienceRows, satOpenAudienceRows, inSlot as entryInSlot, satWindow } from './routes/entry-slots'
-import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql } from './routes/workshop-reminder'
+import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql, saturdayWorkshopReminders } from './routes/workshop-reminder'
 import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import exhibitorMedia, { configureExhibitorMedia } from './routes/exhibitor-media'
@@ -17161,11 +17161,12 @@ app.post('/api/cron/tick', async (c) => {
   // "Choose your workshop", 15 minutes after a workshop pass is confirmed, to anyone
   // who has not chosen yet (routes/workshop-reminder.ts, switch in Admin -> Workshops).
   const workshopMail = await autoWorkshopReminders(c).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
-  // Saturday reminders to speakers and Innovation Talk speakers (the organiser, 20 Nov night),
+  // Saturday reminders to speakers, Innovation Talk speakers and workshop passes (the organiser, 20 Nov night),
   // while app_settings.sat_reminders is 'on', 6am to 11:30pm IST, each once, ten of each a minute.
   const satReminders = satWindow().open && (await settingValue(c, 'sat_reminders')) === 'on'
     ? { speakers: await saturdaySpeakerReminders(c, 10).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })),
-        talks: await saturdayTalkReminders(c, 10).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })) }
+        talks: await saturdayTalkReminders(c, 10).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })),
+        workshops: await saturdayWorkshopReminders(c, 10).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })) }
     : null
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
   return c.json({ ...out, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, meeting_nudges: meetingNudges, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests, talk_sessions: talkSessions, workshop_mail: workshopMail, sat_reminders: satReminders })
