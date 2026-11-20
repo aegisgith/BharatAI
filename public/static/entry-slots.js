@@ -83,7 +83,18 @@
       roLine = '<div class="flex items-center justify-between gap-3 flex-wrap mt-3 pt-2 border-t border-white/5">' +
         '<p class="text-[11px] text-gray-400">' + roText.join(' ') + '</p><div class="flex gap-1.5 flex-wrap">' + roBtns + '</div></div>';
     }
-    el.innerHTML = '<div class="mt-4 pt-3 border-t border-white/10">' +
+    // "Saturday open to all" (20 Nov night): every free pass that did not come on Friday.
+    var sa = d.saturday || {}, saRun = sa.open_run, saLine = '';
+    if (saRun || sa.to_send || sa.sent) {
+      var saText = saRun ? '<span class="text-amber-300">The Saturday email is ' + esc(saRun.status) + '</span>: ' + saRun.sent + ' of ' + saRun.total + ' sent.'
+        : sa.to_send ? '<strong class="text-white">Saturday is open to all free passes.</strong> ' + sa.to_send + ' free pass holders did not come on Friday.'
+        : sa.sent + ' were told Saturday is open to all.';
+      var saBtns = saRun ? btn('sat-preview', 'Preview') + (saRun.status === 'running' ? btn('sat-pause', 'Pause', true) : btn('sat-resume', 'Resume', true))
+        : (sa.to_send ? btn('sat-preview', 'Email them: come any time Saturday (' + sa.to_send + ')', true) : '');
+      saLine = '<div class="flex items-center justify-between gap-3 flex-wrap mb-3 p-2 rounded-lg border border-amber-500/30 bg-amber-500/5">' +
+        '<p class="text-[11px] text-gray-300">' + saText + '</p><div class="flex gap-1.5 flex-wrap">' + saBtns + '</div></div>';
+    }
+    el.innerHTML = '<div class="mt-4 pt-3 border-t border-white/10">' + saLine +
       '<div class="flex items-center justify-between gap-3 flex-wrap mb-2">' +
         '<div><h4 class="text-xs font-semibold text-gray-200"><i class="fas fa-clock text-primary-400 mr-1.5"></i>Entry times for the Free Visitor Pass</h4>' +
         '<p class="text-[11px] mt-0.5 text-gray-400">' + state + (d.waiting ? ' ' + d.waiting + ' are on the waiting list.' : '') + (d.let_in ? ' ' + d.let_in + ' were let in from it.' : '') + fresh + '</p></div>' +
@@ -212,6 +223,40 @@
     var f = $('es-ro-frame'); if (f) f.srcdoc = d.html;
     wire($('modal-box'));
   }
+  // ---------- "Saturday open to all", for free passes that did not come on Friday ----------
+  async function openSat(who) {
+    openModal('<div class="py-10 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>');
+    var d;
+    try {
+      d = await api.get('/api/admin/entry-slots/sat-preview' + (who ? '?who=' + encodeURIComponent(who) : ''));
+      if (d && d.error) throw new Error(d.error);
+    } catch (e) { openModal('<p class="text-sm text-red-400">Could not build the preview: ' + esc(errText(e)) + '</p>'); return; }
+    var total = d.total || 0, run = d.open_run;
+    var chips = d.has_waitlist ? '<div class="flex gap-1.5 flex-wrap mb-3">' +
+      '<button type="button" data-es="sat-preview" class="px-3 py-1.5 rounded-lg text-xs font-semibold ' + (d.who !== 'waitlist' ? 'bg-amber-600 text-white' : 'border border-white/10 text-gray-300') + '">Free pass holders</button>' +
+      '<button type="button" data-es="sat-preview-wl" class="px-3 py-1.5 rounded-lg text-xs font-semibold ' + (d.who === 'waitlist' ? 'bg-amber-600 text-white' : 'border border-white/10 text-gray-300') + '">Let in from the waiting list</button></div>' : '';
+    var body = d.sample
+      ? '<p class="text-xs text-gray-400 mb-1">As ' + esc(d.sample.name) + ' will get it.</p>' +
+        '<p class="text-sm font-semibold text-white mb-2">Subject: ' + esc(d.subject) + '</p>' +
+        '<iframe id="es-sat-frame" sandbox="" title="Email preview" class="w-full rounded-xl bg-white" style="height:56vh;border:1px solid rgba(0,0,0,0.1);"></iframe>'
+      : '<p class="text-sm text-gray-400 py-8 text-center">Nobody is waiting for this email.</p>';
+    var act = run ? '' : (total ? 'Send to ' + total + ' ' + (total === 1 ? 'person' : 'people') : '');
+    openModal('<h3 class="text-lg font-bold mb-1"><i class="fas fa-door-open text-primary-400 mr-2"></i>&ldquo;Saturday is open to all&rdquo;: check it before it goes</h3>' +
+      '<p class="text-xs text-gray-400 mb-3">' + total + ' free pass holders who did not come on Friday, the waiting list included. Those who came on Friday are not sent it.</p>' + chips + body +
+      '<div class="flex gap-2 mt-4">' +
+        '<button type="button" data-es="close" class="flex-1 py-2.5 rounded-xl text-sm glass hover:bg-white/10">' + (act ? 'Cancel' : 'Close') + '</button>' +
+        (act ? '<button type="button" data-es="sat-go" class="flex-1 py-2.5 rounded-xl text-sm bg-amber-600 hover:bg-amber-500 text-white font-semibold">' + act + '</button>' : '') +
+      '</div>' +
+      (act ? '<p class="text-[11px] text-gray-500 mt-2">It goes ' + esc(d.window || '6am to midnight IST') + ': thirty a minute from the server&rsquo;s clock, faster while this tab is open. Nobody is sent it twice.</p>' : '') +
+      (run ? '<p class="text-[11px] text-amber-300 mt-2">A run is already ' + esc(run.status) + ': pause or resume it from the strip.</p>' : ''));
+    var f = $('es-sat-frame'); if (f) f.srcdoc = d.html;
+    wire($('modal-box'));
+  }
+  async function goSat() {
+    closeModal();
+    await startCampaign('sat_open', { audience: 'all', title: 'Free Visitor Pass: Saturday open to all' });
+    load();
+  }
   async function goReoffer() {
     closeModal();
     await startCampaign('entry_reoffer', { audience: 'all', title: 'Free Visitor Pass: come on either day' });
@@ -238,6 +283,12 @@
       if (a === 'close') return closeModal();
       if (a === 'go') return go();
       var roRun = S.d && S.d.reoffer && S.d.reoffer.open_run;
+      var saRun = S.d && S.d.saturday && S.d.saturday.open_run;
+      if (a === 'sat-preview') return openSat('');
+      if (a === 'sat-preview-wl') return openSat('waitlist');
+      if (a === 'sat-go') return goSat();
+      if (a === 'sat-pause' && saRun) { await pauseCampaignFromList(saRun.id); return load(); }
+      if (a === 'sat-resume' && saRun) { await resumeCampaign(saRun.id); return load(); }
       if (a === 'ro-preview') return openReoffer();
       if (a === 'ro-go') return goReoffer();
       if (a === 'ro-pause' && roRun) { await pauseCampaignFromList(roRun.id); return load(); }

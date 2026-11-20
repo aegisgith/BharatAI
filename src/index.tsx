@@ -10,7 +10,7 @@ import siteLive, { configureSiteLive } from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief } from './routes/talk-brief'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
-import entrySlots, { configureEntrySlots, entrySlotAudienceRows, entryReofferAudienceRows, inSlot as entryInSlot } from './routes/entry-slots'
+import entrySlots, { configureEntrySlots, entrySlotAudienceRows, entryReofferAudienceRows, satOpenAudienceRows, inSlot as entryInSlot } from './routes/entry-slots'
 import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql } from './routes/workshop-reminder'
 import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
@@ -3040,7 +3040,12 @@ async function freePassWaitlistOn(c: any): Promise<boolean> {
 // On the list, and still on a free pass. A paid tier that was paid for is in
 // regardless of the mark; an admin-given pass (Exhibitor, Speaker, a waived tier)
 // is not a free Visitor Pass.
+// From 22:00 IST on Friday 20 Nov nobody waits (the organiser: "allow every one tomorrow",
+// "and also removing waiting"): a mark left on a late registration no longer holds anyone
+// back at the desk, in the app or in an email. /register and /passes are unchanged.
+const WAITING_ENDS_AT = Date.parse('2026-11-20T16:30:00Z')
 function entryWaitlisted(a: any): boolean {
+  if (Date.now() >= WAITING_ENDS_AT) return false
   if (String(a?.entry_status || '').trim().toLowerCase() !== 'waitlisted') return false
   const badge = String(a?.badge_type || 'Visitor Pass').trim()
   if (!badge || FREE_BADGE_RE.test(badge)) return true
@@ -20785,6 +20790,7 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'event_week' ? `/api/admin/attendees/${r.attendee_id}/send-event-week`
     : kind === 'entry_slot' ? `/api/admin/attendees/${r.attendee_id}/send-entry-slot`
     : kind === 'entry_reoffer' ? `/api/admin/attendees/${r.attendee_id}/send-entry-reoffer`
+    : kind === 'sat_open' ? `/api/admin/attendees/${r.attendee_id}/send-sat-open`
     : kind === 'offer' ? '/api/admin/offers/send'
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
@@ -20855,6 +20861,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
   // not hold it back; an unsubscribe does.
   if (kind === 'entry_slot') return entrySlotAudienceRows(c, audience, { mc, noEmail: NO_EMAIL_SQL() })
   if (kind === 'entry_reoffer') return entryReofferAudienceRows(c, audience, { mc, noEmail: NO_EMAIL_SQL() })
+  if (kind === 'sat_open') return satOpenAudienceRows(c, audience, { mc, noEmail: NO_EMAIL_SQL() })
   if (kind === 'networking') {
     // Every conference registrant not on a networking run yet. Paid passes and
     // senior titles first: theirs are the requests the others receive. Last, anyone
@@ -20894,7 +20901,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week', 'entry_slot', 'entry_reoffer'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week', 'entry_slot', 'entry_reoffer', 'sat_open'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
@@ -20951,6 +20958,7 @@ app.post('/api/admin/campaigns', async (c) => {
     : kind === 'event_week' ? 'Get ready for 20 and 21 Nov'
     : kind === 'entry_slot' ? 'Free Visitor Pass: your entry time'
     : kind === 'entry_reoffer' ? 'Free Visitor Pass: come on either day'
+    : kind === 'sat_open' ? 'Free Visitor Pass: Saturday open to all'
     : kind === 'thankyou' ? 'Post-event thank you'
     : kind === 'profile_reminder' ? 'Complete your profile'
     : kind === 'waitlist_confirm' ? 'Waiting list: your Free Visitor Pass is confirmed'
@@ -21016,7 +21024,7 @@ async function tickCampaigns(c: any): Promise<any[]> {
     try {
       // The event-week email is not paced by the send gap (routes/event-week.ts): ten a
       // minute, so a few thousand go in a day and not a week.
-      const r = await pumpCampaign(c, k.id, k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
+      const r = await pumpCampaign(c, k.id, k.kind === 'sat_open' ? 50 : k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
       out.push({ id: k.id, sent: r.body?.sent ?? null, remaining: r.body?.remaining ?? null, wait_seconds: r.body?.wait_seconds ?? 0 })
     } catch (e: any) { out.push({ id: k.id, error: String(e?.message || e).slice(0, 200) }) }
   }
@@ -34332,10 +34340,12 @@ function mainPageScript(): string {
       if (eBtn) eBtn.classList.toggle('hidden', !waitlisted);
       const stateEl = document.getElementById('pcc-pass-state');
       const slotText = visitor && !waitlisted && currentUser && currentUser.entry_slot ? String(currentUser.entry_slot) : '';
-      if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : waitlisted ? ' is on the waiting list' : slotText ? ' is a free pass with an entry time' : visitor ? ' is a free pass: entry not guaranteed' : ' is ready';
+      const satOpen = visitor && !waitlisted && Date.now() >= Date.parse('2026-11-20T18:30:00Z');
+      if (stateEl) stateEl.textContent = pending ? ' is waiting for payment' : waitlisted ? ' is on the waiting list' : satOpen ? ' works any time today' : slotText ? ' is a free pass with an entry time' : visitor ? ' is a free pass: entry not guaranteed' : ' is ready';
       document.getElementById('pcc-pass-note').textContent = pending
         ? (payNow ? 'It is issued the moment your payment goes through. Pay now to finish.' : 'It will be issued as soon as your payment is confirmed.')
         : waitlisted ? (Date.now() >= Date.parse(window.__WL_CLOSE || '${WAITLIST_CLOSE_DEFAULT}') ? '${WAITLIST_CLOSED_TEXT} ${waitlistExpoText()}' : '${WAITLIST_TEXT} ${waitlistExpoText()} ${WAITLIST_PROFILE_SHORT}')
+        : satOpen ? 'Saturday 21 Nov is open to every free pass: come any time from 8:30 am. Show this pass and a government photo ID at the badge desk.'
         : slotText ? 'Your entry time: ' + slotText + '. Show this pass and a government photo ID at the badge desk in that time. Every paid pass has guaranteed entry on both days, at any time.'
         : visitor ? 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. Every paid pass has guaranteed entry on both days.'
         : 'Keep it on your phone — the badge desk scans it to check you in.';
@@ -35078,6 +35088,7 @@ function mainPageScript(): string {
     // Free passes full (the organiser's switch, 0056): registered and in the app,
     // but on the waiting list until the organisers confirm. Never a paid pass.
     function isEntryWaitlisted() {
+      if (Date.now() >= Date.parse('2026-11-20T16:30:00Z')) return false;
       return !!currentUser && String(currentUser.entry_status || '') === 'waitlisted' && isVisitorPass();
     }
 
@@ -41891,7 +41902,7 @@ function adminPageHTML(): string {
   <script src="/static/speaker-brief.js?v=20261116c"></script>
   <script src="/static/talk-brief.js?v=20261116"></script>
   <script src="/static/event-week.js?v=20261116"></script>
-  <script src="/static/entry-slots.js?v=20261119"></script>
+  <script src="/static/entry-slots.js?v=20261120"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
   <script src="/static/exhibitor-media.js?v=20261118b"></script>
   <script src="/static/workshop-reminder.js?v=2026111503"></script>

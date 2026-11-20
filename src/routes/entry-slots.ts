@@ -180,8 +180,23 @@ export function inSlot(text: any, nowMs = Date.now()): boolean | null {
   const ist = new Date(nowMs + IST_MS)
   const day = ist.toISOString().slice(0, 10)
   const min = ist.getUTCHours() * 60 + ist.getUTCMinutes()
+  // Saturday is open to every free pass, at any time (the organiser, 20 Nov 22:15: "allow
+  // every one tomorrow"): any of our entry times is on time that day.
+  if (day === OPEN_DAY) return true
   const onDay = s.day ? day === s.day : (day === SLOTS['fri-am'].day || day === SLOTS['sat-am'].day)
   return onDay && min >= s.from - GRACE_MIN && min <= s.to + GRACE_MIN
+}
+// The day open to every free pass, and the words their Saturday email gives (20 Nov).
+export const OPEN_DAY = '2026-11-21'
+export const SAT_TEXT = 'Saturday 21 Nov, any time from 8:30 am'
+export const SAT_KIND = 'sat_open'
+// The Saturday email goes tonight until 11:30 pm and from 6 am (the organiser: "send it now
+// till 11:30 PM with no gap in emails"), not in the 8:30 am - 9 pm window of the entry-time
+// email; fifty a minute from the clock (tickCampaigns in index.tsx), no send gap.
+export function satWindow(nowMs = Date.now()): { open: boolean; window: string; ist_time: string } {
+  const ist = new Date(nowMs + IST_MS)
+  const m = ist.getUTCHours() * 60 + ist.getUTCMinutes()
+  return { open: m >= 6 * 60 && m < 23 * 60 + 30, window: '6am to 11:30pm IST', ist_time: ist.toISOString().slice(11, 16) + ' IST' }
 }
 
 // "riddhi" and "DR. RAJESH KUMAR" both arrive from imports; the greeting wants "Riddhi".
@@ -206,21 +221,26 @@ function freeHolder(a: any): boolean {
 
 // ---------- the email ----------
 
-export function subjectFor(a: any, reoffer = false): string {
+export function subjectFor(a: any, reoffer = false, saturday = false): string {
   const first = firstName(a?.name)
   const lead = first ? first + ', ' : ''
   const slot = String(a?.entry_slot || '').trim()
+  if (saturday) return String(a?.entry_status || '') === 'confirmed'
+    ? lead + (first ? 'good' : 'Good') + ' news: your Free Visitor Pass is confirmed for Saturday 21 Nov, any time'
+    : lead + (first ? 'come' : 'Come') + ' any time on Saturday 21 Nov: your Free Visitor Pass works all day'
   if (reoffer) return lead + (first ? 'no' : 'No') + ' problem: come any time on Friday 20 or Saturday 21 Nov'
   if (String(a?.entry_status || '') === 'confirmed') return lead + (first ? 'good' : 'Good') + ' news: your Free Visitor Pass is confirmed for ' + slot
   return lead + (first ? 'your' : 'Your') + ' entry time for Bharat AI Innovation: ' + slot
 }
 
 // opts.reoffer: the "you can't make it, come any time" version; a carries the new entry time.
-export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean; reoffer?: boolean } = {}): Promise<{ subject: string; html: string }> {
+// opts.saturday: "Saturday is open to all" (20 Nov); the box says SAT_TEXT, no "Are you coming?".
+export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean; reoffer?: boolean; saturday?: boolean } = {}): Promise<{ subject: string; html: string }> {
   const appUrl = hooks.appUrl ? await hooks.appUrl(c) : SITE + '/app'
   const email = String(a.email || '').trim()
   const first = firstName(a.name)
-  const slot = String(a.entry_slot || '').trim()
+  const sat = !!opts.saturday
+  const slot = sat ? SAT_TEXT : String(a.entry_slot || '').trim()
   const key = slotKeyOf(slot)
   const fromWaitlist = String(a.entry_status || '') === 'confirmed'
   let token = ''
@@ -230,19 +250,25 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean; 
   // "Are you coming?" (the organiser, 17 Nov 2026: most yeses are from October; "how do we
   // know how many will come?"): one tap records a fresh answer, counted on the Admin strip.
   const ask = async (status: 'confirmed' | 'declined') => (opts.preview || !hooks.rsvpLink) ? '#' : await hooks.rsvpLink(c, email.toLowerCase(), status)
-  const yesHref = await ask('confirmed'), noHref = await ask('declined')
+  const yesHref = sat ? '' : await ask('confirmed'), noHref = sat ? '' : await ask('declined')
   const btn = (href: string, label: string, bg = '#C84F00') =>
     `<a href="${href}" style="display:inline-block;margin:8px 0 0;padding:11px 20px;background:${bg};color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13.5px;">${label}</a>`
   const gaps = hooks.profileGaps ? hooks.profileGaps(a) : []
   const needsPhoto = gaps.includes('photo')
 
-  const when = key === 'fri-am'
+  const when = sat
+    ? 'Doors open at <strong>8:30 am</strong>. Come at any time that suits you, whatever entry time we gave you before: the morning is the best part of the day.'
+    : key === 'fri-am'
     ? 'The opening and the inauguration start at <strong>9:30 am</strong>. Come by 9 am, so you are through the badge desk in time.'
     : key === 'sat-am' ? 'The day opens at <strong>9 am</strong>. Come early, so you are through the badge desk in time.'
     : key === 'any' ? 'Come on either day, at any time from 8:30 am. If you are travelling to Mumbai, the mornings are the best part of each day.'
     : 'The exhibition floor is open all afternoon. Come to the badge desk in this time.'
   const stay = key === 'any' ? 'Once you are in, stay as long as you like.' : 'Once you are in, stay as long as you like that day.'
-  const intro = opts.reoffer
+  const intro = sat
+    ? (fromWaitlist
+      ? 'Good news: a place has opened up for you. Your <strong>Free Visitor Pass</strong> for Bharat AI Innovation 2026 is confirmed. Come on Saturday, at any time:'
+      : 'Day 1 is done, and Saturday is open to every <strong>Free Visitor Pass</strong> holder. Come at any time, whatever entry time we gave you before:')
+    : opts.reoffer
     ? 'You told us you can&rsquo;t make it at the entry time we gave you. No problem: your <strong>Free Visitor Pass</strong> for Bharat AI Innovation 2026 now works at any time, on either day. Your new entry time:'
     : fromWaitlist
     ? 'Good news: a place has opened up for you. Your <strong>Free Visitor Pass</strong> for Bharat AI Innovation 2026 is confirmed, with this entry time:'
@@ -259,10 +285,18 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean; 
       ? step('Add your photo, then put your pass on your phone', 'Your pass needs your photo before it can be made. Take it with your phone in the app; it takes a minute. Then download your pass.', btn(go('complete-profile'), 'Add my photo'))
       : step('Put your pass on your phone', 'The badge desk scans the QR code on your pass. Nothing to print.', btn(go('download-pass'), 'Download my pass', '#1E2140')),
     step('Bring a government photo ID', 'With the same name as your pass. The desk checks it.'),
-    step('Come in your entry time', 'There is no on-spot registration at the venue. Please keep to your time, so the floor stays comfortable and everyone gets their turn.'),
+    sat
+      ? step('Come any time on Saturday', 'Doors open at 8:30 am. There is no on-spot registration at the venue: bring this pass.')
+      : step('Come in your entry time', 'There is no on-spot registration at the venue. Please keep to your time, so the floor stays comfortable and everyone gets their turn.'),
   ]
+  const askBox = sat ? '' : `<div style="margin:16px 0 0;padding:16px 18px;background:#F0FAF4;border:1px solid #BFE3CC;border-radius:12px;text-align:center;">
+        <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;">${key === 'any' ? 'Are you coming?' : 'Are you coming at this time?'}</p>
+        <p style="margin:0 0 6px;font-size:13px;line-height:1.5;color:#555;">One tap. It helps us keep the floor comfortable for everyone.</p>
+        <a href="${yesHref}" style="display:inline-block;margin:6px 4px 0;padding:11px 20px;background:#0f7b47;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13.5px;">Yes, I&rsquo;m coming</a>
+        <a href="${noHref}" style="display:inline-block;margin:6px 4px 0;padding:11px 20px;background:#fff;color:#1E2140;border:1px solid #C9CDE6;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13.5px;">I can&rsquo;t make it</a>
+      </div>`
   // No Expo Pass offer in this email (the organiser, 17 Nov 23:58: "remove this it does not look good").
-  const header = hooks.emailHeader ? hooks.emailHeader(opts.reoffer ? 'Come on either day' : fromWaitlist ? 'Your Free Visitor Pass is confirmed' : 'Your entry time', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai') : ''
+  const header = hooks.emailHeader ? hooks.emailHeader(sat ? 'See you on Saturday' : opts.reoffer ? 'Come on either day' : fromWaitlist ? 'Your Free Visitor Pass is confirmed' : 'Your entry time', '20&ndash;21 Nov 2026 &bull; World Trade Center, Mumbai') : ''
   const html = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -279,12 +313,7 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean; 
         <p style="margin:0;font-size:13px;line-height:1.6;color:#C9CDE6;">World Trade Center, Cuffe Parade, Mumbai 400005. ${stay}</p>
       </div>
       <p style="margin:14px 0 0;font-size:13.5px;line-height:1.65;color:#555;">${when}</p>
-      <div style="margin:16px 0 0;padding:16px 18px;background:#F0FAF4;border:1px solid #BFE3CC;border-radius:12px;text-align:center;">
-        <p style="margin:0 0 4px;font-size:15px;font-weight:bold;color:#1E2140;">${key === 'any' ? 'Are you coming?' : 'Are you coming at this time?'}</p>
-        <p style="margin:0 0 6px;font-size:13px;line-height:1.5;color:#555;">One tap. It helps us keep the floor comfortable for everyone.</p>
-        <a href="${yesHref}" style="display:inline-block;margin:6px 4px 0;padding:11px 20px;background:#0f7b47;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13.5px;">Yes, I&rsquo;m coming</a>
-        <a href="${noHref}" style="display:inline-block;margin:6px 4px 0;padding:11px 20px;background:#fff;color:#1E2140;border:1px solid #C9CDE6;text-decoration:none;border-radius:10px;font-weight:bold;font-size:13.5px;">I can&rsquo;t make it</a>
-      </div>
+      ${askBox}
       <table role="presentation" data-app-on-phone="1" style="width:100%;border-collapse:collapse;margin:20px 0 0;">${steps.join('')}</table>
       <div style="margin-top:22px;padding-top:16px;border-top:1px solid #eee;">
         <p style="margin:0 0 14px;font-size:12.5px;line-height:1.6;color:#888;">The buttons in this email sign you in as <strong>${esc(email)}</strong>. If one has expired, open the app and sign in with this address: we send you a one-time code, no password needed. Your entry time is also on your pass in the app. <a href="${base}${token ? '&token=' + token : ''}" style="color:#4f46e5;">Open the app</a></p>
@@ -295,7 +324,7 @@ export async function entrySlotEmail(c: any, a: any, opts: { preview?: boolean; 
   </div>
 </body>
 </html>`
-  return { subject: subjectFor(a, !!opts.reoffer), html }
+  return { subject: subjectFor(a, !!opts.reoffer, sat), html }
 }
 
 // ---------- who ----------
@@ -322,6 +351,31 @@ export async function entrySlotAudienceRows(c: any, _audience = 'all', clauses?:
   return rows
     .filter((a: any) => validEmail(a.email) && freeHolder(a) && !waitingRow(a))
     .sort((x: any, y: any) => (order(x) - order(y)) || (Number(x.id) - Number(y.id)))
+    .map((a: any) => ({ id: a.id, name: a.name, email: a.email, slot: slotKeyOf(a.entry_slot) || 'other' }))
+}
+
+// "Saturday is open to all" (20 Nov): every free pass holder (the waiting list was let in
+// that night) who did not come on Friday, not yet on such a run. Friday's arrivals are read
+// from the checkins table, or attendees.checked_in_at where it does not exist.
+const SAT_NOT_YET_SQL = ` AND id NOT IN (SELECT cr.attendee_id FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+    WHERE cp.kind = '${SAT_KIND}' AND cr.attendee_id IS NOT NULL AND cr.status IN ('pending', 'sending', 'sent'))`
+// A free pass only: a paid pass not yet paid for is stopped at the desk for payment, so
+// "your Free Visitor Pass works all day" would be wrong for them.
+const satHolder = (a: any) => freeHolder(a) && (hooks.notifyKind ? hooks.notifyKind(a) === 'free' : true)
+async function cameFriday(c: any): Promise<Set<number>> {
+  try {
+    return new Set((await all(c, "SELECT attendee_id AS id FROM checkins WHERE day = '2026-11-20'")).map((r: any) => Number(r.id)))
+  } catch {
+    return new Set((await all(c, "SELECT id FROM attendees WHERE event_id = 1 AND checked_in_at IS NOT NULL")).map((r: any) => Number(r.id)))
+  }
+}
+export async function satOpenAudienceRows(c: any, _audience = 'all', clauses?: { mc: string; noEmail?: string }): Promise<any[]> {
+  const cl = clauses || (hooks.clauses ? await hooks.clauses(c) : { mc: '', noEmail: '' })
+  const noEmail = cl.noEmail ? ` AND ${cl.noEmail}` : ''
+  const came = await cameFriday(c)
+  const rows = await all(c, `SELECT * FROM attendees WHERE event_id = 1 AND email IS NOT NULL AND TRIM(email) != '' AND unsubscribed_at IS NULL${noEmail}${cl.mc}${SAT_NOT_YET_SQL} ORDER BY id`)
+  return rows
+    .filter((a: any) => validEmail(a.email) && satHolder(a) && !waitingRow(a) && !came.has(Number(a.id)))
     .map((a: any) => ({ id: a.id, name: a.name, email: a.email, slot: slotKeyOf(a.entry_slot) || 'other' }))
 }
 
@@ -411,11 +465,15 @@ es.get('/api/admin/entry-slots/status', async (c) => {
     const run = await openRun(c)
     const toSend = (await entrySlotAudienceRows(c)).length
     const roRun = await openRun(c, REOFFER_KIND)
+    const satRun = await openRun(c, SAT_KIND)
+    const satSent = Number(((await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM campaign_recipients cr JOIN campaigns cp ON cp.id = cr.campaign_id
+        WHERE cp.kind = '${SAT_KIND}' AND cr.status = 'sent'`).first().catch(() => null)) as any)?.n || 0)
     const runOut = (r: any) => r ? { id: r.id, status: r.status, title: r.title, total: r.total, sent: r.sent, failed: r.failed } : null
     return c.json({
       slots: SLOT_ORDER.map(k => ({ key: k, text: SLOTS[k].text, short: SLOTS[k].short, given: given[k], sent: sent[k], planned: planned[k], waitlist: wlPlan[k], yes_now: yesNow[k], no_now: noNow[k] })),
       without: open.length, other, waiting, let_in: letIn, to_send: toSend, asked_since: since,
       reoffer: { to_send: (await entryReofferAudienceRows(c)).length, sent: offered.size, yes_after: offeredYes, open_run: runOut(roRun) },
+      saturday: { to_send: (await satOpenAudienceRows(c)).length, sent: satSent, open_run: runOut(satRun) },
       open_run: runOut(run),
       window: sendWindow().window,
     })
@@ -468,6 +526,44 @@ es.post('/api/admin/attendees/:id/send-entry-slot', async (c) => {
   const res = await hooks.sendEmail(c, a.email, mail.subject, mail.html)
   if (!res.ok) return c.json({ error: res.error || 'Not sent' }, 502)
   return c.json({ success: true, sent_to: a.email, slot: a.entry_slot })
+})
+
+// "Saturday is open to all", to ONE attendee, for the campaign pump.
+es.post('/api/admin/attendees/:id/send-sat-open', async (c) => {
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
+  if (!a) return c.json({ error: 'Attendee not found' }, 404)
+  if (!a.email || !validEmail(a.email)) return c.json({ skipped: true, reason: 'No usable email address' })
+  if (a.unsubscribed_at) return c.json({ skipped: true, reason: 'Unsubscribed' })
+  if (!satHolder(a)) return c.json({ skipped: true, reason: 'Holds ' + (String(a.badge_type || '').trim() || 'another pass') + ' now: not a free pass' })
+  if (waitingRow(a)) return c.json({ skipped: true, reason: 'Still on the waiting list' })
+  if ((await cameFriday(c)).has(Number(a.id))) return c.json({ skipped: true, reason: 'Came on Friday' })
+  const win = satWindow()
+  if (!win.open && c.req.query('force') !== '1') {
+    return c.json({ paused: true, reason: `Outside the ${win.window} sending window (it is ${win.ist_time}).`, window: win }, 409)
+  }
+  if (!hooks.sendEmail) return c.json({ error: 'Email is not set up on this server.' }, 503)
+  const mail = await entrySlotEmail(c, a, { saturday: true })
+  const res = await hooks.sendEmail(c, a.email, mail.subject, mail.html)
+  if (!res.ok) return c.json({ error: res.error || 'Not sent' }, 502)
+  return c.json({ success: true, sent_to: a.email })
+})
+
+// The Saturday email before it goes: how many, and one real recipient's email. Sends nothing.
+es.get('/api/admin/entry-slots/sat-preview', async (c) => {
+  const rows = await satOpenAudienceRows(c)
+  const want = String(c.req.query('who') || '')
+  const open = await openRun(c, SAT_KIND)
+  let pick = rows[0] || null
+  const ids = rows.map(r => Number(r.id))
+  const wl = ids.length ? await all(c, `SELECT id FROM attendees WHERE entry_status = 'confirmed' AND id IN (${ids.slice(0, 900).join(',')}) LIMIT 1`) : []
+  if (want === 'waitlist' && wl[0]) pick = rows.find(r => Number(r.id) === Number(wl[0].id)) || pick
+  const out = { total: rows.length, window: satWindow().window, open_run: open ? { id: open.id, status: open.status, title: open.title } : null, has_waitlist: !!wl[0] }
+  const sample = pick ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(pick.id).first() as any : null
+  if (!sample) return c.json({ ...out, sample: null })
+  const mail = await entrySlotEmail(c, sample, { preview: true, saturday: true })
+  return c.json({ ...out, subject: mail.subject, who: want === 'waitlist' && wl[0] ? 'waitlist' : 'all',
+    sample: { id: sample.id, name: sample.name, email: sample.email, from_waitlist: String(sample.entry_status || '') === 'confirmed' },
+    html: hooks.decorate ? await hooks.decorate(c, mail.html, sample.email) : mail.html })
 })
 
 // "Come any time instead", to ONE attendee, for the campaign pump. Their entry time becomes

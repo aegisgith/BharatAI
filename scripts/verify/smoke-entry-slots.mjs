@@ -289,9 +289,35 @@ check('desk, Saturday 2:30 pm: the Saturday-afternoon pass is on time', r.json.s
 const scanPage = { text: read('dist/_worker.js'), status: 'built worker' };
 check('the scan page draws the amber "not their time" card', scanPage.text.includes('CHECKED IN: NOT THEIR TIME') && scanPage.text.includes('NOT THEIR ENTRY TIME'), scanPage.status);
 
+// ---- Saturday open to all (the organiser, 20 Nov 22:15: "allow every one tomorrow") ----
+FAKE_NOW = RealDate.parse('2026-11-20T17:00:00Z'); // Friday 22:30 IST
+st = await hit('GET', '/api/admin/entry-slots/status', undefined, ADMIN);
+const satN = st.json.saturday?.to_send;
+check('status: a Saturday email for the free passes that did not come on Friday', typeof satN === 'number' && satN > 0 && st.json.saturday.sent === 0 && !st.json.saturday.open_run, JSON.stringify(st.json.saturday));
+const sp = await hit('GET', '/api/admin/entry-slots/sat-preview', undefined, ADMIN);
+check('Saturday preview: the subject, "any time from 8:30 am" in the box, no "Are you coming?"',
+  sp.status === 200 && sp.json.total === satN && /come any time on Saturday 21 Nov: your Free Visitor Pass works all day$/.test(sp.json.subject) && sp.json.html.includes('Saturday 21 Nov, any time from 8:30 am') && !sp.json.html.includes('Are you coming') && !sp.json.html.includes('Expo Pass'), sp.json?.subject);
+r = await hit('POST', '/api/admin/campaigns', { kind: 'sat_open', audience: 'all' }, ADMIN);
+const satCamp = r.json?.id;
+check('a run of kind sat_open: the same count, titled', r.status === 201 && r.json.total === satN && r.json.title === 'Free Visitor Pass: Saturday open to all', JSON.stringify(r.json));
+const satIds = q('SELECT attendee_id FROM campaign_recipients WHERE campaign_id = ?', satCamp).map(x => x.attendee_id);
+check('not on it: those who came on Friday (Asha, the Bengaluru one), the paid Delegate, the exhibitor\'s guest', !satIds.includes(1) && !satIds.includes(5) && !satIds.includes(20) && !satIds.includes(31) && !satIds.includes(21) && satIds.includes(22), satIds.join(','));
+const b5 = sent.length;
+await hit('POST', `/api/admin/campaigns/${satCamp}/pump`, { batch: 50 }, ADMIN);
+check('10:30 pm IST: it goes tonight (until 11:30 pm), nobody twice', sent.length - b5 === satN && new Set(sent.slice(b5).map(m => JSON.stringify(m.Recipients))).size === satN, String(sent.length - b5));
+const wlSat = sent.slice(b5).find(m => JSON.stringify(m.Recipients).includes('wait1@example.com'));
+check('the one let in from the waiting list gets the "good news" Saturday version', !!wlSat && /good news: your Free Visitor Pass is confirmed for Saturday 21 Nov, any time$/.test(wlSat.Content.Subject) && wlSat.Content.Body[0].Content.includes('a place has opened up'), wlSat?.Content?.Subject);
+FAKE_NOW = RealDate.parse('2026-11-20T22:00:00Z'); // Saturday 3:30 IST
+r = await hit('POST', '/api/admin/attendees/6/send-sat-open', {}, ADMIN);
+check('3:30 am IST: a Saturday send waits for 6 am', r.status === 409 && r.json?.paused === true, r.status + ' ' + JSON.stringify(r.json));
+FAKE_NOW = RealDate.parse('2026-11-21T03:00:00Z'); // Saturday 8:30 IST
+r = await hit('POST', '/api/staff/scan', { token: passTok(2) }, ADMIN);
+check('desk, Saturday 8:30 am, a Friday-morning pass: on time (Saturday is open to all)', r.json.state === 'ok' && r.json.slot === FRI_AM && r.json.slot_now === true, JSON.stringify(r.json));
+
 // ---- the app and the event-week email ----
 const appJs = await hit('GET', '/app.js');
 check('the app pass card says the entry time', appJs.text.includes(' is a free pass with an entry time') && appJs.text.includes("'Your entry time: ' + slotText"), appJs.status);
+check('from Saturday the app pass card says any time today', appJs.text.includes(' works any time today') && appJs.text.includes('Saturday 21 Nov is open to every free pass'), appJs.status);
 const ew = await hit('GET', '/api/admin/event-week/preview?audience=free&kind=free', undefined, ADMIN);
 check('the event-week email says Friday and Saturday, never Thursday', ew.status === 200 && !/Thursday/.test(ew.json?.html || '') && (ew.json?.html || '').includes('Friday 20 Nov'), ew.status);
 
