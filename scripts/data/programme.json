@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-20T00:17:11.049Z",
+ "generated_at": "2026-11-20T01:15:59.063Z",
  "live": true,
  "event": {
   "id": 1,
@@ -1503,7 +1503,7 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-20 16:30",
    "end_time": "2026-11-20 17:30",
-   "speaker_name": "Abhay Sharma (IBM), Akhil Gupta (NoBroker.com), Raveesh Dewan (Joget Inc.), Mukesh Jain (Capgemini), Kushan Shah (Fynd), Bhupesh Daheria (Moderator), Alexey Gvintovkin (EXENI)",
+   "speaker_name": "Abhay Sharma (IBM), Akhil Gupta (NoBroker.com), Raveesh Dewan (Joget Inc.), Mukesh Jain (Capgemini), Kushan Shah (Fynd), Bhupesh Daheria (Moderator), Dr. Alexey Gvintovkin (EXENI)",
    "speaker_title": "",
    "links": [
     {
@@ -1586,7 +1586,7 @@
     },
     {
      "speaker_id": 172,
-     "name": "Alexey Gvintovkin",
+     "name": "Dr. Alexey Gvintovkin",
      "role": "EXENI Founder",
      "organisation": "EXENI",
      "photo_url": "/images/speaker-alexey-gvintovkin-v2-sq.webp",
@@ -4908,7 +4908,7 @@
   {
    "id": 172,
    "slug": "alexey-gvintovkin",
-   "name": "Alexey Gvintovkin",
+   "name": "Dr. Alexey Gvintovkin",
    "role": "EXENI Founder",
    "organisation": "EXENI",
    "topic": "Human × AI: The Partnership Powering the Autonomous Enterprise",
