@@ -144,7 +144,7 @@
   // the event photos they are in (matched by face, src/routes/photos.ts) and a link to
   // their own page. Sent once unless sent again on purpose; officials only on purpose.
   var PH_STATUS = {
-    ready: 'Not sent yet', sent: 'Sent', 'no-email': 'No email address', protocol: 'Official: through their office', 'no-photos': 'No photos found'
+    ready: 'Not sent yet', check: 'Look before sending: weaker match', sent: 'Sent', 'no-email': 'No email address', protocol: 'Official: through their office', 'no-photos': 'No photos found'
   };
   function photosHtml() {
     var head = '<div class="afd-card-head"><h2><i class="fas fa-images" aria-hidden="true"></i> Speaker photos</h2>'
@@ -156,6 +156,7 @@
     var found = rows.filter(function (r) { return r.count > 0; });
     var c = photos.counts || {};
     var stats = '<p class="afd-note">' + num(found.length) + ' people found in the photos, ' + num(c.sent || 0) + ' sent, '
+      + num(c.check || 0) + ' to look at before sending (a weaker match: open the preview and check the photos are them), '
       + num(c['no-email'] || 0) + ' without an email, ' + num(c.protocol || 0) + ' officials held back, ' + num(c['no-photos'] || 0) + ' not found in any photo.'
       + (photos.generated ? ' Matched ' + esc(photos.generated) + '.' : '') + '</p>';
     var actions = '<div class="afd-actions"><button type="button" class="afd-btn afd-primary" data-act="send-all-ph"' + (ready.length ? '' : ' disabled') + '>'
@@ -264,7 +265,9 @@
           ? 'Send ' + pr.name + ' their photos again, to ' + pr.email + '? They were sent on ' + pr.sent_at + '.'
           : pr.protocol
             ? pr.name + ' is a government official; their office usually handles this. Send them their ' + pr.count + ' photos anyway, to ' + pr.email + '?'
-            : 'Send ' + pr.name + ' their ' + pr.count + ' photos, to ' + pr.email + '?';
+            : pr.status === 'check'
+              ? 'The match for ' + pr.name + ' is weaker, so some photos may show someone else. Have you opened the preview and checked the photos are them? Send their ' + pr.count + ' photos to ' + pr.email + '?'
+              : 'Send ' + pr.name + ' their ' + pr.count + ' photos, to ' + pr.email + '?';
         if (!w.confirm(phWords)) return;
         busy = true; b.disabled = true;
         await opts.api.post('/api/admin/speaker-photos/' + encodeURIComponent(pr.key) + '/send', { again: phAgain, anyway: !!pr.protocol });
@@ -273,7 +276,7 @@
       } else if (act === 'send-all-ph') {
         var phList = ((photos && photos.rows) || []).filter(function (x) { return x.status === 'ready'; });
         if (!phList.length) return;
-        if (!w.confirm('Send ' + phList.length + ' people their photos, one email each? Anyone already sent, officials, and people with no email or no photos are left out.')) return;
+        if (!w.confirm('Send ' + phList.length + ' people their photos, one email each? Anyone already sent, officials, people with no email or no photos, and the weaker matches to look at first are left out.')) return;
         busy = true; b.disabled = true;
         var phOk = 0, phFailed = [];
         for (var k = 0; k < phList.length; k++) {

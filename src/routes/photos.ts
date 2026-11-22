@@ -42,7 +42,10 @@ type Hooks = {
 let hooks: Hooks = {}
 export function configurePhotos(h: Hooks) { hooks = { ...hooks, ...h } }
 
-type Person = { key: string; name: string; speakers: number[]; talks: number[]; photos: string[]; best: string[] }
+// focus[id] = where their face is in that photo, [percent across, percent down].
+// check: no in-person photo matched their site photo strongly (under 0.60), so the
+// photos may show a lookalike: Admin leaves them out of "send to all" until looked at.
+type Person = { key: string; name: string; speakers: number[]; talks: number[]; photos: string[]; best: string[]; focus?: Record<string, [number, number]>; check?: boolean }
 // photos[id] = [day 'YYYY-MM-DD', time 'HH:MM' or '' when unknown, 1 if taken upright, 1 if a camera RAW file]
 type Albums = { generated: string; folder: string; photos: Record<string, [string, string, number, number?]>; people: Person[] }
 const DATA = ALBUMS as unknown as Albums
@@ -71,6 +74,9 @@ export function albumPeople(): Person[] { return DATA.people || [] }
 // that downloads as Drive's full-size JPEG of it (=s0, 6000 x 4000).
 export function thumbUrl(id: string, size = 600): string { return `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=s${size}-c` }
 export function bigUrl(id: string): string { return `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=w2000` }
+// The whole photo, not cropped: the email shows it as it is; the page crops it square
+// itself, around their face.
+export function wideUrl(id: string, width = 600): string { return `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=w${width}` }
 export function isRaw(id: string): boolean { return !!(DATA.photos[id] && DATA.photos[id][3]) }
 export function downloadUrl(id: string): string {
   return isRaw(id) ? `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=s0` : `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`
@@ -130,10 +136,11 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
   const thanks = a.forSpeaker
     ? `Thank you for ${a.talk ? 'your Innovation Talk' : 'speaking'} at ${words.name} in Mumbai. Our photographers took ${photosWord} of you. Here are a few of them.`
     : `Here are the photos of ${a.name} from ${a.talk ? 'their Innovation Talk' : 'their session'} at ${words.name} in Mumbai: ${photosWord} in all. Please pass this email on to ${first}.`
+  // Whole photos, two a row: a square crop of a wide panel shot can leave them out of it.
   const pics = a.best.slice(0, 6)
-  const cell = (id: string) => `<td width="33%" style="padding:3px;vertical-align:top"><a href="${escH(a.href)}"><img src="${escH(thumbUrl(id, 360))}" width="180" height="180" alt="Photo of ${escH(a.name)}" style="display:block;width:100%;max-width:180px;height:auto;border:0;border-radius:8px"></a></td>`
+  const cell = (id: string) => `<td width="50%" style="padding:3px;vertical-align:top"><a href="${escH(a.href)}"><img src="${escH(wideUrl(id, 560))}" width="268" alt="Photo of ${escH(a.name)}" style="display:block;width:100%;max-width:268px;height:auto;border:0;border-radius:8px"></a></td>`
   const rows: string[] = []
-  for (let i = 0; i < pics.length; i += 3) rows.push('<tr>' + pics.slice(i, i + 3).map(cell).join('') + '</tr>')
+  for (let i = 0; i < pics.length; i += 2) rows.push('<tr>' + pics.slice(i, i + 2).map(cell).join('') + (pics.length - i === 1 ? '<td width="50%"></td>' : '') + '</tr>')
   const grid = pics.length ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 18px">${rows.join('')}</table>` : ''
   const html = `<!DOCTYPE html><html><body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
   <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e7e9f5">
@@ -155,14 +162,21 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
 
 // Their page. Everything it needs is in the page: the photo ids sit in a JSON block
 // that the small script below reads (no inline handlers, no quotes to escape).
-export function albumPageHTML(a: { name: string; org: string; ids: string[] }): string {
+export function albumPageHTML(a: { name: string; org: string; ids: string[]; focus?: Record<string, [number, number]> }): string {
   const groups = byDay(a.ids)
   const total = groups.reduce((n, g) => n + g.ids.length, 0)
   const flat = groups.flatMap(g => g.ids)
   let i = 0
+  // Square thumbnails cut from the whole photo around their face, so a wide panel shot
+  // still shows them (focus from the match; the middle when it is not known).
+  const at = (id: string) => {
+    const f = a.focus && a.focus[id]
+    const pc = (v: any) => Math.max(0, Math.min(100, Math.round(Number(v))))
+    return f && f.length === 2 ? ` style="object-position:${pc(f[0])}% ${pc(f[1])}%"` : ''
+  }
   const sections = groups.map(g => `<section><h2>${escH(g.words)} <span>${g.ids.length}</span></h2><div class="grid">${g.ids.map(id => {
     const n = i++
-    return `<button type="button" class="ph" data-i="${n}" aria-label="Open photo ${n + 1} of ${total}"><img src="${escH(thumbUrl(id, 500))}" alt="" loading="${n < 8 ? 'eager' : 'lazy'}" width="250" height="250"></button>`
+    return `<button type="button" class="ph" data-i="${n}" aria-label="Open photo ${n + 1} of ${total}"><img src="${escH(wideUrl(id, 700))}" alt="" loading="${n < 8 ? 'eager' : 'lazy'}" width="250" height="250"${at(id)}></button>`
   }).join('')}</div></section>`).join('')
   const data = JSON.stringify(flat.map(id => [id, downloadUrl(id)])).replace(/</g, '\\u003c')
   const title = `Photos of ${a.name}`
@@ -268,7 +282,7 @@ async function rowsFor(c: any, eventId = 1): Promise<Row[]> {
   const tBy = new Map(talks.map((t: any) => [Number(t.id), t]))
   const rows: Row[] = []
   const covered = new Set<string>()
-  const build = (key: string, name: string, sIds: number[], tIds: number[], photos: string[], best: string[]) => {
+  const build = (key: string, name: string, sIds: number[], tIds: number[], photos: string[], best: string[], check = false) => {
     const sps = sIds.map(id => spBy.get(id)).filter(Boolean) as any[]
     const tks = tIds.map(id => tBy.get(id)).filter(Boolean) as any[]
     if (!sps.length && !tks.length) return // no longer on the programme
@@ -281,21 +295,21 @@ async function rowsFor(c: any, eventId = 1): Promise<Row[]> {
     const protocol = sps.some(s => isProtocol(s)) || tks.some(t => !!(contacts[String(t.id)] || {}).protocol)
     const s = sent.get(key)
     const count = byDay(photos).reduce((n, g) => n + g.ids.length, 0)
-    const status = !count ? 'no-photos' : protocol ? 'protocol' : !email ? 'no-email' : s ? 'sent' : 'ready'
+    const status = !count ? 'no-photos' : protocol ? 'protocol' : !email ? 'no-email' : s ? 'sent' : check ? 'check' : 'ready'
     rows.push({ key, name: sps[0]?.name || tks[0]?.speaker_name || name, org: sps[0]?.organisation || tks[0]?.company || '',
       kinds: [...(sps.length ? ['Speaker'] : []), ...(tks.length ? ['Innovation Talk'] : [])], count, best: best.slice(0, 3),
       email, email_source: source, email_note: spEmail ? "The speaker's own email" : (tc ? tc.note : 'No email on file'), protocol, status,
       sent_at: s ? s.at : '', sent_count: s ? s.n : 0, talk: !sps.length && tks.length > 0, company: tks[0]?.company || sps[0]?.organisation || '',
       for_speaker: source === 'speaker' || source === 'team' })
   }
-  for (const p of albumPeople()) build(p.key, p.name, p.speakers || [], p.talks || [], p.photos || [], p.best || [])
+  for (const p of albumPeople()) build(p.key, p.name, p.speakers || [], p.talks || [], p.photos || [], p.best || [], !!p.check)
   // Everyone on the programme with no photo found, so the list shows who is missing.
   // The same person under both lists is one row (matched by name).
   const named = new Map<string, { s: number[]; t: number[]; name: string }>()
   for (const s of speakers) if (!covered.has('s' + s.id) && Number(s.is_published ?? 1)) { const k = normName(s.name); const g = named.get(k) || { s: [], t: [], name: s.name }; g.s.push(Number(s.id)); named.set(k, g) }
   for (const t of talks) if (!covered.has('t' + t.id) && String(t.status || '') !== 'cancelled') { const k = normName(t.speaker_name); const g = named.get(k) || { s: [], t: [], name: t.speaker_name }; g.t.push(Number(t.id)); named.set(k, g) }
   for (const g of named.values()) build(g.s.length ? 's' + g.s[0] : 't' + g.t[0], g.name, g.s, g.t, [], [])
-  const order: Record<string, number> = { ready: 0, sent: 1, 'no-email': 2, protocol: 3, 'no-photos': 4 }
+  const order: Record<string, number> = { ready: 0, check: 1, sent: 2, 'no-email': 3, protocol: 4, 'no-photos': 5 }
   rows.sort((a, b) => (order[a.status] - order[b.status]) || a.name.localeCompare(b.name))
   return rows
 }
@@ -364,7 +378,7 @@ ph.get('/photos/:key', async (c) => {
     if (p!.speakers.length) org = String(((await c.env.DB.prepare('SELECT organisation FROM speakers WHERE id = ?').bind(p!.speakers[0]).first()) as any)?.organisation || '')
     else if (p!.talks.length) org = String(((await c.env.DB.prepare('SELECT company FROM innovation_talks WHERE id = ?').bind(p!.talks[0]).first()) as any)?.company || '')
   } catch { /* the page shows without it */ }
-  return new Response(albumPageHTML({ name: p!.name, org, ids: p!.photos }), { headers: head })
+  return new Response(albumPageHTML({ name: p!.name, org, ids: p!.photos, focus: p!.focus }), { headers: head })
 })
 
 export default ph

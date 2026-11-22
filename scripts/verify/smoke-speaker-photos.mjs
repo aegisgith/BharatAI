@@ -13,7 +13,8 @@ const { check, done } = checker();
 const DATA = JSON.parse(read('src/data/speaker-photos.json'));
 const sig = (key) => createHmac('sha256', ADMIN).update('photos:' + key).digest('hex').slice(0, 32);
 
-const withSp = DATA.people.filter(p => p.speakers.length && p.photos.length);
+const withSp = DATA.people.filter(p => p.speakers.length && p.photos.length && !p.check);
+const weak = DATA.people.find(p => p.speakers.length && p.photos.length && p.check);
 check('the data file has people with photos, each with a few best ones for the email', withSp.length >= 2 && withSp.every(p => p.best.length >= 1 && p.best.every(id => p.photos.includes(id))), `${DATA.people.length} people`);
 const [A, B] = withSp;
 // Put A and B on the programme (the world has no conference speakers of its own).
@@ -32,6 +33,8 @@ r = await page(A.key, sig(A.key));
 const html = await r.text();
 check('the signed page opens, noindex, with their name and every photo', r.status === 200 && /noindex/.test(r.headers.get('X-Robots-Tag') || '') && html.includes('Photos of ' + A.name.replace(/&/g, '&amp;'))
   && A.photos.every(id => html.includes(id)), r.status);
+const focused = A.focus ? Object.entries(A.focus)[0] : null;
+check('the square thumbnails keep their face in view', !!focused && html.includes(`style="object-position:${focused[1][0]}% ${focused[1][1]}%"`), focused);
 const scripts = [...html.matchAll(/<script(?![^>]*application\/json)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 let parses = true; try { scripts.forEach(s => new Function(s)); } catch (e) { parses = String(e); }
 check('the page script parses', scripts.length === 1 && parses === true, parses);
@@ -57,7 +60,7 @@ check('Innovation Talk speakers are on the list too', talksRows.length >= 10, ta
 
 // ---- preview and send ----
 let p = await as('GET', `/api/admin/speaker-photos/${A.key}/preview`);
-check('a preview: subject, photos, the page link, nothing sent', p.status === 200 && p.json?.subject === 'Your photos from Bharat AI Innovation 2026' && p.json?.html.includes('=s360-c')
+check('a preview: subject, whole photos (not cropped), the page link, nothing sent', p.status === 200 && p.json?.subject === 'Your photos from Bharat AI Innovation 2026' && p.json?.html.includes('=w560') && !p.json?.html.includes('-c"')
   && p.json?.html.includes(`/photos/${A.key}?k=${sig(A.key)}`) && p.json?.html.includes('See and download all') && sent.length === 0, p.status);
 let s = await as('POST', `/api/admin/speaker-photos/${A.key}/send`, {});
 const mail = sent[0];
@@ -74,13 +77,25 @@ check('sent again on purpose', s.status === 200 && sent.length === 2, s.status);
 s = await as('POST', `/api/admin/speaker-photos/${B.key}/send`, {});
 check('no email: refused, nothing sent', s.status === 409 && sent.length === 2, s.status);
 
+// ---- a weaker match: looked at before sending, not in "send to all" ----
+if (weak) {
+  addSpeaker(weak, 'weak.match@example.com');
+  l = await as('GET', '/api/admin/speaker-photos');
+  check('a weaker match waits for a look ("check"), not "ready"', row(weak.key)?.status === 'check', row(weak.key)?.status);
+  const n = sent.length;
+  s = await as('POST', `/api/admin/speaker-photos/${weak.key}/send`, {});
+  check('...and sends one by one once looked at', s.status === 200 && sent.length === n + 1, s.status);
+  db.run("DELETE FROM admin_audit WHERE action = 'speaker.photos' AND entity_id = ?", [weak.key]);
+}
+
 // ---- an official ----
 db.run("UPDATE speakers SET email = 'office@example.gov.in', role = 'Minister of State, IT' WHERE id = ?", [B.speakers[0]]);
 l = await as('GET', '/api/admin/speaker-photos');
 check('a minister is held for their office', row(B.key)?.status === 'protocol', row(B.key)?.status);
+const before = sent.length;
 s = await as('POST', `/api/admin/speaker-photos/${B.key}/send`, {});
-check('...and not sent unless "anyway"', s.status === 409 && sent.length === 2, s.status);
+check('...and not sent unless "anyway"', s.status === 409 && sent.length === before, s.status);
 s = await as('POST', `/api/admin/speaker-photos/${B.key}/send`, { anyway: true });
-check('...sent when the organiser says so', s.status === 200 && sent.length === 3, s.status);
+check('...sent when the organiser says so', s.status === 200 && sent.length === before + 1, s.status);
 
 done();

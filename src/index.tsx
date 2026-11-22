@@ -42388,7 +42388,7 @@ function adminPageScript(): string {
     // After the Event: the feedback survey and each exhibitor's results live in
     // /js/admin-after.js (one global, AfterDesk) with their own stylesheet, loaded the
     // first time the section opens. Bump AFTER_DESK_VERSION on any change to either.
-    var AFTER_DESK_VERSION = '20261123a';
+    var AFTER_DESK_VERSION = '20261123b';
     var afterDeskAssets = null;
     function afterDeskLoadAssets() {
       if (window.AfterDesk) return Promise.resolve();
