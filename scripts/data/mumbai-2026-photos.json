@@ -1,0 +1,22 @@
+{
+  "about": "The Mumbai 2026 photographs on the website (20-21 Nov 2026, World Trade Center Mumbai). Built by scripts/gen-mumbai-photos.mjs from Downloads/bharatai-site-photos/<slug>.jpg. pid = the photo-store id (R2 event-photos/1/<pid>/), so the same photo can be found among the 4,600 in Admin. use: hero = a home hero frame (in this order, seven of them), home = the home page, delhi = /delhi and /delhi-hi. Chosen 23 Nov 2026: full halls only, no rows of empty chairs, no close-up of a private attendee.",
+  "photos": [
+    { "slug": "opening-main-stage", "pid": "nzDzjA_QjpRb", "day": "2026-11-20", "use": ["hero", "home", "delhi"], "alt": "A speaker at the lectern on the main stage, under the Bharat AI Innovation screen, in front of a full hall" },
+    { "slug": "panel-viksit-bharat", "pid": "QyTcjJ-e0rhq", "day": "2026-11-20", "use": ["hero", "home", "delhi"], "alt": "A panel on AI for Viksit Bharat and governance, seen over a packed audience" },
+    { "slug": "full-hall", "pid": "RC7l-El5a6Hd", "day": "2026-11-20", "use": ["hero", "home", "delhi"], "alt": "A full conference hall, seen from the back, listening to a session on the stage" },
+    { "slug": "panel-eye-screen", "pid": "hfsthK_iW4Fx", "day": "2026-11-20", "use": ["hero", "home"], "alt": "Five panellists on stage in front of a giant close-up of an eye on the screen" },
+    { "slug": "lamp-lighting", "pid": "PxiVOl03oQbC", "day": "2026-11-20", "use": ["hero", "home", "delhi"], "alt": "Guests lighting the lamp before a session at Bharat AI Innovation" },
+    { "slug": "panel-telecom", "pid": "I_nF8v74M4l8", "day": "2026-11-21", "use": ["hero", "home", "delhi"], "alt": "A panel on AI in telecom, with TV cameras and a full audience in front of the stage" },
+    { "slug": "startup-pavilion", "pid": "7qWMLKltik70", "day": "2026-11-20", "use": ["hero", "home", "delhi"], "alt": "Visitors crowding the Startup Pavilion on the exhibition floor" },
+    { "slug": "panel-media", "pid": "s1aGWlnrTINu", "day": "2026-11-21", "use": ["home", "delhi"], "alt": "A nine-person panel on how AI is reshaping media and entertainment" },
+    { "slug": "panel-city-screen", "pid": "vh55znRtZuXk", "day": "2026-11-20", "use": ["home"], "alt": "Five panellists on stage in front of an aerial view of a city on the screen" },
+    { "slug": "talk-ai-avatar", "pid": "fxJxu1xcQxjR", "day": "2026-11-21", "use": ["home", "delhi"], "alt": "A speaker presenting next to an AI avatar on the big screen" },
+    { "slug": "talk-big-screen", "pid": "8-tNNhg2_Ay3", "day": "2026-11-21", "use": ["home", "delhi"], "alt": "A speaker showing a product on the big screen during an Innovation Talk" },
+    { "slug": "keynote-main-stage", "pid": "K4zZIZZyqMB9", "day": "2026-11-20", "use": ["home", "delhi"], "alt": "A keynote speaker on stage in front of the Bharat AI Innovation screen" },
+    { "slug": "booth-crowd", "pid": "PFaVJyHmUsFz", "day": "2026-11-21", "use": ["home"], "alt": "Visitors gathered at a lit exhibition booth" },
+    { "slug": "registration-queue", "pid": "MFa5NdtPZV8s", "day": "2026-11-20", "use": ["home", "delhi"], "alt": "A long queue at the registration desks" },
+    { "slug": "networking", "pid": "imPawoMarCs9", "day": "2026-11-20", "use": ["home", "delhi"], "alt": "Delegates meeting and talking in a busy exhibition aisle" },
+    { "slug": "venue-entrance", "pid": "CKMjtDU6Jqs7", "day": "2026-11-20", "use": ["home", "delhi"], "alt": "The Bharat AI Innovation arch at the entrance to World Trade Center Mumbai" },
+    { "slug": "booth-robot", "pid": "mwfGeOMUBxc2", "day": "2026-11-20", "use": ["home"], "alt": "A robot greeting visitors at an exhibition booth" }
+  ]
+}

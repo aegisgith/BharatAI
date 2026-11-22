@@ -93,7 +93,7 @@ for (const [a, b] of [
   ['<li>Private boardrooms</li>', '<li>निजी बोर्डरूम</li>'],
   ['<li>AI Marketplace</li>', '<li>एआई मार्केटप्लेस</li>'],
   ['<li>Bharat AI Connect app</li>', '<li>भारत एआई कनेक्ट ऐप</li>'],
-  ['Photos from Data Science Congress, the predecessor to Bharat AI Innovation, and a World Trade Center Mumbai boardroom.', 'तस्वीरें डेटा साइंस कांग्रेस (भारत एआई इनोवेशन का पहले का रूप) और वर्ल्ड ट्रेड सेंटर मुंबई के एक बोर्डरूम की हैं।'],
+  ['Photos from Bharat AI Innovation in Mumbai, November 2026. The workshop, hackathon and cross-border photos are from Data Science Congress, the predecessor to Bharat AI Innovation. The roundtable photo is a World Trade Center Mumbai boardroom.', 'तस्वीरें भारत एआई इनोवेशन मुंबई, नवंबर 2026 की हैं। वर्कशॉप, हैकथॉन और अंतरराष्ट्रीय संवाद की तस्वीरें डेटा साइंस कांग्रेस (भारत एआई इनोवेशन का पहले का रूप) की हैं। गोलमेज़ बैठक की तस्वीर वर्ल्ड ट्रेड सेंटर मुंबई के एक बोर्डरूम की है।'],
 ]) swap(a, b);
 
 // ---- passes ----
@@ -131,7 +131,7 @@ swap('Book a booth in <span class="accent">New Delhi</span>', '<span class="acce
 swap('The same sizes and prices as Mumbai. We will publish the floor plan later.', 'मुंबई जैसे ही आकार और दाम। फ़्लोर प्लान बाद में प्रकाशित होगा।');
 swap('Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.',
   'बताइए आप क्या दिखाएँगे। हम हर आवेदन की समीक्षा करते हैं, ताकि प्रदर्शनी उन लोगों के काम की रहे जो ख़रीदने आते हैं। हम 2 कार्यदिवसों में जवाब देते हैं। स्वीकृति मिलने पर हमारी टीम आपकी जगह और बूथ बुक करने का अगला कदम बताएगी।');
-swap('A booth at Data Science Congress, the predecessor to Bharat AI Innovation.', 'डेटा साइंस कांग्रेस (भारत एआई इनोवेशन का पहले का रूप) का एक बूथ।');
+swap('A booth at Bharat AI Innovation in Mumbai, November 2026.', 'भारत एआई इनोवेशन मुंबई (नवंबर 2026) का एक बूथ।');
 swap(' exhibitor passes · ', ' एग्ज़िबिटर पास · ', 5);
 swap(' exhibitor pass · ', ' एग्ज़िबिटर पास · ', 2);
 swap(' sqft) · ', ' वर्ग फ़ुट) · ', 7);
@@ -261,15 +261,15 @@ for (const [a, b] of [
   ['<p>Your receipt comes by email straight away, and your GST invoice follows from the accounts team. Closer to the event we will email you your entry pass and open the app for Delhi.</p>',
     '<p>रसीद तुरंत ईमेल पर आ जाएगी, और जीएसटी इनवॉइस अकाउंट्स टीम से बाद में आएगा। आयोजन के क़रीब हम आपको प्रवेश पास ईमेल करेंगे और दिल्ली के लिए ऐप खोलेंगे।</p>'],
   ['Is this the same as the Mumbai event? <i', 'क्या यह मुंबई वाला ही आयोजन है? <i'],
-  ['<p>No, they are two separate events. Bharat AI Innovation 2026 is on 20–21 November 2026 at World Trade Center Mumbai. The Delhi edition is on 28–29 July 2027 at Bharat Mandapam. A pass for one does not cover the other.</p>',
-    '<p>नहीं, ये दो अलग आयोजन हैं। भारत एआई इनोवेशन 2026, 20–21 नवंबर 2026 को वर्ल्ड ट्रेड सेंटर मुंबई में है। दिल्ली संस्करण 28–29 जुलाई 2027 को भारत मंडपम में है। एक आयोजन का पास दूसरे के लिए मान्य नहीं है।</p>'],
+  ['<p>No, they are two separate events. Bharat AI Innovation 2026 was held on 20–21 November 2026 at World Trade Center Mumbai. The Delhi edition is on 28–29 July 2027 at Bharat Mandapam. A pass for one does not cover the other.</p>',
+    '<p>नहीं, ये दो अलग आयोजन हैं। भारत एआई इनोवेशन 2026, 20–21 नवंबर 2026 को वर्ल्ड ट्रेड सेंटर मुंबई में हुआ। दिल्ली संस्करण 28–29 जुलाई 2027 को भारत मंडपम में है। एक आयोजन का पास दूसरे के लिए मान्य नहीं है।</p>'],
 ]) swap(a, b);
 
 // ---- before Delhi, Mumbai ----
 swap('<h2>Before Delhi, <span class="accent">Mumbai</span></h2>', '<h2>दिल्ली से पहले, <span class="accent">मुंबई</span></h2>');
-swap('<p>Bharat AI Innovation 2026 is on 20–21 November at World Trade Center Mumbai. Passes are open now.</p>', '<p>भारत एआई इनोवेशन 2026, 20–21 नवंबर को वर्ल्ड ट्रेड सेंटर मुंबई में है। पास अभी उपलब्ध हैं।</p>');
-swap('Get my Delegate Pass <i', 'मेरा डेलीगेट पास लें <i');
-swap('>Expo Pass for Mumbai, &#8377;999</a>', '>मुंबई के लिए एक्सपो पास, &#8377;999</a>');
+swap('<p>Bharat AI Innovation 2026 took place on 20–21 November at World Trade Center Mumbai. Here are a few moments from it.</p>', '<p>भारत एआई इनोवेशन 2026, 20–21 नवंबर को वर्ल्ड ट्रेड सेंटर मुंबई में हुआ। देखिए उसकी कुछ झलकियाँ।</p>');
+swap('Get your Delhi pass <i', 'अपना दिल्ली पास लें <i');
+swap('>More photos from Mumbai</a>', '>मुंबई की और तस्वीरें</a>');
 
 // ---- footer and the bar at the bottom ----
 swap("Advancing India's Future Through AI Innovation. Join us in creating a Viksit Bharat by 2047.", 'एआई इनोवेशन के ज़रिए भारत के भविष्य को आगे बढ़ाना। 2047 तक विकसित भारत बनाने में हमारे साथ जुड़ें।');

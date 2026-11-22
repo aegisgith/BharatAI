@@ -280,6 +280,10 @@
     .dl-mumbai h2 .accent { color: var(--saffron-light); }
     .dl-mumbai p { color: rgba(255,255,255,0.8); font-size: 1.02rem; line-height: 1.6; margin: 0 auto 1.6rem; max-width: 50ch; }
     .dl-mumbai-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center; }
+    .dl-mumbai-photos { list-style: none; margin: 0 auto 1.8rem; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; max-width: 1040px; }
+    .dl-mumbai-photos li { border-radius: 12px; overflow: hidden; aspect-ratio: 3 / 2; background: rgba(255,255,255,0.06); }
+    .dl-mumbai-photos img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    @media (max-width: 640px) { .dl-mumbai-photos { grid-template-columns: 1fr 1fr; gap: 0.45rem; } .dl-mumbai-photos li { border-radius: 9px; } }
     @media (max-width: 480px) { .dl-mumbai-actions .btn { width: 100%; justify-content: center; } }
 
     .dl-sec { padding: 3.25rem 0; }
@@ -545,21 +549,21 @@
             </div>
             <ul class="dl-feature">
                 <li class="dl-tile reveal">
-                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2991.webp" alt="A company leader presenting on a large stage" style="object-position:right center">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/talk-big-screen.webp" alt="A speaker showing a product on the big screen during an Innovation Talk in Mumbai">
                     <div><b>इनोवेशन टॉक्स और शोकेस</b><i class="by">स्टार्टअप्स और कॉर्पोरेट्स द्वारा</i><span>मंच पर छोटी वार्ताएँ और उनके बनाए समाधानों की लाइव झलक।</span></div>
                 </li>
                 <li class="dl-tile reveal reveal-delay-1">
-                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2946.webp" alt="A panel on using data for better governance and society, on a large stage" style="object-position:center 22%">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/panel-viksit-bharat.webp" alt="A panel on AI for Viksit Bharat and governance in Mumbai, seen over a packed audience">
                     <div><b>इनोवेशन टॉक्स और शोकेस</b><i class="by">सरकारी विभागों, मंत्रालयों और राज्य सरकारों द्वारा</i><span>सरकारी टीमें एआई का उपयोग कैसे कर रही हैं, मंच पर।</span></div>
                 </li>
             </ul>
             <ul class="dl-tiles">
                 <li class="dl-tile reveal">
-                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/577B0776.webp" alt="A keynote speaker on a large lit stage between two tall screens">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/keynote-main-stage.webp" alt="A keynote speaker on stage in Mumbai, in front of the Bharat AI Innovation screen">
                     <div><b>मुख्य वक्तव्य</b><span>भारत में एआई किस दिशा में जा रहा है।</span></div>
                 </li>
                 <li class="dl-tile reveal">
-                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/MNP_3564.webp" alt="Five women in conversation on a panel" style="object-position:center 20%">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/panel-media.webp" alt="A nine-person panel in Mumbai on how AI is reshaping media and entertainment">
                     <div><b>पैनल चर्चाएँ</b><span>क्या काम आया, और क्या नहीं।</span></div>
                 </li>
                 <li class="dl-tile reveal">
@@ -575,7 +579,7 @@
                     <div><b>बंद कमरे की गोलमेज़ बैठकें</b><span>वरिष्ठ नेतृत्व के लिए छोटे सत्र।</span></div>
                 </li>
                 <li class="dl-tile reveal">
-                    <img width="1600" height="1067" loading="lazy" decoding="async" src="images/gallery/DSC_5278.webp" alt="Visitors talking to a company’s team at its exhibition booth" style="object-position:40% center">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/startup-pavilion.webp" alt="Visitors crowding the Startup Pavilion on the exhibition floor in Mumbai">
                     <div><b>प्रदर्शनी</b><span>ख़रीदारों के लिए एआई उत्पाद, लाइव।</span></div>
                 </li>
                 <li class="dl-tile reveal">
@@ -583,7 +587,7 @@
                     <div><b>अंतरराष्ट्रीय संवाद</b><span>एआई पर भारत और दुनिया।</span></div>
                 </li>
                 <li class="dl-tile reveal">
-                    <img width="1600" height="1200" loading="lazy" decoding="async" src="images/gallery/577B0622.webp" alt="Delegates meeting and talking in a bright glass atrium" style="object-position:30% center">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/networking.webp" alt="Delegates meeting and talking in a busy exhibition aisle in Mumbai">
                     <div><b>B2B नेटवर्किंग</b><span>आने से पहले ही मीटिंग तय करें।</span></div>
                 </li>
             </ul>
@@ -596,7 +600,7 @@
                 <li>एआई मार्केटप्लेस</li>
                 <li>भारत एआई कनेक्ट ऐप</li>
             </ul>
-            <p class="dl-photo-note">तस्वीरें डेटा साइंस कांग्रेस (भारत एआई इनोवेशन का पहले का रूप) और वर्ल्ड ट्रेड सेंटर मुंबई के एक बोर्डरूम की हैं।</p>
+            <p class="dl-photo-note">तस्वीरें भारत एआई इनोवेशन मुंबई, नवंबर 2026 की हैं। वर्कशॉप, हैकथॉन और अंतरराष्ट्रीय संवाद की तस्वीरें डेटा साइंस कांग्रेस (भारत एआई इनोवेशन का पहले का रूप) की हैं। गोलमेज़ बैठक की तस्वीर वर्ल्ड ट्रेड सेंटर मुंबई के एक बोर्डरूम की है।</p>
         </div>
     </section>
 
@@ -673,8 +677,8 @@
                 <p class="dl-apply-words">बताइए आप क्या दिखाएँगे। हम हर आवेदन की समीक्षा करते हैं, ताकि प्रदर्शनी उन लोगों के काम की रहे जो ख़रीदने आते हैं। हम 2 कार्यदिवसों में जवाब देते हैं। स्वीकृति मिलने पर हमारी टीम आपकी जगह और बूथ बुक करने का अगला कदम बताएगी।</p>
             </div>
             <div class="dl-sale-photo reveal">
-                <img width="1600" height="1067" loading="lazy" decoding="async" src="images/gallery/DSC_5278.webp" alt="Visitors talking to a company’s team at its exhibition booth" style="object-position:40% 40%">
-            </div>            <p class="dl-photo-note">डेटा साइंस कांग्रेस (भारत एआई इनोवेशन का पहले का रूप) का एक बूथ।</p>
+                <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/booth-crowd.webp" alt="Visitors gathered at a lit exhibition booth in Mumbai">
+            </div>            <p class="dl-photo-note">भारत एआई इनोवेशन मुंबई (नवंबर 2026) का एक बूथ।</p>
 
             <ul class="dl-sale">
                 <li class="dl-sale-row reveal"><div><b>Startup Pod</b><span>1.5 × 1.5 m (24 वर्ग फ़ुट) · 1 एग्ज़िबिटर पास · 8 मिनट इनोवेशन टॉक</span></div><p>₹48,000 <small>+ जीएसटी</small></p><a href="/delhi-exhibit?booth=Startup%20Pod" class="btn btn-outline btn-sm">इस बूथ के लिए आवेदन करें</a></li>
@@ -867,7 +871,7 @@
                 </details>
                 <details>
                     <summary>क्या यह मुंबई वाला ही आयोजन है? <i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
-                    <p>नहीं, ये दो अलग आयोजन हैं। भारत एआई इनोवेशन 2026, 20–21 नवंबर 2026 को वर्ल्ड ट्रेड सेंटर मुंबई में है। दिल्ली संस्करण 28–29 जुलाई 2027 को भारत मंडपम में है। एक आयोजन का पास दूसरे के लिए मान्य नहीं है।</p>
+                    <p>नहीं, ये दो अलग आयोजन हैं। भारत एआई इनोवेशन 2026, 20–21 नवंबर 2026 को वर्ल्ड ट्रेड सेंटर मुंबई में हुआ। दिल्ली संस्करण 28–29 जुलाई 2027 को भारत मंडपम में है। एक आयोजन का पास दूसरे के लिए मान्य नहीं है।</p>
                 </details>
             </div>
         </div>
@@ -877,10 +881,18 @@
     <section class="dl-mumbai dl-sec" id="mumbai">
         <div class="container reveal">
             <h2>दिल्ली से पहले, <span class="accent">मुंबई</span></h2>
-            <p>भारत एआई इनोवेशन 2026, 20–21 नवंबर को वर्ल्ड ट्रेड सेंटर मुंबई में है। पास अभी उपलब्ध हैं।</p>
+            <p>भारत एआई इनोवेशन 2026, 20–21 नवंबर को वर्ल्ड ट्रेड सेंटर मुंबई में हुआ। देखिए उसकी कुछ झलकियाँ।</p>
+            <ul class="dl-mumbai-photos">
+                <li><img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/full-hall-720.webp" alt="A full conference hall in Mumbai, seen from the back, listening to a session on the stage"></li>
+                <li><img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/panel-telecom-720.webp" alt="A panel on AI in telecom, with TV cameras and a full audience in front of the stage"></li>
+                <li><img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/lamp-lighting-720.webp" alt="Guests lighting the lamp before a session at Bharat AI Innovation"></li>
+                <li><img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/registration-queue-720.webp" alt="A long queue at the registration desks in Mumbai"></li>
+                <li><img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/opening-main-stage-720.webp" alt="A speaker at the lectern on the main stage in Mumbai, in front of a full hall"></li>
+                <li><img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/venue-entrance-720.webp" alt="The Bharat AI Innovation arch at the entrance to World Trade Center Mumbai"></li>
+            </ul>
             <div class="dl-mumbai-actions">
-                <a href="/register?source=delhi-page#delegate" class="btn btn-primary btn-lg">मेरा डेलीगेट पास लें <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
-                <a href="/register?source=delhi-page#expo" class="btn btn-ghost btn-lg">मुंबई के लिए एक्सपो पास, &#8377;999</a>
+                <a href="#passes" class="btn btn-primary btn-lg">अपना दिल्ली पास लें <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="/#past-gallery" class="btn btn-ghost btn-lg">मुंबई की और तस्वीरें</a>
             </div>
         </div>
     </section>

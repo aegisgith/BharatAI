@@ -414,7 +414,7 @@
 
     <!-- Hero backdrop: first frame of the rotation, fetched early so the hero does
          not open on the bare gradient. The other six load after the page. -->
-    <link rel="preload" as="image" type="image/webp" href="img/hero-1.webp" fetchpriority="high">
+    <link rel="preload" as="image" type="image/webp" href="img/hero-1.webp?v=m26" fetchpriority="high">
 
     <!-- Favicon -->
     <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
@@ -874,16 +874,16 @@
 
     <!-- ===== HERO ===== -->
     <section class="hero" id="main-content">
-        <!-- Seven Data Science Congress photographs, sharp, crossfading once all
-             have arrived (the script at the end of the page). -->
+        <!-- Seven Mumbai 2026 photographs (scripts/gen-mumbai-photos.mjs), sharp,
+             crossfading once all have arrived (the script at the end of the page). -->
         <div class="hero-bg">
-            <img class="hero-bg-photo" width="1600" height="1066" loading="eager" fetchpriority="high" decoding="async" src="img/hero-1.webp" alt="">
-            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-2.webp" alt="">
-            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-3.webp" alt="">
-            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-4.webp" alt="">
-            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-5.webp" alt="">
-            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-6.webp" alt="">
-            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-7.webp" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" loading="eager" fetchpriority="high" decoding="async" src="img/hero-1.webp?v=m26" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-2.webp?v=m26" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-3.webp?v=m26" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-4.webp?v=m26" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-5.webp?v=m26" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-6.webp?v=m26" alt="">
+            <img class="hero-bg-photo" width="1600" height="1066" decoding="async" data-src="img/hero-7.webp?v=m26" alt="">
             <div class="hero-bg-scrim"></div>
             <canvas id="heroGlobe" aria-hidden="true"></canvas>
         </div>
@@ -1995,27 +1995,27 @@
             </div>
             <ul class="vtiles">
                 <li class="vtile reveal">
-                    <img width="720" height="540" loading="lazy" decoding="async" src="img/t/7PN2Sjyw.webp" alt="Attendees in the registration lobby at Data Science Congress">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/networking-720.webp" alt="Delegates meeting and talking in a busy exhibition aisle at Bharat AI Innovation 2026">
                     <div><b>Network at scale</b><span>Buyers, investors and policymakers under one roof.</span></div>
                 </li>
                 <li class="vtile reveal">
-                    <img width="720" height="480" loading="lazy" decoding="async" src="img/t/GiqsZVsx.webp" alt="Visitors at an exhibition booth at Data Science Congress">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/booth-crowd-720.webp" alt="Visitors gathered at a lit exhibition booth at Bharat AI Innovation 2026">
                     <div><b>See AI running in production</b><span>Live demos across 8 industry zones.</span></div>
                 </li>
                 <li class="vtile reveal">
-                    <img width="720" height="480" loading="lazy" decoding="async" src="img/t/u8AQyE20.webp" alt="A minister delivering a keynote at Data Science Congress">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/panel-viksit-bharat-720.webp" alt="A panel on AI for Viksit Bharat and governance, seen over a packed audience">
                     <div><b>Government policy insights</b><span>India’s AI policy, from the people who shape it.</span></div>
                 </li>
                 <li class="vtile reveal">
-                    <img width="720" height="480" loading="lazy" decoding="async" src="img/t/Mw680XyB.webp" alt="A panellist speaking during a leadership discussion">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/panel-telecom-720.webp" alt="A panel on AI in telecom, with TV cameras and a full audience in front of the stage">
                     <div><b>CXO leadership panels</b><span>Hear from the leaders running AI at scale.</span></div>
                 </li>
                 <li class="vtile reveal">
-                    <img width="720" height="480" loading="lazy" decoding="async" src="img/t/qaOYFZfB.webp" alt="Panel discussion on women in data science">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/panel-media-720.webp" alt="A nine-person panel on how AI is reshaping media and entertainment">
                     <div><b>Learn across 10+ tracks</b><span>GenAI to governance, healthcare to agritech.</span></div>
                 </li>
                 <li class="vtile reveal">
-                    <img width="720" height="480" loading="lazy" decoding="async" src="img/t/sx04jhlV.webp" alt="An industry leader presenting on stage">
+                    <img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/talk-big-screen-720.webp" alt="A speaker showing a product on the big screen during an Innovation Talk">
                     <div><b>Showcase your innovation</b><span>Take the Innovation Stage or a booth.</span></div>
                 </li>
             </ul>
@@ -2377,89 +2377,82 @@
     </script>
     <!-- exhibitors:end -->
 
-    <!-- ===== PAST GALLERY ===== -->
+    <!-- ===== MUMBAI 2026 GALLERY (was Data Science Congress) ===== -->
+    <!-- Photos: scripts/data/mumbai-2026-photos.json, built by scripts/gen-mumbai-photos.mjs. -->
     <section class="past-gallery" id="past-gallery">
         <div class="container">
             <div class="section-header reveal">
-                <h2 class="section-title">From the <span class="accent">stage</span></h2>
-                <p class="section-subtitle">Moments from Data Science Congress, the predecessor to Bharat AI Innovation.</p>
+                <h2 class="section-title">Mumbai 2026, in <span class="accent">pictures</span></h2>
+                <p class="section-subtitle">Bharat AI Innovation, 20 and 21 November 2026, World Trade Center Mumbai.</p>
             </div>
             <div class="gallery-grid" id="galleryGrid" data-show="5,9">
                 <figure class="gallery-card reveal">
-                    <img width="1024" height="683" src="img/oIGfmq8T.jpg" alt="Opening keynote stage with event branding" loading="lazy">
-                    <figcaption>Opening Keynote Stage</figcaption>
+                    <img width="1600" height="1066" decoding="async" src="img/mumbai-2026/opening-main-stage.webp" srcset="img/mumbai-2026/opening-main-stage-720.webp 720w, img/mumbai-2026/opening-main-stage.webp 1600w" sizes="(max-width: 768px) 100vw, 50vw" alt="A speaker at the lectern on the main stage, under the Bharat AI Innovation screen, in front of a full hall" loading="lazy">
+                    <figcaption>The main stage</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-1">
-                    <img width="720" height="480" decoding="async" src="img/t/XYFamTjB.webp" alt="AI researcher delivering a keynote session" loading="lazy">
-                    <figcaption>AI Research Keynote</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/panel-viksit-bharat-720.webp" alt="A panel on AI for Viksit Bharat and governance, seen over a packed audience" loading="lazy">
+                    <figcaption>AI for Viksit Bharat</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-2">
-                    <img width="720" height="480" decoding="async" src="img/t/sx04jhlV.webp" alt="Industry leader presenting on stage" loading="lazy">
-                    <figcaption>Leadership Address</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/full-hall-720.webp" alt="A full conference hall, seen from the back, listening to a session on the stage" loading="lazy">
+                    <figcaption>A full hall</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-3">
-                    <img width="720" height="480" decoding="async" src="img/t/3swgeyOb.webp" alt="Expert speaker leading a technical talk" loading="lazy">
-                    <figcaption>Technical Deep Dive</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-1">
-                    <img width="720" height="480" decoding="async" src="img/t/G2kIKD4Y.webp" alt="Main stage spotlight with data visuals" loading="lazy">
-                    <figcaption>Main Stage Spotlight</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-2">
-                    <img width="720" height="480" decoding="async" src="img/t/IseXJc9a.webp" alt="Panel discussion on data science in e-commerce and retail" loading="lazy">
-                    <figcaption>Panel Discussion</figcaption>
-                </figure>
-                <figure class="gallery-card reveal reveal-delay-3">
-                    <img width="720" height="480" decoding="async" src="img/t/FSwgFC1Q.webp" alt="Speaker presenting on stage with data visuals" loading="lazy">
-                    <figcaption>Data Insights Talk</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/lamp-lighting-720.webp" alt="Guests lighting the lamp before a session at Bharat AI Innovation" loading="lazy">
+                    <figcaption>Lighting the lamp</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-4">
-                    <img width="720" height="540" decoding="async" src="img/t/7PN2Sjyw.webp" alt="Conference registration lobby and networking area" loading="lazy">
-                    <figcaption>Registration &amp; Networking</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/startup-pavilion-720.webp" alt="Visitors crowding the Startup Pavilion on the exhibition floor" loading="lazy">
+                    <figcaption>Startup Pavilion</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-1">
-                    <img width="720" height="480" decoding="async" src="img/t/ziOcVT9u.webp" alt="Conference session with live audience engagement" loading="lazy">
-                    <figcaption>Interactive Session</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/panel-eye-screen-720.webp" alt="Five panellists on stage in front of a giant close-up of an eye on the screen" loading="lazy">
+                    <figcaption>Panel discussion</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-2">
-                    <img width="720" height="480" decoding="async" src="img/t/M0pjzJb1.webp" alt="Data scientist presenting on stage" loading="lazy">
-                    <figcaption>Data Science Talk</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/panel-telecom-720.webp" alt="A panel on AI in telecom, with TV cameras and a full audience in front of the stage" loading="lazy">
+                    <figcaption>AI in Telecom</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-3">
-                    <img width="720" height="480" decoding="async" src="img/t/WkdpnU9p.webp" alt="Speaker presenting at Aegis Data Science conference" loading="lazy">
-                    <figcaption>Industry Speaker</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/talk-ai-avatar-720.webp" alt="A speaker presenting next to an AI avatar on the big screen" loading="lazy">
+                    <figcaption>On the big screen</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-4">
-                    <img width="720" height="480" decoding="async" src="img/t/fhk60Z58.webp" alt="NVIDIA Managing Director presenting on stage" loading="lazy">
-                    <figcaption>Technology Leadership</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/registration-queue-720.webp" alt="A long queue at the registration desks" loading="lazy">
+                    <figcaption>Registration</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-1">
-                    <img width="720" height="480" decoding="async" src="img/t/u8AQyE20.webp" alt="Government minister delivering keynote address" loading="lazy">
-                    <figcaption>Government Keynote</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/panel-media-720.webp" alt="A nine-person panel on how AI is reshaping media and entertainment" loading="lazy">
+                    <figcaption>Media and entertainment</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-2">
-                    <img width="720" height="480" decoding="async" src="img/t/GiqsZVsx.webp" alt="NVIDIA exhibition booth at Data Science Congress" loading="lazy">
-                    <figcaption>Innovation Showcase</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/keynote-main-stage-720.webp" alt="A keynote speaker on stage in front of the Bharat AI Innovation screen" loading="lazy">
+                    <figcaption>Keynote</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-3">
-                    <img width="720" height="480" decoding="async" src="img/t/5rwd54S2.webp" alt="Speaker sharing insights from the podium" loading="lazy">
-                    <figcaption>Expert Address</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/booth-crowd-720.webp" alt="Visitors gathered at a lit exhibition booth" loading="lazy">
+                    <figcaption>On the exhibition floor</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-4">
-                    <img width="720" height="480" decoding="async" src="img/t/qaOYFZfB.webp" alt="Panel discussion on women in data science" loading="lazy">
-                    <figcaption>Women in Data Science</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/panel-city-screen-720.webp" alt="Five panellists on stage in front of an aerial view of a city on the screen" loading="lazy">
+                    <figcaption>Panel discussion</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-1">
-                    <img width="720" height="480" decoding="async" src="img/t/Mw680XyB.webp" alt="Panelist speaking during a leadership discussion" loading="lazy">
-                    <figcaption>Leadership Panel</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/networking-720.webp" alt="Delegates meeting and talking in a busy exhibition aisle" loading="lazy">
+                    <figcaption>Networking</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-2">
-                    <img width="720" height="480" decoding="async" src="img/t/CrqPzMWZ.webp" alt="Audience members attending a breakout session" loading="lazy">
-                    <figcaption>Audience Engagement</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/talk-big-screen-720.webp" alt="A speaker showing a product on the big screen during an Innovation Talk" loading="lazy">
+                    <figcaption>Innovation Talk</figcaption>
                 </figure>
                 <figure class="gallery-card reveal reveal-delay-3">
-                    <img width="720" height="480" decoding="async" src="img/t/lQr1QV9W.webp" alt="Speaker presenting technical session with data visuals" loading="lazy">
-                    <figcaption>Technical Session</figcaption>
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/booth-robot-720.webp" alt="A robot greeting visitors at an exhibition booth" loading="lazy">
+                    <figcaption>Exhibition</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-4">
+                    <img width="720" height="480" decoding="async" src="img/mumbai-2026/venue-entrance-720.webp" alt="The Bharat AI Innovation arch at the entrance to World Trade Center Mumbai" loading="lazy">
+                    <figcaption>World Trade Center Mumbai</figcaption>
                 </figure>
             </div>
             <div class="gallery-foot">
