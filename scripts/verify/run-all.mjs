@@ -15,6 +15,10 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
+// Mumbai 2026 is over (22 Nov 2026): /register and /passes say thank you on the real clock.
+// The suites written before the event still test the sales pages, so they run with them
+// open; smoke-entry-slots.mjs checks the closed pages itself.
+process.env.MUMBAI_SALES_OPEN = '1';
 if (!existsSync(join(root, 'dist', '_worker.js'))) {
   console.error('dist/_worker.js is missing: run `npm run build` first.');
   process.exit(2);

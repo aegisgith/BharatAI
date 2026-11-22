@@ -4258,6 +4258,8 @@ app.post('/api/payments/ccavenue/start', async (c) => {
 
   const a = await c.env.DB.prepare('SELECT id, event_id, badge_type, payment_status FROM attendees WHERE id = ?').bind(me).first() as any
   if (!a) return c.json({ error: 'Please sign in again to continue.' }, 401)
+  // Mumbai 2026 is over (22 Nov 2026): no more Mumbai passes. Delhi checks its own event.
+  if (Number(a.event_id || 1) === 1 && mumbaiIsOver()) return c.json({ error: MUMBAI_OVER_TEXT, event_over: true }, 410)
   const refused = payRefusal(a, passType)
   if (refused) return c.json({ error: refused }, 409)
   // The list price, or the difference for a confirmed pass moving up; an Exhibitor
@@ -25510,6 +25512,7 @@ app.get('/startup-pitch.html', (c) => c.redirect('/', 301))
 // ==================== REGISTER PAGE (Free Visitor Pass) ====================
 
 app.get('/register', async (c) => {
+  if (mumbaiIsOver()) return c.html(mumbaiOverPageHTML('/register'))
   return c.html(registerPageHTML({ waitlist: await freePassWaitlistOn(c), waitlistClosed: await waitlistClosed(c) }))
 })
 
@@ -25517,8 +25520,63 @@ app.get('/register', async (c) => {
 // price, the comparison and the questions a buyer asks before paying. Served by
 // the worker so the prices come from passPriceInr() like everywhere else.
 app.get('/passes', async (c) => {
+  if (mumbaiIsOver()) return c.html(mumbaiOverPageHTML('/passes'))
   return c.html(passesPageHTML({ waitlist: await freePassWaitlistOn(c) }))
 })
+
+// ==================== MUMBAI 2026 IS OVER (22 Nov 2026) ====================
+// The organiser chose "Close Mumbai sales on the site": from Saturday 21 Nov, 6 pm IST,
+// /register and /passes say thank you and point to Delhi (28-29 July 2027, /delhi), and
+// /api/payments/ccavenue/start refuses a Mumbai pass. Delhi's own pages are untouched.
+// No attendance number is shown: the public line stays the organiser's.
+const MUMBAI_OVER_AT = Date.parse('2026-11-21T12:30:00Z')
+// MUMBAI_SALES_OPEN=1 (set by scripts/verify/run-all.mjs, never in production) keeps the
+// sales pages for the suites written before the event.
+function mumbaiIsOver(): boolean {
+  // Read by name: the build replaces a literal process.env with a constant.
+  const proc = (globalThis as any)['proc' + 'ess']
+  if (proc && proc['env'] && proc['env']['MUMBAI_SALES_OPEN'] === '1') return false
+  return Date.now() >= MUMBAI_OVER_AT
+}
+const MUMBAI_OVER_TEXT = 'Bharat AI Innovation 2026 in Mumbai is over, so passes for it are no longer on sale. Thank you for your interest. The next edition is in Delhi on 28 and 29 July 2027: bharataiinnovation.com/delhi'
+function mumbaiOverPageHTML(path: string): string {
+  return `${sharedHeadHTML('Thank you, Mumbai', path, 'Bharat AI Innovation 2026 took place on 20 and 21 November 2026 at World Trade Center, Mumbai. Thank you. The next edition is in Delhi on 28 and 29 July 2027.')}
+<style>
+  .mo-wrap{max-width:720px;margin:0 auto;padding:56px 16px 72px;text-align:center}
+  .mo-eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:#C84F00;margin:0 0 14px}
+  .mo-title{font-size:clamp(34px,7vw,56px);line-height:1.05;font-weight:800;color:#1E2140;margin:0 0 18px}
+  .mo-lead{font-size:17px;line-height:1.7;color:#4b5563;margin:0 auto 28px;max-width:560px}
+  .mo-next{background:#fff;border:1px solid #ece7e1;border-radius:18px;padding:26px 20px;margin:0 auto 22px;max-width:560px;box-shadow:0 8px 30px rgba(30,33,64,.06)}
+  .mo-next h2{font-size:22px;font-weight:800;color:#1E2140;margin:0 0 6px}
+  .mo-next p{font-size:15px;color:#555;margin:0 0 18px;line-height:1.6}
+  .mo-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .mo-btn{display:inline-block;padding:13px 22px;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none}
+  .mo-btn--main{background:#C84F00;color:#fff}
+  .mo-btn--ghost{background:#fff;color:#1E2140;border:1px solid #d9d4ce}
+  .mo-small{font-size:14px;color:#6b7280;line-height:1.6;margin:18px 0 0}
+  .mo-small a{color:#C84F00;font-weight:700}
+</style>
+</head>
+<body class="min-h-screen">
+${siteHeaderHTML(path)}
+<main class="mo-wrap">
+  <p class="mo-eyebrow">Bharat AI Innovation 2026 &middot; Mumbai</p>
+  <h1 class="mo-title">Thank you, Mumbai.</h1>
+  <p class="mo-lead">Bharat AI Innovation 2026 took place on 20 and 21 November at World Trade Center, Mumbai. Thank you to everyone who came, spoke, exhibited and partnered with us. Passes for Mumbai are no longer on sale.</p>
+  <section class="mo-next" aria-labelledby="mo-delhi">
+    <h2 id="mo-delhi">Next: Delhi, 28&ndash;29 July 2027</h2>
+    <p>Bharat AI Innovation comes to Bharat Mandapam, New Delhi. Passes, booths and partnerships are open now.</p>
+    <div class="mo-btns">
+      <a class="mo-btn mo-btn--main" href="/delhi">See Delhi 2027</a>
+      <a class="mo-btn mo-btn--ghost" href="/delhi-register">Get a Delhi pass</a>
+    </div>
+  </section>
+  <p class="mo-small">Came to Mumbai? Your pass and the networking app still work: <a href="/app">open the app</a>.</p>
+</main>
+${sharedFooterHTML()}
+</body>
+</html>`
+}
 
 // ==================== GROUP BOOKING, 30% OFF (12 Nov 2026) ====================
 //

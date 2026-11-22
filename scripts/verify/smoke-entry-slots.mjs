@@ -339,5 +339,18 @@ check('from Saturday the app pass card says any time today', appJs.text.includes
 const ew = await hit('GET', '/api/admin/event-week/preview?audience=free&kind=free', undefined, ADMIN);
 check('the event-week email says Friday and Saturday, never Thursday', ew.status === 200 && !/Thursday/.test(ew.json?.html || '') && (ew.json?.html || '').includes('Friday 20 Nov'), ew.status);
 
+// ---- Mumbai is over: no more Mumbai passes on sale (the organiser, 22 Nov 2026) ----
+const salesOpen = process.env.MUMBAI_SALES_OPEN;
+delete process.env.MUMBAI_SALES_OPEN;
+FAKE_NOW = RealDate.parse('2026-11-21T10:00:00Z'); // Saturday 3:30 pm IST: still on sale
+let pg = await hit('GET', '/register');
+check('Saturday afternoon: /register still sells passes', pg.status === 200 && !pg.text.includes('Thank you, Mumbai.'), pg.status);
+FAKE_NOW = RealDate.parse('2026-11-22T10:00:00Z'); // Sunday
+pg = await hit('GET', '/register');
+const pg2 = await hit('GET', '/passes');
+check('after the event: /register and /passes say thank you and point to Delhi, 28-29 July 2027', pg.status === 200 && pg.text.includes('Thank you, Mumbai.') && pg.text.includes('href="/delhi"') && pg.text.includes('href="/delhi-register"') && pg2.text.includes('Thank you, Mumbai.') && !pg.text.includes('ps-buy'), pg.status + ' ' + pg2.status);
+check('the thank-you page shows no attendance number', !/\b\d{3,}\s+(people|attendees|visitors)/i.test(pg.text), '');
+if (salesOpen !== undefined) process.env.MUMBAI_SALES_OPEN = salesOpen;
+
 console.log(`\n${passes} passed, ${fails} failed`);
 process.exit(fails ? 1 : 0);
