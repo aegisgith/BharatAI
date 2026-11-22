@@ -81,3 +81,5 @@
 .afd-modal-head .afd-sub { color: #5b6178; font-size: 12.5px; }
 .afd-modal-head .afd-btn { display: inline-flex; align-items: center; min-height: 32px; padding: 0 10px; border: 1px solid #e3e6ef; border-radius: 9px; background: #fff; font-weight: 700; cursor: pointer; }
 .afd-modal iframe { flex: 1; width: 100%; border: 0; background: #f5f5f5; }
+.afd-thumbs { display: flex; gap: 4px; margin: 4px 0 2px; }
+.afd-thumbs img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background: var(--af-line); }

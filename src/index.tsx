@@ -9,6 +9,7 @@ import conference, { configureConference, draftFilterSql, venueSelectSql, fillVe
 import siteLive, { configureSiteLive } from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief, saturdaySpeakerReminders } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/talk-brief'
+import speakerPhotos, { configurePhotos } from './routes/photos'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
 import entrySlots, { configureEntrySlots, entrySlotAudienceRows, entryReofferAudienceRows, satOpenAudienceRows, inSlot as entryInSlot, satWindow } from './routes/entry-slots'
 import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql, saturdayWorkshopReminders, saturdayWorkshopOpenInvites } from './routes/workshop-reminder'
@@ -565,22 +566,24 @@ app.route('/', speakerBrief)
 // topic and pass in one email, previewed and sent from Admin -> Innovation Talks ("Time
 // & hall briefs"); routes/talk-brief.ts, screen public/static/talk-brief.js. Lambdas,
 // because some of these are consts declared further down.
+// Who to write to for each Innovation Talk, the same address order as the "details we
+// need" email: the talk's own speaker email, the person by that name on the company's
+// team list, the booth contact. Used by the talk briefs and the speaker photos.
+async function italkContactsAll(c: any, eventId: number): Promise<Record<string, any>> {
+  const q = async (sql: string) => ((await c.env.DB.prepare(sql).bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
+  const [talks, exhibitors, team, heldIds] = await Promise.all([
+    q('SELECT * FROM innovation_talks WHERE event_id = ?'),
+    q('SELECT id, company_name, contact_email FROM exhibitors WHERE event_id = ?'),
+    q("SELECT exhibitor_id, first_name, last_name, email FROM exhibitor_team WHERE event_id = ? AND trim(email) <> ''"),
+    italkHeldIds(c)])
+  const out: Record<string, any> = {}
+  for (const t of talks) out[String(t.id)] = { ...italkContactFor(t, exhibitors, team), protocol: italkIsProtocol(t) || heldIds.has(Number(t.id)) }
+  return out
+}
 configureTalkBrief({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader,
   hallWhere: (h: any) => ITALK_HALLS[String(h || '').trim()] || '',
   detailsLink: (c: any, id: number) => talkDetailsLink(c, id),
-  // The same address order as the "details we need" email: the talk's own speaker email,
-  // the person by that name on the company's team list, the booth contact.
-  contacts: async (c: any, eventId: number) => {
-    const q = async (sql: string) => ((await c.env.DB.prepare(sql).bind(eventId).all().catch(() => ({ results: [] }))).results || []) as any[]
-    const [talks, exhibitors, team, heldIds] = await Promise.all([
-      q('SELECT * FROM innovation_talks WHERE event_id = ?'),
-      q('SELECT id, company_name, contact_email FROM exhibitors WHERE event_id = ?'),
-      q("SELECT exhibitor_id, first_name, last_name, email FROM exhibitor_team WHERE event_id = ? AND trim(email) <> ''"),
-      italkHeldIds(c)])
-    const out: Record<string, any> = {}
-    for (const t of talks) out[String(t.id)] = { ...italkContactFor(t, exhibitors, team), protocol: italkIsProtocol(t) || heldIds.has(Number(t.id)) }
-    return out
-  },
+  contacts: (c: any, eventId: number) => italkContactsAll(c, eventId),
   passLink: async (c: any, eventId: number, email: string) => {
     const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
     let href = appUrl + '?email=' + encodeURIComponent(email) + '&action=download-pass'
@@ -590,6 +593,13 @@ configureTalkBrief({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHe
     return href
   } })
 app.route('/', talkBrief)
+// Speaker photos (23 Nov 2026): each speaker's and Innovation Talk speaker's event
+// photos, matched by face on the organiser's computer (scripts/photos/), on their own
+// signed page /photos/<key> and in one email each from Admin -> After the Event.
+// routes/photos.ts, data src/data/speaker-photos.json.
+configurePhotos({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader,
+  talkContacts: (c: any, eventId: number) => italkContactsAll(c, eventId) })
+app.route('/', speakerPhotos)
 // The event-week email (16 Nov 2026): "Get ready for 20 and 21 Nov" to delegates,
 // exhibitors and everyone else, a checklist of photo, pass, LinkedIn badge, the app and
 // meetings, each step a sign-in button; a campaign of kind event_week (BULK EMAIL
@@ -42371,7 +42381,7 @@ function adminPageScript(): string {
     // After the Event: the feedback survey and each exhibitor's results live in
     // /js/admin-after.js (one global, AfterDesk) with their own stylesheet, loaded the
     // first time the section opens. Bump AFTER_DESK_VERSION on any change to either.
-    var AFTER_DESK_VERSION = '20261112a';
+    var AFTER_DESK_VERSION = '20261123a';
     var afterDeskAssets = null;
     function afterDeskLoadAssets() {
       if (window.AfterDesk) return Promise.resolve();

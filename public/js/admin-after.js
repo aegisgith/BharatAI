@@ -7,6 +7,8 @@
  * Exhibitor results: each exhibitor's badges scanned, meetings and app visits, a
  * preview, and one email per exhibitor to its booth contact, sent once unless sent
  * again on purpose.
+ * Speaker photos (23 Nov 2026): each speaker's and Innovation Talk speaker's photos,
+ * matched by face (src/routes/photos.ts), a preview, and one email each.
  *
  * The admin page loads this file the first time the section opens and calls
  * AfterDesk.mount(element, { api, toast, startCampaign, authHeaders }).
@@ -19,6 +21,7 @@
   var host = null;
   var survey = null;
   var exhibitors = [];
+  var photos = null;
   var busy = false;
 
   function esc(v) {
@@ -137,8 +140,48 @@
       + rows + '</tbody></table></div></section>';
   }
 
+  // Speaker photos (23 Nov 2026): one email per speaker or Innovation Talk speaker with
+  // the event photos they are in (matched by face, src/routes/photos.ts) and a link to
+  // their own page. Sent once unless sent again on purpose; officials only on purpose.
+  var PH_STATUS = {
+    ready: 'Not sent yet', sent: 'Sent', 'no-email': 'No email address', protocol: 'Official: through their office', 'no-photos': 'No photos found'
+  };
+  function photosHtml() {
+    var head = '<div class="afd-card-head"><h2><i class="fas fa-images" aria-hidden="true"></i> Speaker photos</h2>'
+      + '<p>One email per speaker and Innovation Talk speaker, from register@, with the event photos they are in and a link to their own page, where every photo downloads at full size. The photos were found by matching each speaker&rsquo;s photo on the site against the photographers&rsquo; photos.</p></div>';
+    if (!photos) return '<section class="afd-card">' + head + '<p class="afd-note">Loading...</p></section>';
+    if (photos.error) return '<section class="afd-card">' + head + '<p class="afd-warn">' + esc(photos.error) + '</p></section>';
+    var rows = photos.rows || [];
+    var ready = rows.filter(function (r) { return r.status === 'ready'; });
+    var found = rows.filter(function (r) { return r.count > 0; });
+    var c = photos.counts || {};
+    var stats = '<p class="afd-note">' + num(found.length) + ' people found in the photos, ' + num(c.sent || 0) + ' sent, '
+      + num(c['no-email'] || 0) + ' without an email, ' + num(c.protocol || 0) + ' officials held back, ' + num(c['no-photos'] || 0) + ' not found in any photo.'
+      + (photos.generated ? ' Matched ' + esc(photos.generated) + '.' : '') + '</p>';
+    var actions = '<div class="afd-actions"><button type="button" class="afd-btn afd-primary" data-act="send-all-ph"' + (ready.length ? '' : ' disabled') + '>'
+      + '<i class="fas fa-paper-plane" aria-hidden="true"></i> Send to all not yet sent (' + num(ready.length) + ')</button>'
+      + '<span class="afd-note" id="afd-ph-progress" aria-live="polite"></span></div>';
+    var body = rows.map(function (r) {
+      var thumbs = (r.thumbs || []).map(function (u) { return '<img src="' + esc(u) + '" alt="" loading="lazy" width="40" height="40">'; }).join('');
+      var pics = r.count ? '<b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div>'
+        + (r.page ? '<a class="afd-sub" href="' + esc(r.page) + '" target="_blank" rel="noopener">Open their page</a>' : '') : '<span class="afd-sub">None found</span>';
+      var mail = r.email ? esc(r.email) + '<div class="afd-sub">' + esc(r.email_note || '') + '</div>' : '<span class="afd-bad">No email</span>';
+      var st = r.status === 'sent' ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '')
+        : r.status === 'ready' ? 'Not yet' : '<span class="afd-sub">' + esc(PH_STATUS[r.status] || r.status) + '</span>';
+      var canSend = r.count > 0 && !!r.email;
+      var word = r.sent_count ? 'Send again' : (r.protocol ? 'Send anyway' : 'Send');
+      return '<tr><td><b>' + esc(r.name) + '</b><div class="afd-sub">' + esc([r.org].concat(r.kinds || []).filter(Boolean).join(' · ')) + '</div></td>'
+        + '<td>' + pics + '</td><td>' + mail + '</td><td>' + st + '</td>'
+        + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small" data-act="preview-ph" data-id="' + esc(r.key) + '"' + (r.count ? '' : ' disabled') + '>Preview</button>'
+        + '<button type="button" class="afd-btn afd-small" data-act="send-ph" data-id="' + esc(r.key) + '"' + (canSend ? '' : ' disabled') + '>' + word + '</button></td></tr>';
+    }).join('');
+    return '<section class="afd-card">' + head + stats + actions
+      + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Person</th><th>Photos</th><th>Email</th><th>Photos email</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>'
+      + body + '</tbody></table></div></section>';
+  }
+
   function draw() {
-    host.innerHTML = '<div class="afd">' + surveyHtml() + exhibitorsHtml() + '</div>';
+    host.innerHTML = '<div class="afd">' + photosHtml() + surveyHtml() + exhibitorsHtml() + '</div>';
   }
 
   function preview(title, to, subject, html) {
@@ -210,6 +253,37 @@
         await sendOne(r.id, again);
         toast('Results sent to ' + r.company + '.');
         await refresh();
+      } else if (act === 'preview-ph') {
+        var pv = await opts.api.get('/api/admin/speaker-photos/' + encodeURIComponent(id) + '/preview');
+        preview('Photos email', pv.to, pv.subject, pv.html);
+      } else if (act === 'send-ph') {
+        var pr = ((photos && photos.rows) || []).find(function (x) { return String(x.key) === String(id); });
+        if (!pr) return;
+        var phAgain = !!pr.sent_count;
+        var phWords = phAgain
+          ? 'Send ' + pr.name + ' their photos again, to ' + pr.email + '? They were sent on ' + pr.sent_at + '.'
+          : pr.protocol
+            ? pr.name + ' is a government official; their office usually handles this. Send them their ' + pr.count + ' photos anyway, to ' + pr.email + '?'
+            : 'Send ' + pr.name + ' their ' + pr.count + ' photos, to ' + pr.email + '?';
+        if (!w.confirm(phWords)) return;
+        busy = true; b.disabled = true;
+        await opts.api.post('/api/admin/speaker-photos/' + encodeURIComponent(pr.key) + '/send', { again: phAgain, anyway: !!pr.protocol });
+        toast('Photos sent to ' + pr.name + '.');
+        await refresh();
+      } else if (act === 'send-all-ph') {
+        var phList = ((photos && photos.rows) || []).filter(function (x) { return x.status === 'ready'; });
+        if (!phList.length) return;
+        if (!w.confirm('Send ' + phList.length + ' people their photos, one email each? Anyone already sent, officials, and people with no email or no photos are left out.')) return;
+        busy = true; b.disabled = true;
+        var phOk = 0, phFailed = [];
+        for (var k = 0; k < phList.length; k++) {
+          var phProg = document.getElementById('afd-ph-progress');
+          if (phProg) phProg.textContent = 'Sending ' + (k + 1) + ' of ' + phList.length + '...';
+          try { await opts.api.post('/api/admin/speaker-photos/' + encodeURIComponent(phList[k].key) + '/send', {}); phOk++; }
+          catch (err) { if (!(err && err.data && err.data.already)) phFailed.push(phList[k].name + ': ' + (err.message || 'failed')); }
+        }
+        toast(phOk + ' sent' + (phFailed.length ? ', ' + phFailed.length + ' did not send: ' + phFailed.slice(0, 3).join('; ') : '.'), phFailed.length ? 'error' : 'success');
+        await refresh();
       } else if (act === 'send-all-ex') {
         var list = exhibitors.filter(function (x) { return !x.sent_count && emailOk(x.email) && hasStuff(x); });
         if (!list.length) return;
@@ -236,10 +310,12 @@
   async function refresh() {
     var out = await Promise.all([
       opts.api.get('/api/admin/feedback/summary').catch(function (e) { return { error: e.message }; }),
-      opts.api.get('/api/admin/exhibitor-results').catch(function (e) { return { error: e.message, results: [] }; })
+      opts.api.get('/api/admin/exhibitor-results').catch(function (e) { return { error: e.message, results: [] }; }),
+      opts.api.get('/api/admin/speaker-photos').catch(function (e) { return { error: e.message, rows: [] }; })
     ]);
     survey = out[0] || {};
     exhibitors = (out[1] && out[1].results) || [];
+    photos = out[2] || { rows: [] };
     draw();
     if (out[0] && out[0].error) toast('The survey numbers did not load: ' + out[0].error, 'error');
     if (out[1] && out[1].error) toast('The exhibitor numbers did not load: ' + out[1].error, 'error');
