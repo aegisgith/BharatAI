@@ -48,7 +48,8 @@ globalThis.fetch = async (url, init) => {
 };
 const ADMIN = 'smoke-admin';
 const SESSION = 'smoke-session';
-const env = new Proxy({ ADMIN_SECRET: ADMIN, SESSION_SECRET: SESSION, ELASTIC_EMAIL_API_KEY: 'smoke-key', DB: D1 }, { get: (t, k) => (k in t ? t[k] : undefined) });
+// FEEDBACK_SEND_FROM_MS: 0 lifts the "Monday 23 Nov, 10 am" start (22 Nov 2026) for the test.
+const env = new Proxy({ ADMIN_SECRET: ADMIN, SESSION_SECRET: SESSION, ELASTIC_EMAIL_API_KEY: 'smoke-key', DB: D1, FEEDBACK_SEND_FROM_MS: '0' }, { get: (t, k) => (k in t ? t[k] : undefined) });
 const ctx = { waitUntil() {}, passThroughOnException() {} };
 const hit = async (method, path, body, headers = {}) => {
   const req = new Request('https://bharataiinnovation.com' + path, { method, redirect: 'manual', headers: { 'Content-Type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });

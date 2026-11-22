@@ -18392,179 +18392,13 @@ app.post('/api/admin/attendees/:id/send-thankyou', async (c) => {
   if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
   if (!attendee.email || isNoEmail(attendee.email)) return c.json({ error: attendee.email ? NO_EMAIL_ERROR : 'Attendee has no email' }, 400)
 
-  const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
-  const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
-  const photosUrl = 'https://drive.google.com/drive/folders/14YkEgPMjXIJ2JYNYmgxmBOH6g2TL1-FM?usp=sharing'
-
-  const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#f4f4f5;font-family:Arial,sans-serif;">
-  <div style="max-width:600px;margin:0 auto;padding:20px;">
-    <div style="border-radius:16px;overflow:hidden;">
-      ${emailBrandHeader('Confirm Your Attendance!', 'Conference &amp; Exhibition 2026 &bull; 20&ndash;21 Nov 2026')}
-    </div>
-    <!-- Main Content -->
-    <div style="background:white;border-radius:16px;padding:30px;margin-top:16px;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
-      <h2 style="margin:0 0 16px;color:#1a1a2e;font-size:22px;">Dear ${attendee.name},</h2>
-      <p style="color:#555;line-height:1.7;margin:0 0 16px;">
-        We are truly grateful for your presence at the <strong>Bharat AI Innovation Conference & Exhibition 2026</strong> ceremony held on <strong>20-21 Nov 2026</strong> at <strong>World Trade Center Mumbai, Mumbai</strong>. Your participation and support played a vital role in making this event a resounding success.
-      </p>
-      <p style="color:#555;line-height:1.7;margin:0 0 20px;">
-        It was a memorable evening celebrating innovation, technology, and the exceptional contributions of individuals and organizations driving meaningful change across industries and society.
-      </p>
-
-      <!-- Congratulations Section -->
-      <div style="background:linear-gradient(135deg,#fef9e7,#fdf2d6);border:1px solid #f0d48a;border-radius:12px;padding:24px;margin:20px 0;">
-        <h3 style="margin:0 0 14px;color:#1a1a2e;font-size:18px;text-align:center;">&#127942; Congratulations!</h3>
-        <p style="color:#555;line-height:1.7;margin:0 0 12px;">
-          We extend our heartfelt congratulations to all the:
-        </p>
-        <table cellpadding="0" cellspacing="0" border="0" style="width:100%;">
-          <tr>
-            <td style="padding:8px 12px;vertical-align:top;">
-              <div style="background-color:#ecfdf5;border:1px solid #86efac;border-radius:10px;padding:16px;text-align:center;">
-                <div style="font-size:28px;margin-bottom:6px;">&#127942;</div>
-                <div style="font-weight:bold;color:#166534;font-size:14px;">AI Innovation Leaders</div>
-                <div style="color:#555;font-size:12px;margin-top:4px;">Outstanding innovation &amp; impact</div>
-              </div>
-            </td>
-            <td style="padding:8px 12px;vertical-align:top;">
-              <div style="background-color:#eef2ff;border:1px solid #a5b4fc;border-radius:10px;padding:16px;text-align:center;">
-                <div style="font-size:28px;margin-bottom:6px;">&#11088;</div>
-                <div style="font-weight:bold;color:#3730a3;font-size:14px;">Finalists</div>
-                <div style="color:#555;font-size:12px;margin-top:4px;">Exceptional shortlisted entries</div>
-              </div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:8px 12px;vertical-align:top;">
-              <div style="background-color:#fffbeb;border:1px solid #fbbf24;border-radius:10px;padding:16px;text-align:center;">
-                <div style="font-size:28px;margin-bottom:6px;">&#128161;</div>
-                <div style="font-weight:bold;color:#92400e;font-size:14px;">AI Innovation Star</div>
-                <div style="color:#555;font-size:12px;margin-top:4px;">Certified innovators shaping the future</div>
-              </div>
-            </td>
-            <td style="padding:8px 12px;vertical-align:top;">
-              <div style="background-color:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:16px;text-align:center;">
-                <div style="font-size:28px;margin-bottom:6px;">&#128640;</div>
-                <div style="font-weight:bold;color:#991b1b;font-size:14px;">NTH Winners</div>
-                <div style="color:#555;font-size:12px;margin-top:4px;">Next-gen tech heroes leading change</div>
-              </div>
-            </td>
-          </tr>
-        </table>
-        <p style="color:#555;line-height:1.7;margin:16px 0 0;text-align:center;font-size:14px;">
-          Your achievements inspire the entire innovation ecosystem. We are proud to honour your contributions!
-        </p>
-      </div>
-
-      <!-- Event Photos Section -->
-      <div style="background:linear-gradient(135deg,#f0f4ff,#e8eeff);border:1px solid #c7d2fe;border-radius:12px;padding:24px;margin:20px 0;text-align:center;">
-        <h3 style="margin:0 0 10px;color:#1a1a2e;font-size:18px;">&#128247; Event Photos &amp; Memories</h3>
-        <p style="color:#555;line-height:1.6;margin:0 0 18px;font-size:14px;">
-          Relive the wonderful moments from the ceremony! Access and download all event photographs from our shared gallery.
-        </p>
-        <a href="${photosUrl}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
-          &#128247; View Event Photos &rarr;
-        </a>
-        <p style="color:#888;font-size:12px;margin:12px 0 0;">
-          Photos are hosted on Google Drive. Click to open the gallery.
-        </p>
-      </div>
-
-      <!-- Stay Connected -->
-      <div style="background:#f8f9fa;border-left:4px solid #1a1a2e;border-radius:0 8px 8px 0;padding:16px 20px;margin:0 0 20px;">
-        <p style="color:#1a1a2e;font-weight:bold;margin:0 0 6px;font-size:15px;">Stay Connected</p>
-        <p style="color:#555;line-height:1.6;margin:0;font-size:14px;">
-          The networking app remains active for you to connect with fellow delegates, share insights, and continue the conversations started at the event.
-        </p>
-      </div>
-
-      <!-- CTA Button -->
-      <div style="text-align:center;margin:24px 0;">
-        <a href="${appUrl}?email=${encodeURIComponent(attendee.email)}" style="display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#22c55e,#16a34a);color:white;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px;">
-          Open Networking App &rarr;
-        </a>
-      </div>
-
-      <!-- Closing -->
-      <div style="margin-top:24px;padding-top:16px;border-top:1px solid #eee;">
-        <p style="color:#555;line-height:1.7;margin:0 0 16px;">
-          Once again, thank you for being a part of the <strong>Bharat AI Innovation 2026</strong>. We look forward to welcoming you again at the <a href="https://bharataiinnovation.com/" style="color:#4f46e5;font-weight:bold;text-decoration:underline;">next edition of Bharat AI Innovation</a> &amp; <a href="https://bharataiinnovation.com/" style="color:#4f46e5;font-weight:bold;text-decoration:underline;">Bharat AI Innovations</a>!
-        </p>
-        <p style="color:#555;line-height:1.6;margin:0;">
-          With warm regards,<br>
-          <strong>Team Bharat AI Innovation</strong><br>
-          <span style="font-size:13px;color:#888;">Bharat AI Innovation</span>
-        </p>
-      </div>
-    </div>
-    <!-- Partner Logos Footer -->
-    <div style="text-align:center;margin-top:20px;padding:16px 0;">
-      <table cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto;background:#ffffff;border-radius:12px;">
-        <tr>
-          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/agba-logo.png" alt="Aegis Graham Bell Awards" width="100" height="40" style="height:40px;width:100px;border:0;"></td>
-          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/aegis.png" alt="Aegis School of Data Science and AI" width="108" height="40" style="height:40px;width:108px;border:0;"></td>
-          <td style="padding:12px 14px;vertical-align:middle;"><img src="https://bharataiinnovation.com/images/passes/assessfy.jpg" alt="Assessfy" width="102" height="35" style="height:35px;width:102px;border:0;"></td>
-        </tr>
-      </table>
-    </div>
-    <p style="text-align:center;color:#999;font-size:12px;margin-top:8px;">
-      Bharat AI Innovation Conference & Exhibition 2026 &bull; World Trade Center Mumbai, Mumbai &bull; 20-21 Nov 2026
-    </p>
-  </div>
-</body>
-</html>`
-
-  // Send via Elastic Email
-  const apiKeyRow = { value: await elasticKey(c) } as any
-  const senderRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_email'").first() as any
-  const senderNameRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'sender_name'").first() as any
-
-  if (apiKeyRow?.value) {
-    const fromEmail = senderEmailOrDefault(senderRow?.value)
-    const fromName = senderNameRow?.value || 'Bharat AI Innovation Conference & Exhibition 2026'
-    try {
-      // Campaign mail: the unsubscribe footer and header, as sendAdminEmail adds.
-      const unsub = await unsubscribeUrl(c, attendee.email)
-      const payload = {
-        Recipients: { To: [attendee.email] },
-        Content: {
-          Body: [
-            { ContentType: "HTML", Content: emailHtml.replace(/<\/body>/i, UNSUB_FOOTER(unsub) + '</body>'), Charset: "utf-8" }
-          ],
-          From: `${fromName} <${fromEmail}>`,
-          Headers: { 'List-Unsubscribe': `<${unsub}>` },
-          Subject: 'Thank You for Making the Bharat AI Innovation 2026 a Grand Success! \u{1F3C6}'
-        },
-        Options: {
-          TrackClicks: false,
-          TrackOpens: false
-        }
-      }
-      const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-ElasticEmail-ApiKey': apiKeyRow.value
-        },
-        body: JSON.stringify(payload)
-      })
-      const result = await res.json() as any
-      if (res.ok && !result.Error) {
-        return c.json({ success: true, method: 'elastic_email', email: attendee.email, messageId: result.MessageID || result.TransactionID })
-      } else {
-        const errMsg = result.Error || result.error || JSON.stringify(result)
-        return c.json({ error: 'Elastic Email: ' + errMsg, method: 'elastic_email' }, 400)
-      }
-    } catch (e: any) {
-      return c.json({ error: 'Elastic Email connection error: ' + e.message, method: 'elastic_email' }, 500)
-    }
-  }
-
-  return c.json({ error: 'No Elastic Email API key configured. Please set it in Settings.' }, 400)
+  // 22 Nov 2026: the awards-night thank-you ("ceremony", "memorable evening", award
+  // categories) is retired; the organiser: "there was no award in Bharat AI Innovation".
+  // A thank-you run now sends the conference's thank-you with the survey (feedbackMail).
+  const mail = await feedbackMail(c, attendee)
+  const sent = await sendAdminEmail(c, String(attendee.email).trim(), mail.subject, noAppOnPhone(mail.html))
+  if (!sent.ok) return c.json({ error: sent.error }, 502)
+  return c.json({ success: true, method: 'elastic_email', email: attendee.email })
 })
 
 // ============ INNOVATION TALKS API ============
@@ -21039,7 +20873,7 @@ async function tickCampaigns(c: any): Promise<any[]> {
     try {
       // The event-week email is not paced by the send gap (routes/event-week.ts): ten a
       // minute, so a few thousand go in a day and not a week.
-      const r = await pumpCampaign(c, k.id, k.kind === 'sat_open' ? 50 : k.kind === 'day2_programme' ? 40 : k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
+      const r = await pumpCampaign(c, k.id, k.kind === 'sat_open' ? 50 : k.kind === 'day2_programme' ? 40 : k.kind === 'feedback' ? 30 : k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
       out.push({ id: k.id, sent: r.body?.sent ?? null, remaining: r.body?.remaining ?? null, wait_seconds: r.body?.wait_seconds ?? 0 })
     } catch (e: any) { out.push({ id: k.id, error: String(e?.message || e).slice(0, 200) }) }
   }
@@ -24460,12 +24294,16 @@ app.post('/api/feedback', async (c) => {
   return c.json({ success: true, delhi })
 })
 
+const FEEDBACK_SEND_FROM = Date.parse('2026-11-23T04:30:00Z')
 // One person's survey email, for the bulk run (campaignSendOne, kind 'feedback').
 // Someone who has already answered is skipped, not asked again.
 app.post('/api/admin/attendees/:id/send-feedback', async (c) => {
   const a = await c.env.DB.prepare('SELECT id, name, email FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
   if (!a) return c.json({ error: 'Attendee not found' }, 404)
   if (!validEmailSyntax(a.email)) return c.json({ error: 'This person has no usable email address.' }, 400)
+  // The organiser, 22 Nov 2026: the thank-you and survey go on Monday 23 Nov from 10 am IST.
+  const sendFrom = c.env?.FEEDBACK_SEND_FROM_MS !== undefined ? Number(c.env.FEEDBACK_SEND_FROM_MS) : FEEDBACK_SEND_FROM
+  if (Date.now() < sendFrom && c.req.query('force') !== '1') return c.json({ paused: true, reason: 'Goes from 10 am IST on Monday 23 Nov.' }, 409)
   try {
     const done = await c.env.DB.prepare('SELECT id FROM feedback WHERE event_id = ? AND attendee_id = ?').bind(AFTER_EVENT_ID, a.id).first()
     if (done) return c.json({ skipped: true, reason: 'Already answered the survey' })
@@ -44388,25 +44226,24 @@ function adminPageScript(): string {
           </div>
         </div>
 
-        <!-- Post-Ceremony Thank You Email. Only after the event has ended: it was
-             sitting above Recent Registrations months ahead of the date. -->
+        <!-- Thank you + feedback survey, after the event has ended. -->
         <div class="glass rounded-xl p-5 mb-6 border border-amber-500/20" \${eventHasEnded(event) ? '' : 'hidden'}>
           <div class="flex items-center justify-between mb-4">
-            <h3 class="font-semibold text-sm"><i class="fas fa-heart text-pink-400 mr-2"></i>Post-Ceremony Thank You Email</h3>
+            <h3 class="font-semibold text-sm"><i class="fas fa-heart text-pink-400 mr-2"></i>Thank you + how was it?</h3>
           </div>
           <div style="background:linear-gradient(135deg,rgba(236,72,153,0.08),rgba(168,85,247,0.08));border:1px solid rgba(236,72,153,0.2);border-radius:12px;padding:20px;margin-bottom:16px;">
             <p class="text-sm text-gray-300 leading-relaxed mb-3">
-              Send a beautifully crafted <strong class="text-pink-300">thank-you email</strong> to all attendees, expressing gratitude for making the Bharat AI Innovation 2026 a grand success. The email will:
+              One email to everyone who came through the badge desk:
             </p>
             <ul class="text-xs text-gray-400 space-y-1.5 mb-4">
-              <li><i class="fas fa-check text-green-400 mr-2"></i>Thank attendees for their presence &amp; support</li>
-              <li><i class="fas fa-star text-amber-400 mr-2"></i>Highlight <strong>Key Speakers</strong>, <strong>Innovation Leaders</strong> &amp; <strong>Startup Finalists</strong></li>
-              <li><i class="fas fa-camera text-blue-400 mr-2"></i>Share the <strong>Google Drive link</strong> to event photos</li>
-              <li><i class="fas fa-link text-purple-400 mr-2"></i>Encourage continued use of the networking app</li>
+              <li><i class="fas fa-check text-green-400 mr-2"></i>Thanks them for coming to Bharat AI Innovation 2026</li>
+              <li><i class="fas fa-star text-amber-400 mr-2"></i>Asks how likely they are to recommend it (0 to 10), with one tap</li>
+              <li><i class="fas fa-list text-blue-400 mr-2"></i>Five more short questions; the answers shape the Delhi edition in July 2027</li>
+              <li><i class="fas fa-user-check text-purple-400 mr-2"></i>Anyone who has answered is not sent it again</li>
             </ul>
             <div class="flex flex-wrap gap-2">
               <button onclick="sendThankYouToAll()" class="px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white transition shadow-lg shadow-pink-900/30">
-                <i class="fas fa-paper-plane mr-2"></i>Send Thank You to All Attendees
+                <i class="fas fa-paper-plane mr-2"></i>Send to everyone who came
               </button>
               <button onclick="previewThankYouEmail()" class="px-4 py-2 rounded-xl text-sm font-medium glass hover:bg-white/10 text-gray-300 transition border border-white/10">
                 <i class="fas fa-eye mr-2"></i>Preview Email
@@ -47802,73 +47639,20 @@ function adminPageScript(): string {
     // The same mail as Notify All, so the same preview first.
     function resendNonResponders() { return openNotifyPreview({ audience: 'non-responders' }); }
 
-    // ============ POST-CEREMONY THANK YOU EMAIL ============
+    // ============ THANK YOU + FEEDBACK SURVEY ============
     async function sendThankYouToAll() {
-      if (!confirm('Send the post-event thank-you email to every attendee with an address?')) return;
-      await startCampaign('thankyou', { audience: 'all', title: 'Post-event thank you' });
+      if (!confirm('Send the thank-you and the feedback survey to everyone who came (checked in at the badge desk)?')) return;
+      await startCampaign('feedback', { audience: 'checked_in', title: 'Thank you + how was it?' });
     }
 
-    function previewThankYouEmail() {
-      openModal(\`
-        <div style="max-height:80vh;overflow-y:auto;background:#f4f4f5;border-radius:12px;padding:8px;">
-          <div style="text-align:center;margin-bottom:12px;">
-            <img src="/images/logo-nav.webp" alt="BHAI" style="height:60px;">
-          </div>
-          <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);border-radius:16px;padding:24px 20px;text-align:center;color:white;">
-            <h2 style="margin:0 0 6px;font-size:20px;">Confirm Your Attendance!</h2>
-            <p style="margin:0;opacity:0.8;font-size:13px;">Bharat AI Innovation Conference & Exhibition 2026 &bull; 20-21 Nov 2026</p>
-          </div>
-          <div style="background:white;border-radius:16px;padding:24px;margin-top:12px;color:#333;">
-            <h3 style="margin:0 0 12px;color:#1a1a2e;">Dear [Attendee Name],</h3>
-            <p style="color:#555;line-height:1.6;font-size:13px;margin:0 0 12px;">
-              We are truly grateful for your presence at the <strong style="color:#1a1a2e;">Bharat AI Innovation 2026</strong> ceremony held on <strong style="color:#1a1a2e;">20-21 Nov 2026</strong> at <strong style="color:#1a1a2e;">World Trade Center Mumbai, Mumbai</strong>. Your participation played a vital role in making this event a resounding success.
-            </p>
-            <p style="color:#555;line-height:1.6;font-size:13px;margin:0 0 16px;">
-              It was a memorable evening celebrating innovation, technology, and the exceptional contributions of individuals and organizations driving meaningful change across industries and society.
-            </p>
-            <div style="background:linear-gradient(135deg,#fef9e7,#fdf2d6);border:1px solid #f0d48a;border-radius:12px;padding:20px;margin:16px 0;">
-              <h4 style="margin:0 0 12px;text-align:center;color:#92400e;font-size:16px;">&#127942; Highlights!</h4>
-              <p style="color:#555;line-height:1.6;font-size:13px;margin:0 0 12px;text-align:center;">We extend our heartfelt congratulations to all the:</p>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <div style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:12px;text-align:center;">
-                  <div style="font-size:24px;">&#127942;</div>
-                  <div style="font-weight:bold;font-size:13px;color:#166534;">Innovation Leaders</div>
-                  <div style="color:#555;font-size:11px;margin-top:3px;">Outstanding innovation & impact</div>
-                </div>
-                <div style="background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);border-radius:8px;padding:12px;text-align:center;">
-                  <div style="font-size:24px;">&#11088;</div>
-                  <div style="font-weight:bold;font-size:13px;color:#3730a3;">Startup Finalists</div>
-                  <div style="color:#555;font-size:11px;margin-top:3px;">Exceptional shortlisted entries</div>
-                </div>
-                <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:12px;text-align:center;">
-                  <div style="font-size:24px;">&#128161;</div>
-                  <div style="font-weight:bold;font-size:13px;color:#92400e;">Key Speakers</div>
-                  <div style="color:#555;font-size:11px;margin-top:3px;">Thought leaders shaping the future</div>
-                </div>
-                <div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;text-align:center;">
-                  <div style="font-size:24px;">&#128640;</div>
-                  <div style="font-weight:bold;font-size:13px;color:#991b1b;">Exhibitors & Partners</div>
-                  <div style="color:#555;font-size:11px;margin-top:3px;">Showcasing next-gen AI solutions</div>
-                </div>
-              </div>
-              <p style="color:#555;font-size:12px;text-align:center;margin:12px 0 0;">Your achievements inspire the entire innovation ecosystem!</p>
-            </div>
-            <div style="background:linear-gradient(135deg,#f0f4ff,#e8eeff);border:1px solid #c7d2fe;border-radius:12px;padding:20px;margin:16px 0;text-align:center;">
-              <h4 style="margin:0 0 8px;color:#3730a3;">&#128247; Event Photos &amp; Memories</h4>
-              <p style="color:#555;font-size:13px;margin:0 0 12px;">Relive the wonderful moments from the ceremony!</p>
-              <a href="https://drive.google.com/drive/folders/14YkEgPMjXIJ2JYNYmgxmBOH6g2TL1-FM?usp=sharing" target="_blank" style="display:inline-block;padding:10px 24px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:white;text-decoration:none;border-radius:8px;font-weight:bold;font-size:13px;">
-                &#128247; View Event Photos &rarr;
-              </a>
-            </div>
-            <div style="margin-top:20px;padding-top:16px;border-top:1px solid #eee;">
-              <p style="color:#555;font-size:13px;line-height:1.7;margin:0 0 12px;">
-                Once again, thank you for being a part of the <strong style="color:#1a1a2e;">Bharat AI Innovation 2026</strong>. We look forward to welcoming you again at the <a href="https://bharataiinnovation.com/" style="color:#4f46e5;font-weight:bold;text-decoration:underline;">next edition of Bharat AI Innovation</a> &amp; <a href="https://bharataiinnovation.com/" style="color:#4f46e5;font-weight:bold;text-decoration:underline;">Bharat AI Innovations</a>!
-              </p>
-              <p style="color:#555;font-size:13px;margin:0;">With warm regards,<br><strong style="color:#1a1a2e;">Team Bharat AI Innovation</strong><br><span style="font-size:12px;color:#888;">Bharat AI Innovation</span></p>
-            </div>
-          </div>
-        </div>
-      \`);
+    async function previewThankYouEmail() {
+      openModal('<div class="py-10 text-center text-gray-400"><i class="fas fa-spinner fa-spin"></i></div>');
+      var d = null;
+      try { d = await api.get('/api/admin/feedback/preview'); } catch (e) { d = null; }
+      if (!d || !d.html) { openModal('<p class="text-sm text-red-400">Could not build the preview. Try again.</p>'); return; }
+      openModal('<h3 class="text-lg font-bold mb-1">Thank you + how was it?</h3><p class="text-xs text-gray-400 mb-2">To everyone who came through the badge desk. The buttons are not live in this preview.</p>' +
+        '<p class="text-sm font-semibold mb-2">Subject: ' + escH(d.subject) + '</p><iframe id="ty-prev-frame" sandbox="" title="Email preview" class="w-full rounded-xl bg-white" style="height:65vh;border:1px solid rgba(0,0,0,0.1);"></iframe>');
+      var fr = document.getElementById('ty-prev-frame'); if (fr) fr.srcdoc = d.html;
     }
 
     // ============ FIND DUPLICATES ============
