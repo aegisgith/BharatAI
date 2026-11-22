@@ -10,6 +10,7 @@ import siteLive, { configureSiteLive } from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief, saturdaySpeakerReminders } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/talk-brief'
 import speakerPhotos, { configurePhotos } from './routes/photos'
+import photoStore, { configurePhotoStore } from './routes/photo-store'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
 import entrySlots, { configureEntrySlots, entrySlotAudienceRows, entryReofferAudienceRows, satOpenAudienceRows, inSlot as entryInSlot, satWindow } from './routes/entry-slots'
 import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, noteWorkshopTry, isWorkshopBonus, workshopBonusSql, saturdayWorkshopReminders, saturdayWorkshopOpenInvites } from './routes/workshop-reminder'
@@ -600,6 +601,12 @@ app.route('/', talkBrief)
 configurePhotos({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader,
   talkContacts: (c: any, eventId: number) => italkContactsAll(c, eventId) })
 app.route('/', speakerPhotos)
+// Event photos in R2 (23 Nov 2026): the photographers' photos, copied once from Drive by
+// scripts/photo-store/ (migration 0064). Every image link is signed for one person, one
+// photo and one size; saving full size is counted, at most photo_download_limit
+// (app_settings, default 15) different photos each. routes/photo-store.ts.
+configurePhotoStore({ audit })
+app.route('/', photoStore)
 // The event-week email (16 Nov 2026): "Get ready for 20 and 21 Nov" to delegates,
 // exhibitors and everyone else, a checklist of photo, pass, LinkedIn badge, the app and
 // meetings, each step a sign-in button; a campaign of kind event_week (BULK EMAIL

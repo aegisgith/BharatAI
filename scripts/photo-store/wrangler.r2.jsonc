@@ -1,0 +1,10 @@
+// Only for scripts/photo-store/upload.mjs: the production photo bucket as a remote
+// binding, so a script on the organiser's computer writes to R2 with wrangler's own
+// sign-in. The site's own config is wrangler.jsonc at the root.
+{
+  "name": "bharatai-photo-store-upload",
+  "compatibility_date": "2026-02-20",
+  "r2_buckets": [
+    { "binding": "UPLOADS", "bucket_name": "bharatai-uploads", "remote": true }
+  ]
+}
