@@ -129,7 +129,11 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
 2. `venv-ort/python att_match.py models WORK/faces WORK/refs WORK/img WORK/att WORK/att/albums.json 0.58 0.10 0.65 REPO/scripts/photos/att-skip.json --burst WORK/burst/matches.json`. Attendee face data stays in memory.
    `--burst` adds burst shots the same way as step 6b (0.62 to their face in a photo
    taken within 90 seconds, 0.45 against their pass photo), and never takes a speaker's face.
-3. `venv/python att_qa.py ...` and look at the sheets, then `venv/python att_export.py WORK/att/albums.json WORK/index.json WORK/img REPO/src/data/attendee-photos.json`, build, `smoke-speaker-photos.mjs`, push.
+3. `venv/python att_qa.py ...` and look at the sheets, then `venv/python att_export.py WORK/att/albums.json WORK/index.json WORK/img REPO/src/data/attendee-photos.json --extra att-web-refs.json`, build, `smoke-speaker-photos.mjs`, push.
+   - `att-web-refs.json`: attendees with no photo in the app, matched by eye against a public
+     photo of them (their company's own team page first), with the source and why it is sure.
+     23 Nov: Sudip Chatterjee (Globe Teleservices), 4 photos at 0.62-0.69, next face 0.43.
+     Keep `--extra` on every re-run, or these albums drop out.
 4. People newly found show as ready in Admin, After the Event, Attendee photos. Anyone who said "Don’t match my photos" (admin_audit photos.opt_out) is never emailed; leave them out of the next run too.
 
 The "Are you in the photos?" email (src/routes/find-photos.ts) asks everyone not found to add a clear photo; re-run steps 1-3 a day after it goes.

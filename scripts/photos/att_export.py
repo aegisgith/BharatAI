@@ -1,14 +1,19 @@
 # Write src/data/attendee-photos.json from att_match.py's albums.json. Attendee ids and
 # Drive ids only: no names, no emails, no face data (the site reads names from D1).
-# usage: att_export.py albums.json index.json img_dir out.json
+# usage: att_export.py albums.json index.json img_dir out.json [--extra att-web-refs.json]
+# --extra: albums matched by eye against a public photo (people with no photo in the app).
 import sys, os, json, datetime
 from PIL import Image
 AL, INDEX, IMG, OUT = sys.argv[1:5]
+EXTRA = sys.argv[sys.argv.index('--extra') + 1] if '--extra' in sys.argv else None
 D1 = {'1V0ANjyTnfBQ4TVs8ZDTKi_U-8OudEiJ_', '1dgfV1_9Aqx1Fkhm2WZDy5KxOVVlGTc0-', '1OR9Bhb5z0H0xRAcmoCxKUcRMlLzHFQxW', '1VDUlZkowzad0X6ra09cCTb8E0D-0AWGD',
       '1EFh2DitPNGNNtO2JZQ5C4fS70iyMsNHJ', '15xhVXrZIdPEo-RV5w3_i4vE7d5b9qY58', '1ifBcPbnczf6-SqECLwpj4pIofTymUbBz', '11DBmuc9CbsruhRFV_txuwgeXgtmmUZX6', '1p7m4-kNxNIt2w1nG5MzeT1Td5UmQtljs'}
 IST = datetime.timedelta(hours=5, minutes=30)
 idx = {f['id']: f for f in json.load(open(INDEX))}
 A = json.load(open(AL))
+if EXTRA:
+    for p in json.load(open(EXTRA, encoding='utf-8'))['people']:
+        A['albums'].setdefault('a%d' % p['id'], {'group': p['group'], 'came': p['came'], 'check': False, 'photos': p['photos']})
 meta = {}
 def m(pid):
     if pid in meta: return meta[pid]

@@ -1,0 +1,12 @@
+{
+ "why": "Attendees with no photo of their own in the app, matched by eye against a public photo of them (the organiser, 23 Nov 2026: 'search the internet and find a better photo of participants'). att_export.py --extra adds these albums. Rows: [photo id, score, face centre x, face centre y, face width]. Only a clear match with a clear gap to the next face, looked at whole: a real person in the room, never a screen or poster.",
+ "people": [
+  {"id": 4494, "group": 2, "came": true,
+   "source": "https://www.globeteleservices.com/globe-web-leaders.php (images/sudip-c.jpg), Globe Teleservices' own leaders page",
+   "check": "4 burst shots of one stage group photo, 20 Nov 18:36-18:37, second from left with his badge on; AuraFace 0.62-0.69 against the web photo, next face anywhere 0.43",
+   "photos": [["1uTh-zTLyTX9NYBe4jv2W740nWAQxW9Ku", 0.69, 0.372, 0.308, 0.034],
+              ["17V0UpI3nlieSokTy4rbeNzAgnSAyk1Aj", 0.672, 0.32, 0.374, 0.027],
+              ["1rw5HVbaaN0xSBEYnCFU9_BK11_wtrsbr", 0.636, 0.316, 0.375, 0.029],
+              ["1P0HJE88j_EPjrFpYV8ppoi-VQW124Sr9", 0.619, 0.335, 0.386, 0.027]]}
+ ]
+}
