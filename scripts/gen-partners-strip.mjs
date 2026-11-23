@@ -27,7 +27,7 @@ const { partnersStripHTML } = await import('data:text/javascript;base64,' + Buff
 export const PAGES = [
   'about', 'accommodation', 'ai-readiness', 'campus-djsanghvi', 'campus-jnu', 'campus-series', 'code-of-conduct',
   'conference', 'exhibition', 'feedback', 'gallery', 'government', 'insights', 'networking', 'partner', 'past-speakers',
-  'privacy', 'refund', 'shipping', 'terms', 'training-workshop',
+  'privacy', 'refund', 'share', 'shipping', 'terms', 'training-workshop',
 ]
 const START = '<!-- partners-strip:start -->', END = '<!-- partners-strip:end -->'
 const check = process.argv.includes('--check')

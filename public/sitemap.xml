@@ -107,6 +107,15 @@
             <image:title>Bharat AI Innovation 2026, World Trade Center Mumbai, in pictures</image:title>
         </image:image>
     </url>
+    <!-- Share your Bharat AI moment: pictures for LinkedIn, Instagram, Facebook and X (public/share.html) -->
+    <url>
+        <loc>https://bharataiinnovation.com/share</loc>
+        <lastmod>2026-11-23</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/share.jpg</image:loc>
+            <image:title>Share your Bharat AI moment: I attended, who I met, a talk, a panel</image:title>
+        </image:image>
+    </url>
     <!-- Delhi edition, 28-29 July 2027 -->
     <url>
         <loc>https://bharataiinnovation.com/delhi</loc>

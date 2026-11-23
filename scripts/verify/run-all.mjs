@@ -98,6 +98,8 @@ const SUITES = [
   { name: 'server: pass QR and badge desk (signed token, verify screen states, check-in, lookup, reissue, scanner, encoder round trip)', args: ['smoke-pass-desk.mjs'] },
   { name: 'browser: badge desk scanner (fake camera, iPhone without BarcodeDetector, native reader failing, hostile QR)', args: ['browser-scan-page.mjs'] },
   { name: 'unit: the Delhi 2027 page (form rules, calendar file, facts, the tab on every page, one stylesheet version), each alone', args: ['unit-delhi.mjs'] },
+  { name: 'unit + server: Share your Bharat AI moment (/share): the words for every card and platform, the photos and logos, the step counter, the app card and link', args: ['unit-share-moment.mjs'] },
+  { name: 'browser: /share on a phone (signed out and as a VIP, who I met, a talk, a panel in Story size, the steps counted)', args: ['browser-share.cjs'] },
   { name: 'system: Delhi 2027 from an advert to Admin Enquiries (the page\'s own script, real worker, real SQLite, team email, the build)', args: ['smoke-delhi.mjs'] },
   { name: 'unit: the Delhi 2027 passes form (its rules, its figures against the server), each alone', args: ['unit-delhi-pay.mjs'] },
   { name: 'booth applications, Mumbai and Delhi: the Delhi page\'s rules, the route on real SQLite (every answer, both emails, refusals, limits), the saved replies', args: ['smoke-booth-apply.mjs'] },

@@ -10243,11 +10243,15 @@ app.post('/api/attendees/:id/track-social-card', async (c) => {
  * (blocked: payment pending, not coming). One admin_audit row per step, as
  * card.<step> / pass.<step>; the same step with the same reason within ten
  * minutes is one row, so a person tapping twice is counted once. */
-const TRACK_STEP_KINDS = new Set(['card', 'pass', 'home'])
+const TRACK_STEP_KINDS = new Set(['card', 'pass', 'home', 'moment'])
 const TRACK_STEPS = new Set(['open', 'photo_asked', 'photo_cancel', 'photo_fail', 'fail', 'blocked'])
 // The app saved on the phone (13 Nov 2026): saw the card, pressed Save, the phone
 // said it was added (Android only), closed the card, opened from the icon.
 const HOME_STEPS = new Set(['shown', 'tap', 'added', 'dismiss', 'opened'])
+// /share, "Share your Bharat AI moment" (23 Nov 2026): the page opened, a picture
+// drawn, shared from the phone, saved, the words copied, a platform opened. The
+// reason says which picture and where, e.g. 'talk linkedin'.
+const MOMENT_STEPS = new Set(['open', 'made', 'shared', 'saved', 'copied', 'opened'])
 const stepText = (v: any, max = 80) => String(v ?? '').replace(/[^\w .,:;'()\/?=&-]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max)
 
 // One row per person, action and detail in any window of `minutes` (anyDetail: per
@@ -10271,7 +10275,7 @@ app.post('/api/attendees/:id/track-step', async (c) => {
   if (isScannerRequest(c)) return c.json({ ok: true, counted: false })
   const b = await c.req.json().catch(() => ({})) as any
   const kind = String(b.kind || ''), step = String(b.step || '')
-  if (!TRACK_STEP_KINDS.has(kind) || !(kind === 'home' ? HOME_STEPS : TRACK_STEPS).has(step) || !Number.isInteger(Number(id))) return c.json({ ok: false }, 400)
+  if (!TRACK_STEP_KINDS.has(kind) || !(kind === 'home' ? HOME_STEPS : kind === 'moment' ? MOMENT_STEPS : TRACK_STEPS).has(step) || !Number.isInteger(Number(id))) return c.json({ ok: false }, 400)
   // 160: the refusal messages run past 80, and Admin showed "a photo of yo".
   const reason = stepText(b.reason, 160)
   await auditOnceWithin(c, kind + '.' + step, Number(id), reason ? { reason } : null, 10)
@@ -10321,7 +10325,7 @@ function browserOf(ua: string): string {
  * five an hour from one address and 200 an hour in all, so the count of people
  * stuck survives and the table cannot be filled from outside. */
 const BOOT_ACTIONS: Record<string, string> = { fail: 'app.boot_fail', slow: 'app.boot_slow', ok: 'app.boot_ok', scan: 'app.boot_scan' }
-const LINK_ACTIONS = new Set(['social-card', 'download-pass', 'complete-profile', 'goals', 'pay', 'workshop', 'main-event-yes', 'main-event-no', 'save-app'])
+const LINK_ACTIONS = new Set(['social-card', 'download-pass', 'complete-profile', 'goals', 'pay', 'workshop', 'main-event-yes', 'main-event-no', 'save-app', 'share-moment'])
 app.post('/api/app-boot', async (c) => {
   c.header('Cache-Control', 'no-store')
   const b = await c.req.json().catch(() => ({})) as any
@@ -30557,6 +30561,22 @@ function mainPageHTML(): string {
           </div>
         </div>
 
+        <!-- After Mumbai (23 Nov 2026): "Share your Bharat AI moment" at /share, the
+             pictures for LinkedIn, Instagram, Facebook and X (I attended, who I met, a
+             talk, a panel). For everyone registered for Mumbai. renderShareMomentCard(). -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="share-moment-card">
+          <a href="/share" class="glass on-dark ap-card rounded-2xl p-5 border border-primary-500/25 flex items-start gap-4" style="background:linear-gradient(135deg,#0A0C1B 0%,#1A237E 70%,#0D1B4B 100%)!important;text-decoration:none;">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
+              <i class="fas fa-share-alt text-xl" style="color:#FF9933;"></i>
+            </div>
+            <div class="ap-card-body flex-1 min-w-0">
+              <h3 class="font-bold text-sm mb-0.5" style="color:#fff;">Share your Bharat AI moment</h3>
+              <p class="text-xs mb-3" style="color:#D6DAEA;">Make your picture for LinkedIn, Instagram, Facebook and X: that you were there, who you met, a talk or a panel. Your name, photo and pass go on it.</p>
+              <span class="inline-flex items-center px-4 rounded-xl text-xs font-semibold" style="min-height:44px;background:#C84F00;color:#fff;"><i class="fas fa-share-alt mr-1.5"></i>Make my picture</span>
+            </div>
+          </a>
+        </div>
+
         <!-- The two things a delegate came here to collect.
              Both existed already and both were effectively hidden: the pass button
              lived in the My Profile tab, and the shareable card was offered ONCE,
@@ -33169,6 +33189,11 @@ function mainPageScript(): string {
       // openSocialCard asks for a photo when there isn't one, which is what makes
       // this safe to advertise to a list where almost nobody has uploaded yet:
       // the ask and the reward arrive together.
+      // "Share your Bharat AI moment" (/share, 23 Nov 2026), once signed in.
+      if (act === 'share-moment') {
+        if (currentUser) { pendingAction = null; window.location.href = '/share'; }
+        return;
+      }
       if (act === 'social-card') { setTimeout(() => openSocialCard(), 1500); return; }
       // The matchmaker is only as good as this answer, and the field is new, so
       // almost nobody has given it yet.
@@ -34314,8 +34339,17 @@ function mainPageScript(): string {
      * The pass panel tells the truth about paid tiers. A Delegate, Academic or VIP
      * pass will not issue until payment lands, and saying "ready" to someone whose
      * payment is still pending sends them to a button that refuses them. */
+    // After Mumbai (23 Nov 2026) the "I'm attending" card is past: everyone registered
+    // for Mumbai is offered /share for the "I attended" pictures instead.
+    function mumbaiOverInApp() { return Date.now() >= ${MUMBAI_OVER_AT}; }
+    function renderShareMomentCard() {
+      const el = document.getElementById('share-moment-card');
+      if (!el) return;
+      el.classList.toggle('hidden', !(currentUser && Number(currentUser.event_id || 1) === 1 && mumbaiOverInApp()));
+    }
     function renderPassAndCardCta(early) {
       renderAppOnPhoneCard();
+      renderShareMomentCard();
       const el = document.getElementById('pass-card-cta');
       if (!el) return;
       if (!currentUser) { el.classList.add('hidden'); return; }
@@ -39207,6 +39241,9 @@ function mainPageScript(): string {
     var socialCard = { size: 'square', res: null, seq: 0, file: null };
 
     async function openSocialCard(preferPanel) {
+      // After Mumbai the conference card ("I'm attending") is past: /share makes the
+      // "I attended" pictures. A campus panel card (preferPanel) is unchanged.
+      if (typeof preferPanel !== 'string' && currentUser && Number(currentUser.event_id || 1) === 1 && mumbaiOverInApp()) { window.location.href = '/share'; return; }
       var user = currentUser;
       if (!user) { showToast('Please sign in first', 'error'); return; }
       trackStep('card', 'open');
