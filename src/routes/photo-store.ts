@@ -97,11 +97,11 @@ export async function linksForDrive(c: any, person: string, driveIds: string[], 
   return out
 }
 
-// A speaker's album (person 's<speaker id>' or 't<talk id>', src/routes/photos.ts) holds
-// only photos of that speaker, found by face, so it gets its own, higher limit (the
-// organiser, 23 Nov 2026: 50; app_settings photo_download_limit_speakers).
+// A speaker's album (person 's<speaker id>' or 't<talk id>', src/routes/photos.ts; or a named
+// guest's, 'g<id>') holds only photos of that person, found by face, so it gets its own,
+// higher limit (the organiser, 23 Nov 2026: 50; app_settings photo_download_limit_speakers).
 export const DEFAULT_SPEAKER_DOWNLOAD_LIMIT = 50
-export const isSpeakerAlbum = (person: string) => /^[st]\d+$/.test(String(person || ''))
+export const isSpeakerAlbum = (person: string) => /^[stg]\d+$/.test(String(person || ''))
 
 export async function downloadLimit(c: any, person = ''): Promise<number> {
   const speaker = isSpeakerAlbum(person)
@@ -207,8 +207,8 @@ st.get('/api/admin/event-photos', async (c) => {
     const speakerLimit = await downloadLimit(c, 's0')
     const dl = await c.env.DB.prepare('SELECT COUNT(DISTINCT d.person) AS people, COUNT(*) AS photos, COALESCE(SUM(d.times), 0) AS saves FROM photo_downloads d JOIN event_photos p ON p.id = d.photo_id WHERE p.event_id = ?').bind(ev).first() as any
     // Who has used every save: attendees against their limit, speakers' albums
-    // ('s<id>' / 't<id>', isSpeakerAlbum) against theirs.
-    const SPEAKER_SQL = "(d.person GLOB 's[0-9]*' OR d.person GLOB 't[0-9]*')"
+    // ('s<id>' / 't<id>' / 'g<id>', isSpeakerAlbum) against theirs.
+    const SPEAKER_SQL = "(d.person GLOB 's[0-9]*' OR d.person GLOB 't[0-9]*' OR d.person GLOB 'g[0-9]*')"
     const atLimit = async (speakers: boolean, n: number) => Number(((await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM (SELECT d.person FROM photo_downloads d JOIN event_photos p ON p.id = d.photo_id WHERE p.event_id = ? AND ${speakers ? '' : 'NOT '}${SPEAKER_SQL} GROUP BY d.person HAVING COUNT(*) >= ?)`).bind(ev, Math.max(n, 1)).first()) as any)?.n || 0)
     return c.json({ days, limit, speaker_limit: speakerLimit, downloads: { people: Number(dl?.people || 0), photos: Number(dl?.photos || 0), saves: Number(dl?.saves || 0),
       at_limit: await atLimit(false, limit), speakers_at_limit: await atLimit(true, speakerLimit) },

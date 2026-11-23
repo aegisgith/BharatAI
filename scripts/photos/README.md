@@ -69,6 +69,18 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
    - `focus` records where their face is in each photo, so the page's square thumbnails
      keep them in view.
 
+## Better reference photos, and guests not on the programme
+
+- `ref-photos/<kind>-<id>.jpg` replaces a person's site photo as their reference
+  (`speaker-3.jpg`: Dr. Abhijit Gangopadhyay's site photo also shows his face on the stage
+  screen behind him, so the biggest face was the screen's).
+- `guests.json` lists people the organiser names who are not speakers (id, name, title,
+  role, email). Each needs `ref-photos/guest-<id>.jpg`. Their album key is `g<id>`, and
+  they get the speakers' 50 full-size saves. A guest's reference can be their clearest event
+  photo: find them in `cluster.py`'s sheets of faces nobody matched (biggest groups first),
+  check against a portrait by eye, and save that crop. For a guest the 0.80 "stage screen"
+  rule is off, because their reference is itself an event photo.
+
 ## Rules
 
 - The Drive folder must stay **"Anyone with the link: Viewer"**. The pages and emails

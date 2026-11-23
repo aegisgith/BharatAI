@@ -89,6 +89,20 @@ if (weak) {
   db.run("DELETE FROM admin_audit WHERE action = 'speaker.photos' AND entity_id = ?", [weak.key]);
 }
 
+// ---- a guest not on the programme (scripts/photos/guests.json, key g<id>) ----
+const G = DATA.people.find(p => p.guest && p.photos.length);
+if (G) {
+  l = await as('GET', '/api/admin/speaker-photos');
+  const gr = row(G.key);
+  check('a named guest is on the list with their role and title, from the guest list (not D1)', !!gr && gr.kinds.includes(G.guest.role || 'Guest') && gr.org === G.guest.title && gr.count === G.photos.length, gr);
+  check('a former minister as guest is held for their office', gr?.status === (/minister/i.test(G.guest.title) ? 'protocol' : G.guest.email ? 'ready' : 'no-email'), gr?.status);
+  const gp = await page(G.key, sig(G.key));
+  const gh = await gp.text();
+  check("the guest's page opens with their title", gp.status === 200 && gh.includes('Photos of ' + G.name) && gh.includes(G.guest.title.replace(/&/g, '&amp;')), gp.status);
+  const gv = await as('GET', `/api/admin/speaker-photos/${G.key}/preview`);
+  check('the guest email thanks them as our special guest', gv.status === 200 && /as our special guest/.test(gv.json?.html || '') && gv.json?.subject === 'Your photos from Bharat AI Innovation 2026', gv.status);
+}
+
 // ---- an official ----
 db.run("UPDATE speakers SET email = 'office@example.gov.in', role = 'Minister of State, IT' WHERE id = ?", [B.speakers[0]]);
 l = await as('GET', '/api/admin/speaker-photos');

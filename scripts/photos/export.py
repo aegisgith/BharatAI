@@ -16,6 +16,9 @@ D2 = {'1J4a_KGkSIZMSvUiXR-q_MuhPxBwSKZ79', '1CJvSSGP7c6X-XqNTgbyGDxW_U49DCnR_', 
 IST = datetime.timedelta(hours=5, minutes=30)
 idx = {f['id']: f for f in json.load(open(INDEX))}
 M = json.load(open(MATCHES, encoding='utf-8'))
+# Guests not on the programme (scripts/photos/guests.json, next to src/ in the repo OUT is in).
+_gj = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(OUT)))), 'scripts', 'photos', 'guests.json')
+GUESTS = {g['id']: g for g in json.load(open(_gj, encoding='utf-8'))} if os.path.exists(_gj) else {}
 
 def meta(pid):
     f = idx[pid]
@@ -35,9 +38,13 @@ for k, v in sorted(M.items(), key=lambda x: x[1]['name']):
     if not ids: continue
     for p in ids:
         if p[0] not in photos: photos[p[0]] = meta(p[0])
+    # A guest's reference is one of the event photos, not a website portrait, so a high
+    # score is not the stage screen showing it: no screen rule for guests.
+    is_guest = any(r['kind'] == 'guest' for r in v['refs']) and not any(r['kind'] in ('speaker', 'talk') for r in v['refs'])
+    SCREEN = 1.01 if is_guest else 0.80
     # Landscape first in the email (two whole photos a row), then score and face size.
-    inperson = sorted([p for p in ids if p[-1] < 0.80], key=lambda p: -(p[1] + 2.0 * min(p[2], 0.12) - 0.25 * photos[p[0]][0][2]))
-    screen = sorted([p for p in ids if p[-1] >= 0.80], key=lambda p: -p[-1])
+    inperson = sorted([p for p in ids if p[-1] < SCREEN], key=lambda p: -(p[1] + 2.0 * min(p[2], 0.12) - 0.25 * photos[p[0]][0][2]))
+    screen = sorted([p for p in ids if p[-1] >= SCREEN], key=lambda p: -p[-1])
     best, taken = [], []
     for p in inperson + screen:
         folder, t = photos[p[0]][1]
@@ -50,14 +57,17 @@ for k, v in sorted(M.items(), key=lambda x: x[1]['name']):
     if len(best) > 1 and len(best) % 2: best = best[:-1]
     sp = [r['id'] for r in v['refs'] if r['kind'] == 'speaker']
     tk = [r['id'] for r in v['refs'] if r['kind'] == 'talk']
-    people.append({'key': ('s%d' % sp[0]) if sp else ('t%d' % tk[0]), 'name': v['name'], 'speakers': sp, 'talks': tk,
+    gs = [r['id'] for r in v['refs'] if r['kind'] == 'guest']
+    key = ('s%d' % sp[0]) if sp else ('t%d' % tk[0]) if tk else ('g%d' % gs[0])
+    extra = {'guest': {k: GUESTS[gs[0]].get(k, '') for k in ('name', 'title', 'role', 'email')}} if gs and not sp and not tk else {}
+    people.append({'key': key, 'name': v['name'], 'speakers': sp, 'talks': tk, **extra,
                    'photos': [p[0] for p in ids], 'best': best,
                    # Where their face is in each photo (percent across, down), so the page's
                    # square thumbnails keep them in view.
                    'focus': {p[0]: [round(p[3] * 100), round(p[4] * 100)] for p in ids if len(p) >= 5},
                    # No in-person photo scores 0.60 against their site photo: the matches may be
                    # lookalikes, so Admin asks for a look at the preview before sending.
-                   'check': max([p[-1] for p in ids if p[-1] < 0.80], default=0) < 0.60})
+                   'check': max([p[-1] for p in ids if p[-1] < SCREEN], default=0) < 0.60})
 out = {'generated': datetime.date.today().strftime('%d %b %Y').lstrip('0'),
        'folder': 'https://drive.google.com/drive/folders/19Ii5MnQLA2adUxH4LDPikF2GUcvRuOeJ',
        'photos': {k: v[0] for k, v in photos.items()}, 'people': people}

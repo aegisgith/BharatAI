@@ -48,7 +48,10 @@ export function configurePhotos(h: Hooks) { hooks = { ...hooks, ...h } }
 // focus[id] = where their face is in that photo, [percent across, percent down].
 // check: no in-person photo matched their site photo strongly (under 0.60), so the
 // photos may show a lookalike: Admin leaves them out of "send to all" until looked at.
-type Person = { key: string; name: string; speakers: number[]; talks: number[]; photos: string[]; best: string[]; focus?: Record<string, [number, number]>; check?: boolean }
+// guest: someone not on the programme whom the organiser named (scripts/photos/guests.json,
+// key g<id>), e.g. a special guest; their details come from that file, not from D1.
+type Guest = { name: string; title: string; role?: string; email?: string }
+type Person = { key: string; name: string; speakers: number[]; talks: number[]; photos: string[]; best: string[]; focus?: Record<string, [number, number]>; check?: boolean; guest?: Guest }
 // photos[id] = [day 'YYYY-MM-DD', time 'HH:MM' or '' when unknown, 1 if taken upright, 1 if a camera RAW file]
 type Albums = { generated: string; folder: string; photos: Record<string, [string, string, number, number?]>; people: Person[] }
 const DATA = ALBUMS as unknown as Albums
@@ -133,14 +136,16 @@ function sameText(a: string, b: string): boolean {
 // The email. `forSpeaker` false: it goes to the company's booth contact, who is asked
 // to pass it on to the speaker.
 export function photosEmailHTML(a: { name: string; count: number; best: string[]; href: string; header: string; talk: boolean;
-    forSpeaker: boolean; company?: string; got?: Got }): { subject: string; html: string } {
+    forSpeaker: boolean; company?: string; got?: Got; guest?: boolean }): { subject: string; html: string } {
   const words = MUMBAI_WORDS
   const first = firstName(a.name)
   const n = a.count
   const photosWord = n === 1 ? '1 photo' : `${n} photos`
   const subject = a.forSpeaker ? `Your photos from ${words.name}` : `Photos of ${a.name} from ${words.name}`
   const greeting = a.forSpeaker ? `Dear ${first},` : `Dear ${a.company ? a.company + ' team' : 'team'},`
-  const thanks = a.forSpeaker
+  const thanks = a.guest
+    ? `Thank you for joining ${words.name} in Mumbai as our special guest. Our photographers took ${photosWord} of you. Here are a few of them.`
+    : a.forSpeaker
     ? `Thank you for ${a.talk ? 'your Innovation Talk' : 'speaking'} at ${words.name} in Mumbai. Our photographers took ${photosWord} of you. Here are a few of them.`
     : `Here are the photos of ${a.name} from ${a.talk ? 'their Innovation Talk' : 'their session'} at ${words.name} in Mumbai: ${photosWord} in all. Please pass this email on to ${first}.`
   // Whole photos, two a row: a square crop of a wide panel shot can leave them out of it.
@@ -273,7 +278,7 @@ Next: <a href="${SITE}/delhi">Bharat AI Innovation, New Delhi, 28 and 29 July 20
 // ---------- reading who gets what ----------
 
 type Row = { key: string; name: string; org: string; kinds: string[]; count: number; best: string[]; email: string; email_source: string;
-  email_note: string; protocol: boolean; status: string; sent_at: string; sent_count: number; talk: boolean; company: string; for_speaker: boolean }
+  email_note: string; protocol: boolean; status: string; sent_at: string; sent_count: number; talk: boolean; company: string; for_speaker: boolean; guest: boolean }
 
 async function sentLog(c: any): Promise<Map<string, { at: string; n: number; to: string }>> {
   const out = new Map<string, { at: string; n: number; to: string }>()
@@ -300,27 +305,29 @@ async function rowsFor(c: any, eventId = 1): Promise<Row[]> {
   const tBy = new Map(talks.map((t: any) => [Number(t.id), t]))
   const rows: Row[] = []
   const covered = new Set<string>()
-  const build = (key: string, name: string, sIds: number[], tIds: number[], photos: string[], best: string[], check = false) => {
+  const build = (key: string, name: string, sIds: number[], tIds: number[], photos: string[], best: string[], check = false, guest: Guest | null = null) => {
     const sps = sIds.map(id => spBy.get(id)).filter(Boolean) as any[]
     const tks = tIds.map(id => tBy.get(id)).filter(Boolean) as any[]
-    if (!sps.length && !tks.length) return // no longer on the programme
+    if (!sps.length && !tks.length && !guest) return // no longer on the programme
+    const gEmail = guest ? String(guest.email || '').trim().toLowerCase() : ''
     for (const s of sps) covered.add('s' + s.id)
     for (const t of tks) covered.add('t' + t.id)
     const spEmail = sps.map(s => String(s.email || '').trim().toLowerCase()).find(Boolean) || ''
     const tc = tks.map(t => contacts[String(t.id)]).find(x => x && x.email) || null
-    const email = spEmail || (tc ? String(tc.email).trim().toLowerCase() : '')
-    const source = spEmail ? 'speaker' : (tc ? tc.source : 'none')
-    const protocol = sps.some(s => isProtocol(s)) || tks.some(t => !!(contacts[String(t.id)] || {}).protocol)
+    const email = spEmail || (tc ? String(tc.email).trim().toLowerCase() : '') || gEmail
+    const source = spEmail ? 'speaker' : tc ? tc.source : gEmail ? 'guest' : 'none'
+    const protocol = sps.some(s => isProtocol(s)) || tks.some(t => !!(contacts[String(t.id)] || {}).protocol) || (!!guest && isProtocol({ name: guest.name, role: guest.title }))
     const s = sent.get(key)
     const count = byDay(photos).reduce((n, g) => n + g.ids.length, 0)
     const status = !count ? 'no-photos' : protocol ? 'protocol' : !email ? 'no-email' : s ? 'sent' : check ? 'check' : 'ready'
-    rows.push({ key, name: sps[0]?.name || tks[0]?.speaker_name || name, org: sps[0]?.organisation || tks[0]?.company || '',
-      kinds: [...(sps.length ? ['Speaker'] : []), ...(tks.length ? ['Innovation Talk'] : [])], count, best: best.slice(0, 3),
-      email, email_source: source, email_note: spEmail ? "The speaker's own email" : (tc ? tc.note : 'No email on file'), protocol, status,
+    const isGuest = !!guest && !sps.length && !tks.length
+    rows.push({ key, name: sps[0]?.name || tks[0]?.speaker_name || guest?.name || name, org: sps[0]?.organisation || tks[0]?.company || guest?.title || '',
+      kinds: [...(sps.length ? ['Speaker'] : []), ...(tks.length ? ['Innovation Talk'] : []), ...(isGuest ? [guest!.role || 'Guest'] : [])], count, best: best.slice(0, 3),
+      email, email_source: source, email_note: spEmail ? "The speaker's own email" : tc ? tc.note : gEmail ? 'From the guest list' : 'No email on file', protocol, status,
       sent_at: s ? s.at : '', sent_count: s ? s.n : 0, talk: !sps.length && tks.length > 0, company: tks[0]?.company || sps[0]?.organisation || '',
-      for_speaker: source === 'speaker' || source === 'team' })
+      for_speaker: isGuest || source === 'speaker' || source === 'team', guest: isGuest })
   }
-  for (const p of albumPeople()) build(p.key, p.name, p.speakers || [], p.talks || [], p.photos || [], p.best || [], !!p.check)
+  for (const p of albumPeople()) build(p.key, p.name, p.speakers || [], p.talks || [], p.photos || [], p.best || [], !!p.check, p.guest || null)
   // Everyone on the programme with no photo found, so the list shows who is missing.
   // The same person under both lists is one row (matched by name).
   const named = new Map<string, { s: number[]; t: number[]; name: string }>()
@@ -339,7 +346,7 @@ async function mailFor(c: any, r: Row) {
   const best = p ? p.best : []
   // Signed for this person (the album key), the small size only.
   const got = best.length ? await linksForDrive(c, r.key, best) : {}
-  return photosEmailHTML({ name: r.name, count: r.count, best, href, header, talk: r.talk, forSpeaker: r.for_speaker, company: r.company, got })
+  return photosEmailHTML({ name: r.name, count: r.count, best, href, header, talk: r.talk, forSpeaker: r.for_speaker, company: r.company, got, guest: r.guest })
 }
 
 // ---------- routes ----------
@@ -400,6 +407,7 @@ ph.get('/photos/:key', async (c) => {
   try {
     if (p!.speakers.length) org = String(((await c.env.DB.prepare('SELECT organisation FROM speakers WHERE id = ?').bind(p!.speakers[0]).first()) as any)?.organisation || '')
     else if (p!.talks.length) org = String(((await c.env.DB.prepare('SELECT company FROM innovation_talks WHERE id = ?').bind(p!.talks[0]).first()) as any)?.company || '')
+    else if (p!.guest) org = p!.guest.title || ''
   } catch { /* the page shows without it */ }
   // Links signed for the album's own key, so every way into this person's page shares
   // one count of full-size saves.

@@ -8,9 +8,18 @@ rec=cv2.FaceRecognizerSF.create(os.path.join(M,'sface.onnx'),'')
 people=[]
 for s in p['speakers']: people.append({'kind':'speaker','id':s['id'],'name':s['name'],'org':s.get('organisation',''),'photo':s.get('photo_url') or ''})
 for t in p['talks']: people.append({'kind':'talk','id':t['id'],'name':t['speaker_name'],'org':t.get('company',''),'photo':t.get('photo_url') or ''})
+# Guests who were not on the programme (scripts/photos/guests.json), each with ref-photos/guest-<id>.jpg.
+GJ=os.path.join(REPO,'scripts','photos','guests.json')
+if os.path.exists(GJ):
+    for g in json.load(open(GJ,encoding='utf-8')): people.append({'kind':'guest','id':g['id'],'name':g['name'],'org':g.get('title',''),'photo':''})
 feats=[];keep=[];fail=[]
+# A better reference than the site photo, when the organiser gave one: scripts/photos/ref-photos/<kind>-<id>.jpg
+# (23 Nov 2026: Dr. Abhijit Gangopadhyay's site photo also shows his face on the stage screen behind him).
+OVR=os.path.join(REPO,'scripts','photos','ref-photos')
 for x in people:
     f=os.path.join(REPO,'public'+x['photo']) if x['photo'].startswith('/images') else ''
+    o=os.path.join(OVR,f"{x['kind']}-{x['id']}.jpg")
+    if os.path.exists(o): f=o; x['photo_file']=o
     if not f or not os.path.exists(f): fail.append((x['name'],'no photo')); continue
     im=cv2.cvtColor(np.array(Image.open(f).convert('RGB')),cv2.COLOR_RGB2BGR)
     h,w=im.shape[:2]
