@@ -1093,7 +1093,7 @@ A bulk send writes one `queued` row per person and a `wa_batches` row. `whatsapp
 
 A send **pauses itself** with the reason in plain words when the fault is ours or the account's (an expired key, no payment method, a message Meta paused; `ERRORS` in the route file maps Meta's numbers to words and says which stop a send), and after five refusals in a row. The person stays in the queue. A row left at `sending` for ten minutes (no answer came back) is marked failed, never sent again by itself.
 
-Every button is `https://bharataiinnovation.com/w/<row id>-<12 hex>`: the tap is noted (`clicked_at`) and the person is sent on to `target_url`. A pass button mints a sign-in link there, for seven days after the send, as the links in our emails do. A link checker (`facebookexternalhit`, `WhatsApp/`) is sent on with nothing noted and nobody signed in. A test to the organiser's own phone never carries a sign-in.
+Every button is `https://bharataiinnovation.com/w/<row id>-<12 hex>`: the tap is noted (`clicked_at`) and the person is sent on to `target_url`. A pass button mints a sign-in link there, for seven days after the send, as the links in our emails do. A link checker (`facebookexternalhit`, `WhatsApp/`) is sent on with nothing noted and nobody signed in. A test to the organiser's own phone never carries a sign-in. **`/w/` is shared** with the campus recording links (`/w/jnu`, `/w/djsce`, `GET /w/:slug` in index.tsx): the WhatsApp route takes only its own shape and passes anything else on (`next()`). Until 23 Nov 2026 it sent every other `/w/` link to the home page, so the recordings in the reports email stopped playing; `smoke-whatsapp.mjs` and `prod-sweep.mjs` now check `/w/jnu`. Pick a new prefix for any new short link.
 
 ### Who is left out, always
 
