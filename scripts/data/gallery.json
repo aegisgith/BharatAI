@@ -19,11 +19,6 @@
   },
   {
    "event": "mumbai2026",
-   "ref": "startup-pavilion-sign",
-   "pos": "52% 40%"
-  },
-  {
-   "event": "mumbai2026",
    "ref": "panel-telecom",
    "pos": "50% 50%"
   },
@@ -305,14 +300,6 @@
    "day": "2026-11-20"
   },
   {
-   "kind": "expo",
-   "caption": "The Startup Pavilion",
-   "slug": "startup-pavilion-aisle",
-   "pid": "JvRgjt_5tVp_",
-   "alt": "Visitors along the Startup Pavilion aisle",
-   "day": "2026-11-20"
-  },
-  {
    "kind": "people",
    "caption": "Networking",
    "site": "networking",
@@ -356,13 +343,6 @@
    "slug": "talk-giant-screen",
    "pid": "_pW5ZdMN1AfC",
    "alt": "A speaker with a microphone in front of the giant Bharat AI Innovation screen",
-   "day": "2026-11-20"
-  },
-  {
-   "kind": "expo",
-   "caption": "Startup Pavilion",
-   "site": "startup-pavilion",
-   "alt": "Visitors crowding the Startup Pavilion on the exhibition floor",
    "day": "2026-11-20"
   },
   {
@@ -549,15 +529,6 @@
    "pid": "NojS9BGNPNE5",
    "alt": "A speaker gives the welcome note at the lectern",
    "day": "2026-11-21"
-  },
-  {
-   "kind": "expo",
-   "caption": "The Startup Pavilion",
-   "slug": "startup-pavilion-sign",
-   "pid": "dSu8_WzrBI_M",
-   "alt": "Visitors crowd the Startup Pavilion",
-   "feature": true,
-   "day": "2026-11-20"
   },
   {
    "kind": "expo",
@@ -978,6 +949,23 @@
    "kind": "stage",
    "caption": "A talk",
    "alt": "A speaker with a clicker in front of the partner screen"
+  }
+ ],
+ "_never": [
+  {
+   "pid": "JvRgjt_5tVp_",
+   "was": "startup-pavilion-aisle",
+   "why": "OneVio's stand. OneVio asked us not to show OneVio, Aarti or Manish Wadhwani (23 Nov 2026)."
+  },
+  {
+   "pid": "dSu8_WzrBI_M",
+   "was": "startup-pavilion-sign",
+   "why": "OneVio's stand and Manish Wadhwani. Same request."
+  },
+  {
+   "pid": "7qWMLKltik70",
+   "was": "site startup-pavilion",
+   "why": "OneVio's stand and their staff. Same request."
   }
  ]
 }

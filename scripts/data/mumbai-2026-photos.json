@@ -7,7 +7,7 @@
     { "slug": "panel-eye-screen", "pid": "hfsthK_iW4Fx", "day": "2026-11-20", "use": ["hero", "home"], "alt": "Five panellists on stage in front of a giant close-up of an eye on the screen" },
     { "slug": "lamp-lighting", "pid": "PxiVOl03oQbC", "day": "2026-11-20", "use": ["hero", "home", "delhi"], "alt": "Guests lighting the lamp before a session at Bharat AI Innovation" },
     { "slug": "panel-telecom", "pid": "I_nF8v74M4l8", "day": "2026-11-21", "use": ["hero", "home", "delhi"], "alt": "A panel on AI in telecom, with TV cameras and a full audience in front of the stage" },
-    { "slug": "startup-pavilion", "pid": "7qWMLKltik70", "day": "2026-11-20", "use": ["hero", "home", "delhi"], "alt": "Visitors crowding the Startup Pavilion on the exhibition floor" },
+    { "slug": "startup-pavilion", "pid": "a3s3xBeHtyzu", "was": "7qWMLKltik70 (OneVio's stand: they asked us not to show OneVio or their people, 23 Nov 2026)", "day": "2026-11-20", "use": ["hero", "home", "delhi"], "alt": "Visitors crowding the Startup Pavilion on the exhibition floor" },
     { "slug": "panel-media", "pid": "s1aGWlnrTINu", "day": "2026-11-21", "use": ["home", "delhi"], "alt": "A nine-person panel on how AI is reshaping media and entertainment" },
     { "slug": "panel-city-screen", "pid": "vh55znRtZuXk", "day": "2026-11-20", "use": ["home"], "alt": "Five panellists on stage in front of an aerial view of a city on the screen" },
     { "slug": "talk-ai-avatar", "pid": "fxJxu1xcQxjR", "day": "2026-11-21", "use": ["home", "delhi"], "alt": "A speaker presenting next to an AI avatar on the big screen" },
