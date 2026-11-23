@@ -24310,16 +24310,18 @@ app.post('/api/feedback', async (c) => {
   return c.json({ success: true, delhi })
 })
 
-const FEEDBACK_SEND_FROM = Date.parse('2026-11-23T04:30:00Z')
+// Moved on 23 Nov 2026 at 09:45 (the organiser: "first we send them photo than we send
+// survey, that logical path"): Tuesday 24 Nov from 10 am IST, after the photos emails.
+const FEEDBACK_SEND_FROM = Date.parse('2026-11-24T04:30:00Z')
 // One person's survey email, for the bulk run (campaignSendOne, kind 'feedback').
 // Someone who has already answered is skipped, not asked again.
 app.post('/api/admin/attendees/:id/send-feedback', async (c) => {
   const a = await c.env.DB.prepare('SELECT id, name, email FROM attendees WHERE id = ?').bind(c.req.param('id')).first() as any
   if (!a) return c.json({ error: 'Attendee not found' }, 404)
   if (!validEmailSyntax(a.email)) return c.json({ error: 'This person has no usable email address.' }, 400)
-  // The organiser, 22 Nov 2026: the thank-you and survey go on Monday 23 Nov from 10 am IST.
+  // The organiser: the thank-you and survey go after the photos emails, from Tuesday 24 Nov 10 am IST.
   const sendFrom = c.env?.FEEDBACK_SEND_FROM_MS !== undefined ? Number(c.env.FEEDBACK_SEND_FROM_MS) : FEEDBACK_SEND_FROM
-  if (Date.now() < sendFrom && c.req.query('force') !== '1') return c.json({ paused: true, reason: 'Goes from 10 am IST on Monday 23 Nov.' }, 409)
+  if (Date.now() < sendFrom && c.req.query('force') !== '1') return c.json({ paused: true, reason: 'Goes from 10 am IST on Tuesday 24 Nov, after the photos emails.' }, 409)
   try {
     const done = await c.env.DB.prepare('SELECT id FROM feedback WHERE event_id = ? AND attendee_id = ?').bind(AFTER_EVENT_ID, a.id).first()
     if (done) return c.json({ skipped: true, reason: 'Already answered the survey' })
