@@ -106,6 +106,7 @@ const SUITES = [
   { name: 'browser: visitors from outside India (the /delhi section, the /delhi-visa form on a phone at 390 and 320 px, both emails, Admin Delhi 2027 opening the requests on the Inquiries desk)', args: ['browser-delhi-visa.cjs'], harness: 'delhi-harness.mjs', port: 8804, portEnv: true },
   { name: 'the Hindi Delhi page (/delhi-hi) is made from the English one and up to date (every sentence paired)', args: ['../gen-delhi-hi.mjs', '--check'] },
   { name: 'Powered by IDFC FIRST Bank and the partners on every email (elasticFetch), every Mumbai page, the app and the exhibitor dashboard (unit-partners, gen-partners-strip --check)', args: ['unit-partners.mjs'] },
+  { name: 'the partners through the worker: an admin preview and the sent email carry the block once, the album page, /contact and /inquiry show it, the app gets the seven with Powered by', args: ['smoke-partners.mjs'] },
   { name: 'browser: Delhi 2027 on a phone and a laptop, the form on the real worker, the menu on every page, the home page\'s heading font', args: ['browser-delhi.cjs'], harness: 'delhi-harness.mjs', port: 8786, portEnv: true },
   { name: 'unit: the Government page (the rules of the nomination form, its words, the people it names, the Govt tab on every page), each alone', args: ['unit-government.mjs'] },
   { name: 'system: a nomination from a Ministry, from the link in a letter to Admin Enquiries (the script of the page, real worker, real SQLite, team email, the build)', args: ['smoke-government.mjs'] },
