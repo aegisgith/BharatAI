@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
 import { isProtocol } from './speaker-brief'
-import { firstName } from './talk-brief'
+import { dearName } from './talk-brief'
 import { MUMBAI_WORDS, normName, adminReady, sessionsWithSpeakers, ROLE_WORD } from './conference'
 import { linksForDrive, downloadLimit, downloadsUsed } from './photo-store'
 import ALBUMS from '../data/speaker-photos.json'
+import ATTENDEES from '../data/attendee-photos.json'
 
 // ==================== SPEAKER PHOTOS (23 Nov 2026) ====================
 //
@@ -36,7 +37,7 @@ import ALBUMS from '../data/speaker-photos.json'
 type Contact = { email: string; source: string; note: string; protocol?: boolean }
 type Hooks = {
   sendEmail?: (c: any, to: string, subject: string, html: string) => Promise<{ ok: boolean; error?: string }>
-  audit?: (c: any, action: string, entity?: string, entityId?: any, detail?: any) => Promise<void>
+  audit?: (c: any, action: string, entity?: string, entityId?: any, detail?: any, actor?: { actor: string; kind: string }) => Promise<void>
   emailHeader?: (title: string, subtitle: string) => string
   // Who to write to for each Innovation Talk (index.tsx italkContactsAll, the same order
   // the talk briefs use: the talk's own speaker email, the team list, the booth contact).
@@ -51,11 +52,17 @@ export function configurePhotos(h: Hooks) { hooks = { ...hooks, ...h } }
 // guest: someone not on the programme whom the organiser named (scripts/photos/guests.json,
 // key g<id>), e.g. a special guest; their details come from that file, not from D1.
 type Guest = { name: string; title: string; role?: string; email?: string }
-type Person = { key: string; name: string; speakers: number[]; talks: number[]; photos: string[]; best: string[]; focus?: Record<string, [number, number]>; check?: boolean; guest?: Guest }
+type Person = { key: string; name: string; speakers: number[]; talks: number[]; photos: string[]; best: string[]; focus?: Record<string, [number, number]>; check?: boolean; guest?: Guest; attendee?: { group: number; came: boolean } }
 // photos[id] = [day 'YYYY-MM-DD', time 'HH:MM' or '' when unknown, 1 if taken upright, 1 if a camera RAW file]
 // who[id] = everyone the face match found in that photo: [album key, face x %, score vs their own photo %, match score %].
 type Albums = { generated: string; folder: string; photos: Record<string, [string, string, number, number?]>; people: Person[]; who?: Record<string, [string, number, number, number][]> }
 const DATA = ALBUMS as unknown as Albums
+// Attendees' albums (scripts/photos/att_match.py, 23 Nov 2026): attendee ids and Drive ids
+// only; names and emails are read from D1. group = the organiser's order of priority.
+type AttAlbum = { group: number; came: boolean; check: boolean; photos: string[]; best: string[]; focus: Record<string, [number, number]> }
+const ATT = ATTENDEES as unknown as { generated: string; groups: string[]; photos: Record<string, [string, string, number, number?]>; albums: Record<string, AttAlbum> }
+// Every photo's day, time, upright and RAW flags, speakers' and attendees' alike.
+const META: Record<string, [string, string, number, number?]> = { ...(ATT.photos || {}), ...(DATA.photos || {}) }
 
 const ph = new Hono<{ Bindings: any }>()
 const SITE = 'https://bharataiinnovation.com'
@@ -72,7 +79,9 @@ for (const p of DATA.people || []) {
   for (const id of p.speakers || []) BY_KEY.set('s' + id, p)
   for (const id of p.talks || []) BY_KEY.set('t' + id, p)
 }
+for (const [k, a] of Object.entries(ATT.albums || {})) BY_KEY.set(k, { key: k, name: '', speakers: [], talks: [], photos: a.photos, best: a.best, focus: a.focus, check: a.check, attendee: { group: a.group, came: a.came } })
 export function personFor(key: string): Person | null { return BY_KEY.get(String(key || '')) || null }
+export const isAttendee = (key: string) => /^a\d+$/.test(String(key || ''))
 export function albumPeople(): Person[] { return DATA.people || [] }
 
 // Drive serves any size of a shared photo: =s360-c is a 360px square crop, =w2000 the
@@ -88,7 +97,7 @@ export function wideUrl(id: string, width = 600): string { return `https://lh3.g
 // original, each link signed for one person and one photo; saving an o is counted (50 for a
 // speaker's album). A photo not in R2 yet falls back to Drive, below.
 export type Got = Record<string, { s: string; m: string; o: string }>
-export function isRaw(id: string): boolean { return !!(DATA.photos[id] && DATA.photos[id][3]) }
+export function isRaw(id: string): boolean { return !!(META[id] && META[id][3]) }
 export function downloadUrl(id: string): string {
   return isRaw(id) ? `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=s0` : `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`
 }
@@ -98,14 +107,14 @@ const DAY_WORDS: Record<string, string> = { '2026-11-20': 'Friday 20 November', 
 // The photos of one person grouped by day, in the order they were taken.
 export function byDay(ids: string[]): { day: string; words: string; ids: string[] }[] {
   const seen = new Set<string>()
-  const list = ids.filter(id => DATA.photos[id] && !seen.has(id) && seen.add(id))
+  const list = ids.filter(id => META[id] && !seen.has(id) && seen.add(id))
   list.sort((a, b) => {
-    const x = DATA.photos[a], y = DATA.photos[b]
+    const x = META[a], y = META[b]
     return (x[0] + (x[1] || '99:99')).localeCompare(y[0] + (y[1] || '99:99')) || a.localeCompare(b)
   })
   const out: { day: string; words: string; ids: string[] }[] = []
   for (const id of list) {
-    const d = DATA.photos[id][0] || ''
+    const d = META[id][0] || ''
     let g = out.find(x => x.day === d)
     if (!g) { g = { day: d, words: DAY_WORDS[d] || 'At the event', ids: [] }; out.push(g) }
     g.ids.push(id)
@@ -137,14 +146,17 @@ function sameText(a: string, b: string): boolean {
 // The email. `forSpeaker` false: it goes to the company's booth contact, who is asked
 // to pass it on to the speaker.
 export function photosEmailHTML(a: { name: string; count: number; best: string[]; href: string; header: string; talk: boolean;
-    forSpeaker: boolean; company?: string; got?: Got; guest?: boolean; lineup?: string }): { subject: string; html: string } {
+    forSpeaker: boolean; company?: string; got?: Got; guest?: boolean; lineup?: string; attendee?: boolean }): { subject: string; html: string } {
   const words = MUMBAI_WORDS
-  const first = firstName(a.name)
+  // "Dear Dr. Rajkumar," / "Dear Shri Sachin Itkar," (the organiser, 23 Nov 2026).
+  const first = dearName(a.name)
   const n = a.count
   const photosWord = n === 1 ? '1 photo' : `${n} photos`
   const subject = a.forSpeaker ? `Your photos from ${words.name}` : `Photos of ${a.name} from ${words.name}`
   const greeting = a.forSpeaker ? `Dear ${first},` : `Dear ${a.company ? a.company + ' team' : 'team'},`
-  const thanks = a.guest
+  const thanks = a.attendee
+    ? `Thank you for coming to ${words.name} in Mumbai. We found ${photosWord} of you by matching the profile photo you added in the event app. Here are a few of them.`
+    : a.guest
     ? `Thank you for joining ${words.name} in Mumbai as our special guest. Our photographers took ${photosWord} of you. Here are a few of them.`
     : a.forSpeaker
     ? `Thank you for ${a.talk ? 'your Innovation Talk' : 'speaking'} at ${words.name} in Mumbai. Our photographers took ${photosWord} of you. Here are a few of them.`
@@ -167,7 +179,7 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
       <p style="margin:0 0 20px;text-align:center"><a href="${escH(a.href)}" style="display:inline-block;padding:13px 26px;background:#C84F00;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px">See and download all ${escH(photosWord)}</a></p>
       ${a.lineup || ''}
       <p style="font-size:14px;line-height:1.65;margin:0 0 12px">Each photo downloads at full size. You are welcome to use and share them. If you post them on LinkedIn, please tag Bharat AI Innovation.</p>
-      <p style="font-size:13px;line-height:1.6;margin:0 0 12px;color:#6b7280">A computer found these photos by matching faces, so one or two may show someone else. Just skip those.</p>
+      <p style="font-size:13px;line-height:1.6;margin:0 0 12px;color:#6b7280">A computer found these photos by matching faces, so one or two may show someone else.${a.attendee ? ' On your page, tap &quot;Not me&quot; on any photo that is not you, or &quot;Don&rsquo;t match my photos&quot; if you would rather we did not match your photos at all.' : ' Just skip those.'}</p>
       <p style="font-size:14px;line-height:1.65;margin:16px 0 0">See you at Bharat AI Innovation, New Delhi: 28 and 29 July 2027 at Bharat Mandapam. <a href="${SITE}/delhi" style="color:#C84F00;font-weight:bold">See the Delhi edition</a></p>
       <p style="margin:22px 0 24px;font-size:14px;color:#555">Team Bharat AI Innovation<br>
         <span style="color:#888">${escH(words.line).replace(' · ', ' &middot; ')}</span></p>
@@ -183,9 +195,13 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
 // lineup: their session(s) from the live programme (lineupHTML); names: per Drive id, the
 // people named in that photo, left to right ([name, "Designation, Organisation", LinkedIn, 1 = them]).
 export function albumPageHTML(a: { name: string; org: string; ids: string[]; focus?: Record<string, [number, number]>; got?: Got;
-    saves?: { limit: number; used: number } | null; lineup?: string; names?: Record<string, [string, string, string, number][]> }): string {
+    saves?: { limit: number; used: number } | null; lineup?: string; names?: Record<string, [string, string, string, number][]>;
+    me?: { key: string; k: string; order: string[] } }): string {
   const got = a.got || {}
   const names = a.names || {}
+  // An attendee's page (me): "Not me" on each photo and "Don't match my photos". A photo is
+  // named to the server by its place in their album (me.order), never by an id.
+  const me = a.me || null
   const groups = byDay(a.ids)
   const total = groups.reduce((n, g) => n + g.ids.length, 0)
   const flat = groups.flatMap(g => g.ids)
@@ -202,7 +218,8 @@ export function albumPageHTML(a: { name: string; org: string; ids: string[]; foc
     return `<button type="button" class="ph" data-i="${n}" aria-label="Open photo ${n + 1} of ${total}"><img src="${escH(got[id]?.s || wideUrl(id, 700))}" alt="" loading="${n < 8 ? 'eager' : 'lazy'}" width="250" height="250"${at(id)}></button>`
   }).join('')}</div></section>`).join('')
   // Per photo: the large view and the full-size save.
-  const data = JSON.stringify(flat.map(id => [got[id]?.m || bigUrl(id), got[id]?.o || downloadUrl(id), names[id] || []])).replace(/</g, '\\u003c')
+  const data = JSON.stringify(flat.map(id => [got[id]?.m || bigUrl(id), got[id]?.o || downloadUrl(id), names[id] || [], me ? me.order.indexOf(id) : -1])).replace(/</g, '\\u003c')
+  const meData = JSON.stringify(me ? { key: me.key, k: me.k } : null).replace(/</g, '\\u003c')
   const s = a.saves
   const savesLine = s ? (s.used >= s.limit
     ? `You have saved ${s.limit} photos at full size, the most each person can. You can still look at all of them here.`
@@ -247,14 +264,15 @@ dialog::backdrop{background:#0b0c12}
 .lu-w{color:var(--sub);font-size:14px;margin:0 0 8px}
 .lu ul{margin:0;padding:0 0 0 18px;font-size:14px;line-height:1.6}
 .lu a{color:var(--brand);font-weight:600}
+.optout{margin:10px 0;padding:8px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--sub);font-size:14px;cursor:pointer}
 </style></head><body>
 <header><div class="wrap"><a class="brand" href="${SITE}/">${escH(MUMBAI_WORDS.name)}</a>
 <h1>${escH(title)}</h1>
 <p class="lead">${total === 1 ? '1 photo' : total + ' photos'}${a.org ? ' · ' + escH(a.org) : ''} · ${escH(MUMBAI_WORDS.line).replace(' · ', ' &middot; ')}</p></div></header>
 <main class="wrap">${a.lineup || ''}${sections || '<p class="note">No photos here yet.</p>'}
 <p class="note">Tap a photo to see it large and download it at full size.${savesLine ? ' ' + escH(savesLine) : ''} You are welcome to use and share these photos; if you post them on LinkedIn, please tag Bharat AI Innovation.<br>
-A computer found these photos by matching faces, so one or two may show someone else.<br>
-Next: <a href="${SITE}/delhi">Bharat AI Innovation, New Delhi, 28 and 29 July 2027</a>.</p></main>
+A computer found these photos by matching faces, so one or two may show someone else.${me ? ' We matched the profile photo you added in the event app. Tap &quot;Not me&quot; on a photo that is not you.' : ''}<br>
+${me ? '<button type="button" class="optout" data-go="optout">Don&rsquo;t match my photos</button><br>' : ''}Next: <a href="${SITE}/delhi">Bharat AI Innovation, New Delhi, 28 and 29 July 2027</a>.</p></main>
 <dialog id="lb" aria-label="Photo"><div class="lb">
 <div class="lb-top"><span id="lb-n"></span><button type="button" class="btn" data-go="close">Close</button></div>
 <div class="lb-img"><img id="lb-img" alt=""></div>
@@ -262,6 +280,7 @@ Next: <a href="${SITE}/delhi">Bharat AI Innovation, New Delhi, 28 and 29 July 20
 <div class="lb-bot"><button type="button" class="btn" data-go="prev">Previous</button><a class="btn main" id="lb-dl" href="#" rel="noopener">Download full size</a><button type="button" class="btn" data-go="next">Next</button></div>
 </div></dialog>
 <script type="application/json" id="ids">${data}</script>
+<script type="application/json" id="me">${meData}</script>
 <script>
 (function(){
   var ids = JSON.parse(document.getElementById('ids').textContent || '[]');
@@ -280,8 +299,9 @@ Next: <a href="${SITE}/delhi">Bharat AI Innovation, New Delhi, 28 and 29 July 20
   function el(tag, cls, text){ var x = document.createElement(tag); if (cls) x.className = cls; if (text) x.textContent = text; return x; }
   function who(list){
     box.textContent = '';
-    if (list.length > 1) box.appendChild(el('div', '', 'From left: ' + list.map(function(x){ return x[0] + (x[3] ? ' (you)' : ''); }).join(', ')));
     var others = list.filter(function(x){ return !x[3]; });
+    if (list.length > 1 && others.length < list.length) box.appendChild(el('div', '', 'From left: ' + list.map(function(x){ return x[0] + (x[3] ? ' (you)' : ''); }).join(', ')));
+    else if (others.length) box.appendChild(el('div', '', 'Also in this photo: ' + others.map(function(x){ return x[0]; }).join(', ')));
     var cap = (others.length ? 'With ' + others.map(function(x){ return x[0] + (x[1] ? ' (' + x[1] + ')' : ''); }).join(', ') + ' at ' : 'At ')
       + 'Bharat AI Innovation 2026, Mumbai. #BharatAIInnovation';
     var acts = el('div', 'lb-acts');
@@ -296,9 +316,39 @@ Next: <a href="${SITE}/delhi">Bharat AI Innovation, New Delhi, 28 and 29 July 20
     var bad = el('a', 'btn sm', 'Wrong name? Tell us');
     bad.href = 'mailto:register@bharataiinnovation.com?subject=' + encodeURIComponent('Wrong name on a photo') + '&body='
       + encodeURIComponent('Page: ' + location.pathname + ' / Photo ' + (at + 1) + ' of ' + ids.length + (list.length ? ' / Names shown: ' + list.map(function(x){ return x[0]; }).join(', ') : '') + ' / What is wrong: ');
-    acts.appendChild(bad);
+    if (list.length) acts.appendChild(bad);
+    if (ME && ids[at][3] >= 0) {
+      var notme = el('button', 'btn sm', 'Not me'); notme.type = 'button';
+      notme.addEventListener('click', function(){
+        var n = ids[at][3], i = at;
+        notme.disabled = true;
+        post('/api/photos/not-me', { key: ME.key, k: ME.k, n: n }, function(ok){
+          if (!ok) { notme.disabled = false; notme.textContent = 'Did not work, try again'; return; }
+          var tile = document.querySelector('[data-i="' + i + '"]'); if (tile) tile.style.display = 'none';
+          notme.textContent = 'Removed from your photos';
+        });
+      });
+      acts.appendChild(notme);
+    }
     box.appendChild(acts);
   }
+  var ME = JSON.parse(document.getElementById('me').textContent || 'null');
+  function post(url, body, done){
+    try {
+      fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function(r){ done(r.ok); }, function(){ done(false); });
+    } catch (e) { done(false); }
+  }
+  document.addEventListener('click', function(e){
+    var t = e.target.closest ? e.target.closest('[data-go="optout"]') : null;
+    if (!t || !ME) return;
+    if (!window.confirm('Stop matching your face in the event photos? This page will be emptied and we will not match you again.')) return;
+    t.disabled = true;
+    post('/api/photos/opt-out', { key: ME.key, k: ME.k }, function(ok){
+      if (!ok) { t.disabled = false; t.textContent = 'Did not work, try again'; return; }
+      var m = document.querySelector('main'); if (m) { m.textContent = ''; m.appendChild(el('p', 'note', 'Done. We have removed your photos from this page and will not match your face again.')); }
+    });
+  });
   document.addEventListener('click', function(e){
     var t = e.target.closest ? e.target.closest('[data-i],[data-go]') : null;
     if (!t) return;
@@ -667,21 +717,152 @@ ph.get('/photos/:key', async (c) => {
 <p style="line-height:1.6">Please open the link from your email again, all of it. If it still does not work, reply to that email and we will send it again.</p>
 <p><a href="${SITE}/" style="color:#C84F00;font-weight:bold">Bharat AI Innovation</a></p></body></html>`, { status: 404, headers: head })
   }
-  let org = ''
+  let org = '', name = p!.name
   try {
     if (p!.speakers.length) org = String(((await c.env.DB.prepare('SELECT organisation FROM speakers WHERE id = ?').bind(p!.speakers[0]).first()) as any)?.organisation || '')
     else if (p!.talks.length) org = String(((await c.env.DB.prepare('SELECT company FROM innovation_talks WHERE id = ?').bind(p!.talks[0]).first()) as any)?.company || '')
     else if (p!.guest) org = p!.guest.title || ''
+    else if (p!.attendee) {
+      const a = (await c.env.DB.prepare('SELECT name, company FROM attendees WHERE id = ? AND event_id = 1').bind(Number(p!.key.slice(1))).first()) as any
+      name = String(a?.name || '').trim() || 'you'; org = String(a?.company || '').trim()
+    }
   } catch { /* the page shows without it */ }
+  // An attendee who said "Don't match my photos" sees no photos, and "Not me" photos are gone.
+  const mine = p!.attendee ? await attendeeChoices(c, p!.key) : { optedOut: false, notMe: new Set<string>() }
+  if (mine.optedOut) return new Response(albumPageHTML({ name, org, ids: [] }).replace('No photos here yet.', 'You asked us not to match your photos, so there are none here.'), { headers: head })
+  const ids = p!.photos.filter(id => !mine.notMe.has(id))
   // Links signed for the album's own key, so every way into this person's page shares
   // one count of full-size saves.
-  const got = await linksForDrive(c, p!.key, p!.photos)
+  const got = await linksForDrive(c, p!.key, ids)
   const saves = Object.keys(got).length ? { limit: await downloadLimit(c, p!.key), used: await downloadsUsed(c, p!.key) } : null
-  // Their session(s) and who else is in each photo, from the live programme.
+  // Their session(s) and who else is in each photo, from the live programme. Only speakers
+  // and named guests are ever named; an attendee never is.
   const live = await liveProgramme(c)
   const names: Record<string, [string, string, string, number][]> = {}
-  for (const id of p!.photos) names[id] = namesIn(id, p!.key, live)
-  return new Response(albumPageHTML({ name: p!.name, org, ids: p!.photos, focus: p!.focus, got, saves, lineup: lineupHTML(live.byKey.get(p!.key) || [], false), names }), { headers: head })
+  for (const id of ids) names[id] = namesIn(id, p!.key, live)
+  return new Response(albumPageHTML({ name, org, ids, focus: p!.focus, got, saves, lineup: lineupHTML(live.byKey.get(p!.key) || [], false), names,
+    me: p!.attendee ? { key: p!.key, k: String(c.req.query('k') || ''), order: p!.photos } : undefined }), { headers: head })
+})
+
+// ---------- attendees: their own choices ----------
+// Recorded in admin_audit (entity 'photo_album', the album key), as the attendee:
+// 'photos.not_me' (detail.photo = the Drive id) and 'photos.opt_out'. The next matching run
+// leaves an opted-out person out (read these first).
+export const NOT_ME = 'photos.not_me', OPT_OUT = 'photos.opt_out'
+async function attendeeChoices(c: any, key: string): Promise<{ optedOut: boolean; notMe: Set<string> }> {
+  const notMe = new Set<string>(); let optedOut = false
+  try {
+    for (const r of await all(c, "SELECT action, detail FROM admin_audit WHERE entity = 'photo_album' AND entity_id = ? AND action IN (?, ?)", key, NOT_ME, OPT_OUT)) {
+      if (r.action === OPT_OUT) optedOut = true
+      else { try { const d = JSON.parse(r.detail || '{}'); if (d.photo) notMe.add(String(d.photo)) } catch { /* not JSON */ } }
+    }
+  } catch { /* no audit table */ }
+  return { optedOut, notMe }
+}
+async function signedAttendee(c: any, b: any): Promise<Person | null> {
+  const key = String(b?.key || '')
+  if (!isAttendee(key)) return null
+  const p = personFor(key)
+  return p && sameText(await photoSig(c, key), String(b?.k || '')) ? p : null
+}
+ph.post('/api/photos/not-me', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const p = await signedAttendee(c, b)
+  if (!p) return c.json({ error: 'This link is not complete.' }, 403)
+  const id = p.photos[Number(b.n)]
+  if (!Number.isInteger(Number(b.n)) || !id) return c.json({ error: 'No such photo.' }, 404)
+  if (hooks.audit) await hooks.audit(c, NOT_ME, 'photo_album', p.key, { photo: id }, { actor: p.key, kind: 'attendee' })
+  // The photo store's own record too, when the photo is in R2 (migration 0064).
+  try { await c.env.DB.prepare("INSERT INTO photo_matches (photo_id, person, source, state, updated_at) SELECT id, ?, 'face', 'not_me', CURRENT_TIMESTAMP FROM event_photos WHERE drive_id = ? ON CONFLICT (photo_id, person) DO UPDATE SET state = 'not_me', updated_at = CURRENT_TIMESTAMP").bind(p.key, id).run() } catch { /* no 0064 here */ }
+  return c.json({ success: true })
+})
+ph.post('/api/photos/opt-out', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const p = await signedAttendee(c, b)
+  if (!p) return c.json({ error: 'This link is not complete.' }, 403)
+  if (hooks.audit) await hooks.audit(c, OPT_OUT, 'photo_album', p.key, { photos: p.photos.length }, { actor: p.key, kind: 'attendee' })
+  try { await c.env.DB.prepare("UPDATE photo_matches SET state = 'removed', updated_at = CURRENT_TIMESTAMP WHERE person = ?").bind(p.key).run() } catch { /* no 0064 here */ }
+  return c.json({ success: true })
+})
+
+// ---------- attendees: Admin -> After the Event -> Attendee photos ----------
+export const ATT_SENT = 'attendee.photos'
+type AttRow = { key: string; id: number; name: string; email: string; company: string; pass: string; group: number; group_name: string; came: boolean; check: boolean;
+  count: number; best: string[]; status: string; sent_at: string; sent_count: number }
+async function attendeeRows(c: any): Promise<AttRow[]> {
+  const keys = Object.keys(ATT.albums || {})
+  const ids = keys.map(k => Number(k.slice(1)))
+  const people = new Map<number, any>()
+  for (let i = 0; i < ids.length; i += 90) {
+    const ch = ids.slice(i, i + 90)
+    try { for (const a of await all(c, `SELECT id, name, email, company, badge_type, unsubscribed_at FROM attendees WHERE event_id = 1 AND id IN (${ch.map(() => '?').join(',')})`, ...ch)) people.set(Number(a.id), a) } catch { /* no attendees table */ }
+  }
+  const sent = new Map<string, { at: string; n: number }>(); const choices = new Map<string, { out: boolean; notMe: Set<string> }>()
+  try {
+    for (const r of await all(c, "SELECT action, entity_id, detail, created_at FROM admin_audit WHERE action IN (?, ?, ?) ORDER BY id", ATT_SENT, NOT_ME, OPT_OUT)) {
+      const k = String(r.entity_id)
+      if (r.action === ATT_SENT) { const w = sent.get(k); sent.set(k, { at: String(r.created_at || ''), n: (w ? w.n : 0) + 1 }); continue }
+      const ch = choices.get(k) || { out: false, notMe: new Set<string>() }
+      if (r.action === OPT_OUT) ch.out = true; else { try { const d = JSON.parse(r.detail || '{}'); if (d.photo) ch.notMe.add(String(d.photo)) } catch { /* not JSON */ } }
+      choices.set(k, ch)
+    }
+  } catch { /* no audit table */ }
+  const rows: AttRow[] = []
+  for (const k of keys) {
+    const al = ATT.albums[k], a = people.get(Number(k.slice(1)))
+    if (!a) continue // no longer registered
+    const ch = choices.get(k)
+    const count = al.photos.filter(id => !(ch && ch.notMe.has(id))).length
+    const email = String(a.email || '').trim().toLowerCase()
+    const s = sent.get(k)
+    const status = ch && ch.out ? 'opted-out' : !count ? 'no-photos' : a.unsubscribed_at ? 'unsubscribed' : !email || /@no-email\.invalid$/.test(email) ? 'no-email' : s ? 'sent' : al.check ? 'check' : 'ready'
+    rows.push({ key: k, id: Number(a.id), name: String(a.name || ''), email, company: String(a.company || ''), pass: String(a.badge_type || ''), group: al.group,
+      group_name: (ATT.groups || [])[al.group] || '', came: al.came, check: al.check, count, best: al.best.filter(id => !(ch && ch.notMe.has(id))).slice(0, 6),
+      status, sent_at: s ? s.at : '', sent_count: s ? s.n : 0 })
+  }
+  const order: Record<string, number> = { ready: 0, check: 1, sent: 2, 'no-email': 3, unsubscribed: 4, 'opted-out': 5, 'no-photos': 6 }
+  rows.sort((x, y) => x.group - y.group || order[x.status] - order[y.status] || x.name.localeCompare(y.name))
+  return rows
+}
+async function attendeeMail(c: any, r: AttRow) {
+  const href = await pageUrl(c, r.key)
+  const header = hooks.emailHeader ? hooks.emailHeader('Your photos', MUMBAI_WORDS.line) : ''
+  const got = r.best.length ? await linksForDrive(c, r.key, r.best) : {}
+  // No line-up and no one else's name: an attendee's email is only their own photos.
+  return photosEmailHTML({ name: r.name, count: r.count, best: r.best, href, header, talk: false, forSpeaker: true, got, attendee: true })
+}
+ph.get('/api/admin/attendee-photos', async (c) => {
+  const rows = await attendeeRows(c)
+  const got = await linksForDrive(c, 'admin', [...new Set(rows.flatMap(r => r.best.slice(0, 3)))])
+  const out = await Promise.all(rows.map(async r => ({ ...r, page: await pageUrl(c, r.key), thumbs: r.best.slice(0, 3).map(id => got[id]?.s || thumbUrl(id, 120)) })))
+  const groups = (ATT.groups || []).map((g, i) => {
+    const mine = rows.filter(r => r.group === i), n = (st: string) => mine.filter(r => r.status === st).length
+    return { group: i, name: g, found: mine.length, ready: n('ready'), check: n('check'), sent: n('sent'), no_email: n('no-email') + n('unsubscribed'), opted_out: n('opted-out'), not_scanned: mine.filter(r => !r.came).length }
+  })
+  return c.json({ generated: ATT.generated, groups, rows: out })
+})
+ph.get('/api/admin/attendee-photos/:key/preview', async (c) => {
+  const r = (await attendeeRows(c)).find(x => x.key === c.req.param('key'))
+  if (!r) return c.json({ error: 'That person is not on the list.' }, 404)
+  const mail = await attendeeMail(c, r)
+  return c.json({ to: r.email, subject: mail.subject, html: mail.html, page: await pageUrl(c, r.key), status: r.status })
+})
+ph.post('/api/admin/attendee-photos/:key/send', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const r = (await attendeeRows(c)).find(x => x.key === c.req.param('key'))
+  if (!r) return c.json({ error: 'That person is not on the list.' }, 404)
+  if (r.status === 'opted-out') return c.json({ error: r.name + ' asked us not to match their photos.' }, 409)
+  if (r.status === 'unsubscribed') return c.json({ error: r.name + ' unsubscribed from our emails.' }, 409)
+  if (!r.count) return c.json({ error: 'No photos of ' + r.name + ' are left.' }, 409)
+  if (r.status === 'no-email') return c.json({ error: 'There is no email address for ' + r.name + '.' }, 409)
+  if (r.sent_count && !b.again) return c.json({ error: r.name + ' was already sent their photos on ' + r.sent_at + '.', already: true }, 409)
+  if (!secretOf(c)) return c.json({ error: 'Photo links cannot be signed on this server.' }, 503)
+  if (!hooks.sendEmail) return c.json({ error: 'Email is not set up on this server.' }, 503)
+  const mail = await attendeeMail(c, r)
+  const sent = await hooks.sendEmail(c, r.email, mail.subject, mail.html)
+  if (!sent.ok) return c.json({ error: sent.error || 'The email did not go.' }, 502)
+  if (hooks.audit) { try { await hooks.audit(c, ATT_SENT, 'photo_album', r.key, { to: r.email, count: r.count, group: r.group_name, again: !!b.again }) } catch { /* never fails a send */ } }
+  return c.json({ success: true, to: r.email, count: r.count })
 })
 
 export default ph

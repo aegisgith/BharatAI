@@ -22,6 +22,7 @@
   var survey = null;
   var exhibitors = [];
   var photos = null;
+  var attendees = null;
   var busy = false;
 
   function esc(v) {
@@ -211,8 +212,38 @@
       + cards;
   }
 
+  // Attendee photos (23 Nov 2026): everyone registered with a profile photo in the app,
+  // matched by face more strictly than speakers, by the organiser's order of priority. One
+  // email each with only their own photos; on their page they can say "Not me" or "Don't
+  // match my photos". No attendee is ever named to anyone else.
+  var ATT_STATUS = { ready: 'Not sent yet', check: 'Look before sending: weaker match', sent: 'Sent', 'no-email': 'No email address', unsubscribed: 'Unsubscribed', 'opted-out': 'Asked not to be matched', 'no-photos': 'No photos left' };
+  function attendeesHtml() {
+    var head = '<div class="afd-card-head"><h2><i class="fas fa-users" aria-hidden="true"></i> Attendee photos</h2>'
+      + '<p>Everyone registered with a profile photo in the app was matched, scanned at the badge desk or not, more strictly than speakers. One email each, from register@, with only their own photos and their page, where they can say &ldquo;Not me&rdquo; or &ldquo;Don&rsquo;t match my photos&rdquo;. No attendee is ever named to anyone else. Groups are in your order of priority.</p></div>';
+    if (!attendees) return '<section class="afd-card">' + head + '<p class="afd-note">Loading...</p></section>';
+    if (attendees.error) return '<section class="afd-card">' + head + '<p class="afd-warn">' + esc(attendees.error) + '</p></section>';
+    var groups = (attendees.groups || []).map(function (g) {
+      return '<tr><td><b>' + esc(g.name) + '</b></td><td class="afd-n">' + num(g.found) + '</td><td class="afd-n">' + num(g.ready) + '</td><td class="afd-n">' + num(g.check) + '</td><td class="afd-n">' + num(g.sent) + '</td><td class="afd-n">' + num(g.no_email + g.opted_out) + '</td>'
+        + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small afd-primary" data-act="send-att-group" data-id="' + esc(g.group) + '"' + (g.ready ? '' : ' disabled') + '>Send to ' + num(g.ready) + ' ready</button></td></tr>';
+    }).join('');
+    var rows = (attendees.rows || []).map(function (r) {
+      var thumbs = (r.thumbs || []).map(function (u) { return '<img src="' + esc(u) + '" alt="" loading="lazy" width="40" height="40">'; }).join('');
+      var st = r.status === 'sent' ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' : r.status === 'ready' ? 'Not yet' : '<span class="afd-sub">' + esc(ATT_STATUS[r.status] || r.status) + '</span>';
+      var can = r.count > 0 && ['ready', 'check', 'sent'].indexOf(r.status) >= 0;
+      return '<tr><td><b>' + esc(r.name) + '</b><div class="afd-sub">' + esc([r.pass, r.company].filter(Boolean).join(' · ')) + (r.came ? '' : ' · not scanned at the desk') + '</div></td>'
+        + '<td>' + esc(r.group_name) + '</td><td><b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div><a class="afd-sub" href="' + esc(r.page) + '" target="_blank" rel="noopener">Open their page</a></td>'
+        + '<td>' + (r.email ? esc(r.email) : '<span class="afd-bad">No email</span>') + '</td><td>' + st + '</td>'
+        + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small" data-act="preview-att" data-id="' + esc(r.key) + '">Preview</button>'
+        + '<button type="button" class="afd-btn afd-small" data-act="send-att" data-id="' + esc(r.key) + '"' + (can ? '' : ' disabled') + '>' + (r.sent_count ? 'Send again' : 'Send') + '</button></td></tr>';
+    }).join('');
+    return '<section class="afd-card">' + head
+      + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Group</th><th class="afd-n">Found</th><th class="afd-n">Ready</th><th class="afd-n">Look first</th><th class="afd-n">Sent</th><th class="afd-n">No email or opted out</th><th><span class="afd-sr">Send</span></th></tr></thead><tbody>' + groups + '</tbody></table></div>'
+      + '<p class="afd-note">"Send to N ready" leaves out the weaker matches: open their preview and page first, then send them one by one. <span id="afd-att-progress" aria-live="polite"></span></p>'
+      + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Person</th><th>Group</th><th>Photos</th><th>Email</th><th>Photos email</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+  }
+
   function draw() {
-    host.innerHTML = '<div class="afd">' + photosHtml() + surveyHtml() + exhibitorsHtml() + '</div>';
+    host.innerHTML = '<div class="afd">' + photosHtml() + attendeesHtml() + surveyHtml() + exhibitorsHtml() + '</div>';
   }
 
   function preview(title, to, subject, html) {
@@ -284,6 +315,36 @@
         await sendOne(r.id, again);
         toast('Results sent to ' + r.company + '.');
         await refresh();
+      } else if (act === 'preview-att') {
+        var av = await opts.api.get('/api/admin/attendee-photos/' + encodeURIComponent(id) + '/preview');
+        preview('Attendee photos email', av.to, av.subject, av.html);
+      } else if (act === 'send-att') {
+        var ar = ((attendees && attendees.rows) || []).find(function (x) { return String(x.key) === String(id); });
+        if (!ar) return;
+        var aw = ar.sent_count ? 'Send ' + ar.name + ' their photos again, to ' + ar.email + '?'
+          : ar.status === 'check' ? 'The match for ' + ar.name + ' is weaker, so some photos may show someone else. Have you opened their page and checked? Send their ' + ar.count + ' photos to ' + ar.email + '?'
+          : 'Send ' + ar.name + ' their ' + ar.count + ' photos, to ' + ar.email + '?';
+        if (!w.confirm(aw)) return;
+        busy = true; b.disabled = true;
+        await opts.api.post('/api/admin/attendee-photos/' + encodeURIComponent(ar.key) + '/send', { again: !!ar.sent_count });
+        toast('Photos sent to ' + ar.name + '.');
+        await refresh();
+      } else if (act === 'send-att-group') {
+        var gi = Number(id);
+        var gl = ((attendees && attendees.rows) || []).filter(function (x) { return x.group === gi && x.status === 'ready'; });
+        var gname = (((attendees && attendees.groups) || [])[gi] || {}).name || 'this group';
+        if (!gl.length) return;
+        if (!w.confirm('Send ' + gl.length + ' people in ' + gname + ' their photos, one email each? Weaker matches, people already sent, without an email, unsubscribed or who asked not to be matched are left out.')) return;
+        busy = true; b.disabled = true;
+        var gok = 0, gfail = [];
+        for (var gk = 0; gk < gl.length; gk++) {
+          var gp = document.getElementById('afd-att-progress');
+          if (gp) gp.textContent = 'Sending ' + (gk + 1) + ' of ' + gl.length + '...';
+          try { await opts.api.post('/api/admin/attendee-photos/' + encodeURIComponent(gl[gk].key) + '/send', {}); gok++; }
+          catch (err) { if (!(err && err.data && err.data.already)) gfail.push(gl[gk].name + ': ' + (err.message || 'failed')); }
+        }
+        toast(gok + ' sent' + (gfail.length ? ', ' + gfail.length + ' did not send: ' + gfail.slice(0, 3).join('; ') : '.'), gfail.length ? 'error' : 'success');
+        await refresh();
       } else if (act === 'panel-ok') {
         busy = true; b.disabled = true;
         await opts.api.post('/api/admin/speaker-photos/panels/' + encodeURIComponent(id) + '/ok', { fp: b.getAttribute('data-fp') });
@@ -349,11 +410,13 @@
     var out = await Promise.all([
       opts.api.get('/api/admin/feedback/summary').catch(function (e) { return { error: e.message }; }),
       opts.api.get('/api/admin/exhibitor-results').catch(function (e) { return { error: e.message, results: [] }; }),
-      opts.api.get('/api/admin/speaker-photos').catch(function (e) { return { error: e.message, rows: [] }; })
+      opts.api.get('/api/admin/speaker-photos').catch(function (e) { return { error: e.message, rows: [] }; }),
+      opts.api.get('/api/admin/attendee-photos').catch(function (e) { return { error: e.message, rows: [], groups: [] }; })
     ]);
     survey = out[0] || {};
     exhibitors = (out[1] && out[1].results) || [];
     photos = out[2] || { rows: [] };
+    attendees = out[3] || { rows: [], groups: [] };
     draw();
     if (out[0] && out[0].error) toast('The survey numbers did not load: ' + out[0].error, 'error');
     if (out[1] && out[1].error) toast('The exhibitor numbers did not load: ' + out[1].error, 'error');

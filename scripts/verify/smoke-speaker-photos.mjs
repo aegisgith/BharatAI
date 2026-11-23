@@ -165,6 +165,44 @@ if (pair) {
   db.run('DELETE FROM session_speakers WHERE session_id = 9001'); db.run('DELETE FROM sessions WHERE id = 9001');
 }
 
+// ---- attendees (src/data/attendee-photos.json): only their own photos, never named ----
+const ATT = JSON.parse(read('src/data/attendee-photos.json'));
+const akeys = Object.keys(ATT.albums).filter(k => !ATT.albums[k].check && ATT.albums[k].photos.length >= 2);
+check('attendee albums are by attendee id only, with a group and no names', akeys.length >= 2 && !/"name"|"email"/.test(read('src/data/attendee-photos.json')), akeys.length);
+const [K1, K2] = akeys;
+db.run("INSERT INTO attendees (id, event_id, name, email, company, badge_type) VALUES (?, 1, 'Asha Attendee', 'asha@example.com', 'Asha Co', 'Delegate Pass')", [Number(K1.slice(1))]);
+db.run("INSERT INTO attendees (id, event_id, name, email, company, badge_type, unsubscribed_at) VALUES (?, 1, 'Unsub Person', 'unsub@example.com', '', 'Visitor Pass', '2026-11-22 10:00:00')", [Number(K2.slice(1))]);
+let al = await as('GET', '/api/admin/attendee-photos');
+const arow = (k) => (al.json?.rows || []).find(r => r.key === k);
+check('the Attendee photos list: each found person with their group, from D1', al.status === 200 && arow(K1)?.name === 'Asha Attendee' && arow(K1)?.status === 'ready' && arow(K1)?.group_name === ATT.groups[ATT.albums[K1].group]
+  && (al.json.groups || []).length === ATT.groups.length, JSON.stringify(arow(K1)).slice(0, 200));
+check('someone who unsubscribed is not sent', arow(K2)?.status === 'unsubscribed', arow(K2)?.status);
+check('without admin the attendee list is refused', (await hit('GET', '/api/admin/attendee-photos')).status === 401, '');
+const ap = await (await page(K1, sig(K1))).text();
+check("an attendee's page says how they were matched and offers Not me and Don't match my photos", ap.includes('Photos of Asha Attendee') && ap.includes('We matched the profile photo you added in the event app')
+  && ap.includes('data-go="optout"') && ap.includes(`"key":"${K1}"`), (ap.match(/<p class="note">[\s\S]*?<\/p>/) || [''])[0].slice(0, 200));
+const apv = await as('GET', `/api/admin/attendee-photos/${K1}/preview`);
+check("their email: their own photos, how we matched, no session line-up and no one else's details", apv.status === 200 && /matching the profile photo you added in the event app/.test(apv.json?.html || '')
+  && !/Your session/.test(apv.json?.html || '') && /Not me/.test(apv.json?.html || ''), apv.status);
+let as1 = await as('POST', `/api/admin/attendee-photos/${K1}/send`, {});
+check('send: one email to them, recorded', as1.status === 200 && rows("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'attendee.photos' AND entity_id = ?", [K1])[0].n === 1, as1.status);
+as1 = await as('POST', `/api/admin/attendee-photos/${K1}/send`, {});
+check('...not twice unless sent again on purpose', as1.status === 409 && as1.json?.already === true, as1.status);
+check('an unsubscribed person is refused', (await as('POST', `/api/admin/attendee-photos/${K2}/send`, {})).status === 409, '');
+const first = ATT.albums[K1].photos[0];
+check('"Not me" needs their own signed link', (await hit('POST', '/api/photos/not-me', { key: K1, k: 'x'.repeat(32), n: 0 })).status === 403, '');
+check('...and works with it', (await hit('POST', '/api/photos/not-me', { key: K1, k: sig(K1), n: 0 })).status === 200, '');
+const ap2 = await (await page(K1, sig(K1))).text();
+check('the photo they said is not them is gone from their page, the others stay', !ap2.includes(first) && ap2.includes(ATT.albums[K1].photos[1]), first);
+al = await as('GET', '/api/admin/attendee-photos');
+check('...and from their count', arow(K1)?.count === ATT.albums[K1].photos.length - 1, arow(K1)?.count);
+check("\"Don't match my photos\" needs their signed link", (await hit('POST', '/api/photos/opt-out', { key: K1, k: 'bad' })).status === 403, '');
+check('...and works with it', (await hit('POST', '/api/photos/opt-out', { key: K1, k: sig(K1) })).status === 200, '');
+const ap3 = await (await page(K1, sig(K1))).text();
+al = await as('GET', '/api/admin/attendee-photos');
+check('after opting out: no photos on their page, Admin says so, no more emails', ap3.includes('You asked us not to match your photos') && arow(K1)?.status === 'opted-out'
+  && (await as('POST', `/api/admin/attendee-photos/${K1}/send`, { again: true })).status === 409, arow(K1)?.status);
+
 // ---- our own copies in R2 (routes/photo-store.ts) ----
 // Until a photo is in event_photos everything above came from Drive. Now two of A's
 // photos are in R2 (one of them in A's email six), the rest still only in Drive.
