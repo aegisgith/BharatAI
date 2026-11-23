@@ -83,3 +83,7 @@
 .afd-modal iframe { flex: 1; width: 100%; border: 0; background: #f5f5f5; }
 .afd-thumbs { display: flex; gap: 4px; margin: 4px 0 2px; }
 .afd-thumbs img { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; background: var(--af-line); }
+.afd-panel { border: 1px solid var(--af-line); border-radius: 10px; padding: 12px 14px; margin: 10px 0; }
+.afd-why { margin: 8px 0; padding-left: 18px; color: var(--af-bad); }
+.afd-people { margin: 4px 0 8px; padding-left: 18px; }
+.afd-people li { margin: 2px 0; }

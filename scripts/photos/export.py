@@ -68,8 +68,16 @@ for k, v in sorted(M.items(), key=lambda x: x[1]['name']):
                    # No in-person photo scores 0.60 against their site photo: the matches may be
                    # lookalikes, so Admin asks for a look at the preview before sending.
                    'check': max([p[-1] for p in ids if p[-1] < SCREEN], default=0) < 0.60})
+# Who is in each photo, for naming the others on a person's page: [album key, face x %,
+# score vs their site photo %, match score %]. Every match, filtered on the site at view
+# time (live programme, check-ins), never cached names.
+who = {}
+for pr in people:
+    for p in M[[k for k, v in M.items() if v['name'] == pr['name']][0]]['photos']:
+        if p[0] in photos and len(p) >= 6:
+            who.setdefault(p[0], []).append([pr['key'], round(p[3] * 100), round(p[-1] * 100), round(p[1] * 100)])
 out = {'generated': datetime.date.today().strftime('%d %b %Y').lstrip('0'),
        'folder': 'https://drive.google.com/drive/folders/19Ii5MnQLA2adUxH4LDPikF2GUcvRuOeJ',
-       'photos': {k: v[0] for k, v in photos.items()}, 'people': people}
+       'photos': {k: v[0] for k, v in photos.items()}, 'people': people, 'who': who}
 json.dump(out, open(OUT, 'w', encoding='utf-8', newline='\n'), ensure_ascii=False, separators=(',', ':'))
 print('people', len(people), 'photos', len(photos), 'bytes', os.path.getsize(OUT))

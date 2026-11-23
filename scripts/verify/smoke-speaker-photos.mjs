@@ -95,7 +95,7 @@ if (G) {
   l = await as('GET', '/api/admin/speaker-photos');
   const gr = row(G.key);
   check('a named guest is on the list with their role and title, from the guest list (not D1)', !!gr && gr.kinds.includes(G.guest.role || 'Guest') && gr.org === G.guest.title && gr.count === G.photos.length, gr);
-  check('a former minister as guest is held for their office', gr?.status === (/minister/i.test(G.guest.title) ? 'protocol' : G.guest.email ? 'ready' : 'no-email'), gr?.status);
+  check('a guest gets the same statuses: a minister held for their office, a weaker match looked at first', gr?.status === (/minister/i.test(G.guest.title) ? 'protocol' : !G.guest.email ? 'no-email' : G.check ? 'check' : 'ready'), gr?.status);
   const gp = await page(G.key, sig(G.key));
   const gh = await gp.text();
   check("the guest's page opens with their title", gp.status === 200 && gh.includes('Photos of ' + G.name) && gh.includes(G.guest.title.replace(/&/g, '&amp;')), gp.status);
@@ -112,6 +112,58 @@ s = await as('POST', `/api/admin/speaker-photos/${B.key}/send`, {});
 check('...and not sent unless "anyway"', s.status === 409 && sent.length === before, s.status);
 s = await as('POST', `/api/admin/speaker-photos/${B.key}/send`, { anyway: true });
 check('...sent when the organiser says so', s.status === 200 && sent.length === before + 1, s.status);
+
+// ---- the session line-up and the names in a photo, from the live programme ----
+db.exec(read('migrations/0054_conference_manager.sql'));
+const P = (k) => DATA.people.find(x => x.key === k);
+const fine = (k) => { const p = P(k); return p && p.speakers.length && !p.check && !p.guest && ![A.key, B.key, weak && weak.key].includes(k); };
+let pair = null;
+for (const [id, list] of Object.entries(DATA.who || {})) {
+  const m = DATA.photos[id]; if (!m || !m[1]) continue;
+  const ks = list.filter(w => w[2] < 80 && fine(w[0]));
+  if (ks.length >= 2 && ks[0][0] !== ks[1][0]) { pair = { id, day: m[0], time: m[1], x: P(ks[0][0]), y: P(ks[1][0]) }; break; }
+}
+check('the data has a photo with two speakers in it, at a known time', !!pair, '');
+if (pair) {
+  const { x: X, y: Y } = pair;
+  db.run('INSERT INTO speakers (id, event_id, slug, name, role, organisation, email, is_published, linkedin_url) VALUES (?, 1, ?, ?, ?, ?, ?, 1, ?)', [X.speakers[0], 'x' + X.speakers[0], X.name, 'Founder', 'Org X', 'x.speaker@example.com', '']);
+  db.run('INSERT INTO speakers (id, event_id, slug, name, role, organisation, email, is_published, linkedin_url) VALUES (?, 1, ?, ?, ?, ?, ?, 1, ?)', [Y.speakers[0], 'y' + Y.speakers[0], Y.name, 'Chief Executive', 'Org Y', 'y.speaker@example.com', 'https://www.linkedin.com/in/y-test']);
+  db.run("INSERT INTO speakers (id, event_id, slug, name, role, organisation, email, is_published) VALUES (99001, 1, 'gone', 'Dropped Out Person', 'Director', 'Org Z', '', 1)");
+  const t0 = Number(pair.time.slice(0, 2)) * 60 + Number(pair.time.slice(3, 5));
+  const at = (t) => `${pair.day} ${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+  db.run("INSERT INTO sessions (id, event_id, title, session_type, room, start_time, end_time) VALUES (9001, 1, 'Test panel on AI', 'panel', 'Homi J. Bhabha Hall', ?, ?)", [at(t0 - 20), at(t0 + 20)]);
+  db.run("INSERT INTO session_speakers (session_id, speaker_id, role, sort_order) VALUES (9001, ?, 'moderator', 1), (9001, ?, 'panellist', 2), (9001, 99001, 'panellist', 3)", [X.speakers[0], Y.speakers[0]]);
+  const xp = await (await page(X.key, sig(X.key))).text();
+  check("their page shows the session's line-up as the programme has it now", xp.includes('Test panel on AI') && xp.includes(Y.name) && xp.includes('Chief Executive, Org Y') && xp.includes('<em>Moderator</em>')
+    && xp.includes('https://www.linkedin.com/in/y-test') && xp.includes('Dropped Out Person'), (xp.match(/<section class="lu">[\s\S]*?<\/section>/) || [''])[0].slice(0, 300));
+  const xids = JSON.parse((xp.match(/<script type="application\/json" id="ids">([\s\S]*?)<\/script>/) || [])[1] || '[]');
+  const named = xids.map(x => x[2] || []).find(n => n.some(e => e[0] === Y.name));
+  check('in the photo they share, the other speaker is named, left to right, with designation and LinkedIn', !!named && named.some(e => e[0] === X.name && e[3] === 1)
+    && named.some(e => e[0] === Y.name && e[1] === 'Chief Executive, Org Y' && e[2] === 'https://www.linkedin.com/in/y-test' && e[3] === 0), named);
+  l = await as('GET', '/api/admin/speaker-photos');
+  const panel = (l.json?.panels || []).find(k => k.id === 's9001');
+  check('a listed panellist in none of its photos flags the session for a look', !!panel && panel.flagged && panel.reasons.some(r => r.includes('Dropped Out Person')) && row(X.key)?.status === 'panel', { panel: panel && panel.reasons, status: row(X.key)?.status });
+  const pv3 = await as('GET', `/api/admin/speaker-photos/${X.key}/preview`);
+  check('the email carries the line-up too (and no email or phone of anyone)', pv3.json?.html.includes('Test panel on AI') && pv3.json?.html.includes('Chief Executive, Org Y') && !pv3.json?.html.includes('y.speaker@example.com'), pv3.status);
+  let sx = await as('POST', `/api/admin/speaker-photos/${X.key}/send`, {});
+  check("their email waits until the line-up is confirmed", sx.status === 409 && sx.json?.panel === true, sx.status);
+  sx = await as('POST', '/api/admin/speaker-photos/panels/s9001/ok', { fp: 'stale' });
+  check('confirming a line-up that changed since is refused', sx.status === 409 && sx.json?.changed === true, sx.status);
+  sx = await as('POST', '/api/admin/speaker-photos/panels/s9001/ok', { fp: panel.fp });
+  l = await as('GET', '/api/admin/speaker-photos');
+  check('once confirmed, they are ready to send', sx.status === 200 && row(X.key)?.status === 'ready', row(X.key)?.status);
+  db.run("INSERT INTO session_speakers (session_id, speaker_id, role, sort_order) VALUES (9001, ?, 'panellist', 4)", [A.speakers[0]]);
+  l = await as('GET', '/api/admin/speaker-photos');
+  check('a change to the line-up after it was confirmed asks again', row(X.key)?.status === 'panel', row(X.key)?.status);
+  db.run('DELETE FROM session_speakers WHERE session_id = 9001 AND speaker_id = ?', [A.speakers[0]]);
+  // An official is named only when the programme puts them on a session running then.
+  db.run("UPDATE speakers SET role = 'Minister of State, Electronics and IT' WHERE id = ?", [Y.speakers[0]]);
+  db.run('DELETE FROM session_speakers WHERE session_id = 9001 AND speaker_id = ?', [Y.speakers[0]]);
+  const xp2 = await (await page(X.key, sig(X.key))).text();
+  const ids3 = JSON.parse((xp2.match(/<script type="application\/json" id="ids">([\s\S]*?)<\/script>/) || [])[1] || '[]');
+  check('an official not on a session at that time is not named', !ids3.some(x => (x[2] || []).some(e => e[0] === Y.name)), '');
+  db.run('DELETE FROM session_speakers WHERE session_id = 9001'); db.run('DELETE FROM sessions WHERE id = 9001');
+}
 
 // ---- our own copies in R2 (routes/photo-store.ts) ----
 // Until a photo is in event_photos everything above came from Drive. Now two of A's

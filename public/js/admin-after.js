@@ -144,7 +144,7 @@
   // the event photos they are in (matched by face, src/routes/photos.ts) and a link to
   // their own page. Sent once unless sent again on purpose; officials only on purpose.
   var PH_STATUS = {
-    ready: 'Not sent yet', check: 'Look before sending: weaker match', sent: 'Sent', 'no-email': 'No email address', protocol: 'Official: through their office', 'no-photos': 'No photos found'
+    ready: 'Not sent yet', check: 'Look before sending: weaker match', panel: 'Waiting: check the session line-up above', sent: 'Sent', 'no-email': 'No email address', protocol: 'Official: through their office', 'no-photos': 'No photos found'
   };
   function photosHtml() {
     var head = '<div class="afd-card-head"><h2><i class="fas fa-images" aria-hidden="true"></i> Speaker photos</h2>'
@@ -176,9 +176,39 @@
         + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small" data-act="preview-ph" data-id="' + esc(r.key) + '"' + (r.count ? '' : ' disabled') + '>Preview</button>'
         + '<button type="button" class="afd-btn afd-small" data-act="send-ph" data-id="' + esc(r.key) + '"' + (canSend ? '' : ' disabled') + '>' + word + '</button></td></tr>';
     }).join('');
-    return '<section class="afd-card">' + head + stats + actions
+    return '<section class="afd-card">' + head + stats + panelsHtml() + actions
       + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Person</th><th>Photos</th><th>Email</th><th>Photos email</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>'
       + body + '</tbody></table></div></section>';
+  }
+
+  // Each session's line-up as the live programme has it, checked against the photos and the
+  // badge desk: someone who may have dropped out, someone who may have replaced them. A
+  // flagged session's speakers wait until the line-up is confirmed (or fixed in Admin ->
+  // Conference, after which it is checked again).
+  function panelsHtml() {
+    var all = (photos && photos.panels) || [];
+    var todo = all.filter(function (k) { return k.flagged && !k.confirmed; });
+    var okN = all.filter(function (k) { return k.confirmed; }).length;
+    var fine = all.length - todo.length - okN;
+    var mark = function (p) {
+      var seen = p.seen ? 'in ' + p.seen + ' of its photos' : (p.album ? 'in none of its photos' : 'no photo of them to look for');
+      var came = p.present === true ? 'checked in that day' : p.present === false ? 'no check-in that day' : 'check-in not known';
+      return '<li><b>' + esc(p.name) + '</b>' + (p.role ? ' &middot; ' + esc(p.role) : '') + (p.line ? '<div class="afd-sub">' + esc(p.line) + '</div>' : '')
+        + '<div class="afd-sub">' + esc(seen) + ', ' + esc(came) + '</div></li>';
+    };
+    var cards = todo.map(function (k) {
+      return '<div class="afd-panel"><div><b>' + esc(k.title) + '</b><div class="afd-sub">' + esc(k.when) + ' &middot; ' + esc(k.photos) + ' photos from it</div></div>'
+        + '<ul class="afd-why">' + k.reasons.map(function (r) { return '<li>' + esc(r) + '</li>'; }).join('') + '</ul>'
+        + '<div class="afd-sub">On the programme now:</div><ul class="afd-people">' + k.people.map(mark).join('')
+        + (k.typed || []).map(function (n) { return '<li><b>' + esc(n) + '</b><div class="afd-sub">typed into the programme, not on the speaker list</div></li>'; }).join('') + '</ul>'
+        + (k.waiting && k.waiting.length ? '<div class="afd-sub">Waiting for this: ' + esc(k.waiting.join(', ')) + '</div>' : '')
+        + '<div class="afd-actions"><button type="button" class="afd-btn afd-small" data-act="panel-ok" data-id="' + esc(k.id) + '" data-fp="' + esc(k.fp) + '">The line-up is right</button>'
+        + '<span class="afd-sub">If someone dropped out or was replaced, fix the session in Admin &rarr; Conference; this list follows.</span></div></div>';
+    }).join('');
+    return '<h3>Session line-ups to check before sending (' + num(todo.length) + ')</h3>'
+      + '<p class="afd-note">Each email shows the speaker&rsquo;s session and who was on it, from the live programme. ' + num(fine) + ' sessions look right from the photos and the badge desk; '
+      + num(okN) + ' you have confirmed.' + (todo.length ? ' These ' + num(todo.length) + ' need a look: their speakers wait until you confirm.' : '') + '</p>'
+      + cards;
   }
 
   function draw() {
@@ -253,6 +283,11 @@
         busy = true; b.disabled = true;
         await sendOne(r.id, again);
         toast('Results sent to ' + r.company + '.');
+        await refresh();
+      } else if (act === 'panel-ok') {
+        busy = true; b.disabled = true;
+        await opts.api.post('/api/admin/speaker-photos/panels/' + encodeURIComponent(id) + '/ok', { fp: b.getAttribute('data-fp') });
+        toast('Line-up confirmed.');
         await refresh();
       } else if (act === 'preview-ph') {
         var pv = await opts.api.get('/api/admin/speaker-photos/' + encodeURIComponent(id) + '/preview');
