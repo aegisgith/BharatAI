@@ -81,6 +81,17 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
   check against a portrait by eye, and save that crop. For a guest the 0.80 "stage screen"
   rule is off, because their reference is itself an event photo.
 
+## Attendees (and re-running after people add a photo)
+
+1. Read the list (ids, pass, photo link, check-in days; no names or emails) into `WORK/att/list.json`:
+   `npx wrangler d1 execute bharatai-production --remote --json --command "SELECT a.id, a.badge_type AS pass, a.avatar_url AS photo, (SELECT group_concat(k.day) FROM checkins k WHERE k.attendee_id = a.id) AS days FROM attendees a WHERE a.event_id = 1 AND trim(COALESCE(a.avatar_url,'')) <> '' ORDER BY a.id" > WORK/att/list.json`
+   then download each photo to `WORK/att/avatars/<id>.img` (dl step in the session notes).
+2. `venv-ort/python att_match.py models WORK/faces WORK/refs WORK/img WORK/att WORK/att/albums.json 0.58 0.10 0.65`. Attendee face data stays in memory.
+3. `venv/python att_qa.py ...` and look at the sheets, then `venv/python att_export.py WORK/att/albums.json WORK/index.json WORK/img REPO/src/data/attendee-photos.json`, build, `smoke-speaker-photos.mjs`, push.
+4. People newly found show as ready in Admin, After the Event, Attendee photos. Anyone who said "Don’t match my photos" (admin_audit photos.opt_out) is never emailed; leave them out of the next run too.
+
+The "Are you in the photos?" email (src/routes/find-photos.ts) asks everyone not found to add a clear photo; re-run steps 1-3 a day after it goes.
+
 ## Rules
 
 - The Drive folder must stay **"Anyone with the link: Viewer"**. The pages and emails
