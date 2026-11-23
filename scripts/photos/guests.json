@@ -10,8 +10,8 @@
   {
     "id": 2,
     "name": "Rohith Nair",
-    "title": "",
-    "role": "Sponsor, IDFC FIRST Bank",
+    "title": "IDFC FIRST Bank",
+    "role": "VIP guest",
     "email": "rohith.nair@idfcfirst.bank.in",
     "note": "IDFC FIRST Bank sponsor team, confirmed by his printed badge in the Banking Partner team photo (885A5545.JPG, Drive 1MJXqPG_FIW_S8kuFI0WubQLH92V9PM0c, 3rd from left). Handed over by the IDFC session on 23 Nov 2026; email from the organiser’s IDFC exhibitor contact list. Title to come from the organiser."
   },
@@ -22,5 +22,13 @@
     "role": "VIP guest",
     "email": "nilambaribh@gmail.com",
     "note": "Labour Department, Government of Maharashtra. Named by the organiser on 23 Nov 2026 (handed over by session c2); email on her VIP Pass. Reference: the organiser’s portrait."
+  },
+  {
+    "id": 4,
+    "name": "Rohit Agrawal",
+    "title": "IDFC FIRST Bank",
+    "role": "VIP guest",
+    "email": "rohit.agrawal@idfcfirst.bank.in",
+    "note": "IDFC FIRST Bank, 1st from left in the Banking Partner team photo (885A5545.JPG, Drive 1MJXqPG_FIW_S8kuFI0WubQLH92V9PM0c), badge reads ...HIT AGRA.... Handed over by the IDFC session on 23 Nov 2026; email from the organiser’s IDFC attendee list. The organiser: all IDFC people are VIP guests."
   }
 ]
