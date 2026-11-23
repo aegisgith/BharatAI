@@ -256,10 +256,10 @@ const notReady = (c: any) => c.json({ ready: false, error: 'The WhatsApp tables 
 // ---------- talking to Meta ----------
 
 type GraphOut = { ok: boolean; status: number; json: any; code: number; message: string }
-async function graph(cfg: Cfg, method: string, path: string, body?: any, extra: { raw?: any; headers?: Record<string, string>; scheme?: string } = {}): Promise<GraphOut> {
+async function graph(cfg: Cfg, method: string, path: string, body?: any, extra: { raw?: any; headers?: Record<string, string>; scheme?: string; timeoutMs?: number } = {}): Promise<GraphOut> {
   const url = /^https:/.test(path) ? path : `${GRAPH}/${cfg.version}/${path.replace(/^\//, '')}`
   const ctl = new AbortController()
-  const timer = setTimeout(() => ctl.abort(), 12000)
+  const timer = setTimeout(() => ctl.abort(), extra.timeoutMs || 12000)
   try {
     const headers: Record<string, string> = { Authorization: `${extra.scheme || 'Bearer'} ${cfg.token}`, ...(extra.headers || {}) }
     if (body !== undefined && extra.raw === undefined) headers['Content-Type'] = 'application/json'
@@ -783,6 +783,7 @@ wa.get('/api/admin/whatsapp', async (c) => { c.header('Cache-Control', 'no-store
 wa.post('/api/admin/whatsapp/config', async (c) => {
   const b = await c.req.json().catch(() => ({})) as any
   const saved: string[] = []
+  const was = await loadCfg(c)
   const rules: [string, string, RegExp, string][] = [
     ['token', 'whatsapp_token', /^[A-Za-z0-9_\-|.]{40,600}$/, 'The access key should be one long line of letters and numbers, with no spaces.'],
     ['phone_id', 'whatsapp_phone_id', /^\d{8,24}$/, 'The Phone number ID is digits only (it is not the phone number).'],
@@ -797,6 +798,15 @@ wa.post('/api/admin/whatsapp/config', async (c) => {
     saved.push(field)
   }
   if (!saved.length) return c.json({ error: 'Paste at least one value.' }, 400)
+  // A different WhatsApp account (moving from Meta's test number to our own) has approved
+  // nothing yet: Meta approves each message per account. A different number has not been
+  // checked or registered. Neither may go on showing what the old one said.
+  const now = await loadCfg(c)
+  if (was.wabaId && now.wabaId !== was.wabaId && (await ready(c))) {
+    await run(c, "UPDATE wa_templates SET status = 'draft', meta_id = NULL, meta_category = NULL, rejected_reason = NULL, submitted_at = NULL, updated_at = datetime('now')")
+    saved.push('templates_reset')
+  }
+  if (was.phoneId && now.phoneId !== was.phoneId) await saveSetting(c, 'whatsapp_checked', '')
   await note(c, 'whatsapp.config', null, { saved })
   return c.json({ success: true, saved, ...(await overview(c)) })
 })
@@ -851,8 +861,17 @@ wa.post('/api/admin/whatsapp/register', async (c) => {
     await remember('CONNECTED')
     return c.json({ success: true, already: true, number_status: 'CONNECTED', ...(await overview(c)) })
   }
-  const r = await graph(cfg, 'POST', `${cfg.phoneId}/register`, { messaging_product: 'whatsapp', pin })
+  // Meta took longer than 12 seconds on 23 Nov and still registered the number.
+  const r = await graph(cfg, 'POST', `${cfg.phoneId}/register`, { messaging_product: 'whatsapp', pin }, { timeoutMs: 30000 })
   await note(c, 'whatsapp.register', null, { ok: r.ok, code: r.code || null })
+  if (!r.ok && r.code === -1) {
+    // No answer is not a no: ask Meta what the number's status is now.
+    const now = await graph(cfg, 'GET', `${cfg.phoneId}?fields=status`)
+    if (now.ok && String(now.json?.status || '').toUpperCase() === 'CONNECTED') {
+      await remember('CONNECTED')
+      return c.json({ success: true, number_status: 'CONNECTED', ...(await overview(c)) })
+    }
+  }
   if (!r.ok) return c.json({ error: errorWords(r.code, r.message) }, 502)
   const after = await graph(cfg, 'GET', `${cfg.phoneId}?fields=status`)
   const status = after.ok ? String(after.json?.status || '').toUpperCase() || 'CONNECTED' : 'CONNECTED'

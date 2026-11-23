@@ -28,6 +28,7 @@ let templatesAtMeta = [];
 let wam = 0;
 let subsData = [];            // the apps Meta says are subscribed to the account
 let numberStatus = 'PENDING'; // the number's status until it is registered
+let loseRegister = false;     // Meta registers the number but its answer never arrives
 const worldFetch = globalThis.fetch;
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url && url.url ? url.url : url);
@@ -47,6 +48,7 @@ globalThis.fetch = async (url, init = {}) => {
   if (call.path === `${PHONE}/register`) {
     if (call.body?.pin === '999999') return json({ error: { message: '(#133016) Too many registration attempts', code: 133016 } }, 400);
     numberStatus = 'CONNECTED';
+    if (loseRegister) throw new Error('socket hang up');
     return json({ success: true });
   }
   if (call.path.startsWith(`${WABA}/message_templates`)) {
@@ -404,6 +406,21 @@ subsData = [{ whatsapp_business_api_data: { id: APP, name: 'Ours' } }];
 subPosts = calls.filter(c => c.path === `${WABA}/subscribed_apps` && c.method === 'POST').length;
 r = await as('POST', '/api/admin/whatsapp/check', {});
 check('ours already there: not subscribed twice', r.json?.check?.webhook === 'subscribed' && calls.filter(c => c.path === `${WABA}/subscribed_apps` && c.method === 'POST').length === subPosts, '');
+
+// ---------- Meta registers the number but its answer is lost (23 Nov: it took over 12 seconds) ----------
+numberStatus = 'PENDING'; loseRegister = true;
+r = await as('POST', '/api/admin/whatsapp/register', { pin: '135790' });
+loseRegister = false;
+check('register: no answer from Meta, but the number is ready: the screen says ready, not an error', r.status === 200 && r.json?.number_status === 'CONNECTED' && r.json?.checked?.number_status === 'CONNECTED', r.text.slice(0, 200));
+
+// ---------- moving from Meta's test number to our own ----------
+const approvedBefore = rows("SELECT COUNT(*) AS n FROM wa_templates WHERE status = 'APPROVED'")[0].n;
+r = await as('POST', '/api/admin/whatsapp/config', { phone_id: '200000000000001', waba_id: '300000000000001' });
+const tplAfter = rows('SELECT status, meta_id, meta_category FROM wa_templates');
+check('a new WhatsApp account starts with nothing approved (Meta approves per account), and the old number’s check is cleared', r.status === 200 && approvedBefore > 0
+  && tplAfter.length > 0 && tplAfter.every(t => t.status === 'draft' && t.meta_id === null && t.meta_category === null) && r.json?.checked === null, JSON.stringify(tplAfter));
+r = await as('POST', '/api/admin/whatsapp/config', { phone_id: '200000000000001' });
+check('saving the same account again resets nothing', r.status === 200 && rows('SELECT status FROM wa_templates').every(t => t.status === 'draft'), '');
 
 check('the audit log names what was done, never a value',rows("SELECT detail FROM admin_audit WHERE action LIKE 'whatsapp.%'").length >= 8 && rows("SELECT detail FROM admin_audit WHERE action LIKE 'whatsapp.%'").every(x => !String(x.detail).includes(TOKEN) && !String(x.detail).includes(SECRET)), '');
 done();
