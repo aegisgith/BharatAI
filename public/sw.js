@@ -48,7 +48,8 @@
 // 14 Nov 2026 (bhai-v37): pass-render.js?v=20261114: the Expo Pass (Rs 999) printed as itself.
 // 19 Nov 2026 (bhai-v41): Shri Ashish Nandkishore Jaiswal off the speakers list; drop saved copies.
 // 19 Nov 2026 (bhai-v42): Shri Chandrakant Dada Patil off the speakers list and the Friday 10:00 keynote.
-const VERSION = 'bhai-v42';
+// 23 Nov 2026 (bhai-v43): style.css?v=20261123, the 15-link menu with Gallery.
+const VERSION = 'bhai-v43';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 // The badge desk's scanner page, kept so it opens with no internet (12 Nov 2026).
@@ -81,7 +82,7 @@ const PRECACHE = [
   '/manifest.webmanifest',
   '/js/pass-render.js?v=20261114',
   '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
-  '/css/style.css?v=20261105b',        // marketing shell: /, /conference, /exhibition, ...
+  '/css/style.css?v=20261123',        // marketing shell: /, /conference, /exhibition, ...
   '/js/main.js?v=20261112b',
   '/js/carousel.js?v=20261027',
 ];

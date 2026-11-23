@@ -1,0 +1,935 @@
+{
+ "_about": "The public photo gallery at /gallery (public/gallery.html). Built by scripts/gen-gallery.mjs. Mumbai photos: \"site\" reuses public/img/mumbai-2026/<site>.webp; \"pid\" is the photo store id (R2 event-photos/1/<pid>/m.jpg, fetched to the sources folder). Data Science Congress 2017 photos: \"file\" is the original in Downloads/Bharat AI/Pics. kind: stage, panel, hall, expo, people, arrivals.",
+ "mumbai2026": [
+  {
+   "kind": "hall",
+   "caption": "A full hall",
+   "site": "full-hall",
+   "alt": "A full conference hall, seen from the back, listening to a session on the stage",
+   "feature": true,
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "hall",
+   "caption": "The opening session",
+   "slug": "opening-front-row",
+   "pid": "PLE1Maz7Qqth",
+   "alt": "Guests in the front row and a full hall behind them at the opening session",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "panel",
+   "caption": "Transforming governance",
+   "slug": "panel-governance-speaker",
+   "pid": "SicWNKbHJJZh",
+   "alt": "A panellist speaks on the AI for Viksit Bharat panel on transforming governance",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "Welcome note",
+   "slug": "welcome-note-day1",
+   "pid": "L3tJ7UyZhaug",
+   "alt": "A speaker gives the welcome note at the lectern, the speaker’s name on the screen alongside",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "At the Jade Global booth",
+   "slug": "booth-jade-global",
+   "pid": "dxBnNBlEuseS",
+   "alt": "Visitors in conversation at the Jade Global booth",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "people",
+   "caption": "Guests tour the exhibition",
+   "slug": "guests-expo-tour",
+   "pid": "kCbC5ImuIM8Z",
+   "alt": "Guests walk the exhibition floor past the booths",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "arrivals",
+   "caption": "Registration",
+   "site": "registration-queue",
+   "alt": "A long queue at the registration desks",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "people",
+   "caption": "Lighting the lamp",
+   "site": "lamp-lighting",
+   "alt": "Guests lighting the lamp before a session at Bharat AI Innovation",
+   "feature": true,
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "hall",
+   "caption": "A full house for the opening",
+   "slug": "opening-full-house",
+   "pid": "nvvJ8diud7GZ",
+   "alt": "Guests on the front sofas with every row behind them filled",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "panel",
+   "caption": "AI for Viksit Bharat",
+   "slug": "panel-viksit-bharat-full",
+   "pid": "_GVLbRWCzF0j",
+   "alt": "A panel of eight on AI for Viksit Bharat, igniting 1.4 billion dreams and transforming governance, in front of a full hall",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "Sovereign AI for the last mile",
+   "slug": "talk-sovereign-ai",
+   "pid": "Vzeq4eJ1BENa",
+   "alt": "A speaker at the lectern on community-driven sovereign AI for the last mile",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "At the yarnit booth",
+   "slug": "booth-yarnit",
+   "pid": "PBotmJW7d8st",
+   "alt": "Visitors talk with the team at the yarnit booth",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "people",
+   "caption": "Guests at the venue",
+   "slug": "guests-lobby",
+   "pid": "udzM0gaCa4w4",
+   "alt": "Seven guests stand together for a photograph at World Trade Center Mumbai",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "arrivals",
+   "caption": "The entrance",
+   "slug": "entrance-arch",
+   "pid": "wrq7sLU98aaL",
+   "alt": "The Bharat AI Innovation entrance arch and partner board as guests arrive",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "The main stage",
+   "site": "opening-main-stage",
+   "alt": "A speaker at the lectern on the main stage, under the Bharat AI Innovation screen, in front of a full hall",
+   "feature": true,
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "hall",
+   "caption": "A full conference hall",
+   "slug": "hall-full-rows",
+   "pid": "ACE61jf8WCi6",
+   "alt": "Rows of delegates in a full conference hall, the camera crew behind",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "panel",
+   "caption": "Democratizing healthcare with AI",
+   "slug": "panel-healthcare",
+   "pid": "D11gIJVvsf8A",
+   "alt": "A panel on democratizing healthcare with AI: access, affordability and outcomes",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "Keynote",
+   "slug": "talk-lectern",
+   "pid": "1-v3AcrEYcbm",
+   "alt": "A speaker at the lectern makes a point, partner logos behind",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "The exhibition floor",
+   "slug": "expo-busy-aisle",
+   "pid": "gqYczlEsRTyQ",
+   "alt": "A busy aisle on the exhibition floor, visitors at every booth",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "people",
+   "caption": "Lighting the lamp",
+   "slug": "lamp-lighting-opening",
+   "pid": "GMWFF_UfY9-K",
+   "alt": "Guests light the ceremonial lamp on stage at the opening, the words Lamp Lighting Ceremony on the screen",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "arrivals",
+   "caption": "Collecting badges",
+   "slug": "registration-counters",
+   "pid": "CEvmQkRHbYeM",
+   "alt": "Delegates collect their badges at the registration counters",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "Keynote",
+   "site": "keynote-main-stage",
+   "alt": "A keynote speaker on stage in front of the Bharat AI Innovation screen",
+   "feature": true,
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "hall",
+   "caption": "Every seat taken",
+   "slug": "hall-every-seat",
+   "pid": "3ckqqK5uWJ7y",
+   "alt": "Delegates fill the rows of the conference hall",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "panel",
+   "caption": "AI and financial inclusion",
+   "slug": "panel-financial-inclusion",
+   "pid": "q-J4k4FFnHJV",
+   "alt": "A panel of seven on AI democratizing and driving financial inclusion, the session title on the screen",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "On the main stage",
+   "slug": "talk-powered-by-idfc",
+   "pid": "efg_zWcro-Is",
+   "alt": "A speaker at the lectern under the Bharat AI Innovation screen, powered by IDFC FIRST Bank",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "At the XJoins booth",
+   "slug": "booth-xjoins",
+   "pid": "d48FinYtrh3h",
+   "alt": "Visitors gather at the lit XJoins booth",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "people",
+   "caption": "Lighting the lamp",
+   "slug": "lamp-lighting-guests",
+   "pid": "uiuzUtvP0MXe",
+   "alt": "Guests light the lamp together on stage",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "arrivals",
+   "caption": "World Trade Center Mumbai",
+   "slug": "wtc-mumbai-arcade",
+   "pid": "5VXr8afVIrLC",
+   "alt": "The Arcade at World Trade Center Mumbai, the Bharat AI Innovation arch at its door",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "A robot at the booth",
+   "site": "booth-robot",
+   "alt": "A robot greeting visitors at an exhibition booth",
+   "feature": true,
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "hall",
+   "caption": "A full house",
+   "slug": "hall-full-house",
+   "pid": "PxR-V0MD5dV_",
+   "alt": "Delegates fill every row of the hall",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "panel",
+   "caption": "AI-driven growth engines",
+   "slug": "panel-growth-engines",
+   "pid": "AbcbQNI4tc-C",
+   "alt": "A panel of six on AI-driven growth engines in sales and marketing, the audience in front",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "India and AI in governance",
+   "slug": "talk-india-ai-governance",
+   "pid": "DHt7gHJWQsZa",
+   "alt": "A speaker beside a map slide on India leading the global AI revolution in governance",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "The Startup Pavilion",
+   "slug": "startup-pavilion-aisle",
+   "pid": "JvRgjt_5tVp_",
+   "alt": "Visitors along the Startup Pavilion aisle",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "people",
+   "caption": "Networking",
+   "site": "networking",
+   "alt": "Delegates meeting and talking in a busy exhibition aisle",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "arrivals",
+   "caption": "World Trade Center Mumbai",
+   "site": "venue-entrance",
+   "alt": "The Bharat AI Innovation arch at the entrance to World Trade Center Mumbai",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "panel",
+   "caption": "AI for Viksit Bharat",
+   "site": "panel-viksit-bharat",
+   "alt": "A panel on AI for Viksit Bharat and governance, seen over a packed audience",
+   "feature": true,
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "hall",
+   "caption": "Listening in",
+   "slug": "hall-listening",
+   "pid": "SQ8-461wpTA6",
+   "alt": "Rows of delegates follow a session",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "panel",
+   "caption": "Beyond pilots",
+   "slug": "panel-beyond-pilots",
+   "pid": "0Z2KPTmir31p",
+   "alt": "A panel on turning enterprise AI investments into measurable business value",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "Under the big screen",
+   "slug": "talk-giant-screen",
+   "pid": "_pW5ZdMN1AfC",
+   "alt": "A speaker with a microphone in front of the giant Bharat AI Innovation screen",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "Startup Pavilion",
+   "site": "startup-pavilion",
+   "alt": "Visitors crowding the Startup Pavilion on the exhibition floor",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "people",
+   "caption": "Thanking the panel",
+   "slug": "handshakes-on-stage",
+   "pid": "T-Q600sFePvB",
+   "alt": "Handshakes on stage under the Bharat AI Innovation and EXENI screen",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "arrivals",
+   "caption": "The registration desk",
+   "slug": "registration-desk",
+   "pid": "393T8qsE0aSX",
+   "alt": "The registration team ready behind the pass desks",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "AI in Telecom",
+   "site": "panel-telecom",
+   "alt": "A panel on AI in telecom, with TV cameras and a full audience in front of the stage",
+   "feature": true,
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "hall",
+   "caption": "A full hall",
+   "slug": "hall-full-side",
+   "pid": "apiQJ9EvzlMk",
+   "alt": "A full hall of delegates, seen from the side",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "Panel discussion",
+   "slug": "panel-six-screen",
+   "pid": "DtaT-CwxLfea",
+   "alt": "A panel of six, each speaker’s photo and name on the screen behind them",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "Making the point",
+   "slug": "talk-energetic",
+   "pid": "eJANXUIZ8Jvy",
+   "alt": "A speaker with a microphone makes a point beside the lectern",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "Startup Pavilion",
+   "slug": "startup-pavilion-booths",
+   "pid": "a3s3xBeHtyzu",
+   "alt": "Visitors at the Startup Pavilion booths",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "people",
+   "caption": "Speakers on stage",
+   "slug": "stage-group-day1",
+   "pid": "eDQlXAh9Dl30",
+   "alt": "Six speakers stand together on stage in front of the Bharat AI Innovation backdrop",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "arrivals",
+   "caption": "Welcoming guests",
+   "slug": "guests-at-arch",
+   "pid": "3LhJuwR2RGJn",
+   "alt": "Guests arrive under the AI for Bharat arch at the entrance",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "hall",
+   "caption": "The hall, from the back",
+   "slug": "hall-from-back",
+   "pid": "IEXGY9kCIlTm",
+   "alt": "A packed conference hall seen from the back, the camera crew and the lit stage ahead",
+   "feature": true,
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "hall",
+   "caption": "The media panel",
+   "slug": "hall-media-panel",
+   "pid": "e1yQ1xTDl4Wm",
+   "alt": "The media panel on stage, seen over a seated audience",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "Human + AI",
+   "slug": "panel-human-plus-ai",
+   "pid": "iZOzGhGn4iJk",
+   "alt": "A panel on Human + AI, the partnership powering the autonomous enterprise, each speaker’s photo on the screen",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "Speaking to the room",
+   "slug": "talk-with-mic",
+   "pid": "SYdUOfdo9b-A",
+   "alt": "A speaker with a microphone gestures to the audience beside the Bharat AI Innovation lectern",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "A robot draws a crowd",
+   "slug": "booth-robot-crowd",
+   "pid": "8KfHnnPbLNu8",
+   "alt": "A white humanoid robot greets visitors at a booth",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "people",
+   "caption": "Lighting the lamp on day two",
+   "slug": "lamp-lighting-day2",
+   "pid": "f41ZL4AWFYfd",
+   "alt": "Guests light the ceremonial lamp to open the second day",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "arrivals",
+   "caption": "A welcome at the door",
+   "slug": "welcome-handshake",
+   "pid": "lNzIvKCYbltv",
+   "alt": "A handshake welcome at the Bharat AI Innovation entrance",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "hall",
+   "caption": "A packed hall",
+   "slug": "hall-packed-talk",
+   "pid": "BDETcIK6ZuLG",
+   "alt": "A packed hall seen from the back during a talk",
+   "feature": true,
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "Panel discussion",
+   "site": "panel-city-screen",
+   "alt": "Five panellists on stage in front of an aerial view of a city on the screen",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "The launch of PrAImaan",
+   "slug": "praimaan-launch",
+   "pid": "AvTPfMmAiuOK",
+   "alt": "The launch of PrAImaan, a national platform for the evaluation of AI in healthcare",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "The Jade Global team",
+   "slug": "booth-jade-team",
+   "pid": "W1oygZdexU4W",
+   "alt": "The Jade Global team with bouquets at their booth",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "people",
+   "caption": "Guests on stage",
+   "slug": "stage-group-day2",
+   "pid": "3_5RqLcQJ8zC",
+   "alt": "Guests and speakers stand together on stage in front of the Bharat AI Innovation backdrop",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "Bharat AI Innovation x EXENI",
+   "slug": "panel-exeni-day1",
+   "pid": "lp1-6fAo7z0o",
+   "alt": "A panel of six under the Bharat AI Innovation and EXENI screen, the audience in front",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "Welcome note",
+   "slug": "welcome-note-day2",
+   "pid": "NojS9BGNPNE5",
+   "alt": "A speaker gives the welcome note at the lectern",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "expo",
+   "caption": "The Startup Pavilion",
+   "slug": "startup-pavilion-sign",
+   "pid": "dSu8_WzrBI_M",
+   "alt": "Visitors crowd the Startup Pavilion",
+   "feature": true,
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "expo",
+   "caption": "Exhibition",
+   "site": "booth-crowd",
+   "alt": "Visitors gathered at a lit exhibition booth",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "people",
+   "caption": "Lighting the lamp",
+   "slug": "lamp-lighting-sessions",
+   "pid": "_Idvchs1Vhck",
+   "alt": "Guests light the lamp at the start of the sessions",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "Bharat AI Innovation x EXENI",
+   "slug": "panel-exeni-five",
+   "pid": "MPksIcwBrQVl",
+   "alt": "A panel of five on stage under the EXENI and Bharat AI Innovation screen",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "On the big screen",
+   "site": "talk-ai-avatar",
+   "alt": "A speaker presenting next to an AI avatar on the big screen",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "expo",
+   "caption": "The exhibition floor",
+   "slug": "expo-branded-aisle",
+   "pid": "P6trdgm0HSwG",
+   "alt": "A busy aisle between branded booths",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "people",
+   "caption": "Speakers together",
+   "slug": "speakers-together",
+   "pid": "8ACVoTc7Y92w",
+   "alt": "A large group of speakers on stage in front of the Bharat AI Innovation screen",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "Panel discussion",
+   "site": "panel-eye-screen",
+   "alt": "Five panellists on stage in front of a giant close-up of an eye on the screen",
+   "day": "2026-11-20"
+  },
+  {
+   "kind": "stage",
+   "caption": "Innovation Talk",
+   "site": "talk-big-screen",
+   "alt": "A speaker showing a product on the big screen during an Innovation Talk",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "expo",
+   "caption": "Guests visit a booth",
+   "slug": "guests-visit-booth",
+   "pid": "DAdcPKcCi8Ol",
+   "alt": "Guests visit a booth on the exhibition floor",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "people",
+   "caption": "Together on stage",
+   "slug": "team-on-stage",
+   "pid": "CZn_WNXQ_jfn",
+   "alt": "A large team stands together on stage in front of the Bharat AI Innovation screen",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "The enterprise AI workforce",
+   "slug": "panel-ai-workforce",
+   "pid": "G0E4kX3ow1_i",
+   "alt": "A panel on building the enterprise AI workforce: talent, delivery and forward-deployed engineering",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "stage",
+   "caption": "AI in cyber security",
+   "slug": "talk-cyber-security",
+   "pid": "qN0u7WhSI3gW",
+   "alt": "A talk on using AI to reduce cyber risk, safely",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "expo",
+   "caption": "A tour of the booths",
+   "slug": "guests-booth-tour",
+   "pid": "g4kTO5PcBzdz",
+   "alt": "Guests meet an exhibitor’s team, cameras around them",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "people",
+   "caption": "After the panel",
+   "slug": "panel-group-day2",
+   "pid": "vMWwmRAkeNsA",
+   "alt": "Panellists stand together on stage after their session",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "The enterprise AI workforce",
+   "slug": "panel-ai-workforce-lounge",
+   "pid": "-IDro9bGA-Cg",
+   "alt": "Six panellists discuss building the enterprise AI workforce",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "stage",
+   "caption": "On stage",
+   "slug": "talk-bharat-ai-screen",
+   "pid": "dqWbD66NXuez",
+   "alt": "A speaker in front of the Bharat AI Innovation screen, the partner logos below",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "expo",
+   "caption": "The XJoins team",
+   "slug": "booth-xjoins-team",
+   "pid": "osronTAYfH8q",
+   "alt": "The XJoins team at their booth",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "AI in Indian agriculture",
+   "slug": "panel-agriculture",
+   "pid": "1a7Gm4FcaCGM",
+   "alt": "A panel of seven on transforming Indian agriculture with AI",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "stage",
+   "caption": "Welcome to day two",
+   "slug": "welcome-day2",
+   "pid": "bjanJYqhsN6b",
+   "alt": "A speaker at the lectern under the Welcome to Bharat AI Innovation 2026 screen",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "Reinventing insurance for Bharat",
+   "slug": "panel-insurance",
+   "pid": "KweWyrA0UpRv",
+   "alt": "A panel on reinventing insurance for Bharat with AI: access, trust and inclusion",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "AI reshaping media",
+   "slug": "panel-media-wide",
+   "pid": "jnxb1S1tQQ1v",
+   "alt": "A large panel on how AI is reshaping media and digital content",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "Media and entertainment",
+   "site": "panel-media",
+   "alt": "A nine-person panel on how AI is reshaping media and entertainment",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "Made in India, built for the world",
+   "slug": "fireside-ai-filmmaking",
+   "pid": "_-Gxmm58fUZw",
+   "alt": "A fireside conversation on AI filmmaking: made in India, built for the world",
+   "day": "2026-11-21"
+  },
+  {
+   "kind": "panel",
+   "caption": "Improving learning outcomes with AI",
+   "slug": "panel-learning-outcomes",
+   "pid": "J_aOM5OvgLvV",
+   "alt": "A panel on improving learning outcomes with AI, from assessment to measurable impact",
+   "day": "2026-11-21"
+  }
+ ],
+ "dsc2017": [
+  {
+   "file": "7C2A3159",
+   "slug": "dsc-panel-ecommerce",
+   "kind": "panel",
+   "caption": "The main stage",
+   "alt": "A panel on data science in e-commerce and retail, on the big stage at Data Science Congress",
+   "feature": true
+  },
+  {
+   "file": "7C2A2946",
+   "slug": "dsc-panel-governance",
+   "kind": "panel",
+   "caption": "Governance panel",
+   "alt": "A panel on using data for better governance and society at Data Science Congress"
+  },
+  {
+   "file": "7C2A2823",
+   "slug": "dsc-minister-address",
+   "kind": "stage",
+   "caption": "A minister’s address",
+   "alt": "Shri Y. S. Chowdary, then Minister of State for Science and Technology, speaking at Data Science Congress"
+  },
+  {
+   "file": "DSC_5672",
+   "slug": "dsc-booth-demo",
+   "kind": "expo",
+   "caption": "A booth demo",
+   "alt": "A demo at the MathWorks booth"
+  },
+  {
+   "file": "7C2A3217",
+   "slug": "dsc-evening-music",
+   "kind": "people",
+   "caption": "Music in the evening",
+   "alt": "A band plays in front of the Aegis School of Data Science wall"
+  },
+  {
+   "file": "7C2A2847",
+   "slug": "dsc-full-auditorium",
+   "kind": "hall",
+   "caption": "A full auditorium",
+   "alt": "The main auditorium, full, seen from the back",
+   "feature": true
+  },
+  {
+   "file": "7C2A2709",
+   "slug": "dsc-registration",
+   "kind": "arrivals",
+   "caption": "Registration",
+   "alt": "Delegates at the registration desk of Data Science Congress 2017"
+  },
+  {
+   "file": "7C2A3076",
+   "slug": "dsc-panel-telecom",
+   "kind": "panel",
+   "caption": "Telecom panel",
+   "alt": "A panel on how data science changed the game for telecom"
+  },
+  {
+   "file": "577B0776",
+   "slug": "dsc-keynote-screens",
+   "kind": "stage",
+   "caption": "Keynote",
+   "alt": "A keynote speaker on a large lit stage between two tall screens at Data Science Congress"
+  },
+  {
+   "file": "DSC_5239",
+   "slug": "dsc-lounge-conversation",
+   "kind": "people",
+   "caption": "In the lounge",
+   "alt": "A conversation on the white sofas of the lounge"
+  },
+  {
+   "file": "MNP_3286",
+   "slug": "dsc-panel-banking",
+   "kind": "panel",
+   "caption": "Banking and finance panel",
+   "alt": "A panel on data science in banking and finance, on the wide red stage at Data Science Congress",
+   "feature": true
+  },
+  {
+   "file": "MNP_3573",
+   "slug": "dsc-panel-women",
+   "kind": "panel",
+   "caption": "Women in data science",
+   "alt": "A panel of five on women in data science"
+  },
+  {
+   "file": "7C2A2991",
+   "slug": "dsc-nvidia-keynote",
+   "kind": "stage",
+   "caption": "NVIDIA keynote",
+   "alt": "NVIDIA’s Managing Director giving a keynote at Data Science Congress"
+  },
+  {
+   "file": "VMP_1139",
+   "slug": "dsc-panellist",
+   "kind": "panel",
+   "caption": "A panellist speaks",
+   "alt": "A panellist speaks into the microphone"
+  },
+  {
+   "file": "MNP_0886",
+   "slug": "dsc-talk-smart-data",
+   "kind": "stage",
+   "caption": "Why bother about smart data?",
+   "alt": "A talk titled Why Bother About Smart Data on the red stage"
+  },
+  {
+   "file": "7C2A2842",
+   "slug": "dsc-welcome-screen",
+   "kind": "stage",
+   "caption": "The welcome address",
+   "alt": "The welcome address on the main stage, under a wide curved LED screen",
+   "feature": true
+  },
+  {
+   "file": "IMG_0258",
+   "slug": "dsc-panel-skills",
+   "kind": "panel",
+   "caption": "Skills panel",
+   "alt": "A panel on building skills and competencies for a data-driven organisation"
+  },
+  {
+   "file": "7C2A3094",
+   "slug": "dsc-talk-developers",
+   "kind": "stage",
+   "caption": "Keynote",
+   "alt": "A speaker points to a slide about millions of developers"
+  },
+  {
+   "file": "IMG_0425",
+   "slug": "dsc-panel-factory",
+   "kind": "panel",
+   "caption": "The data science factory",
+   "alt": "A panel on manufacturing a data science factory"
+  },
+  {
+   "file": "7C2A3117",
+   "slug": "dsc-talk-dark-stage",
+   "kind": "stage",
+   "caption": "A talk",
+   "alt": "A speaker mid-gesture on the dark stage"
+  },
+  {
+   "file": "OMY_3658",
+   "slug": "dsc-panel-skills-wide",
+   "kind": "panel",
+   "caption": "Under the spotlights",
+   "alt": "A panel on building skills for data-driven organisations at Data Science Congress",
+   "feature": true
+  },
+  {
+   "file": "MNP_8751",
+   "slug": "dsc-panel-red-stage",
+   "kind": "panel",
+   "caption": "Panel on the red stage",
+   "alt": "Panellists on white chairs behind the Aegis School of Data Science sign"
+  },
+  {
+   "file": "MNP_3365",
+   "slug": "dsc-talk-speaker",
+   "kind": "stage",
+   "caption": "A talk",
+   "alt": "A speaker mid-sentence against a dark stage"
+  },
+  {
+   "file": "IMG_7720",
+   "slug": "dsc-panel-media",
+   "kind": "panel",
+   "caption": "Media panel",
+   "alt": "A panel on data science in the media and entertainment industry"
+  },
+  {
+   "file": "MNP_3434",
+   "slug": "dsc-talk-hall",
+   "kind": "stage",
+   "caption": "Keynote",
+   "alt": "A speaker addresses the hall"
+  },
+  {
+   "file": "MNP_8788",
+   "slug": "dsc-everyone-on-stage",
+   "kind": "people",
+   "caption": "Everyone on stage",
+   "alt": "A large group photograph on stage under the Data Science Congress 2017 screen",
+   "feature": true
+  },
+  {
+   "file": "OMY_4127",
+   "slug": "dsc-panel-media-title",
+   "kind": "panel",
+   "caption": "Media panel",
+   "alt": "A panel on data science in media and entertainment at Data Science Congress"
+  },
+  {
+   "file": "IMG_7346",
+   "slug": "dsc-opening-remarks",
+   "kind": "stage",
+   "caption": "Opening remarks",
+   "alt": "A speaker beside the Data Science Congress 2017 partner board"
+  },
+  {
+   "file": "OMY_3774",
+   "slug": "dsc-big-stage",
+   "kind": "stage",
+   "caption": "The big stage",
+   "alt": "A speaker alone on the wide red stage, a slide on the giant screen"
+  },
+  {
+   "file": "MNP_8601",
+   "slug": "dsc-keynote-dark",
+   "kind": "stage",
+   "caption": "Keynote",
+   "alt": "A speaker in a dark suit in front of the screen"
+  },
+  {
+   "file": "577B0642",
+   "slug": "dsc-red-carpet",
+   "kind": "arrivals",
+   "caption": "The entrance",
+   "alt": "The red-carpet entrance to Data Science Congress",
+   "feature": true
+  },
+  {
+   "file": "MNP_8641",
+   "slug": "dsc-talk-partners",
+   "kind": "stage",
+   "caption": "A talk",
+   "alt": "A speaker with a clicker in front of the partner screen"
+  }
+ ]
+}

@@ -27946,7 +27946,7 @@ function siteHeaderHTML(current: string): string {
   const menu: [string, string][] = [
     ['/', 'Home'], ['/conference', 'Conference'], ['/exhibition', 'Exhibition'], ['/networking', 'Networking'], ['/passes', 'Passes'],
     ['/partner', 'Partner'], ['/government', 'Govt'], ['/training-workshop', 'Workshops'], ['/marketplace', 'AI Marketplace'],
-    ['/campus-series', 'Campus Series'], ['/delhi', 'Delhi 2027'], ['/ai-readiness', 'AI Readiness'], ['https://bellaward.com', 'AGBA'], ['/contact', 'Contact'],
+    ['/campus-series', 'Campus Series'], ['/delhi', 'Delhi 2027'], ['/gallery', 'Gallery'], ['/ai-readiness', 'AI Readiness'], ['https://bellaward.com', 'AGBA'], ['/contact', 'Contact'],
   ]
   return `<header class="ps-head">
   <div class="ps-head-in">

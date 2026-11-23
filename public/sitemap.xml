@@ -98,6 +98,15 @@
         </image:image>
     </url>
 
+    <!-- The photo gallery: Mumbai 2026 and Data Science Congress 2017 (scripts/gen-gallery.mjs) -->
+    <url>
+        <loc>https://bharataiinnovation.com/gallery</loc>
+        <lastmod>2026-11-23</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/gallery.jpg</image:loc>
+            <image:title>Bharat AI Innovation 2026, World Trade Center Mumbai, in pictures</image:title>
+        </image:image>
+    </url>
     <!-- Delhi edition, 28-29 July 2027 -->
     <url>
         <loc>https://bharataiinnovation.com/delhi</loc>

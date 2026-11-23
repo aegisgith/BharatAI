@@ -134,6 +134,15 @@ check('home hero thanks Mumbai and leads to Delhi, and sells no Mumbai pass', r.
 // live on /passes and /delhi. Booth prices may stay.
 const passPrices = ['4,999', '8,999', '9,999', '14,999', '19,999', '24,999', '3,999', 'INR 999', '&#8377;999', '₹999'].filter(p => r.text.includes(p));
 check('home Delhi buttons are tagged and no pass price is on the page', ['/delhi-register?source=home-hero', '/delhi-register?source=home-cta'].every(m => r.text.includes(m)) && passPrices.length === 0, 'tags, or prices: ' + passPrices.join(' '));
+// The photo gallery (23 Nov 2026): its own tab in every menu, and the page holds both events'
+// photos. A photo file is checked too: the menu went live once before the page existed.
+check('home menu has the Gallery tab', r.text.includes('<a href="/gallery" class="nav-link">Gallery</a>'), 'no Gallery link');
+r = await hit('/gallery');
+const galleryTiles = (r.text.match(/class="gx-t[ "]/g) || []).length;
+check('/gallery shows Mumbai 2026 and Data Science Congress 2017 photos', r.status === 200 && galleryTiles >= 100 && ['id="mumbai-2026"', 'id="dsc-2017"', 'id="gxViewer"'].every(m => r.text.includes(m)), r.status + ' tiles ' + galleryTiles);
+const galleryPhoto = /href="(\/img\/gallery\/[^"]+\.webp)"/.exec(r.text);
+r = galleryPhoto ? await hit(galleryPhoto[1]) : { status: 0 };
+check('a gallery photo file is served', r.status === 200, (galleryPhoto ? galleryPhoto[1] : 'no photo link') + ' ' + r.status);
 
 // ---- what a phone downloads, second pass (28 Oct 2026) ----
 r = await hit('/admin');

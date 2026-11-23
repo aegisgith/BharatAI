@@ -55,7 +55,7 @@ swap('    <style>\n', "    <style>\n    /* Hindi: Devanagari letters come from M
 swap('<a href="#main-content" class="skip-link">Skip to main content</a>', '<a href="#main-content" class="skip-link">मुख्य सामग्री पर जाएँ</a>');
 
 // ---- the menu (its links stay the English pages) ----
-for (const [a, b] of [['Home', 'होम'], ['Conference', 'कॉन्फ्रेंस'], ['Exhibition', 'प्रदर्शनी'], ['Networking', 'नेटवर्किंग'], ['Passes', 'पास'], ['Partner', 'पार्टनर'], ['Govt', 'सरकार'], ['Workshops', 'वर्कशॉप'], ['AI Marketplace', 'एआई मार्केटप्लेस'], ['Campus Series', 'कैंपस सीरीज़'], ['AI Readiness', 'एआई रेडीनेस'], ['Contact', 'संपर्क']]) {
+for (const [a, b] of [['Home', 'होम'], ['Conference', 'कॉन्फ्रेंस'], ['Exhibition', 'प्रदर्शनी'], ['Networking', 'नेटवर्किंग'], ['Passes', 'पास'], ['Partner', 'पार्टनर'], ['Govt', 'सरकार'], ['Workshops', 'वर्कशॉप'], ['AI Marketplace', 'एआई मार्केटप्लेस'], ['Campus Series', 'कैंपस सीरीज़'], ['Gallery', 'गैलरी'], ['AI Readiness', 'एआई रेडीनेस'], ['Contact', 'संपर्क']]) {
   swap(`class="nav-link">${a}</a>`, `class="nav-link">${b}</a>`);
 }
 swap('class="nav-link active">Delhi 2027</a>', 'class="nav-link active">दिल्ली 2027</a>');

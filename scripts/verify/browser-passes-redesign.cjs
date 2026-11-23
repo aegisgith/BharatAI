@@ -98,7 +98,7 @@ const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y
   const first = await box(p, '#delegate .ps-price');
   check('phone: the Delegate price is on the first screen', first.bottom < 844, first.bottom);
   check('phone: Log In is on the screen', (await box(p, '.ps-login')).right <= 390);
-  check('phone: the menu has the site\'s links, Home going to the main website', (await p.locator('.ps-nav a').first().getAttribute('href')) === '/' && (await p.locator('.ps-nav a').count()) === 14);
+  check('phone: the menu has the site\'s links, Home going to the main website', (await p.locator('.ps-nav a').first().getAttribute('href')) === '/' && (await p.locator('.ps-nav a').count()) === 15);
   check('phone: the menu marks Passes as the current page', (await p.locator('.ps-nav a[aria-current="page"]').innerText()) === 'Passes');
   check('phone: there is no button to the free form above the passes', (await p.evaluate(() => { const top = document.querySelector('#delegate').getBoundingClientRect().top; return [...document.querySelectorAll('a[href^="/register"]')].filter((a) => a.getBoundingClientRect().top < top).length; })) === 0);
 

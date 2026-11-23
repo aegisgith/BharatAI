@@ -3874,11 +3874,19 @@ section { position: relative; }
    Since 5 Nov 2026 it is 14 (Govt after Partner): a short word, about 40px, won
    back from the bar's side padding and the links' padding. If you add another
    nav item, re-check this: there is no spacing left to give, so a 15th link
-   means removing one or a later toggle breakpoint. */
+   means removing one or a later toggle breakpoint.
+   Since 23 Nov 2026 it is 15 (Gallery after Delhi 2027, the organiser's ask).
+   15 links overflowed the bar by 6-13px at every width (/exhibition and /delhi
+   wrapped), so the links' side padding went 0.31rem -> 0.25rem, the bar's
+   1.5rem -> 1.25rem, the text 0.8rem -> 0.78rem and the button's padding
+   0.95rem -> 0.8rem. A toggle breakpoint above 1280px would hide the menu on
+   the organiser's own laptop (1280 css px at 150%). The tightest page is
+   /delhi ("Get your pass"). A 16th link means removing one. Measure every
+   page at 1280px: the space between the logo and the first link. */
 @media (min-width: 1280px) {
-  .nav-container { padding-left: 1.5rem; padding-right: 1.5rem; }
-  .nav-link { padding: 0.5rem 0.31rem; font-size: 0.8rem; }
-  .nav-cta { padding: 0.55rem 0.95rem; font-size: 0.8rem; margin-left: 0.25rem; }
+  .nav-container { padding-left: 1.25rem; padding-right: 1.25rem; }
+  .nav-link { padding: 0.5rem 0.25rem; font-size: 0.78rem; }
+  .nav-cta { padding: 0.55rem 0.8rem; font-size: 0.78rem; margin-left: 0.25rem; }
   .nav-menu { gap: 0; }
 }
 
