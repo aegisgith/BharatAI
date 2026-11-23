@@ -240,6 +240,19 @@ export function albumPageHTML(a: { name: string; org: string; ids: string[]; foc
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif}
 header{background:#fff;border-bottom:1px solid var(--line);padding:18px 16px}
 .wrap{max-width:1100px;margin:0 auto}
+.topbar{background:#fff;border-bottom:1px solid var(--line)}
+.tb-in{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 12px 6px 16px}
+.logo{display:block;flex:none}.logo img{display:block;height:40px;width:auto}
+.topnav{display:flex;align-items:center;gap:4px}
+.topnav a{display:inline-flex;align-items:center;min-height:44px;padding:0 12px;border-radius:10px;color:var(--ink);font-weight:600;font-size:15px;text-decoration:none}
+.topnav a.dash{background:var(--brand);color:#fff}
+.topnav a:focus-visible,.delhi a:focus-visible,.logo:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+.delhi{background:#1e2140;color:#fff}
+.dl-in{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;padding:12px 16px}
+.dl-in p{margin:0;font-size:14px;line-height:1.45}
+.dl-b{display:flex;gap:8px;flex-wrap:wrap}
+.dl-b a{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border-radius:10px;border:1px solid rgba(255,255,255,.4);color:#fff;font-weight:600;font-size:14px;text-decoration:none}
+.dl-b a.go{background:var(--brand);border-color:var(--brand)}
 .brand{font-size:13px;font-weight:700;color:var(--brand);letter-spacing:.3px;text-transform:uppercase;text-decoration:none}
 h1{font-size:26px;line-height:1.25;margin:6px 0 4px}
 .lead{margin:0;color:var(--sub);font-size:15px;line-height:1.5}
@@ -275,13 +288,17 @@ dialog::backdrop{background:#0b0c12}
 .lu a{color:var(--brand);font-weight:600}
 .optout{margin:10px 0;padding:8px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--sub);font-size:14px;cursor:pointer}
 </style></head><body>
-<header><div class="wrap"><a class="brand" href="${SITE}/">${escH(MUMBAI_WORDS.name)}</a>
+<div class="topbar"><div class="wrap tb-in"><a class="logo" href="${SITE}/?from=photos"><img src="/images/logo-nav.webp" alt="Bharat AI Innovation home" width="120" height="50"></a>
+<nav class="topnav" aria-label="Bharat AI Innovation"><a href="${SITE}/?from=photos">Home</a>${me ? `<a class="dash" href="${SITE}/app">My dashboard</a>` : ''}</nav></div></div>
+<header><div class="wrap"><span class="brand">${escH(MUMBAI_WORDS.name)}</span>
 <h1>${escH(title)}</h1>
 <p class="lead">${total === 1 ? '1 photo' : total + ' photos'}${a.org ? ' · ' + escH(a.org) : ''} · ${escH(MUMBAI_WORDS.line).replace(' · ', ' &middot; ')}</p></div></header>
+<div class="delhi"><div class="wrap dl-in"><p><b>Next: Bharat AI Innovation, New Delhi</b><br>28&ndash;29 July 2027 &middot; Bharat Mandapam</p>
+<div class="dl-b"><a class="go" href="${SITE}/delhi-register?source=photos">Get your pass</a><a href="${SITE}/?from=photos">See Delhi 2027</a></div></div></div>
 <main class="wrap">${a.lineup || ''}${sections || '<p class="note">No photos here yet.</p>'}
 <p class="note">Tap a photo to see it large and download it at full size.${savesLine ? ' ' + escH(savesLine) : ''} You are welcome to use and share these photos; if you post them on LinkedIn, please tag Bharat AI Innovation.<br>
 A computer found these photos by matching faces, so one or two may show someone else.${me ? ' We matched the profile photo you added in the event app. Tap &quot;Not me&quot; on a photo that is not you.' : ''}<br>
-${me ? '<button type="button" class="optout" data-go="optout">Don&rsquo;t match my photos</button><br>' : ''}Next: <a href="${SITE}/delhi">Bharat AI Innovation, New Delhi, 28 and 29 July 2027</a>.</p></main>
+${me ? '<button type="button" class="optout" data-go="optout">Don&rsquo;t match my photos</button><br>' : ''}Next: <a href="${SITE}/?from=photos">Bharat AI Innovation, New Delhi, 28 and 29 July 2027</a>.</p></main>
 <dialog id="lb" aria-label="Photo"><div class="lb">
 <div class="lb-top"><span id="lb-n"></span><button type="button" class="btn" data-go="close">Close</button></div>
 <div class="lb-img"><img id="lb-img" alt=""></div>
