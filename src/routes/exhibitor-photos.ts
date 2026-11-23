@@ -76,6 +76,17 @@ async function contactOf(c: any, co: Company) {
   return r ? { id: Number(r.id), company: String(r.company_name || co.name), email: String(r.contact_email || '').trim(), name: String(r.contact_name || ''), booth: String(r.booth_number || '') } : null
 }
 
+// For routes/more-photos.ts: a company's photos now (in the store, not hidden), and its
+// booth contact, by company key.
+export async function boothPhotosNow(c: any, key: string): Promise<string[]> {
+  const co = COMPANIES[key]
+  return co ? (await photosOf(c, co)).map(p => p.id) : []
+}
+export async function boothContact(c: any, key: string) {
+  const co = COMPANIES[key]
+  return co ? contactOf(c, co) : null
+}
+
 async function sentOf(c: any): Promise<Map<string, { at: string; n: number }>> {
   const rs = await all(c, "SELECT entity_id, MAX(created_at) AS at, COUNT(*) AS n FROM admin_audit WHERE action = ? AND entity = 'booth_photos' GROUP BY entity_id", BOOTH_AUDIT).catch(() => [] as any[])
   return new Map(rs.map(r => [String(r.entity_id), { at: String(r.at || ''), n: Number(r.n) || 0 }]))

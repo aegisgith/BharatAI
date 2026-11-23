@@ -13,6 +13,7 @@ import speakerPhotos, { configurePhotos } from './routes/photos'
 import photoTracking, { photoPageBeacon, withOpenPixel } from './routes/photo-tracking'
 import findPhotos, { configureFindPhotos, findPhotosWhereSql } from './routes/find-photos'
 import exhibitorPhotos, { configureExhibitorPhotos } from './routes/exhibitor-photos'
+import morePhotos, { configureMorePhotos } from './routes/more-photos'
 import myPhotos, { configureMyPhotos } from './routes/my-photos'
 import photoStore, { configurePhotoStore } from './routes/photo-store'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
@@ -673,6 +674,17 @@ configureExhibitorPhotos({ sendEmail: sendAdminEmail, audit, emailHeader: emailB
   dashboardExhibitor: (c: any) => exhibitorOfCompanySession(c),
   signInLink: (c: any, accountId: number) => mpSignInLink(c, accountId, 'photos') })
 app.route('/', exhibitorPhotos)
+// "We found more photos of you" (23 Nov 2026): everyone already sent a photos email whose
+// album has grown since (late-found photos, burst shots, more booth names read), one short
+// email each to the same address, from Admin -> After the Event. routes/more-photos.ts.
+configureMorePhotos({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader,
+  boothLink: async (c: any, exhibitorIds: number[], email: string) => {
+    const ids = exhibitorIds.map(Number).filter(n => Number.isInteger(n) && n > 0)
+    const byId = ids.length ? await c.env.DB.prepare(`SELECT id FROM mp_companies WHERE exhibitor_id IN (${ids.map(() => '?').join(',')}) ORDER BY id LIMIT 1`).bind(...ids).first().catch(() => null) as any : null
+    const acct = byId || (email ? await c.env.DB.prepare('SELECT id FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(String(email).toLowerCase()).first().catch(() => null) as any : null)
+    return acct ? mpSignInLink(c, Number(acct.id), 'photos') : 'https://bharataiinnovation.com/marketplace/dashboard#photos'
+  } })
+app.route('/', morePhotos)
 // WhatsApp (23 Nov 2026): photos, passes and announcements sent from the event's own
 // WhatsApp Business number through Meta's Cloud API, with delivery ticks and replies;
 // Admin -> WhatsApp (public/js/admin-whatsapp.js), routes/whatsapp.ts, migration 0065.
@@ -42592,7 +42604,7 @@ function adminPageScript(): string {
     // After the Event: the feedback survey and each exhibitor's results live in
     // /js/admin-after.js (one global, AfterDesk) with their own stylesheet, loaded the
     // first time the section opens. Bump AFTER_DESK_VERSION on any change to either.
-    var AFTER_DESK_VERSION = '20261123trk2';
+    var AFTER_DESK_VERSION = '20261123more';
     var afterDeskAssets = null;
     function afterDeskLoadAssets() {
       if (window.AfterDesk) return Promise.resolve();

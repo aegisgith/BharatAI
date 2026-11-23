@@ -25,6 +25,7 @@
   var attendees = null;
   var findInfo = null;
   var booths = null;
+  var more = null;
   var marks = null;
   var busy = false;
 
@@ -334,8 +335,33 @@
       + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Exhibitor</th><th>Photos</th><th>Booth contact</th><th>Booth photos email</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
   }
 
+  // More photos found (23 Nov 2026): everyone already sent a photos email whose album has
+  // grown since. One short email each to the same address (src/routes/more-photos.ts).
+  var MORE_KIND = { speaker: 'Speaker or guest', attendee: 'Attendee', booth: 'Booth' };
+  function moreHtml() {
+    var head = '<div class="afd-card-head"><h2><i class="fas fa-plus-circle" aria-hidden="true"></i> More photos found</h2>'
+      + '<p>People already sent their photos whose album has grown since: 566 photos came in late, and we looked through every photo again. One short email each, &ldquo;We found N more photos of you&rdquo;, to the same address as their first email, with a few of the new photos and their page.</p></div>';
+    if (!more) return '<section class="afd-card">' + head + '<p class="afd-note">Loading...</p></section>';
+    if (more.error) return '<section class="afd-card">' + head + '<p class="afd-warn">' + esc(more.error) + '</p></section>';
+    var ready = (more.rows || []).filter(function (r) { return r.status === 'more'; });
+    var rows = (more.rows || []).filter(function (r) { return r.status === 'more'; }).map(function (r) {
+      return '<tr><td><b>' + esc(r.name) + '</b><div class="afd-sub">' + esc(MORE_KIND[r.kind] || r.kind) + '</div></td>'
+        + '<td><b>+' + num(r.added) + '</b><div class="afd-sub">' + num(r.was) + ' &rarr; ' + num(r.now) + '</div></td>'
+        + '<td>' + esc(r.to) + '<div class="afd-sub">last emailed ' + esc(when(r.last_at)) + '</div></td>'
+        + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small" data-act="preview-more" data-id="' + esc(r.key) + '">Preview</button>'
+        + '<button type="button" class="afd-btn afd-small" data-act="send-more" data-id="' + esc(r.key) + '">Send</button></td></tr>';
+    }).join('');
+    return '<section class="afd-card">' + head
+      + '<p class="afd-note">' + (ready.length ? num(ready.length) + ' people with ' + num(more.photos) + ' new photos between them.' : 'Nobody has new photos since their email.') + '</p>'
+      + '<div class="afd-actions"><button type="button" class="afd-btn afd-primary" data-act="send-all-more"' + (ready.length ? '' : ' disabled') + '>'
+      + '<i class="fas fa-paper-plane" aria-hidden="true"></i> Send to all (' + num(ready.length) + ')</button>'
+      + '<span class="afd-note" id="afd-more-progress" aria-live="polite"></span></div>'
+      + (rows ? '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Who</th><th>New photos</th><th>Goes to</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '')
+      + '</section>';
+  }
+
   function draw() {
-    host.innerHTML = '<div class="afd">' + photosHtml() + attendeesHtml() + surveyHtml() + exhibitorsHtml() + boothsHtml() + '</div>';
+    host.innerHTML = '<div class="afd">' + photosHtml() + attendeesHtml() + moreHtml() + surveyHtml() + exhibitorsHtml() + boothsHtml() + '</div>';
   }
 
   function preview(title, to, subject, html) {
@@ -497,6 +523,31 @@
         await opts.api.post('/api/admin/booth-photos/' + encodeURIComponent(br.key) + '/send', { again: !!br.sent_count });
         toast('Booth photos sent to ' + br.company + '.');
         await refresh();
+      } else if (act === 'preview-more') {
+        var mv = await opts.api.get('/api/admin/more-photos/' + encodeURIComponent(id) + '/preview');
+        preview('More photos email', mv.to, mv.subject, mv.html);
+      } else if (act === 'send-more') {
+        var mr = ((more && more.rows) || []).find(function (x) { return String(x.key) === String(id); });
+        if (!mr) return;
+        if (!w.confirm('Send ' + mr.name + ' "We found ' + mr.added + ' more photos", to ' + mr.to + '?')) return;
+        busy = true; b.disabled = true;
+        await opts.api.post('/api/admin/more-photos/' + encodeURIComponent(mr.key) + '/send', {});
+        toast('Sent to ' + mr.name + '.');
+        await refresh();
+      } else if (act === 'send-all-more') {
+        var ml = ((more && more.rows) || []).filter(function (x) { return x.status === 'more'; });
+        if (!ml.length) return;
+        if (!w.confirm('Send ' + ml.length + ' people "We found more photos of you", one email each to the address their first photos email went to?')) return;
+        busy = true; b.disabled = true;
+        var mok = 0, mfail = [];
+        for (var mk = 0; mk < ml.length; mk++) {
+          var mpg = document.getElementById('afd-more-progress');
+          if (mpg) mpg.textContent = 'Sending ' + (mk + 1) + ' of ' + ml.length + '...';
+          try { await opts.api.post('/api/admin/more-photos/' + encodeURIComponent(ml[mk].key) + '/send', {}); mok++; }
+          catch (err) { if (!(err && err.data && err.data.already)) mfail.push(ml[mk].name + ': ' + (err.message || 'failed')); }
+        }
+        toast(mok + ' sent' + (mfail.length ? ', ' + mfail.length + ' did not send: ' + mfail.slice(0, 3).join('; ') : '.'), mfail.length ? 'error' : 'success');
+        await refresh();
       } else if (act === 'send-all-booth') {
         var bl = ((booths && booths.rows) || []).filter(function (x) { return x.status === 'ready'; });
         if (!bl.length) return;
@@ -542,9 +593,11 @@
       opts.api.get('/api/admin/attendee-photos').catch(function (e) { return { error: e.message, rows: [], groups: [] }; }),
       opts.api.get('/api/admin/find-photos').catch(function (e) { return { error: e.message }; }),
       opts.api.get('/api/admin/booth-photos').catch(function (e) { return { error: e.message, rows: [] }; }),
-      opts.api.get('/api/admin/photo-tracking').catch(function (e) { return { error: e.message }; })
+      opts.api.get('/api/admin/photo-tracking').catch(function (e) { return { error: e.message }; }),
+      opts.api.get('/api/admin/more-photos').catch(function (e) { return { error: e.message, rows: [] }; })
     ]);
     booths = out[5] || { rows: [] };
+    more = out[7] || { rows: [] };
     marks = out[6] && !out[6].error && out[6].people ? out[6] : { error: (out[6] && out[6].error) || 'no answer' };
     survey = out[0] || {};
     exhibitors = (out[1] && out[1].results) || [];
