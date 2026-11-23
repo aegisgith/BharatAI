@@ -162,7 +162,8 @@ check('check the connection: our number, its health, people a day from Meta, and
 
 // ---------- messages for approval ----------
 r = await as('GET', '/api/admin/whatsapp/templates');
-check('two built-in messages, not yet with WhatsApp', r.json?.templates?.length === 2 && r.json.templates.every(t => t.builtin && t.status === 'draft'), '');
+check('six built-in messages (photos, pass and the four automatic ones), not yet with WhatsApp', r.json?.templates?.length === 6 && r.json.templates.every(t => t.builtin && t.status === 'draft')
+  && r.json.templates.filter(t => t.kind === 'auto').length === 4 && r.json.templates.filter(t => t.kind === 'auto').every(t => t.category === 'UTILITY'), JSON.stringify(r.json?.templates?.map(t => [t.name, t.kind])));
 r = await as('POST', '/api/admin/whatsapp/templates/bhai_event_pass_v1/submit', {});
 let made = calls.filter(c => c.path === `${WABA}/message_templates` && c.method === 'POST').pop()?.body;
 const comp = (m, type) => (m?.components || []).find(x => x.type === type);
@@ -181,7 +182,8 @@ templatesAtMeta = [{ name: 'bhai_event_pass_v1', status: 'APPROVED', category: '
   { name: 'someone_elses', status: 'APPROVED', category: 'MARKETING', language: 'en', id: '3' }];
 r = await as('GET', '/api/admin/whatsapp/templates?refresh=1');
 const photosTpl = r.json?.templates.find(t => t.name === 'bhai_event_photos_v1');
-check('ask WhatsApp: both approved, and the kind Meta chose is shown (it made photos a marketing message)', r.json?.templates.length === 2 && r.json.templates.every(t => t.status === 'APPROVED') && photosTpl.meta_category === 'MARKETING', JSON.stringify(r.json?.templates.map(t => [t.name, t.status, t.meta_category])));
+check('ask WhatsApp: both approved, and the kind Meta chose is shown (it made photos a marketing message)', r.json?.templates.length === 6 && r.json.templates.filter(t => t.status === 'APPROVED').map(t => t.name).sort().join() === 'bhai_event_pass_v1,bhai_event_photos_v1'
+  && photosTpl.meta_category === 'MARKETING', JSON.stringify(r.json?.templates.map(t => [t.name, t.status, t.meta_category])));
 
 // A picture or announcement the team writes.
 const store = new Map();
@@ -498,6 +500,86 @@ const off = (await as('POST', '/api/admin/whatsapp/send', { kind: 'custom', temp
 t = await tick();
 check('with sending switched off the queue holds', t?.off === true && msgs("batch_id = ? AND status = 'queued'", [off]).length === 1, JSON.stringify(t));
 await as('POST', '/api/admin/whatsapp/settings', { sending: 'on' });
+
+// ---------- automatic messages (Admin -> WhatsApp -> Automatic) ----------
+const AUTO_TPLS = ['bhai_auto_enquiry_v1', 'bhai_auto_delhi_paid_v1', 'bhai_auto_listing_live_v1', 'bhai_auto_listing_lead_v1'];
+const autoOf = (o, key) => (o?.auto || []).find(a => a.key === key);
+let ovA = (await as('GET', '/api/admin/whatsapp')).json;
+check('automatic: four rules, every one off until the team switches it on', ovA?.auto?.length === 4 && ovA.auto.every(a => a.on === false && a.status === 'draft' && a.title && a.when), JSON.stringify(ovA?.auto));
+r = await as('POST', '/api/admin/whatsapp/auto', { key: 'enquiry', on: true });
+check('automatic: it cannot be switched on before Meta approves its message', r.status === 409 && /approved/i.test(r.json?.error || '') && !autoOf((await as('GET', '/api/admin/whatsapp')).json, 'enquiry').on, r.json?.error);
+check('automatic: a rule that does not exist is refused', (await as('POST', '/api/admin/whatsapp/auto', { key: 'everyone', on: true })).status === 400, '');
+r = await as('POST', '/api/admin/whatsapp/templates/bhai_auto_enquiry_v1/submit', {});
+const madeA = calls.filter(x => x.path === `${WABA}/message_templates` && x.method === 'POST').pop()?.body;
+check('automatic: the enquiry thank-you goes to Meta as a service message with two blanks and their samples, no button', r.status === 200 && madeA?.name === 'bhai_auto_enquiry_v1' && madeA.category === 'UTILITY'
+  && comp(madeA, 'BODY').example.body_text[0].length === 2 && !comp(madeA, 'BUTTONS') && !/\}\}\.?$/.test(comp(madeA, 'BODY').text), JSON.stringify(madeA).slice(0, 300));
+for (const n of AUTO_TPLS) db.run("INSERT OR IGNORE INTO wa_templates (name, builtin, title, category, status) VALUES (?, 1, ?, 'UTILITY', 'draft')", [n, n]);
+db.run(`UPDATE wa_templates SET status = 'APPROVED' WHERE name IN (${AUTO_TPLS.map(() => '?').join(',')})`, AUTO_TPLS);
+// What happened before the rules were switched on: never messaged.
+const AGO = '2026-01-01 00:00:00';
+const enquiry = (type, name, phone, at = "datetime('now', '+1 minute')") => db.run(`INSERT INTO inquiries (event_id, inquiry_type, name, email, phone, created_at) VALUES (1, ?, ?, ?, ?, ${at})`, [type, name, name.replace(/\W/g, '').toLowerCase() + '@example.com', phone]);
+enquiry('booth', 'Old Enquiry', '98200 11111', `'${AGO}'`);
+person(990101, 'Kavita Joshi', '98200 55555', { event_id: 2, badge_type: 'Delegate Pass' });
+person(990102, 'Paid Long Ago', '98200 66666', { event_id: 2, badge_type: 'VIP Pass' });
+const order = (id, att, status, paidAt) => db.run(`INSERT INTO payment_orders (order_id, attendee_id, event_id, pass_type, base_paise, gst_paise, amount_paise, status, paid_at) VALUES (?, ?, 2, 'delegate', 100, 18, 118, ?, ${paidAt})`, [id, att, status]);
+order('BAI990102-1', 990102, 'paid', `'${AGO}'`);
+const listing = (id, product, slug, seller, phone, created, updated) => db.run(`INSERT INTO mp_listings (id, company_id, company_name, company_slug, product_name, product_slug, description, sales_contact_name, sales_contact_phone, status, created_at, updated_at)
+  VALUES (?, 1, 'Acme AI', ?, ?, ?, 'An AI product.', ?, ?, 'approved', ${created}, ${updated})`, [id, slug ? 'acme-ai' : null, product, slug, seller, phone]);
+listing(7701, 'Acme Copilot', 'acme-copilot', 'Rohit Sen', '98200 77777', `'${AGO}'`, `'${AGO}'`);
+listing(7702, 'Old Product', null, 'Old Seller', '98200 88888', `'${AGO}'`, "datetime('now', '+1 minute')"); // live since January, only edited now
+for (const k of ['enquiry', 'delhi_paid', 'listing_live', 'listing_lead']) r = await as('POST', '/api/admin/whatsapp/auto', { key: k, on: true });
+check('automatic: once approved each one switches on, and notes the time it was switched on', r.status === 200 && r.json?.auto?.every(a => a.on && /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(a.since) && a.status === 'APPROVED'), JSON.stringify(r.json?.auto));
+// What happens after.
+enquiry('sponsorship', 'Dr. Meera Iyer', '+91 98200 22222');
+enquiry('booth', 'Short Number', '12345');
+enquiry('speaking', 'No Phone', '');
+enquiry('general', 'Said Stop', '98200 44444');
+db.run("INSERT INTO wa_contacts (wa_number, opted_out_at, opted_out_by) VALUES ('919820044444', datetime('now'), 'reply')");
+order('BAI990101-1', 990101, 'paid', "datetime('now', '+1 minute')");
+order('BAI990102-2', 990102, 'created', 'NULL'); // started paying again, did not finish
+db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail, created_at) VALUES ('Team', 'admin', 'marketplace.listing-approved', 'mp_listing', '7701', '{}', datetime('now', '+1 minute'))");
+db.run("INSERT INTO mp_inquiries (listing_id, inquirer_name, inquirer_email, inquirer_message, created_at) VALUES (7701, 'Secret Buyer', 'buyer@example.com', 'What does it cost?', datetime('now', '+1 minute'))");
+sb = sends().length;
+t = await tick();
+const autoSent = sends().slice(sb).map(x => x.body).filter(b => AUTO_TPLS.includes(b?.template?.name));
+const sentAs = (name) => autoSent.find(b => b.template.name === name);
+const bodyOf = (b) => ((b?.template?.components || []).find(x => x.type === 'body')?.parameters || []).map(p => p.text);
+const codeOf = (b) => (b?.template?.components || []).find(x => x.type === 'button')?.parameters?.[0]?.text;
+check('automatic: one minute sends each new one once: an enquiry, a Delhi payment, an approval, a buyer’s question', t?.auto?.enquiry === 1 && t.auto.delhi_paid === 1 && t.auto.listing_live === 1 && t.auto.listing_lead === 1 && autoSent.length === 4,
+  JSON.stringify(t?.auto) + ' ' + autoSent.map(b => b.template.name + '>' + b.to).join());
+const eq = sentAs('bhai_auto_enquiry_v1');
+check('automatic: the enquiry thank-you names what they wrote about, and has no button', eq?.to === '919820022222' && bodyOf(eq)[1] === 'sponsorship' && /Meera|Iyer/.test(bodyOf(eq)[0]) && !codeOf(eq), JSON.stringify(eq?.template));
+const dp = sentAs('bhai_auto_delhi_paid_v1');
+g = dp ? await get('/w/' + codeOf(dp), { 'User-Agent': 'Mozilla/5.0 (iPhone)' }) : null;
+check('automatic: the Delhi confirmation names their pass, and its button opens Delhi 2027', dp?.to === '919820055555' && bodyOf(dp)[1] === 'Delegate Pass' && g?.status === 302 && g.headers.get('location') === SITE + '/delhi', JSON.stringify(dp?.template) + ' ' + g?.headers.get('location'));
+const ll = sentAs('bhai_auto_listing_live_v1');
+g = ll ? await get('/w/' + codeOf(ll), { 'User-Agent': 'Mozilla/5.0 (iPhone)' }) : null;
+check('automatic: "your listing is live" goes to the seller and opens their own listing', ll?.to === '919820077777' && bodyOf(ll)[1] === 'Acme Copilot' && g?.headers.get('location') === SITE + '/marketplace/listing/acme-ai/acme-copilot', g?.headers.get('location'));
+const lq = sentAs('bhai_auto_listing_lead_v1');
+g = lq ? await get('/w/' + codeOf(lq), { 'User-Agent': 'Mozilla/5.0 (iPhone)' }) : null;
+check('automatic: a buyer’s question goes to the seller without the buyer’s name, and opens their leads', lq?.to === '919820077777' && bodyOf(lq)[1] === 'Acme Copilot' && !JSON.stringify(lq).includes('Secret Buyer')
+  && !msgs("kind = 'auto'").some(x => String(x.payload).includes('Secret Buyer')) && g?.headers.get('location') === SITE + '/marketplace/dashboard#leads', g?.headers.get('location'));
+const autoRows = msgs("kind = 'auto'");
+check('automatic: nobody from before it was switched on, no edited listing and no unfinished payment; a short number and a STOP are written down as left out',
+  !autoSent.some(b => ['919820011111', '919820066666', '919820088888'].includes(b.to)) && autoRows.length === 6 && autoRows.every(x => x.created_by === 'automatic' && x.batch_id === null)
+  && autoRows.filter(x => x.status === 'skipped').map(x => x.error).sort().join('|') === 'Asked us to stop on WhatsApp|The mobile number is not complete', JSON.stringify(autoRows.map(x => [x.name, x.status, x.error])));
+t = await tick();
+check('automatic: the next minute sends nobody twice', !Object.keys(t?.auto || {}).length && msgs("kind = 'auto'").length === 6, JSON.stringify(t?.auto));
+ovA = (await as('GET', '/api/admin/whatsapp')).json;
+check('automatic: the screen counts what each one sent, and when', autoOf(ovA, 'enquiry')?.sent === 1 && autoOf(ovA, 'listing_lead')?.sent === 1 && !!autoOf(ovA, 'enquiry').last_at, JSON.stringify(ovA?.auto));
+r = await as('POST', '/api/admin/whatsapp/auto', { key: 'enquiry', on: false });
+enquiry('general', 'After Off', '98200 99999', "datetime('now', '+2 minutes')");
+sb = sends().length;
+t = await tick();
+check('automatic: switched off, a new enquiry gets nothing (and the others stay on)', r.status === 200 && !autoOf(r.json, 'enquiry').on && autoOf(r.json, 'delhi_paid').on && sends().length === sb && !msgs("name = 'After Off'").length, '');
+db.run("UPDATE wa_templates SET status = 'PAUSED' WHERE name = 'bhai_auto_delhi_paid_v1'");
+person(990103, 'Paused Payer', '98200 12121', { event_id: 2, badge_type: 'VIP Pass' });
+order('BAI990103-1', 990103, 'paid', "datetime('now', '+2 minutes')");
+t = await tick();
+check('automatic: a message Meta has paused waits (nothing written, so it goes once Meta lets it)', !msgs("name = 'Paused Payer'").length, '');
+db.run("UPDATE wa_templates SET status = 'APPROVED' WHERE name = 'bhai_auto_delhi_paid_v1'");
+t = await tick();
+check('automatic: …and goes once Meta approves it again', msgs("name = 'Paused Payer' AND kind = 'auto'").length === 1 && t?.auto?.delhi_paid === 1, JSON.stringify(t?.auto));
 
 // ---------- the lists, and nothing leaking ----------
 r = await as('GET', '/api/admin/whatsapp/messages?status=failed');

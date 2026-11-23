@@ -85,7 +85,7 @@ const note = async (c: any, action: string, id: any, detail: any) => { if (hooks
 export type Header = { type: 'none' | 'image' | 'video' | 'document' | 'text'; url?: string; filename?: string; text?: string }
 // A button: a link (each one's tap is noted), a call, or a quick reply that comes back as their answer.
 export type Btn = { type: 'url' | 'phone' | 'reply'; text: string; url?: string; phone?: string }
-export type Tpl = { name: string; builtin: boolean; kind: 'photos' | 'pass' | 'custom'; title: string; category: 'MARKETING' | 'UTILITY'; text: string;
+export type Tpl = { name: string; builtin: boolean; kind: 'photos' | 'pass' | 'custom' | 'auto'; title: string; category: 'MARKETING' | 'UTILITY'; text: string;
   image: boolean; imageUrl: string; button: string; buttonUrl: string; samples: string[]; what: string
   lang: 'en' | 'hi'; header: Header; buttons: Btn[]; fields: string[]; greet: boolean; body: string }
 export const BUILT_IN: Record<string, Tpl> = {
@@ -99,6 +99,27 @@ export const BUILT_IN: Record<string, Tpl> = {
     image: false, imageUrl: '', button: 'Open my pass', buttonUrl: '', samples: ['Asha', 'Delegate Pass', 'Bharat AI Innovation 2026'],
     what: 'Tells them their pass is ready, with a button that opens it.',
     lang: 'en', header: { type: 'none' }, buttons: [{ type: 'url', text: 'Open my pass', url: '' }], fields: [], greet: true, body: '' },
+  // The automatic messages (Admin -> WhatsApp -> Automatic). Each goes only when its rule is on.
+  bhai_auto_enquiry_v1: { name: 'bhai_auto_enquiry_v1', builtin: true, kind: 'auto', title: 'Thank you for your enquiry', category: 'UTILITY',
+    text: 'Hello {{1}}, thank you for writing to Bharat AI Innovation about {{2}}. Our team has your message and will get back to you soon. You can also reply here.',
+    image: false, imageUrl: '', button: '', buttonUrl: '', samples: ['Asha', 'sponsorship'],
+    what: 'Sent by itself to anyone who sends an enquiry with a mobile number.',
+    lang: 'en', header: { type: 'none' }, buttons: [], fields: [], greet: true, body: '' },
+  bhai_auto_delhi_paid_v1: { name: 'bhai_auto_delhi_paid_v1', builtin: true, kind: 'auto', title: 'Your Delhi 2027 pass is confirmed', category: 'UTILITY',
+    text: 'Hello {{1}}, your {{2}} for Bharat AI Innovation Delhi 2027 is confirmed. See you on 28 and 29 July 2027 at Bharat Mandapam, New Delhi. Your entry pass comes closer to the event.',
+    image: false, imageUrl: '', button: 'See Delhi 2027', buttonUrl: SITE + '/delhi', samples: ['Asha', 'Delegate Pass'],
+    what: 'Sent by itself when a Delhi 2027 pass is paid for.',
+    lang: 'en', header: { type: 'none' }, buttons: [{ type: 'url', text: 'See Delhi 2027', url: SITE + '/delhi' }], fields: [], greet: true, body: '' },
+  bhai_auto_listing_live_v1: { name: 'bhai_auto_listing_live_v1', builtin: true, kind: 'auto', title: 'Your marketplace listing is live', category: 'UTILITY',
+    text: 'Hello {{1}}, your listing {{2}} is now live on the Bharat AI Marketplace. Tap the button to see it and share it with your customers.',
+    image: false, imageUrl: '', button: 'See my listing', buttonUrl: SITE + '/marketplace', samples: ['Asha', 'AI Copilot'],
+    what: 'Sent by itself to the seller when the team approves their listing.',
+    lang: 'en', header: { type: 'none' }, buttons: [{ type: 'url', text: 'See my listing', url: SITE + '/marketplace' }], fields: [], greet: true, body: '' },
+  bhai_auto_listing_lead_v1: { name: 'bhai_auto_listing_lead_v1', builtin: true, kind: 'auto', title: 'A buyer asked about your product', category: 'UTILITY',
+    text: 'Hello {{1}}, a buyer asked about {{2}} on the Bharat AI Marketplace. Tap the button to read the question and reply to them.',
+    image: false, imageUrl: '', button: 'Read the question', buttonUrl: SITE + '/marketplace/dashboard#leads', samples: ['Asha', 'AI Copilot'],
+    what: 'Sent by itself to the seller when a buyer asks about their listing. The buyer is not named in it.',
+    lang: 'en', header: { type: 'none' }, buttons: [{ type: 'url', text: 'Read the question', url: SITE + '/marketplace/dashboard#leads' }], fields: [], greet: true, body: '' },
 }
 export const TEMPLATE_FOR: Record<string, string> = { photos: 'bhai_event_photos_v1', pass: 'bhai_event_pass_v1' }
 
@@ -619,6 +640,8 @@ export async function whatsappTick(c: any, o: { budgetMs?: number } = {}): Promi
   const started = Date.now(), budget = Math.min(25000, Math.max(1000, o.budgetMs || 20000))
   await run(c, "UPDATE wa_messages SET status = 'failed', error = ?, updated_at = datetime('now') WHERE status = 'sending' AND updated_at < datetime('now', '-10 minutes')",
     'No answer came back from WhatsApp for this one. Check with the person before sending it again.')
+  // The automatic messages join the queue first; a fault in one never stops the sending.
+  const auto = await runAutomations(c, cfg).catch(() => ({} as Record<string, number>))
   const perMinute = numberSetting(cfg, 'whatsapp_per_minute', DEFAULT_PER_MINUTE, 1, 60)
   const daily = numberSetting(cfg, 'whatsapp_daily_limit', DEFAULT_DAILY_LIMIT, 1, 1000000)
   const [from, to] = hoursOf(cfg.set.whatsapp_hours || '')
@@ -627,7 +650,7 @@ export async function whatsappTick(c: any, o: { budgetMs?: number } = {}): Promi
   const lastMinute = Number((await one(c, "SELECT COUNT(*) AS n FROM wa_messages WHERE direction = 'out' AND batch_id IS NOT NULL AND sent_at > datetime('now', '-60 seconds')"))?.n || 0)
   let used = await usedToday(c)
   let room = Math.max(0, perMinute - lastMinute)
-  const out = { sent: 0, failed: 0, skipped: 0, held_for_tomorrow: 0, outside_hours: !open, paused: '' }
+  const out = { sent: 0, failed: 0, skipped: 0, held_for_tomorrow: 0, outside_hours: !open, paused: '', auto }
   // One person's message (no bulk send behind it) goes at any hour and is never counted
   // against the minute; a bulk send's go inside the hours, up to the day's number.
   const rows = await all(c, `SELECT m.*, b.status AS batch_status FROM wa_messages m LEFT JOIN wa_batches b ON b.id = m.batch_id
@@ -674,6 +697,121 @@ export async function whatsappTick(c: any, o: { budgetMs?: number } = {}): Promi
      AND NOT EXISTS (SELECT 1 FROM wa_messages m WHERE m.batch_id = wa_batches.id AND m.status IN ('queued', 'sending'))`)
   return out
 }
+
+// ---------- automatic messages ----------
+//
+// Each rule watches one thing that happens on the site and queues its built-in message
+// to that person, once. A rule is off until the team switches it on, and only what
+// happens AFTER it was switched on counts: nobody from the past gets a surprise.
+// The minute clock runs them; STOP is respected; each one is a single message.
+export const AUTO_KEY = 'whatsapp_auto'
+export const ENQUIRY_WORDS: Record<string, string> = {
+  sponsorship: 'sponsorship', sponsor: 'sponsorship', partnership: 'a partnership', booth: 'a booth', exhibit: 'a booth', exhibitor: 'a booth', booth_application: 'a booth',
+  speaking: 'speaking at the event', speaker: 'speaking at the event', delhi_pass: 'the Delhi 2027 Visitor Pass', visa_letter: 'a visa letter',
+  workshop_partner: 'a workshop partnership', government: 'government participation', media: 'media coverage', general: 'your question',
+}
+type AutoRule = { key: string; title: string; when: string; template: string }
+export const AUTO_RULES: AutoRule[] = [
+  { key: 'enquiry', title: 'Thank you for your enquiry', when: 'Someone sends an enquiry (sponsorship, booth, speaking, Delhi pass, visa, workshop, government) with a mobile number.', template: 'bhai_auto_enquiry_v1' },
+  { key: 'delhi_paid', title: 'Delhi 2027 pass confirmed', when: 'Someone pays for a Delhi 2027 pass.', template: 'bhai_auto_delhi_paid_v1' },
+  { key: 'listing_live', title: 'Marketplace listing is live', when: 'The team approves a listing on the AI Marketplace (to the seller).', template: 'bhai_auto_listing_live_v1' },
+  { key: 'listing_lead', title: 'A buyer asked about a product', when: 'A buyer asks about a listing on the AI Marketplace (to the seller; the buyer is not named).', template: 'bhai_auto_listing_lead_v1' },
+]
+function autoSettings(cfg: Cfg): Record<string, { on?: boolean; since?: string }> {
+  try { const v = JSON.parse(cfg.set[AUTO_KEY] || '{}'); return v && typeof v === 'object' ? v : {} } catch { return {} }
+}
+type AutoHit = { ref: string; name: string; mobile: string; params: string[]; target: string; event_id: number; attendee_id: number | null }
+async function autoCandidates(c: any, key: string, since: string): Promise<AutoHit[]> {
+  const greet = (name: unknown) => blank(titledName(name) || 'there', 60)
+  const lim = 25
+  if (key === 'enquiry') {
+    const rows = await all(c, `SELECT id, event_id, name, phone, inquiry_type FROM inquiries WHERE created_at > ? AND COALESCE(phone, '') <> '' ORDER BY id LIMIT ?`, since, lim).catch(() => [] as any[])
+    return rows.map(r => ({ ref: 'inq:' + r.id, name: String(r.name || ''), mobile: String(r.phone || ''), event_id: Number(r.event_id || 1), attendee_id: null,
+      params: [greet(r.name), blank(ENQUIRY_WORDS[String(r.inquiry_type || '').toLowerCase()] || 'your enquiry', 60)], target: '' }))
+  }
+  if (key === 'delhi_paid') {
+    // A payment the gateway confirmed (payment_orders.paid_at), not a record that changed:
+    // someone who paid last month and edits their profile today is not told again.
+    // Each paid order is its own message, so an upgrade is confirmed too.
+    const rows = await all(c, `SELECT o.id AS oid, a.id, a.name, a.mobile, a.badge_type FROM payment_orders o JOIN attendees a ON a.id = o.attendee_id
+       WHERE o.event_id = 2 AND o.status = 'paid' AND o.paid_at > ? AND COALESCE(a.mobile, '') <> '' ORDER BY o.id LIMIT ?`, since, lim).catch(() => [] as any[])
+    return rows.map(r => ({ ref: 'pay:' + r.oid, name: String(r.name || ''), mobile: String(r.mobile || ''), event_id: 2, attendee_id: Number(r.id),
+      params: [greet(r.name), blank(r.badge_type || 'pass', 40)], target: SITE + '/delhi' }))
+  }
+  if (key === 'listing_live') {
+    // Approved after the switch: the approval the team made (admin_audit), or a listing
+    // that is new since then. A live listing that is only edited later is not told again.
+    const rows = await all(c, `SELECT id, company_slug, product_slug, product_name, contact_name, sales_contact_name, company_name, sales_contact_phone, company_phone FROM mp_listings l
+       WHERE status = 'approved' AND COALESCE(NULLIF(sales_contact_phone, ''), NULLIF(company_phone, '')) IS NOT NULL
+         AND ((created_at > ?1 AND updated_at > ?1) OR EXISTS (SELECT 1 FROM admin_audit a WHERE a.action = 'marketplace.listing-approved' AND a.entity_id = CAST(l.id AS TEXT) AND a.created_at > ?1))
+       ORDER BY id LIMIT ?2`, since, lim).catch(() => [] as any[])
+    return rows.map(r => ({ ref: 'mpl:' + r.id, name: String(r.sales_contact_name || r.contact_name || r.company_name || ''), mobile: String(r.sales_contact_phone || r.company_phone || ''), event_id: 1, attendee_id: null,
+      params: [greet(r.sales_contact_name || r.contact_name || ''), blank(r.product_name, 60)],
+      target: SITE + '/marketplace/listing/' + (r.company_slug && r.product_slug ? encodeURIComponent(r.company_slug) + '/' + encodeURIComponent(r.product_slug) : String(r.id)) }))
+  }
+  if (key === 'listing_lead') {
+    const rows = await all(c, `SELECT q.id, l.product_name, l.contact_name, l.sales_contact_name, l.company_name, l.sales_contact_phone, l.company_phone FROM mp_inquiries q JOIN mp_listings l ON l.id = q.listing_id
+       WHERE q.created_at > ? AND COALESCE(NULLIF(l.sales_contact_phone, ''), NULLIF(l.company_phone, '')) IS NOT NULL ORDER BY q.id LIMIT ?`, since, lim).catch(() => [] as any[])
+    return rows.map(r => ({ ref: 'mpq:' + r.id, name: String(r.sales_contact_name || r.contact_name || r.company_name || ''), mobile: String(r.sales_contact_phone || r.company_phone || ''), event_id: 1, attendee_id: null,
+      params: [greet(r.sales_contact_name || r.contact_name || ''), blank(r.product_name, 60)], target: SITE + '/marketplace/dashboard#leads' }))
+  }
+  return []
+}
+// Queues what each rule that is on has found since it was switched on. Returns counts.
+export async function runAutomations(c: any, cfg: Cfg): Promise<Record<string, number>> {
+  const st = autoSettings(cfg), out: Record<string, number> = {}
+  const on = AUTO_RULES.filter(r => st[r.key]?.on && st[r.key]?.since)
+  if (!on.length) return out
+  const approved = new Set((await all(c, "SELECT name FROM wa_templates WHERE status = 'APPROVED'")).map((r: any) => String(r.name)))
+  const stopped = await stoppedNumbers(c)
+  for (const rule of on) {
+    if (!approved.has(rule.template)) continue // it waits for Meta
+    const tpl = BUILT_IN[rule.template]
+    const hits = await autoCandidates(c, rule.key, String(st[rule.key].since))
+    if (!hits.length) continue
+    const done = new Set((await all(c, `SELECT person FROM wa_messages WHERE template = ? AND person IN (${hits.map(() => '?').join(',')})`, rule.template, ...hits.map(h => h.ref))).map((r: any) => String(r.person)))
+    let n = 0
+    for (const h of hits) {
+      if (done.has(h.ref)) continue
+      const number = whatsappNumber(h.mobile)
+      // A row is written even when it cannot go, so the same person is not looked at again.
+      const why = !number ? 'The mobile number is not complete' : stopped.has(number) ? 'Asked us to stop on WhatsApp' : ''
+      const p: Person = { attendee_id: h.attendee_id, person: h.ref, name: h.name, number: number || String(h.mobile).replace(/\D/g, '').slice(0, 15) || '0', params: h.params, image: '', target: h.target || tpl.buttonUrl, text: fill(tpl.text, h.params) }
+      const row: any = rowFor(p, { kind: 'auto', event: h.event_id }, tpl, 'automatic')
+      const cols = Object.keys(row)
+      await run(c, `INSERT INTO wa_messages (${cols.join(', ')}, status, error, updated_at) VALUES (${cols.map(() => '?').join(', ')}, ?, ?, datetime('now'))`, ...cols.map(k => row[k] ?? null), why ? 'skipped' : 'queued', why || null)
+      if (!why) n++
+    }
+    if (n) out[rule.key] = n
+  }
+  return out
+}
+function autoState(cfg: Cfg, tpls: any[], counts: any[]) {
+  const st = autoSettings(cfg)
+  return AUTO_RULES.map(r => {
+    const t = tpls.find((x: any) => String(x.name) === r.template), k = counts.find((x: any) => String(x.template) === r.template) || {}
+    return { key: r.key, title: r.title, when: r.when, template: r.template, status: String(t?.status || 'draft'), on: !!st[r.key]?.on, since: st[r.key]?.since || '',
+      sent: Number(k.sent || 0), failed: Number(k.failed || 0), last_at: k.last_at || '' }
+  })
+}
+wa.post('/api/admin/whatsapp/auto', async (c) => {
+  if (!(await ready(c))) return notReady(c)
+  const b = await c.req.json().catch(() => ({})) as any
+  const rule = AUTO_RULES.find(r => r.key === String(b.key || ''))
+  if (!rule) return c.json({ error: 'No such automatic message.' }, 400)
+  const cfg = await loadCfg(c)
+  const st = autoSettings(cfg)
+  const on = b.on === true
+  if (on) {
+    const t = await one(c, 'SELECT status FROM wa_templates WHERE name = ?', rule.template)
+    if (String(t?.status || '') !== 'APPROVED') return c.json({ error: 'Meta has not approved this message yet. Open Messages, find "' + BUILT_IN[rule.template].title + '" and send it for approval first.' }, 409)
+  }
+  // Switching on starts the clock now: only what happens from here on gets a message.
+  st[rule.key] = on ? { on: true, since: (await one(c, "SELECT datetime('now') AS t"))?.t } : { on: false, since: st[rule.key]?.since || '' }
+  await saveSetting(c, AUTO_KEY, JSON.stringify(st))
+  await note(c, 'whatsapp.auto', rule.key, { on })
+  return c.json({ success: true, ...(await overview(c)) })
+})
 
 // ---------- Meta calls us: delivered, read, failed, and replies ----------
 
@@ -832,13 +970,16 @@ async function overview(c: any) {
     settings: { sending: cfg.set.whatsapp_sending === 'off' ? 'off' : 'on', per_minute: numberSetting(cfg, 'whatsapp_per_minute', DEFAULT_PER_MINUTE, 1, 60),
       daily_limit: numberSetting(cfg, 'whatsapp_daily_limit', DEFAULT_DAILY_LIMIT, 1, 1000000), hours_from: from, hours_to: to },
     open_now: indiaHour() >= from && indiaHour() < to, footer: FOOTER, mcp: mcpState(cfg) }
-  if (!isReady) return { ...base, templates: shapeTemplates([]), batches: [], totals: {}, used_today: 0, unread: 0, events: [], passes: [] }
-  const [tpls, batches, totals, unread, events] = await Promise.all([
+  if (!isReady) return { ...base, templates: shapeTemplates([]), batches: [], totals: {}, used_today: 0, unread: 0, events: [], passes: [], auto: [] }
+  const [tpls, batches, totals, unread, events, autoCounts] = await Promise.all([
     templateRows(c),
     all(c, 'SELECT * FROM wa_batches ORDER BY id DESC LIMIT 15'),
     all(c, "SELECT status, COUNT(*) AS n, SUM(CASE WHEN clicked_at IS NOT NULL THEN 1 ELSE 0 END) AS taps FROM wa_messages WHERE direction = 'out' AND test = 0 GROUP BY status"),
     one(c, 'SELECT COALESCE(SUM(unread), 0) AS n FROM wa_contacts'),
-    all(c, 'SELECT id, title FROM events ORDER BY id').catch(() => [] as any[])])
+    all(c, 'SELECT id, title FROM events ORDER BY id').catch(() => [] as any[]),
+    all(c, `SELECT template, SUM(CASE WHEN status IN ('sent', 'delivered', 'read') THEN 1 ELSE 0 END) AS sent, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed, MAX(created_at) AS last_at
+       FROM wa_messages WHERE kind = 'auto' AND direction = 'out' GROUP BY template`)])
+  base.auto = autoState(cfg, tpls, autoCounts)
   const ids = batches.map(b => Number(b.id))
   const per = ids.length ? await all(c, `SELECT batch_id, status, COUNT(*) AS n, SUM(CASE WHEN clicked_at IS NOT NULL THEN 1 ELSE 0 END) AS taps FROM wa_messages WHERE batch_id IN (${ids.map(() => '?').join(',')}) GROUP BY batch_id, status`, ...ids) : []
   const replied = ids.length ? await all(c, `SELECT o.batch_id, COUNT(DISTINCT o.wa_number) AS n FROM wa_messages o WHERE o.batch_id IN (${ids.map(() => '?').join(',')})

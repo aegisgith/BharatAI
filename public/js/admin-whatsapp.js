@@ -54,7 +54,7 @@
   function chip(pair, text) { return '<span class="wad-chip wad-' + pair[1] + '">' + esc(text || pair[0]) + '</span>'; }
   function statusChip(s) { return chip(STATUS[s] || [s, 'muted']); }
   function tplChip(s) { return chip(TPL_STATUS[s] || [s, 'muted']); }
-  function kindWords(k) { return { photos: 'Photos', pass: 'Pass', custom: 'Announcement', reply: 'Reply' }[k] || k; }
+  function kindWords(k) { return { photos: 'Photos', pass: 'Pass', custom: 'Announcement', reply: 'Reply', auto: 'Automatic' }[k] || k; }
   // Meta says PENDING (or anything but CONNECTED) until the number is registered for the Cloud API.
   function notRegistered(ck) { return !!(ck && ck.number_status && String(ck.number_status).toUpperCase() !== 'CONNECTED'); }
   function categoryWords(c) { return String(c).toUpperCase() === 'UTILITY' ? 'Service message (lower cost)' : 'Marketing message'; }
@@ -122,7 +122,7 @@
   function hour(h) { h = Number(h); return (h % 12 === 0 ? 12 : h % 12) + (h < 12 || h === 24 ? ' am' : ' pm'); }
 
   function tabsHtml() {
-    var list = [['send', 'Send'], ['replies', 'Replies' + (D && D.unread ? ' (' + num(D.unread) + ')' : '')], ['sent', 'Sent'], ['messages', 'Messages'], ['setup', 'Setup']];
+    var list = [['send', 'Send'], ['replies', 'Replies' + (D && D.unread ? ' (' + num(D.unread) + ')' : '')], ['sent', 'Sent'], ['auto', 'Automatic'], ['messages', 'Messages'], ['setup', 'Setup']];
     return '<div class="wad-tabs" role="tablist">' + list.map(function (x) {
       return '<button role="tab" aria-selected="' + (tab === x[0]) + '" class="wad-tab' + (tab === x[0] ? ' wad-tab-on' : '') + '" data-act="tab" data-tab="' + x[0] + '">' + esc(x[1]) + '</button>';
     }).join('') + '</div>';
@@ -338,6 +338,30 @@
     }).join('') + '</tbody></table></div><p class="wad-sub">The newest 200 are shown.</p></div>';
   }
 
+  // ---------- Automatic ----------
+
+  function autoHtml() {
+    var rules = (D && D.auto) || [];
+    var head = '<div class="wad-card"><div class="wad-card-head"><h2>Messages that send themselves</h2>'
+      + '<p>Each one goes by itself, once per person, when something happens on the site. They are off until you switch them on, and only what happens after you switch one on gets a message: nobody from the past is surprised. Anyone who said STOP is left out. Meta has to approve each message first.</p></div></div>';
+    if (!rules.length) return head;
+    return head + rules.map(function (r) {
+      var t = ((D && D.templates) || []).filter(function (x) { return x.name === r.template; })[0] || {};
+      var approved = r.status === 'APPROVED';
+      var state = r.on ? chip(['On', 'good']) : chip(['Off', 'muted']);
+      var act = !approved
+        ? (r.status === 'draft' ? '<button class="wad-btn wad-primary" data-act="tpl-submit" data-name="' + esc(r.template) + '"' + (busy ? ' disabled' : '') + '>Send the message to WhatsApp for approval</button>'
+          : '<p class="wad-note">' + (r.status === 'PENDING' || r.status === 'IN_APPEAL' ? 'Meta is checking it. ' : 'Meta has not approved it; see Messages for the reason. ') + 'It can be switched on once Meta approves it.</p>')
+        : '<button class="wad-btn' + (r.on ? '' : ' wad-primary') + '" data-act="auto-toggle" data-key="' + esc(r.key) + '" data-on="' + (r.on ? '0' : '1') + '"' + (busy ? ' disabled' : '') + '>' + (r.on ? 'Switch off' : 'Switch on') + '</button>';
+      var stats = r.sent || r.failed ? '<p class="wad-sub"><b>' + num(r.sent) + '</b> sent' + (r.failed ? ' &middot; <b>' + num(r.failed) + '</b> not delivered' : '') + (r.last_at ? ' &middot; last ' + esc(when(r.last_at)) : '') + '</p>' : '';
+      return '<div class="wad-card wad-tpl"><div><b>' + esc(r.title) + '</b> ' + state + ' ' + tplChip(r.status)
+        + '<p class="wad-sub">When: ' + esc(r.when) + '</p>'
+        + (r.on && r.since ? '<p class="wad-sub">On since ' + esc(when(r.since)) + '.</p>' : '') + stats
+        + '<div class="wad-actions">' + act + '</div></div>'
+        + '<div>' + bubble({ text: t.preview || '', header: t.header, image: t.image_url, footer: t.footer, buttons: t.buttons, button: t.button }) + '</div></div>';
+    }).join('');
+  }
+
   // ---------- Messages ----------
 
   function messagesHtml() {
@@ -495,6 +519,7 @@
     if (tab === 'replies') return repliesHtml();
     if (tab === 'sent') return sentHtml();
     if (tab === 'messages') return messagesHtml();
+    if (tab === 'auto') return autoHtml();
     if (tab === 'setup') return setupHtml();
     return sendHtml();
   }
@@ -638,6 +663,11 @@
       return;
     }
     if (act === 'inbox-filter') { inboxFilter = t.getAttribute('data-filter'); draw(); return; }
+    if (act === 'auto-toggle') {
+      var turnOn = t.getAttribute('data-on') === '1';
+      await work(async function () { take(await opts.api.post('/api/admin/whatsapp/auto', { key: t.getAttribute('data-key'), on: turnOn })); toast(turnOn ? 'Switched on. From now on it goes by itself.' : 'Switched off.'); });
+      return;
+    }
     if (act === 'mcp-make' || act === 'mcp-off') {
       if (act === 'mcp-make' && D && D.mcp && D.mcp.on && !w.confirm('Make a new key? The one Claude uses now stops working.')) return;
       if (act === 'mcp-off' && !w.confirm('Switch off Claude\'s access to WhatsApp?')) return;
