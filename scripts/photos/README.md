@@ -106,6 +106,35 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
 
 The "Are you in the photos?" email (src/routes/find-photos.ts) asks everyone not found to add a clear photo; re-run steps 1-3 a day after it goes.
 
+## Exhibitors' booth photos (by the company name printed in the photo)
+
+The organiser, 23 Nov: every exhibitor gets the photos its name or logo is in, even when
+no face was matched. No faces are used here, only printed text.
+
+1. `venv-ort/python ocr.py WORK/img WORK/exh/ocr.json 2 WORK/exh/order.json`: RapidOCR
+   (`pip install rapidocr-onnxruntime==1.3.24`) reads the text in every photo at 1,280 px.
+   Slow (3 to 7 seconds a photo on this computer) and it can be stopped and run again. Run
+   it ALONE: with a build or the face passes beside it this computer (8 GB) runs out of
+   memory. `order.json` is an optional list of photo ids to read first (the booth cameras).
+2. `venv/python exh_match.py WORK/exh/ocr.json exhibitor-names.json WORK/exh/folder.json WORK/img WORK/exh/booth.json --report`
+   - `exhibitor-names.json`: one row a company: every `exhibitors` id of it (a company
+     can have several rows), and the words that mean it. Add a row when an exhibitor is
+     added; `"exact"` for short names (CGI, Seem, Aria, FTA) that must stand as a word.
+   - A name counts at **6% of the photo's long side** (a booth fascia, standee or screen).
+     A stage shot needs **20%** (their own talk slide): the stage's side walls and the
+     screen's partner strip carry every exhibitor's logo. A photo is a stage shot when 3 or
+     more companies are read in it, or it shows the stage's own words (IDFC FIRST Bank,
+     Graham Bell, World Trade Center, "specialised tracks").
+   - `"backdrop"` companies (IDFC FIRST Bank, Aegis, Gupshup) are printed on the backdrops,
+     so only the "Cam 3 - Exhibition Booth" folder counts for them (`folder.json`: photo id
+     to camera folder).
+   - Look at the contact sheets (one row a company) before exporting.
+3. `venv/python exh_export.py WORK/exh/booth.json exhibitor-names.json WORK/index.json WORK/img REPO/src/data/exhibitor-photos.json`,
+   then `npm run build` and `node scripts/verify/smoke-booth-photos.mjs`.
+4. They see them on the exhibitor dashboard, **Booth photos** (src/routes/exhibitor-photos.ts,
+   public/static/booth-photos.js), and the organiser sends one email per company from
+   Admin, After the Event, Booth photos. A photo shows only once it is in the photo store.
+
 ## Rules
 
 - The Drive folder must stay **"Anyone with the link: Viewer"**. The pages and emails

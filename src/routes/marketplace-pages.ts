@@ -690,6 +690,7 @@ export function marketplaceDashboardPageHTML(): string {
       <button class="dash-sidebar-item hidden" data-section="team" id="dash-nav-team"><i class="fas fa-users"></i> Your Team</button>
       <button class="dash-sidebar-item hidden" data-section="guests" id="dash-nav-guests"><i class="fas fa-ticket-alt"></i> Visitor passes</button>
       <button class="dash-sidebar-item hidden" data-section="leads" id="dash-nav-leads"><i class="fas fa-qrcode"></i> Leads</button>
+      <button class="dash-sidebar-item hidden" data-section="photos" id="dash-nav-photos"><i class="fas fa-images"></i> Booth photos</button>
       <button class="dash-sidebar-item hidden" data-section="branding" id="dash-nav-branding"><i class="fas fa-store"></i> Booth Branding</button>
       <button class="dash-sidebar-item hidden" data-section="connect" id="dash-nav-connect"><i class="fas fa-handshake"></i> Bharat AI Connect</button>
       <button class="dash-sidebar-item hidden" data-section="report" id="dash-nav-report"><i class="fas fa-exclamation-circle"></i> Report a problem</button>
@@ -831,6 +832,14 @@ export function marketplaceDashboardPageHTML(): string {
         </div>
       </div>
       <div id="leads-list" class="team-list"></div>
+    </section>
+
+    <!-- Booth photos (23 Nov 2026): the event photos their company's name or logo is in (booth, banner, screen, their talk slide),
+         found by reading the text in every photo; public/static/booth-photos.js, the server src/routes/exhibitor-photos.ts -->
+    <section id="section-photos" class="dash-section hidden">
+      <div class="dash-section-header"><h2><i class="fas fa-images mr-2"></i>Booth photos</h2></div>
+      <div id="booth-photos-card" class="dash-card"></div>
+      <div id="booth-photos-grid" class="booth-photos-grid"></div>
     </section>
 
     <!-- Bharat AI Connect, the event's networking app: what the team gets there, and who has signed in -->
@@ -984,6 +993,7 @@ export function marketplaceDashboardPageHTML(): string {
 
   <script src="/static/team-guest.js?v=20261119"></script>
   <script src="/static/marketplace-dashboard.js?v=13"></script>
+  <script src="/static/booth-photos.js?v=20261123"></script>
 </body>
 </html>`
 }

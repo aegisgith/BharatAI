@@ -11,6 +11,7 @@ import speakerBrief, { configureSpeakerBrief, saturdaySpeakerReminders } from '.
 import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/talk-brief'
 import speakerPhotos, { configurePhotos } from './routes/photos'
 import findPhotos, { configureFindPhotos, findPhotosWhereSql } from './routes/find-photos'
+import exhibitorPhotos, { configureExhibitorPhotos } from './routes/exhibitor-photos'
 import photoStore, { configurePhotoStore } from './routes/photo-store'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
 import entrySlots, { configureEntrySlots, entrySlotAudienceRows, entryReofferAudienceRows, satOpenAudienceRows, inSlot as entryInSlot, satWindow } from './routes/entry-slots'
@@ -651,6 +652,14 @@ configureFindPhotos({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader,
     return href
   } })
 app.route('/', findPhotos)
+// Booth photos for exhibitors (23 Nov 2026): the event photos each company's name or logo
+// is in, read from the text in every photo on the organiser's computer (scripts/photos/
+// exh_match.py), shown on the exhibitor dashboard under Booth photos and sent in one email
+// per company from Admin -> After the Event. routes/exhibitor-photos.ts.
+configureExhibitorPhotos({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader,
+  dashboardExhibitor: (c: any) => exhibitorOfCompanySession(c),
+  signInLink: (c: any, accountId: number) => mpSignInLink(c, accountId, 'photos') })
+app.route('/', exhibitorPhotos)
 // WhatsApp (23 Nov 2026): photos, passes and announcements sent from the event's own
 // WhatsApp Business number through Meta's Cloud API, with delivery ticks and replies;
 // Admin -> WhatsApp (public/js/admin-whatsapp.js), routes/whatsapp.ts, migration 0065.
@@ -42509,7 +42518,7 @@ function adminPageScript(): string {
     // After the Event: the feedback survey and each exhibitor's results live in
     // /js/admin-after.js (one global, AfterDesk) with their own stylesheet, loaded the
     // first time the section opens. Bump AFTER_DESK_VERSION on any change to either.
-    var AFTER_DESK_VERSION = '20261123e';
+    var AFTER_DESK_VERSION = '20261123f';
     var afterDeskAssets = null;
     function afterDeskLoadAssets() {
       if (window.AfterDesk) return Promise.resolve();

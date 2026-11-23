@@ -24,6 +24,7 @@
   var photos = null;
   var attendees = null;
   var findInfo = null;
+  var booths = null;
   var busy = false;
 
   function esc(v) {
@@ -257,8 +258,37 @@
       + '<button type="button" class="afd-btn afd-small afd-primary" data-act="send-find"' + (f.audience ? '' : ' disabled') + '>Email ' + num(f.audience) + ' people</button></div></div>';
   }
 
+  // Booth photos (23 Nov 2026): the photos each exhibitor's company name or logo is in, found
+  // by reading the text in every photo (scripts/photos/exh_match.py), on its dashboard under
+  // Booth photos. One email per company to its booth contact, with a sign-in button.
+  var BOOTH_STATUS = { ready: 'Not yet', sent: 'Sent', 'no-email': 'No contact email', 'no-photos': 'No photos in the store yet' };
+  function boothsHtml() {
+    var head = '<div class="afd-card-head"><h2><i class="fas fa-images" aria-hidden="true"></i> Booth photos</h2>'
+      + '<p>For every exhibitor, even when no face was matched: the photos their company&rsquo;s name or logo is in (booth, banner, screen, their own talk slide), read from the text in each photo. The stage&rsquo;s logo walls do not count. They see them on their exhibitor dashboard under Booth photos. One email per company to its booth contact, from register@.</p></div>';
+    if (!booths) return '<section class="afd-card">' + head + '<p class="afd-note">Loading...</p></section>';
+    if (booths.error) return '<section class="afd-card">' + head + '<p class="afd-warn">' + esc(booths.error) + '</p></section>';
+    var list = booths.rows || [];
+    var ready = list.filter(function (r) { return r.status === 'ready'; });
+    var rows = list.map(function (r) {
+      var thumbs = (r.thumbs || []).map(function (u) { return '<img src="' + esc(u) + '" alt="" loading="lazy" width="40" height="40">'; }).join('');
+      var st = r.status === 'sent' ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '') : r.status === 'ready' ? 'Not yet' : '<span class="afd-sub">' + esc(BOOTH_STATUS[r.status] || r.status) + '</span>';
+      var can = r.count > 0 && emailOk(r.email);
+      return '<tr><td><b>' + esc(r.company) + '</b>' + (r.booth ? '<div class="afd-sub">Booth ' + esc(r.booth) + '</div>' : '') + '</td>'
+        + '<td><b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div></td>'
+        + '<td>' + (emailOk(r.email) ? esc(r.email) : '<span class="afd-bad">No contact email</span>') + '</td><td>' + st + '</td>'
+        + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small" data-act="preview-booth" data-id="' + esc(r.key) + '">Preview</button>'
+        + '<button type="button" class="afd-btn afd-small" data-act="send-booth" data-id="' + esc(r.key) + '"' + (can ? '' : ' disabled') + '>' + (r.sent_count ? 'Send again' : 'Send') + '</button></td></tr>';
+    }).join('');
+    return '<section class="afd-card">' + head
+      + '<p class="afd-note">' + num(list.length) + ' companies, ' + num(booths.photos) + ' photos.</p>'
+      + '<div class="afd-actions"><button type="button" class="afd-btn afd-primary" data-act="send-all-booth"' + (ready.length ? '' : ' disabled') + '>'
+      + '<i class="fas fa-paper-plane" aria-hidden="true"></i> Send to all not yet sent (' + num(ready.length) + ')</button>'
+      + '<span class="afd-note" id="afd-booth-progress" aria-live="polite"></span></div>'
+      + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Exhibitor</th><th>Photos</th><th>Booth contact</th><th>Booth photos email</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+  }
+
   function draw() {
-    host.innerHTML = '<div class="afd">' + photosHtml() + attendeesHtml() + surveyHtml() + exhibitorsHtml() + '</div>';
+    host.innerHTML = '<div class="afd">' + photosHtml() + attendeesHtml() + surveyHtml() + exhibitorsHtml() + boothsHtml() + '</div>';
   }
 
   function preview(title, to, subject, html) {
@@ -407,6 +437,33 @@
         }
         toast(phOk + ' sent' + (phFailed.length ? ', ' + phFailed.length + ' did not send: ' + phFailed.slice(0, 3).join('; ') : '.'), phFailed.length ? 'error' : 'success');
         await refresh();
+      } else if (act === 'preview-booth') {
+        var bv = await opts.api.get('/api/admin/booth-photos/' + encodeURIComponent(id) + '/preview');
+        preview('Booth photos email', bv.to, bv.subject, bv.html);
+      } else if (act === 'send-booth') {
+        var br = ((booths && booths.rows) || []).find(function (x) { return String(x.key) === String(id); });
+        if (!br) return;
+        var bw = br.sent_count ? 'Send ' + br.company + ' their booth photos again, to ' + br.email + '? They were sent on ' + br.sent_at + '.'
+          : 'Send ' + br.company + ' their ' + br.count + ' booth photos, to ' + br.email + '?';
+        if (!w.confirm(bw)) return;
+        busy = true; b.disabled = true;
+        await opts.api.post('/api/admin/booth-photos/' + encodeURIComponent(br.key) + '/send', { again: !!br.sent_count });
+        toast('Booth photos sent to ' + br.company + '.');
+        await refresh();
+      } else if (act === 'send-all-booth') {
+        var bl = ((booths && booths.rows) || []).filter(function (x) { return x.status === 'ready'; });
+        if (!bl.length) return;
+        if (!w.confirm('Send ' + bl.length + ' exhibitors their booth photos, one email each to the booth contact? Exhibitors already sent, without a contact email or with no photos are left out.')) return;
+        busy = true; b.disabled = true;
+        var bok = 0, bfail = [];
+        for (var bk = 0; bk < bl.length; bk++) {
+          var bp = document.getElementById('afd-booth-progress');
+          if (bp) bp.textContent = 'Sending ' + (bk + 1) + ' of ' + bl.length + '...';
+          try { await opts.api.post('/api/admin/booth-photos/' + encodeURIComponent(bl[bk].key) + '/send', {}); bok++; }
+          catch (err) { if (!(err && err.data && err.data.already)) bfail.push(bl[bk].company + ': ' + (err.message || 'failed')); }
+        }
+        toast(bok + ' sent' + (bfail.length ? ', ' + bfail.length + ' did not send: ' + bfail.slice(0, 3).join('; ') : '.'), bfail.length ? 'error' : 'success');
+        await refresh();
       } else if (act === 'send-all-ex') {
         var list = exhibitors.filter(function (x) { return !x.sent_count && emailOk(x.email) && hasStuff(x); });
         if (!list.length) return;
@@ -436,8 +493,10 @@
       opts.api.get('/api/admin/exhibitor-results').catch(function (e) { return { error: e.message, results: [] }; }),
       opts.api.get('/api/admin/speaker-photos').catch(function (e) { return { error: e.message, rows: [] }; }),
       opts.api.get('/api/admin/attendee-photos').catch(function (e) { return { error: e.message, rows: [], groups: [] }; }),
-      opts.api.get('/api/admin/find-photos').catch(function (e) { return { error: e.message }; })
+      opts.api.get('/api/admin/find-photos').catch(function (e) { return { error: e.message }; }),
+      opts.api.get('/api/admin/booth-photos').catch(function (e) { return { error: e.message, rows: [] }; })
     ]);
+    booths = out[5] || { rows: [] };
     survey = out[0] || {};
     exhibitors = (out[1] && out[1].results) || [];
     photos = out[2] || { rows: [] };

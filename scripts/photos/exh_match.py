@@ -11,6 +11,9 @@
 #   stage or a wide hall shot: there a company counts only if its name spans 20% of the photo
 #   (their own talk slide), elsewhere 6% (their booth fascia, standee or screen). Widths are
 #   taken against the photo's long side, so a portrait podium shot does not inflate them.
+# - A photo that shows the stage's own words (IDFC FIRST Bank, Graham Bell, World Trade
+#   Center, "specialised tracks") is a stage shot too, even when only one logo was read:
+#   the podium and the screen's partner strip sit beside the logo wall. Same 20% rule.
 # - out.json: {company key: [[photo id, share of the photo's long side the name spans, conf]...]}
 #   biggest name first.
 import sys, json, re
@@ -45,6 +48,8 @@ for row in names:
             if hit(row, norm(text)):
                 if share > got.get(pid, (0, 0))[0]: got[pid] = (share, conf)
     if got: out[row['key']] = got
+STAGE = re.compile(r'idfc|first\s*bank|graham\s*bell|world\s*trade|trade\s*cent|specialised\s*tracks', re.I)
+def stage(pid): return any(c >= 0.5 and STAGE.search(t) for t, c, s in ocr.get(pid, []))
 # Per photo: how many companies, and the portrait correction.
 per = collections.defaultdict(int)
 for got in out.values():
@@ -60,7 +65,7 @@ for k, got in out.items():
     keep = []
     for p, (s, c) in got.items():
         s = s * asp[p]
-        if s >= (0.20 if per[p] >= 3 else 0.06): keep.append([p, round(s, 3), c])
+        if s >= (0.20 if (per[p] >= 3 or stage(p)) else 0.06): keep.append([p, round(s, 3), c])
     if keep: final[k] = sorted(keep, key=lambda x: -x[1])
 out = final
 json.dump(out, open(OUT, 'w'))

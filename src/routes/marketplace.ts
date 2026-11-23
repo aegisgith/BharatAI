@@ -283,8 +283,9 @@ const verifySignInToken = async (c: any, token: string): Promise<{ id: number; f
   return { id: parseInt(id, 10), fp }
 }
 // go: where the link lands, from a fixed list ('team' opens the dashboard's Team screen,
-// 'leads' its Leads screen, for the exhibitor results email after the event).
-export const signInLink = async (c: any, companyId: number | string, go: '' | 'team' | 'leads' = '') => {
+// 'leads' its Leads screen, for the exhibitor results email after the event, 'photos' its
+// Booth photos screen, for the booth photos email, routes/exhibitor-photos.ts).
+export const signInLink = async (c: any, companyId: number | string, go: '' | 'team' | 'leads' | 'photos' = '') => {
   const row = await c.env.DB.prepare('SELECT password_hash FROM mp_companies WHERE id = ?').bind(companyId).first() as any
   return `${siteOrigin(c)}/marketplace/signin?t=${await signInToken(c, companyId, String(row?.password_hash || ''))}${go ? '&go=' + go : ''}`
 }
@@ -661,6 +662,7 @@ mp.get('/marketplace/signin', async (c) => {
   // The "add your team" email lands on the Team screen.
   if (c.req.query('go') === 'team' && company.exhibitor_id) return c.redirect('/marketplace/dashboard#team')
   if (c.req.query('go') === 'leads' && company.exhibitor_id) return c.redirect('/marketplace/dashboard#leads')
+  if (c.req.query('go') === 'photos' && company.exhibitor_id) return c.redirect('/marketplace/dashboard#photos')
   // An exhibitor with a stage slot has two things to do, the listing and the talk, and
   // the dashboard's to-do list shows both. Anyone else goes straight to the listing
   // form until they have a listing.
