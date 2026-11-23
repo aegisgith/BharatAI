@@ -220,7 +220,7 @@ const inR2 = [A.best[0], ...A.photos.filter(id => id !== A.best[0]).slice(0, 2)]
 const pidOf = {};
 inR2.forEach((drive, i) => {
   const pid = ('R2pid' + i + 'abcdefghij').slice(0, 12); pidOf[drive] = pid;
-  db.run("INSERT INTO event_photos (event_id, pid, drive_id, title, day, taken_at, camera, hall, width, height, bytes, raw) VALUES (1, ?, ?, ?, '2026-11-20', '2026-11-20T05:00:00Z', 'Cam 1', '', 6000, 4000, 9, 0)", [pid, drive, 'IMG' + i + '.JPG']);
+  db.run("INSERT INTO event_photos (event_id, pid, drive_id, title, day, taken_at, camera, hall, width, height, bytes, raw) VALUES (1, ?, ?, ?, '2026-11-20', '2026-11-20T05:00:00Z', 'Cam 1', '', 6000, 4000, 3, 0)", [pid, drive, 'IMG' + i + '.JPG']);
   for (const part of ['s', 'm', 'o']) store.set(`event-photos/1/${pid}/${part}.jpg`, new Uint8Array([0xff, 0xd8, i]));
 });
 const html2 = await (await page(A.key, sig(A.key))).text();
@@ -229,22 +229,80 @@ const r2 = (part, drive) => `/photo/${pidOf[drive]}/${part}.jpg?u=${encodeURICom
 check('the page shows a photo in R2 from our own link, signed for this album', inR2.every(d => html2.includes(r2('s', d))), inR2);
 check('...its large view and full-size save are ours too; with the store present nothing comes from Drive', inR2.every(d => ids2.some(x => x[0].includes(r2('m', d)) && x[1].includes(r2('o', d))))
   && ids2.length === inR2.length && !ids2.some(x => /googleusercontent|drive\.google/.test(x[0] + x[1])), ids2.length);
-check('the page says a speaker may save up to 50', html2.includes('You can save up to 50 of your photos at full size'), (html2.match(/You can save[^.]*\./) || [])[0]);
+check('each photo on the page carries its store id and size, for saving several as a ZIP', ids2.every(x => /^[A-Za-z0-9_-]{12}$/.test(x[4]) && x[5] === 3), ids2.map(x => [x[4], x[5]]));
+check('the page offers Save all, Choose photos and Share, and asks for the event tags', html2.includes(`Save all ${ids2.length} photos`) && html2.includes('data-go="pick"')
+  && html2.includes('data-go="shareone"') && html2.includes('data-go="sharepicked"') && html2.includes('#BharatAIInnovation @bharataiinnovation.ai'), '');
+check('...and says nothing about a save limit any more', !/You can save up to|the most each person can|full-size photos\. You can still/.test(html2), (html2.match(/You (have|can) save[^.]*\./) || [])[0]);
+const cfg2 = JSON.parse((html2.match(/<script type="application\/json" id="cfg">([\s\S]*?)<\/script>/) || [])[1] || '{}');
+check('the page knows how big one ZIP may be (100 photos, 900 MB)', cfg2.max === 100 && cfg2.bytes === 900000000 && /BharatAIInnovation/.test(cfg2.tags || ''), cfg2);
 const pv2 = await as('GET', `/api/admin/speaker-photos/${A.key}/preview`);
 check('the email shows its photo in R2 by our small link, and never a full-size link', pv2.json?.html.includes(r2('s', A.best[0])) && !/\/o\.jpg/.test(pv2.json?.html || ''), (pv2.json?.html.match(/\/photo\/[^"]+/) || [])[0]);
 l = await as('GET', '/api/admin/speaker-photos');
 check('the Admin list shows its small pictures from R2 as the organiser (never counted)', (row(A.key)?.thumbs || []).some(t => t.includes(`/photo/${pidOf[A.best[0]]}/s.jpg?u=admin`)), row(A.key)?.thumbs);
-// Saves: a speaker's album has its own limit, not the attendees' 15.
-db.run("INSERT INTO app_settings (key, value) VALUES ('photo_download_limit', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+// Saves: no limit (the organiser, 23 Nov 2026: "dont limit to 50 max rule"), each one recorded.
+const saved = (person) => rows('SELECT COALESCE(SUM(times), 0) AS n FROM photo_downloads WHERE person = ?', [person])[0].n;
 const o = (d) => ids2.find(x => x[1].includes(r2('o', d)))[1].replace('https://bharataiinnovation.com', '');
-const got1 = await W.fetchRaw(new Request('https://bharataiinnovation.com' + o(inR2[0])));
-const got2 = await W.fetchRaw(new Request('https://bharataiinnovation.com' + o(inR2[1])));
-check('a speaker saves past the attendees\' limit (set to 1 here): their own 50 applies', got1.status === 200 && got2.status === 200 && /attachment/.test(got2.headers.get('Content-Disposition') || ''), [got1.status, got2.status]);
-db.run("INSERT INTO app_settings (key, value) VALUES ('photo_download_limit_speakers', '2')");
-const got3 = await W.fetchRaw(new Request('https://bharataiinnovation.com' + o(inR2[2])));
-check('...and stops at the speakers\' limit (2 here)', got3.status === 429, got3.status);
-const html3 = await (await page(A.key, sig(A.key))).text();
-check('the page then says they have saved the most they can', html3.includes('You have saved 2 photos at full size'), (html3.match(/You (have|can) save[^.]*\./) || [])[0]);
+const gots = [];
+for (const d of inR2) gots.push(await W.fetchRaw(new Request('https://bharataiinnovation.com' + o(d))));
+check('a speaker saves every photo at full size, one by one, with no limit, each save recorded', gots.every(g => g.status === 200 && /attachment/.test(g.headers.get('Content-Disposition') || '')) && saved(A.key) === 3, [gots.map(g => g.status), saved(A.key)]);
+
+// Save all / save chosen: one ZIP of the originals, only ever of photos on their own page.
+const T = new Int32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; T[n] = c; }
+const crc = (b) => { let c = -1; for (const x of b) c = T[(c ^ x) & 255] ^ (c >>> 8); return ~c >>> 0; };
+// Reads a ZIP by its central directory, as Windows and macOS do; null when it is not a whole ZIP.
+const unzip = (b) => {
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength), e = b.length - 22;
+  if (e < 0 || v.getUint32(e, true) !== 0x06054b50) return null;
+  const n = v.getUint16(e + 10, true), cdSize = v.getUint32(e + 12, true), cdAt = v.getUint32(e + 16, true);
+  if (cdAt + cdSize !== e) return null;
+  const out = []; let p = cdAt;
+  for (let i = 0; i < n; i++) {
+    if (v.getUint32(p, true) !== 0x02014b50) return null;
+    const c = v.getUint32(p + 16, true), size = v.getUint32(p + 20, true), nl = v.getUint16(p + 28, true), off = v.getUint32(p + 42, true);
+    if (v.getUint32(off, true) !== 0x04034b50) return null;
+    const at = off + 30 + v.getUint16(off + 26, true) + v.getUint16(off + 28, true);
+    const data = b.subarray(at, at + size);
+    out.push({ name: new TextDecoder().decode(b.subarray(p + 46, p + 46 + nl)), data: [...data], crcOk: crc(data) === c, stored: v.getUint16(p + 10, true) === 0 });
+    p += 46 + nl + v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
+  }
+  return out;
+};
+const zipOf = (key, k, pids, extra = '') => W.fetchRaw(new Request(`https://bharataiinnovation.com/photos/${key}/save?k=${k}&p=${pids.join('.')}${extra}`));
+const allPids = ids2.map(x => x[4]);
+const before0 = saved(A.key);
+let z = await zipOf(A.key, sig(A.key), allPids);
+let zb = new Uint8Array(await z.arrayBuffer());
+let zf = unzip(zb);
+check('Save all: one ZIP file, downloaded as an attachment, its length told up front', z.status === 200 && z.headers.get('Content-Type') === 'application/zip'
+  && /attachment; filename="Bharat-AI-Innovation-2026-photos\.zip"/.test(z.headers.get('Content-Disposition') || '') && Number(z.headers.get('Content-Length')) === zb.length, [z.status, z.headers.get('Content-Disposition'), z.headers.get('Content-Length'), zb.length]);
+check('...holding each original whole, stored as it is, every CRC right, a clear name each', !!zf && zf.length === 3 && zf.every(f => f.crcOk && f.stored && /^BharatAI-Mumbai-2026-IMG\d\.jpg$/.test(f.name))
+  && inR2.every((d, i) => zf.some(f => f.name === `BharatAI-Mumbai-2026-IMG${i}.jpg` && f.data.join() === [0xff, 0xd8, i].join())), zf && zf.map(f => [f.name, f.crcOk]));
+check('...and every photo in it is recorded as saved', saved(A.key) === before0 + 3, saved(A.key) - before0);
+z = await zipOf(A.key, sig(A.key), allPids.slice(0, 2), '&n=1&of=2');
+zf = unzip(new Uint8Array(await z.arrayBuffer()));
+check('Save chosen: a ZIP of just those two, named as part 1 of 2 when the page splits a big choice', z.status === 200 && zf && zf.length === 2
+  && /photos-part-1-of-2\.zip"/.test(z.headers.get('Content-Disposition') || ''), [z.status, z.headers.get('Content-Disposition')]);
+// A photo in the store that is not on A's page is never put in A's ZIP.
+const other = 'drive-photo-not-in-any-album';
+db.run("INSERT INTO event_photos (event_id, pid, drive_id, title, day, taken_at, camera, hall, width, height, bytes, raw) VALUES (1, 'OtherPhoto01', ?, 'OTHER.JPG', '2026-11-20', '', 'Cam 1', '', 6000, 4000, 3, 0)", [other]);
+store.set('event-photos/1/OtherPhoto01/o.jpg', new Uint8Array([0xff, 0xd8, 9]));
+z = await zipOf(A.key, sig(A.key), [allPids[0], 'OtherPhoto01']);
+zf = unzip(new Uint8Array(await z.arrayBuffer()));
+check("a photo that is not on their page is left out of their ZIP", z.status === 200 && zf && zf.length === 1 && !zf.some(f => /OTHER/.test(f.name)), zf && zf.map(f => f.name));
+z = await zipOf(A.key, sig(A.key), ['OtherPhoto01']);
+check('...and a ZIP of only such photos is refused', z.status === 404 && /no longer available/.test(await z.text()), z.status);
+z = await zipOf(A.key, sig(B.key), allPids);
+check("another person's page link cannot open this album's ZIP", z.status === 404 && /not complete/.test(await z.text()), z.status);
+z = await zipOf(A.key, sig(A.key), Array.from({ length: 101 }, (_, i) => ('Many' + i + 'abcdefghijk').slice(0, 12)));
+check('more than 100 photos in one go is refused, in words (the page asks in parts)', z.status === 413 && /up to 100 photos/.test(await z.text()), z.status);
+z = await zipOf(A.key, sig(A.key), []);
+check('a ZIP link that names no photos is refused', z.status === 404, z.status);
+// A photo whose stored size is wrong must fail the download, never give a broken ZIP.
+db.run('UPDATE event_photos SET bytes = 9 WHERE pid = ?', [allPids[1]]);
+z = await zipOf(A.key, sig(A.key), allPids);
+let broke = false; try { await z.arrayBuffer(); } catch { broke = true; }
+check('a photo of the wrong size stops the ZIP download rather than giving a broken file', z.status === 200 && broke, { status: z.status, broke });
+db.run('UPDATE event_photos SET bytes = 3 WHERE pid = ?', [allPids[1]]);
 // A photo the organiser hides in Admin (event_photos.hidden) is gone everywhere, never shown from Drive instead.
 db.run('UPDATE event_photos SET hidden = 1 WHERE pid = ?', [pidOf[A.best[0]]]);
 const html4 = await (await page(A.key, sig(A.key))).text();
@@ -252,5 +310,8 @@ l = await as('GET', '/api/admin/speaker-photos');
 const pv4 = await as('GET', `/api/admin/speaker-photos/${A.key}/preview`);
 check('a hidden photo is gone from their page, their count and their email, and not shown from Drive', !html4.includes(pidOf[A.best[0]]) && !html4.includes(A.best[0])
   && row(A.key)?.count === A.photos.length - 1 && !(pv4.json?.html || '').includes(pidOf[A.best[0]]) && !(pv4.json?.html || '').includes(A.best[0]), { count: row(A.key)?.count, of: A.photos.length });
+z = await zipOf(A.key, sig(A.key), allPids);
+zf = unzip(new Uint8Array(await z.arrayBuffer()));
+check('...and from their ZIP', z.status === 200 && zf && zf.length === 2 && !zf.some(f => f.name === 'BharatAI-Mumbai-2026-IMG0.jpg'), zf && zf.map(f => f.name));
 
 done();

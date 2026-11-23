@@ -4,9 +4,10 @@
 // Admin -> After the Event. Nothing is sent: the mail service is answered here.
 // Run after `npm run build`:  node scripts/verify/smoke-booth-photos.mjs
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import { talksWorld, checker } from './talks-world.mjs';
 
-const { db, rows, sent, hit, as, read, fetchRaw } = await talksWorld({ seedTalks: false });
+const { db, rows, sent, hit, as, read, fetchRaw, env } = await talksWorld({ seedTalks: false });
 const { check, done } = checker();
 const mpAs = (companyId) => ({ Cookie: 'mp_session=' + companyId + '.' + crypto.createHmac('sha256', 'talks-mp').update(String(companyId)).digest('hex') });
 const DATA = JSON.parse(read('src/data/exhibitor-photos.json'));
@@ -54,6 +55,52 @@ check('each photo is ours, signed for this company, never from Drive', ph.every(
   && !/googleusercontent|drive\.google/.test(JSON.stringify(ph)), ph[0]);
 r = await hit('GET', '/marketplace/dashboard');
 check('the dashboard page has the Booth photos tab, hidden until it has an answer, and its script', /id="dash-nav-photos"/.test(r.text) && /data-section="photos"/.test(r.text) && /id="section-photos"/.test(r.text) && /\/static\/booth-photos\.js\?v=/.test(r.text), r.status);
+
+// ---- "Save all N photos (ZIP)" (24 Nov 2026: on once photo-store.ts has photosByPid + photosZip) ----
+// Real-sized originals of odd lengths, handed over by the bucket in uneven pieces, so the
+// CRC's eight-bytes-at-a-time loop, its tail and the joins between pieces are all crossed.
+const T = new Int32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; T[n] = c; }
+const crc = (b) => { let c = -1; for (const x of b) c = T[(c ^ x) & 255] ^ (c >>> 8); return ~c >>> 0; };
+const unzip = (b) => {
+  const v = new DataView(b.buffer, b.byteOffset, b.byteLength), e = b.length - 22;
+  if (e < 0 || v.getUint32(e, true) !== 0x06054b50) return null;
+  const n = v.getUint16(e + 10, true), cdSize = v.getUint32(e + 12, true), cdAt = v.getUint32(e + 16, true);
+  if (cdAt + cdSize !== e) return null;
+  const out = []; let p = cdAt;
+  for (let i = 0; i < n; i++) {
+    if (v.getUint32(p, true) !== 0x02014b50) return null;
+    const c = v.getUint32(p + 16, true), size = v.getUint32(p + 20, true), nl = v.getUint16(p + 28, true), off = v.getUint32(p + 42, true);
+    if (v.getUint32(off, true) !== 0x04034b50) return null;
+    const at = off + 30 + v.getUint16(off + 26, true) + v.getUint16(off + 28, true);
+    const data = b.subarray(at, at + size);
+    out.push({ name: new TextDecoder().decode(b.subarray(p + 46, p + 46 + nl)), data, crc: c, crcOk: crc(data) === c, stored: v.getUint16(p + 10, true) === 0 });
+    p += 46 + nl + v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
+  }
+  return out;
+};
+const bucket = new Map();
+const sizes = [100003, 65541, 7];
+sizes.forEach((n, i) => {
+  const b = crypto.randomBytes(n); b[0] = 0xff; b[1] = 0xd8;
+  bucket.set(`event-photos/1/BoothPhoto${String(i).padStart(2, '0')}/o.jpg`, new Uint8Array(b));
+  db.run('UPDATE event_photos SET bytes = ? WHERE pid = ?', [n, 'BoothPhoto' + String(i).padStart(2, '0')]);
+});
+const piecewise = (u8) => new ReadableStream({ start(ctl) { for (let i = 0; i < u8.length; i += 4099) ctl.enqueue(u8.slice(i, Math.min(u8.length, i + 4099))); ctl.close(); } });
+env.UPLOADS = { async get(key) { const b = bucket.get(key); return b ? { body: piecewise(b), size: b.length, httpEtag: '"e"', writeHttpMetadata() {} } : null; } };
+r = await hit('GET', API, undefined, mpAs(7001));
+check('the dashboard is told where its ZIP is', r.json?.zip === '/api/mp/dashboard/booth-photos/zip', r.json?.zip);
+let z = await fetchRaw(new Request('https://bharataiinnovation.com/api/mp/dashboard/booth-photos/zip', { headers: mpAs(7001) }));
+const zb = new Uint8Array(await z.arrayBuffer());
+const zf = unzip(zb);
+check('Save all: one ZIP, an attachment named for the company, its length told up front', z.status === 200 && z.headers.get('Content-Type') === 'application/zip'
+  && /attachment; filename="bharat-ai-innovation-2026-[a-z0-9-]+\.zip"/.test(z.headers.get('Content-Disposition') || '') && Number(z.headers.get('Content-Length')) === zb.length, [z.status, z.headers.get('Content-Disposition'), z.headers.get('Content-Length'), zb.length]);
+check('...its two shown photos whole and byte for byte, stored as they are, every CRC right; the hidden one left out', !!zf && zf.length === 2 && zf.every(f => f.crcOk && f.stored)
+  && zf.every((f, i) => Buffer.compare(Buffer.from(f.data), Buffer.from(bucket.get(`event-photos/1/BoothPhoto0${i}/o.jpg`))) === 0), zf && zf.map(f => [f.name, f.data.length, f.crcOk]));
+check('...the CRC matches Node\'s own zlib too', !!zf && zf.every(f => typeof zlib.crc32 !== 'function' || zlib.crc32(f.data) === f.crc), zf && zf.map(f => f.crc));
+z = await fetchRaw(new Request('https://bharataiinnovation.com/api/mp/dashboard/booth-photos/zip'));
+check('the ZIP needs the dashboard sign-in', z.status === 401, z.status);
+z = await fetchRaw(new Request('https://bharataiinnovation.com/api/mp/dashboard/booth-photos/zip', { headers: mpAs(7004) }));
+check('a Mumbai exhibitor in no photo gets no ZIP', z.status === 404, z.status);
 
 // ---- Admin -> After the Event -> Booth photos ----
 check('the list needs admin', (await hit('GET', '/api/admin/booth-photos')).status === 401, '');

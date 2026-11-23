@@ -3,7 +3,7 @@ import { isProtocol } from './speaker-brief'
 import { dearName } from './talk-brief'
 import { partnersStripHTML } from '../lib/partners'
 import { MUMBAI_WORDS, normName, adminReady, sessionsWithSpeakers, ROLE_WORD } from './conference'
-import { linksForDrive, downloadLimit, downloadsUsed } from './photo-store'
+import { linksForDrive, photosByPid, photosZip, recordSaves, refuse, ZIP_MAX_PHOTOS, ZIP_MAX_BYTES } from './photo-store'
 import ALBUMS from '../data/speaker-photos.json'
 import ATTENDEES from '../data/attendee-photos.json'
 
@@ -21,7 +21,9 @@ import ATTENDEES from '../data/attendee-photos.json'
 // Drive ids of the photos they are in, and the six best for the email.
 //
 // - GET /photos/:key?k=<sig>  their own page: every photo of them, by day, each one to
-//   open large and download full size from Drive. Signed, noindex.
+//   open large, save full size and share. Signed, noindex.
+// - GET /photos/:key/save?k=<sig>&p=<pid.pid...>  "Save all" / "Save" on that page: the
+//   chosen originals as one ZIP (at most ZIP_MAX_PHOTOS; the page asks in parts).
 // - Admin -> After the Event -> "Speaker photos" (public/js/admin-after.js): the list,
 //   a preview, send one, or send to all not yet sent. One email per person, from the
 //   event's address. A person who is both a conference speaker and an Innovation Talk
@@ -30,7 +32,7 @@ import ATTENDEES from '../data/attendee-photos.json'
 // - Sent = an admin_audit row (action 'speaker.photos', entity 'photo_album', the key).
 //
 // Photos come from our own copies in R2 (routes/photo-store.ts, linksForDrive): small and
-// large views, and full-size saves counted per person (50 for a speaker's album). A photo
+// large views, and full-size saves with no limit (recorded per person). A photo
 // not in R2 yet is shown from Google Drive (lh3.googleusercontent.com), which needs the
 // Drive folder at "Anyone with the link: Viewer"; once every photo is in R2 the folder can
 // be Restricted. Every /api/admin/* route here is behind the admin middleware in index.tsx.
@@ -97,7 +99,7 @@ export function wideUrl(id: string, width = 600): string { return `https://lh3.g
 // Our own copies (routes/photo-store.ts, R2, since 23 Nov 2026): s 600 px, m 1600 px, o the
 // original, each link signed for one person and one photo; saving an o is counted (50 for a
 // speaker's album). A photo not in R2 yet falls back to Drive, below.
-export type Got = Record<string, { s: string; m: string; o: string }>
+export type Got = Record<string, { s: string; m: string; o: string; pid?: string; bytes?: number }>
 export function isRaw(id: string): boolean { return !!(META[id] && META[id][3]) }
 export function downloadUrl(id: string): string {
   return isRaw(id) ? `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=s0` : `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`
@@ -167,7 +169,7 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
   // Whole photos, two a row: a square crop of a wide panel shot can leave them out of it.
   const pics = a.best.slice(0, 6)
   // Only the small size (s) ever goes in an email: mail scanners open links, and an
-  // original (o) would spend the person's saves.
+  // original (o) would be recorded as a save nobody made.
   const cell = (id: string) => `<td width="50%" style="padding:3px;vertical-align:top"><a href="${escH(a.href)}"><img src="${escH(a.got?.[id]?.s || wideUrl(id, 560))}" width="268" alt="Photo of ${escH(a.name)}" style="display:block;width:100%;max-width:268px;height:auto;border:0;border-radius:8px"></a></td>`
   const rows: string[] = []
   for (let i = 0; i < pics.length; i += 2) rows.push('<tr>' + pics.slice(i, i + 2).map(cell).join('') + (pics.length - i === 1 ? '<td width="50%"></td>' : '') + '</tr>')
@@ -181,7 +183,7 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
       ${grid}
       <p style="margin:0 0 20px;text-align:center"><a href="${escH(a.href)}" style="display:inline-block;padding:13px 26px;background:#C84F00;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px">See and download all ${escH(photosWord)}</a></p>
       ${a.lineup || ''}
-      <p style="font-size:14px;line-height:1.65;margin:0 0 12px">Each photo downloads at full size. You are welcome to use and share them. If you post them on LinkedIn, please tag Bharat AI Innovation.</p>
+      <p style="font-size:14px;line-height:1.65;margin:0 0 12px">Save any or all of them at full size, and share them on LinkedIn, Instagram, Facebook or your WhatsApp status right from your page. Please add <b>${escH(SHARE_TAGS)}</b> so people can find the event.</p>
       <p style="font-size:13px;line-height:1.6;margin:0 0 12px;color:#6b7280">A computer found these photos by matching faces, so one or two may show someone else.${a.attendee ? ' On your page, tap &quot;Not me&quot; on any photo that is not you, or &quot;Don&rsquo;t match my photos&quot; if you would rather we did not match your photos at all.' : ' Just skip those.'}</p>
       <p style="font-size:14px;line-height:1.65;margin:16px 0 0">See you at Bharat AI Innovation, New Delhi: 28 and 29 July 2027 at Bharat Mandapam. <a href="${SITE}/delhi" style="color:#C84F00;font-weight:bold">See the Delhi edition</a></p>
       <p style="margin:22px 0 24px;font-size:14px;color:#555">Team Bharat AI Innovation<br>
@@ -191,23 +193,32 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
   return { subject, html }
 }
 
+// The tag people are asked to use when they post (the organiser, 23 Nov 2026: "share ... to
+// linkedin or insta or fb or put on status of whatsapp with hashtag #bharataiinnovation and
+// @bharataiinnovation"). The handle is the Instagram account the website links to.
+export const SHARE_TAGS = '#BharatAIInnovation @bharataiinnovation.ai'
+
 // Their page. Everything it needs is in the page: the photo ids sit in a JSON block
 // that the small script below reads (no inline handlers, no quotes to escape).
 // got: our own signed links per Drive id (a photo missing from it is shown from Drive);
-// saves: how many originals they may save and have saved, when the photos come from R2.
 // lineup: their session(s) from the live programme (lineupHTML); names: per Drive id, the
 // people named in that photo, left to right ([name, "Designation, Organisation", LinkedIn, 1 = them]).
+// me: an attendee's page: "Not me" on each photo and "Don't match my photos". A photo is
+// named to the server by its place in their album (me.order), never by an id.
+// Saving: one photo at full size, or any choice of them (or all) as ZIP files from
+// /photos/<key>/save (photo-store.ts photosZip; no limit since 23 Nov 2026). On an iPhone, up
+// to 10 go through the share sheet instead, which can put them straight into Photos.
+// Sharing: the phone's share sheet with the photo itself (LinkedIn, Instagram, Facebook,
+// WhatsApp and its status), the caption copied too; on a computer, the caption and links.
 export function albumPageHTML(a: { name: string; org: string; ids: string[]; focus?: Record<string, [number, number]>; got?: Got;
-    saves?: { limit: number; used: number } | null; lineup?: string; names?: Record<string, [string, string, string, number][]>;
+    lineup?: string; names?: Record<string, [string, string, string, number][]>;
     me?: { key: string; k: string; order: string[] }; pinned?: string[] }): string {
   const got = a.got || {}
   const names = a.names || {}
-  // An attendee's page (me): "Not me" on each photo and "Don't match my photos". A photo is
-  // named to the server by its place in their album (me.order), never by an id.
   const me = a.me || null
   // pinned: their panel's group shots, first, under their own heading (not repeated below).
   const pinned = (a.pinned || []).filter(id => a.ids.includes(id))
-  const groups = [...(pinned.length ? [{ day: '', words: pinned.length === 1 ? 'Your panel, all together' : 'Your panel, all together', ids: pinned }] : []),
+  const groups = [...(pinned.length ? [{ day: '', words: 'Your panel, all together', ids: pinned }] : []),
     ...byDay(a.ids.filter(id => !pinned.includes(id)))]
   const total = groups.reduce((n, g) => n + g.ids.length, 0)
   const flat = groups.flatMap(g => g.ids)
@@ -224,14 +235,14 @@ export function albumPageHTML(a: { name: string; org: string; ids: string[]; foc
     const n = i++
     return `<button type="button" class="ph" data-i="${n}" aria-label="Open photo ${n + 1} of ${total}"><img src="${escH(got[id]?.s || wideUrl(id, 700))}" alt="" loading="${n < 8 ? 'eager' : 'lazy'}" width="250" height="250"${g.day ? at(id) : ''}></button>`
   }).join('')}</div></section>`).join('')
-  // Per photo: the large view and the full-size save.
-  const data = JSON.stringify(flat.map(id => [got[id]?.m || bigUrl(id), got[id]?.o || downloadUrl(id), names[id] || [], me ? me.order.indexOf(id) : -1])).replace(/</g, '\\u003c')
+  // Per photo: [large view, full-size save, names, place in their album, store id, original's bytes].
+  // A photo the store has no copy of (no pid) is saved one at a time from Drive.
+  const data = JSON.stringify(flat.map(id => [got[id]?.m || bigUrl(id), got[id]?.o || downloadUrl(id), names[id] || [], me ? me.order.indexOf(id) : -1, got[id]?.pid || '', got[id]?.bytes || 0])).replace(/</g, '\\u003c')
   const meData = JSON.stringify(me ? { key: me.key, k: me.k } : null).replace(/</g, '\\u003c')
-  const s = a.saves
-  const savesLine = s ? (s.used >= s.limit
-    ? `You have saved ${s.limit} photos at full size, the most each person can. You can still look at all of them here.`
-    : `You can save up to ${s.limit} of your photos at full size${s.used ? ` (${s.used} saved so far)` : ''}.`) : ''
+  const cfg = JSON.stringify({ max: ZIP_MAX_PHOTOS, bytes: ZIP_MAX_BYTES, tags: SHARE_TAGS, event: 'Bharat AI Innovation 2026, Mumbai' }).replace(/</g, '\\u003c')
   const title = `Photos of ${a.name}`
+  const tools = total ? `<div class="tools"><button type="button" class="tb main" data-go="saveall">${total === 1 ? 'Save this photo' : `Save all ${total} photos`}</button>${total > 1 ? '<button type="button" class="tb" data-go="pick">Choose photos</button>' : ''}</div>
+<p class="hint">Save them at full size, and share them on LinkedIn, Instagram, Facebook or your WhatsApp status. Please add <b>${escH(SHARE_TAGS)}</b> so people can find the event.</p>` : ''
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><title>${escH(title)} · ${escH(MUMBAI_WORDS.name)}</title>
 <link rel="icon" href="/favicon.ico">
@@ -260,21 +271,48 @@ main{padding:8px 16px 40px}
 h2{font-size:17px;margin:26px 0 10px}h2 span{color:var(--sub);font-weight:400;font-size:14px;margin-left:4px}
 .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
 @media(min-width:640px){.grid{grid-template-columns:repeat(3,1fr)}}@media(min-width:960px){.grid{grid-template-columns:repeat(4,1fr)}}
-.ph{display:block;padding:0;border:0;background:#e9ebf3;border-radius:10px;overflow:hidden;cursor:zoom-in;aspect-ratio:1/1}
+.ph{position:relative;display:block;padding:0;border:0;background:#e9ebf3;border-radius:10px;overflow:hidden;cursor:zoom-in;aspect-ratio:1/1}
 .ph img{display:block;width:100%;height:100%;object-fit:cover}
 .grid.wide{grid-template-columns:1fr}@media(min-width:640px){.grid.wide{grid-template-columns:repeat(2,1fr)}}
 .grid.wide .ph{aspect-ratio:3/2}
 .ph:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
+.picking .ph{cursor:pointer}
+.picking .ph::after{content:'';position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:50%;border:2px solid #fff;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700}
+.picking .ph.on::after{content:'✓';background:var(--brand)}
+.picking .ph.on{outline:3px solid var(--brand);outline-offset:-3px}
+.tools{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0}
+.tb{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid #cfd3e6;background:#fff;color:var(--ink);font-size:15px;font-weight:600;text-decoration:none;cursor:pointer;font-family:inherit}
+.tb.main{background:var(--brand);border-color:var(--brand);color:#fff}
+.tb:disabled{opacity:.5;cursor:default}
+.hint{color:var(--sub);font-size:14px;line-height:1.55;margin:10px 0 0}
+.hint b{color:var(--ink)}
+.pickbar{position:fixed;left:0;right:0;bottom:0;z-index:5;background:#fff;border-top:1px solid var(--line);box-shadow:0 -6px 18px rgba(30,33,64,.1);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+.pickbar[hidden]{display:none}
+.pb{max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.pb-n{font-weight:700;font-size:15px;margin-right:auto}
+.lk{background:none;border:0;color:var(--brand);font:inherit;font-weight:600;font-size:14px;cursor:pointer;min-height:44px;padding:0 6px}
+.pb .tb{flex:1 1 120px}
+body.picking main{padding-bottom:150px}
 .note{color:var(--sub);font-size:14px;line-height:1.6;margin:28px 0 0}
 .note a{color:var(--brand);font-weight:600}
 dialog{border:0;padding:0;margin:0;width:100vw;height:100dvh;max-width:100vw;max-height:100dvh;background:#0b0c12}
 dialog::backdrop{background:#0b0c12}
+dialog#panel{margin:auto;width:min(520px,calc(100vw - 32px));height:fit-content;max-height:calc(100dvh - 32px);background:#fff;color:var(--ink);border-radius:16px;overflow:auto}
+dialog#panel::backdrop{background:rgba(11,12,18,.6)}
+.pn{padding:18px 18px 16px}
+.pn h3{margin:0 0 8px;font-size:19px;line-height:1.3}
+.pn p{margin:0 0 10px;font-size:15px;line-height:1.55;color:var(--sub)}
+.pn .row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.pn .row .tb{flex:1 1 140px}
+.pn .parts{display:grid;gap:8px;margin:12px 0}
+.pn textarea{width:100%;min-height:80px;font:inherit;font-size:14px;line-height:1.5;padding:10px;border:1px solid #cfd3e6;border-radius:10px;resize:vertical;color:var(--ink)}
+.pn .done{color:#1d7a46;font-weight:600}
 .lb{display:flex;flex-direction:column;height:100%}
 .lb-top{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;color:#fff;font-size:14px}
 .lb-img{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:0 8px}
 .lb-img img{max-width:100%;max-height:100%;object-fit:contain}
 .lb-bot{display:flex;gap:8px;justify-content:center;padding:12px;flex-wrap:wrap}
-.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;font-size:15px;font-weight:600;text-decoration:none;cursor:pointer}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 18px;border-radius:10px;border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;font-size:15px;font-weight:600;text-decoration:none;cursor:pointer;font-family:inherit}
 .btn.main{background:var(--brand);border-color:var(--brand)}
 .btn.sm{min-height:38px;padding:0 12px;font-size:13px}
 .lb-who{color:#fff;padding:8px 14px 0;font-size:14px;line-height:1.5;text-align:center}
@@ -286,58 +324,209 @@ dialog::backdrop{background:#0b0c12}
 .lu-w{color:var(--sub);font-size:14px;margin:0 0 8px}
 .lu ul{margin:0;padding:0 0 0 18px;font-size:14px;line-height:1.6}
 .lu a{color:var(--brand);font-weight:600}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:20;max-width:calc(100vw - 32px);background:#1e2140;color:#fff;padding:12px 16px;border-radius:10px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
 .optout{margin:10px 0;padding:8px 14px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--sub);font-size:14px;cursor:pointer}
 </style></head><body>
 <div class="topbar"><div class="wrap tb-in"><a class="logo" href="${SITE}/?from=photos"><img src="/images/logo-nav.webp" alt="Bharat AI Innovation home" width="120" height="50"></a>
 <nav class="topnav" aria-label="Bharat AI Innovation"><a href="${SITE}/?from=photos">Home</a>${me ? `<a class="dash" href="${SITE}/app">My dashboard</a>` : ''}</nav></div></div>
 <header><div class="wrap"><span class="brand">${escH(MUMBAI_WORDS.name)}</span>
 <h1>${escH(title)}</h1>
-<p class="lead">${total === 1 ? '1 photo' : total + ' photos'}${a.org ? ' · ' + escH(a.org) : ''} · ${escH(MUMBAI_WORDS.line).replace(' · ', ' &middot; ')}</p></div></header>
+<p class="lead">${total === 1 ? '1 photo' : total + ' photos'}${a.org ? ' · ' + escH(a.org) : ''} · ${escH(MUMBAI_WORDS.line).replace(' · ', ' &middot; ')}</p>
+${tools}</div></header>
 <div class="delhi"><div class="wrap dl-in"><p><b>Next: Bharat AI Innovation, New Delhi</b><br>28&ndash;29 July 2027 &middot; Bharat Mandapam</p>
 <div class="dl-b"><a class="go" href="${SITE}/delhi-register?source=photos">Get your pass</a><a href="${SITE}/?from=photos">See Delhi 2027</a></div></div></div>
 <main class="wrap">${a.lineup || ''}${sections || '<p class="note">No photos here yet.</p>'}
-<p class="note">Tap a photo to see it large and download it at full size.${savesLine ? ' ' + escH(savesLine) : ''} You are welcome to use and share these photos; if you post them on LinkedIn, please tag Bharat AI Innovation.<br>
+<p class="note">Tap a photo to see it large, save it at full size or share it. You are welcome to use and share all of these photos.<br>
 A computer found these photos by matching faces, so one or two may show someone else.${me ? ' We matched the profile photo you added in the event app. Tap &quot;Not me&quot; on a photo that is not you.' : ''}<br>
 ${me ? '<button type="button" class="optout" data-go="optout">Don&rsquo;t match my photos</button><br>' : ''}Next: <a href="${SITE}/?from=photos">Bharat AI Innovation, New Delhi, 28 and 29 July 2027</a>.</p></main>
+<div class="pickbar" id="pickbar" hidden><div class="pb">
+<span class="pb-n" id="pb-n" aria-live="polite">0 chosen</span><button type="button" class="lk" data-go="pickall">Choose all</button><button type="button" class="lk" data-go="pickclear">Clear</button><button type="button" class="lk" data-go="pickdone">Done</button>
+<button type="button" class="tb main" data-go="savepicked">Save</button><button type="button" class="tb" data-go="sharepicked">Share</button>
+</div></div>
 <dialog id="lb" aria-label="Photo"><div class="lb">
 <div class="lb-top"><span id="lb-n"></span><button type="button" class="btn" data-go="close">Close</button></div>
 <div class="lb-img"><img id="lb-img" alt=""></div>
 <div class="lb-who" id="lb-who" aria-live="polite"></div>
-<div class="lb-bot"><button type="button" class="btn" data-go="prev">Previous</button><a class="btn main" id="lb-dl" href="#" rel="noopener">Download full size</a><button type="button" class="btn" data-go="next">Next</button></div>
+<div class="lb-bot"><button type="button" class="btn" data-go="prev">Previous</button><a class="btn main" id="lb-dl" href="#" rel="noopener">Download full size</a><button type="button" class="btn main" data-go="shareone">Share</button><button type="button" class="btn" data-go="next">Next</button></div>
 </div></dialog>
+<dialog id="panel" aria-label="Save and share"><div class="pn" id="pn"></div></dialog>
 <script type="application/json" id="ids">${data}</script>
 <script type="application/json" id="me">${meData}</script>
+<script type="application/json" id="cfg">${cfg}</script>
 <script>
 (function(){
   var ids = JSON.parse(document.getElementById('ids').textContent || '[]');
+  var CFG = JSON.parse(document.getElementById('cfg').textContent || '{}');
+  var ME = JSON.parse(document.getElementById('me').textContent || 'null');
   var lb = document.getElementById('lb'), img = document.getElementById('lb-img'), n = document.getElementById('lb-n'), dl = document.getElementById('lb-dl');
+  var panel = document.getElementById('panel'), pn = document.getElementById('pn');
   var at = 0;
+  var gone = {};
+  var IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var canFiles = false;
+  try { canFiles = !!(navigator.share && navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.jpg', { type: 'image/jpeg' })] })); } catch (e) { canFiles = false; }
+  var MAXSHARE = 10;
+
+  function el(tag, cls, text){ var x = document.createElement(tag); if (cls) x.className = cls; if (text) x.textContent = text; return x; }
+  function btn(cls, text, fn){ var b = el('button', cls, text); b.type = 'button'; b.addEventListener('click', fn); return b; }
+  function link(cls, text, href){ var a = el('a', cls, text); a.href = href; a.target = '_blank'; a.rel = 'noopener'; return a; }
+  function same(u){ u = String(u || ''); var k = u.indexOf('/photo/'); return k >= 0 ? u.slice(k) : u; }
+  function mb(b){ return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.max(1, Math.round(b / 1e6)) + ' MB'; }
+  function word(k, one, many){ return k === 1 ? '1 ' + one : k + ' ' + many; }
+  function them(k){ return k === 1 ? 'the photo' : k + ' photos'; }
+  function live(){ var out = []; for (var i = 0; i < ids.length; i++) if (!gone[i]) out.push(i); return out; }
+
+  // ---- captions ----
+  function capFor(list){
+    var others = (list || []).filter(function(x){ return !x[3]; });
+    return (others.length ? 'With ' + others.map(function(x){ return x[0] + (x[1] ? ' (' + x[1] + ')' : ''); }).join(', ') + ' at ' : 'At ') + CFG.event + '. ' + CFG.tags;
+  }
+  var GENERAL = 'At ' + CFG.event + '. ' + CFG.tags;
+  function copy(text, done){
+    var ok = function(){ if (done) done(true); };
+    var no = function(){ if (done) done(false); };
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(ok, no); return; } } catch (e) {}
+    no();
+  }
+
+  // ---- the panel (saving in parts, sharing) ----
+  function open(h){ pn.textContent = ''; pn.appendChild(el('h3', '', h)); if (panel.showModal) { if (!panel.open) panel.showModal(); } else panel.setAttribute('open', ''); return pn; }
+  function shut(){ if (panel.open) panel.close(); }
+  function closeRow(){ var r = el('div', 'row'); r.appendChild(btn('tb', 'Close', shut)); return r; }
+
+  // ---- saving ----
+  function go(href){ var a = document.createElement('a'); a.href = href; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }
+  var K = new URLSearchParams(location.search).get('k') || '';
+  function zipHref(part, k, of){ return location.pathname + '/save?k=' + encodeURIComponent(K) + '&p=' + part.map(function(i){ return ids[i][4]; }).join('.') + (of > 1 ? '&n=' + k + '&of=' + of : ''); }
+  function parts(list){
+    var out = [], cur = [], b = 0;
+    list.forEach(function(i){
+      var s = Number(ids[i][5]) || 0;
+      if (cur.length && (cur.length >= CFG.max || b + s > CFG.bytes)) { out.push(cur); cur = []; b = 0; }
+      cur.push(i); b += s;
+    });
+    if (cur.length) out.push(cur);
+    return out;
+  }
+  function bytesOf(list){ return list.reduce(function(t, i){ return t + (Number(ids[i][5]) || 0); }, 0); }
+  function save(list){
+    list = list.filter(function(i){ return ids[i] && !gone[i]; });
+    if (!list.length) return;
+    if (IOS && canFiles && list.length <= MAXSHARE) { shareFiles(list, list.length === 1 ? capFor(ids[list[0]][2]) : GENERAL, true); return; }
+    if (list.length === 1) { go(ids[list[0]][1]); return; }
+    var inZip = list.filter(function(i){ return ids[i][4]; }), single = list.filter(function(i){ return !ids[i][4]; });
+    var ps = parts(inZip);
+    var p = open(list.length === ids.length ? 'Save all ' + word(list.length, 'photo', 'photos') : 'Save ' + word(list.length, 'photo', 'photos'));
+    if (ps.length === 1 && !single.length) {
+      p.appendChild(el('p', '', 'Your photos are coming as one ZIP file (' + mb(bytesOf(inZip)) + '). Keep this page open until it has finished.'));
+      go(zipHref(ps[0], 1, 1));
+    } else if (ps.length) {
+      p.appendChild(el('p', '', 'They come in ' + ps.length + ' ZIP files of up to ' + CFG.max + ' photos each, so each one is a size your phone or computer can manage. Tap each one; let one finish before the next on a phone.'));
+      var box = el('div', 'parts'), from = 1;
+      ps.forEach(function(part, k){
+        var label = 'Part ' + (k + 1) + ': photos ' + from + ' to ' + (from + part.length - 1) + ' (' + mb(bytesOf(part)) + ')';
+        from += part.length;
+        var b = btn('tb' + (k === 0 ? ' main' : ''), label, function(){ go(zipHref(part, k + 1, ps.length)); b.textContent = label + ' · started'; b.className = 'tb'; });
+        box.appendChild(b);
+      });
+      p.appendChild(box);
+    }
+    if (single.length) {
+      p.appendChild(el('p', '', single.length === 1 ? 'One photo saves on its own:' : single.length + ' photos save one at a time:'));
+      var one = el('div', 'parts');
+      single.forEach(function(i){ var b = btn('tb', 'Photo ' + (i + 1), function(){ go(ids[i][1]); b.textContent = 'Photo ' + (i + 1) + ' · started'; }); one.appendChild(b); });
+      p.appendChild(one);
+    }
+    p.appendChild(el('p', '', IOS ? 'On iPhone a ZIP file goes to the Files app: tap it there to open your photos. To put photos straight into Photos, choose up to ' + MAXSHARE + ' at a time and tap Save.' : 'Open the ZIP file to see your photos. Each one is the full-size original.'));
+    p.appendChild(closeRow());
+  }
+
+  // ---- sharing ----
+  // Sharing hands apps the 1600 px photo (quick, and the size they post at); saving into an
+  // iPhone's Photos hands over the full-size original.
+  var files = { m: {}, o: {} };
+  function fileOf(i, big){
+    var c = files[big ? 'o' : 'm'];
+    if (c[i]) return Promise.resolve(c[i]);
+    return fetch(same(ids[i][big ? 1 : 0])).then(function(r){ if (!r.ok) throw new Error('photo'); return r.blob(); })
+      .then(function(b){ c[i] = new File([b], 'BharatAI-Mumbai-2026-' + (i + 1) + '.jpg', { type: 'image/jpeg' }); return c[i]; });
+  }
+  var toastEl = null;
+  function toast(text){
+    if (!toastEl) { toastEl = el('div', 'toast'); toastEl.setAttribute('role', 'status'); document.body.appendChild(toastEl); }
+    toastEl.textContent = text; toastEl.className = 'toast on';
+    setTimeout(function(){ toastEl.className = 'toast'; }, 4000);
+  }
+  function shareNow(list, cap, saving){
+    var c = files[saving ? 'o' : 'm'];
+    var fs = list.map(function(i){ return c[i]; });
+    var data = saving ? { files: fs } : { files: fs, text: cap };
+    try { if (!navigator.canShare(data)) data = { files: fs }; } catch (e) {}
+    navigator.share(data).then(shut, function(e){ if (e && e.name === 'AbortError') return; computer(list, cap, saving); });
+    if (!saving) copy(cap, function(ok){ if (ok) toast('Caption copied. Paste it into your post.'); });
+  }
+  function shareFiles(list, cap, saving){
+    list = list.slice(0, MAXSHARE);
+    var c = files[saving ? 'o' : 'm'];
+    if (list.every(function(i){ return c[i]; })) { shareNow(list, cap, saving); return; }
+    var p = open('Getting ' + word(list.length, 'photo', 'photos') + ' ready');
+    var msg = el('p', '', 'One moment...'); p.appendChild(msg);
+    Promise.all(list.map(function(i){ return fileOf(i, saving); })).then(function(){
+      p.firstChild.textContent = (list.length === 1 ? 'Your photo is' : 'Your ' + list.length + ' photos are') + ' ready';
+      msg.textContent = saving ? 'Ready. Tap below, then choose Save Image' + (list.length > 1 ? 's' : '') + '.' : 'Ready. Tap below and pick LinkedIn, Instagram, Facebook or WhatsApp. In WhatsApp, pick My status to put it on your status. The caption is copied too: paste it into your post.';
+      var r = el('div', 'row'); r.appendChild(btn('tb main', (saving ? 'Save ' : 'Share ') + them(list.length), function(){ shareNow(list, cap, saving); }));
+      r.appendChild(btn('tb', 'Close', shut)); p.appendChild(r);
+    }, function(){ msg.textContent = 'The photos did not load. Please check your connection and try again.'; p.appendChild(closeRow()); });
+  }
+  function share(list, cap){
+    list = list.filter(function(i){ return ids[i] && !gone[i]; });
+    if (!list.length) return;
+    if (canFiles) {
+      if (list.length > MAXSHARE) { var p = open('Share up to ' + MAXSHARE + ' at a time'); p.appendChild(el('p', '', 'Apps take up to ' + MAXSHARE + ' photos in one post. Share the first ' + MAXSHARE + ' now, then choose the next ones.')); var r = el('div', 'row'); r.appendChild(btn('tb main', 'Share the first ' + MAXSHARE, function(){ shareFiles(list, cap, false); })); r.appendChild(btn('tb', 'Close', shut)); p.appendChild(r); return; }
+      shareFiles(list, cap, false); return;
+    }
+    computer(list, cap, false);
+  }
+  // A computer (or a browser that cannot hand a photo to an app): save it, then post it with the caption.
+  function computer(list, cap, saving){
+    var p = open(saving ? 'Save your photos' : 'Share on LinkedIn, Instagram or Facebook');
+    p.appendChild(el('p', '', '1. Save the photo' + (list.length > 1 ? 's' : '') + ' to your computer.'));
+    var r1 = el('div', 'row'); r1.appendChild(btn('tb main', 'Save ' + them(list.length), function(){ shut(); save(list); })); p.appendChild(r1);
+    p.appendChild(el('p', '', '2. Copy this caption, open the site, start a post and add the photo' + (list.length > 1 ? 's' : '') + '.'));
+    var t = el('textarea'); t.value = cap; t.readOnly = true; t.setAttribute('aria-label', 'Caption'); p.appendChild(t);
+    var r2 = el('div', 'row');
+    var c = btn('tb', 'Copy caption', function(){ copy(cap, function(ok){ if (ok) { c.textContent = 'Copied'; } else { t.focus(); t.select(); c.textContent = 'Press Ctrl+C to copy'; } }); });
+    r2.appendChild(c);
+    r2.appendChild(link('tb', 'LinkedIn', 'https://www.linkedin.com/feed/?shareActive=true&text=' + encodeURIComponent(cap)));
+    r2.appendChild(link('tb', 'Facebook', 'https://www.facebook.com/'));
+    r2.appendChild(link('tb', 'Instagram', 'https://www.instagram.com/'));
+    p.appendChild(r2);
+    p.appendChild(el('p', '', 'For your WhatsApp status, open this page on your phone and tap Share there.'));
+    p.appendChild(closeRow());
+  }
+
+  // ---- the large view ----
   function show(i){
     at = (i + ids.length) % ids.length;
     img.src = ids[at][0];
     n.textContent = 'Photo ' + (at + 1) + ' of ' + ids.length;
     dl.href = ids[at][1];
     who(ids[at][2] || []);
+    if (canFiles) fileOf(at, false).catch(function(){});
   }
+  // On an iPhone, "Download full size" puts the photo into Photos (the share sheet's Save
+  // Image), not into the Files app.
+  dl.addEventListener('click', function(e){ if (IOS && canFiles) { e.preventDefault(); save([at]); } });
   // Who else is in this photo (only other speakers and guests the organiser named, checked
-  // against the live programme), a caption for LinkedIn, and a way to say a name is wrong.
+  // against the live programme), and a way to say a name is wrong.
   var box = document.getElementById('lb-who');
-  function el(tag, cls, text){ var x = document.createElement(tag); if (cls) x.className = cls; if (text) x.textContent = text; return x; }
   function who(list){
     box.textContent = '';
     var others = list.filter(function(x){ return !x[3]; });
     if (list.length > 1 && others.length < list.length) box.appendChild(el('div', '', 'From left: ' + list.map(function(x){ return x[0] + (x[3] ? ' (you)' : ''); }).join(', ')));
     else if (others.length) box.appendChild(el('div', '', 'Also in this photo: ' + others.map(function(x){ return x[0]; }).join(', ')));
-    var cap = (others.length ? 'With ' + others.map(function(x){ return x[0] + (x[1] ? ' (' + x[1] + ')' : ''); }).join(', ') + ' at ' : 'At ')
-      + 'Bharat AI Innovation 2026, Mumbai. #BharatAIInnovation';
     var acts = el('div', 'lb-acts');
-    var copy = el('button', 'btn sm', 'Copy LinkedIn caption'); copy.type = 'button';
-    copy.addEventListener('click', function(){
-      var done = function(){ copy.textContent = 'Copied'; setTimeout(function(){ copy.textContent = 'Copy LinkedIn caption'; }, 2000); };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(cap).then(done, function(){ window.prompt('Copy this caption:', cap); });
-      else window.prompt('Copy this caption:', cap);
-    });
-    acts.appendChild(copy);
     others.forEach(function(x){ if (!x[2]) return; var a = el('a', 'btn sm', x[0] + ' on LinkedIn'); a.href = x[2]; a.target = '_blank'; a.rel = 'noopener'; acts.appendChild(a); });
     var bad = el('a', 'btn sm', 'Wrong name? Tell us');
     bad.href = 'mailto:register@bharataiinnovation.com?subject=' + encodeURIComponent('Wrong name on a photo') + '&body='
@@ -346,44 +535,72 @@ ${me ? '<button type="button" class="optout" data-go="optout">Don&rsquo;t match 
     if (ME && ids[at][3] >= 0) {
       var notme = el('button', 'btn sm', 'Not me'); notme.type = 'button';
       notme.addEventListener('click', function(){
-        var n = ids[at][3], i = at;
+        var k = ids[at][3], i = at;
         notme.disabled = true;
-        post('/api/photos/not-me', { key: ME.key, k: ME.k, n: n }, function(ok){
+        post('/api/photos/not-me', { key: ME.key, k: ME.k, n: k }, function(ok){
           if (!ok) { notme.disabled = false; notme.textContent = 'Did not work, try again'; return; }
+          gone[i] = true; delete picked[i];
           var tile = document.querySelector('[data-i="' + i + '"]'); if (tile) tile.style.display = 'none';
           notme.textContent = 'Removed from your photos';
+          count();
         });
       });
       acts.appendChild(notme);
     }
     box.appendChild(acts);
   }
-  var ME = JSON.parse(document.getElementById('me').textContent || 'null');
   function post(url, body, done){
     try {
       fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         .then(function(r){ done(r.ok); }, function(){ done(false); });
     } catch (e) { done(false); }
   }
-  document.addEventListener('click', function(e){
-    var t = e.target.closest ? e.target.closest('[data-go="optout"]') : null;
-    if (!t || !ME) return;
-    if (!window.confirm('Stop matching your face in the event photos? This page will be emptied and we will not match you again.')) return;
-    t.disabled = true;
-    post('/api/photos/opt-out', { key: ME.key, k: ME.k }, function(ok){
-      if (!ok) { t.disabled = false; t.textContent = 'Did not work, try again'; return; }
-      var m = document.querySelector('main'); if (m) { m.textContent = ''; m.appendChild(el('p', 'note', 'Done. We have removed your photos from this page and will not match your face again.')); }
-    });
-  });
+
+  // ---- choosing photos ----
+  var picking = false, picked = {};
+  var bar = document.getElementById('pickbar'), pbn = document.getElementById('pb-n');
+  function chosen(){ return live().filter(function(i){ return picked[i]; }); }
+  function count(){ var k = chosen().length; pbn.textContent = k + ' chosen'; bar.querySelectorAll('.tb').forEach(function(b){ b.disabled = !k; }); }
+  function mark(i, on){ var t = document.querySelector('[data-i="' + i + '"]'); if (!t) return; if (on) picked[i] = true; else delete picked[i]; t.classList.toggle('on', !!on); t.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  function pickMode(on){
+    picking = on; document.body.classList.toggle('picking', on); bar.hidden = !on;
+    document.querySelectorAll('[data-i]').forEach(function(t){ if (on) t.setAttribute('aria-pressed', picked[t.getAttribute('data-i')] ? 'true' : 'false'); else { t.removeAttribute('aria-pressed'); t.classList.remove('on'); } });
+    if (!on) picked = {};
+    count();
+  }
+
   document.addEventListener('click', function(e){
     var t = e.target.closest ? e.target.closest('[data-i],[data-go]') : null;
     if (!t) return;
-    if (t.hasAttribute('data-i')) { show(Number(t.getAttribute('data-i'))); if (lb.showModal) lb.showModal(); else lb.setAttribute('open', ''); return; }
-    var go = t.getAttribute('data-go');
-    if (go === 'close') lb.close(); else if (go === 'next') show(at + 1); else if (go === 'prev') show(at - 1);
+    if (t.hasAttribute('data-i')) {
+      var i = Number(t.getAttribute('data-i'));
+      if (picking) { mark(i, !picked[i]); count(); return; }
+      show(i); if (lb.showModal) lb.showModal(); else lb.setAttribute('open', ''); return;
+    }
+    var go2 = t.getAttribute('data-go');
+    if (go2 === 'close') lb.close(); else if (go2 === 'next') show(at + 1); else if (go2 === 'prev') show(at - 1);
+    else if (go2 === 'shareone') share([at], capFor(ids[at][2] || []));
+    else if (go2 === 'saveall') save(live());
+    else if (go2 === 'pick') pickMode(true);
+    else if (go2 === 'pickdone') pickMode(false);
+    else if (go2 === 'pickall') { live().forEach(function(i){ mark(i, true); }); count(); }
+    else if (go2 === 'pickclear') { live().forEach(function(i){ mark(i, false); }); count(); }
+    else if (go2 === 'savepicked') save(chosen());
+    else if (go2 === 'sharepicked') { var c = chosen(); share(c, c.length === 1 ? capFor(ids[c[0]][2] || []) : GENERAL); }
+    else if (go2 === 'optout' && ME) {
+      if (!window.confirm('Stop matching your face in the event photos? This page will be emptied and we will not match you again.')) return;
+      t.disabled = true;
+      post('/api/photos/opt-out', { key: ME.key, k: ME.k }, function(ok){
+        if (!ok) { t.disabled = false; t.textContent = 'Did not work, try again'; return; }
+        pickMode(false);
+        var m = document.querySelector('main'); if (m) { m.textContent = ''; m.appendChild(el('p', 'note', 'Done. We have removed your photos from this page and will not match your face again.')); }
+        var tl = document.querySelector('.tools'); if (tl) tl.remove();
+        var h = document.querySelector('.hint'); if (h) h.remove();
+      });
+    }
   });
   document.addEventListener('keydown', function(e){
-    if (!lb.open) return;
+    if (!lb.open || panel.open) return;
     if (e.key === 'ArrowRight') show(at + 1); else if (e.key === 'ArrowLeft') show(at - 1);
   });
   var x0 = null;
@@ -805,26 +1022,56 @@ ph.get('/photos/:key', async (c) => {
       name = String(a?.name || '').trim() || 'you'; org = String(a?.company || '').trim()
     }
   } catch { /* the page shows without it */ }
+  const v = await albumView(c, p!)
+  if (v.optedOut) return new Response(albumPageHTML({ name, org, ids: [] }).replace('No photos here yet.', 'You asked us not to match your photos, so there are none here.'), { headers: head })
+  // Links signed for the album's own key, so every way into this person's page shares one
+  // record of saves. A hidden photo, or one the store has no link for, is left out.
+  const got = await linksForDrive(c, p!.key, v.asked)
+  const ids = shown(v.asked, got, v.hidden !== null)
+  const names: Record<string, [string, string, string, number][]> = {}
+  for (const id of ids) names[id] = namesIn(id, p!.key, v.live)
+  return new Response(albumPageHTML({ name, org, ids, focus: p!.focus, got, lineup: lineupHTML(v.live.byKey.get(p!.key) || [], false), names, pinned: v.panel,
+    me: p!.attendee ? { key: p!.key, k: String(c.req.query('k') || ''), order: p!.photos } : undefined }), { headers: head })
+})
+
+// The photos a person's page is made of, by Drive id: their panel's group shots first (even
+// where their own face was too small to be recognised in them: the line-up says they were on
+// that stage), then their own; less "Not me" photos and hidden ones. The page and "Save"
+// below both use it, so a ZIP can only hold photos that are on that person's own page.
+async function albumView(c: any, p: Person) {
   // An attendee who said "Don't match my photos" sees no photos, and "Not me" photos are gone.
-  const mine = p!.attendee ? await attendeeChoices(c, p!.key) : { optedOut: false, notMe: new Set<string>() }
-  if (mine.optedOut) return new Response(albumPageHTML({ name, org, ids: [] }).replace('No photos here yet.', 'You asked us not to match your photos, so there are none here.'), { headers: head })
+  const mine = p.attendee ? await attendeeChoices(c, p.key) : { optedOut: false, notMe: new Set<string>() }
   const hidden = await hiddenPhotos(c)
   // Their session(s) and who else is in each photo, from the live programme. Only speakers
   // and named guests are ever named; an attendee never is.
   const live = await liveProgramme(c)
-  // Their panel's group shots join their album, first (even where their own face was too
-  // small to be recognised in them: the line-up says they were on that stage).
-  const panel = panelShotsFor(p!.key, live)
-  // Links signed for the album's own key, so every way into this person's page shares
-  // one count of full-size saves. A hidden photo, or one the store has no link for, is left out.
-  const asked = [...panel, ...p!.photos.filter(id => !panel.includes(id))].filter(id => !mine.notMe.has(id) && !(hidden && hidden.has(id)))
-  const got = await linksForDrive(c, p!.key, asked)
-  const ids = shown(asked, got, hidden !== null)
-  const saves = Object.keys(got).length ? { limit: await downloadLimit(c, p!.key), used: await downloadsUsed(c, p!.key) } : null
-  const names: Record<string, [string, string, string, number][]> = {}
-  for (const id of ids) names[id] = namesIn(id, p!.key, live)
-  return new Response(albumPageHTML({ name, org, ids, focus: p!.focus, got, saves, lineup: lineupHTML(live.byKey.get(p!.key) || [], false), names, pinned: panel,
-    me: p!.attendee ? { key: p!.key, k: String(c.req.query('k') || ''), order: p!.photos } : undefined }), { headers: head })
+  const panel = panelShotsFor(p.key, live)
+  const asked = mine.optedOut ? [] : [...panel, ...p.photos.filter(id => !panel.includes(id))].filter(id => !mine.notMe.has(id) && !(hidden && hidden.has(id)))
+  return { optedOut: mine.optedOut, hidden, live, panel, asked }
+}
+
+// "Save all" / "Save" on a person's page (the organiser, 23 Nov 2026: "select and download
+// each one or all or whatever selected photos"): the chosen originals as one ZIP file
+// (photo-store.ts photosZip). p = the photos' store ids joined by '.', as the page has them.
+// n / of name the part when the page splits a big choice. Each save is recorded.
+ph.get('/photos/:key/save', async (c) => {
+  const key = c.req.param('key')
+  const p = personFor(key)
+  if (!p || !sameText(await photoSig(c, key), String(c.req.query('k') || ''))) return refuse(404, true, 'broken')
+  if (!c.env.UPLOADS) return refuse(503, true, 'off')
+  const want = String(c.req.query('p') || '').split('.').filter(Boolean)
+  if (!want.length) return refuse(404, true, 'broken')
+  if (want.length > ZIP_MAX_PHOTOS) return refuse(413, true, 'too-many')
+  const v = await albumView(c, p)
+  const own = new Set(v.asked)
+  let photos: Awaited<ReturnType<typeof photosByPid>> = []
+  try { photos = (await photosByPid(c, want)).filter(x => own.has(String(x.drive_id))) } catch { photos = [] }
+  if (!photos.length) return refuse(404, true, 'gone')
+  if (photos.reduce((t, x) => t + Number(x.bytes || 0), 0) > ZIP_MAX_BYTES) return refuse(413, true, 'too-many')
+  await recordSaves(c, p.key, photos.map(x => Number(x.id)))
+  const n = Number(c.req.query('n') || 0), of = Number(c.req.query('of') || 0)
+  const part = Number.isInteger(n) && Number.isInteger(of) && of > 1 && n >= 1 && n <= of ? `-part-${n}-of-${of}` : ''
+  return photosZip(c, photos, `Bharat-AI-Innovation-2026-photos${part}.zip`)
 })
 
 // ---------- attendees: their own choices ----------

@@ -644,8 +644,8 @@ app.route('/', photoTracking)
 app.route('/', speakerPhotos)
 // Event photos in R2 (23 Nov 2026): the photographers' photos, copied once from Drive by
 // scripts/photo-store/ (migration 0064). Every image link is signed for one person, one
-// photo and one size; saving full size is counted, at most photo_download_limit
-// (app_settings, default 15) different photos each. routes/photo-store.ts.
+// photo and one size. Full-size saves (one photo, or a ZIP from "Save all") have no limit
+// since 23 Nov 2026 and are recorded in photo_downloads. routes/photo-store.ts.
 configurePhotoStore({ audit })
 app.route('/', photoStore)
 // "Are you in the photos?" (23 Nov 2026): everyone registered and not found yet is asked to

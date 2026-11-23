@@ -3,14 +3,16 @@ import { Hono } from 'hono'
 // ==================== EVENT PHOTOS IN R2 (23 Nov 2026) ====================
 //
 // The organiser: thumbnails in each person's dashboard and email, the high-resolution
-// photo on a tap, "limit one per[son] from downloading not more than 10 to 15 photos
-// ... so that user don't download other photos and download their own; it will also
-// protect it from misuse".
+// photo on a tap. At first full-size saves were capped (15 a person, 50 a speaker); later the
+// same day the organiser: "allow people to download every photo in which they are visible,
+// dont limit to 50 max rule. they should be able to select and download each one or all or
+// whatever selected photos". So there is no cap: a person only ever holds links to their
+// own photos, and that is the protection.
 //
 // The photographers' photos are copied once from Google Drive to R2 by
 // scripts/photo-store/ (migration 0064, table event_photos):
 //   event-photos/<event>/<pid>/s.jpg   600 px long side: grids, emails
-//   event-photos/<event>/<pid>/m.jpg   1600 px: looking at one photo on a phone
+//   event-photos/<event>/<pid>/m.jpg   1600 px: looking at one photo on a phone, sharing
 //   event-photos/<event>/<pid>/o.jpg   the original (a RAW photo: Drive's full-size JPEG of it)
 //
 // Rules:
@@ -18,14 +20,14 @@ import { Hono } from 'hono'
 //   "anyone with the link"). Every link is signed for ONE person, ONE photo and ONE size
 //   (photoLink), so a person only ever holds links to the photos the server chose for
 //   them: their own, and later the "best of" set.
-// - Saving an original (o) is counted in photo_downloads: at most photo_download_limit
-//   (app_settings, default 15) different photos per person. Saving the same photo again
-//   is free. Looking (s, m) is never counted.
-// - Never put an o link in an email: mail scanners open links and would spend the
-//   person's downloads. Emails carry s images and the link to the person's page.
+// - Saving an original (o, or a ZIP of them) is recorded in photo_downloads (who saved which
+//   photo, how many times) for the organiser's counts. It never stops a save.
+//   Looking (s, m) is never recorded.
+// - Never put an o link in an email: mail scanners open links and would fill the counts
+//   with saves nobody made. Emails carry s images and the link to the person's page.
 // - A hidden photo (event_photos.hidden = 1) stops working everywhere at once.
 // - `person` is 'a<attendee id>' for an attendee, or a speaker album key from
-//   src/routes/photos.ts. 'admin' is the organiser's own view: never counted.
+//   src/routes/photos.ts. 'admin' is the organiser's own view: never recorded.
 // Every /api/admin/* route here is behind the admin middleware in index.tsx.
 
 type Hooks = { audit?: (c: any, action: string, entity?: string, entityId?: any, detail?: any) => Promise<void> }
@@ -34,10 +36,9 @@ export function configurePhotoStore(h: Hooks) { hooks = { ...hooks, ...h } }
 
 const st = new Hono<{ Bindings: any }>()
 const SITE = 'https://bharataiinnovation.com'
-export const DEFAULT_DOWNLOAD_LIMIT = 15
 export const LINK_DAYS = 120
 const DAY_MS = 86400000
-const PID_RE = /^[A-Za-z0-9_-]{12}$/
+export const PID_RE = /^[A-Za-z0-9_-]{12}$/
 const PERSON_RE = /^[A-Za-z0-9_.:-]{1,64}$/
 export const ADMIN_PERSON = 'admin'
 
@@ -72,11 +73,12 @@ export async function photoLink(c: any, pid: string, part: 's' | 'm' | 'o', pers
   return `${SITE}/photo/${pid}/${part}.jpg?u=${encodeURIComponent(person)}&e=${exp}&k=${k}`
 }
 
-export type PhotoLinks = { pid: string; s: string; m: string; o: string; width: number; height: number; day: string; taken_at: string }
+// bytes: the original's exact size, so the page can split a big "save all" into ZIP parts.
+export type PhotoLinks = { pid: string; s: string; m: string; o: string; width: number; height: number; day: string; taken_at: string; bytes: number }
 
 async function linksOf(c: any, person: string, r: any, days: number): Promise<PhotoLinks> {
   return { pid: r.pid, s: await photoLink(c, r.pid, 's', person, days), m: await photoLink(c, r.pid, 'm', person, days), o: await photoLink(c, r.pid, 'o', person, days),
-    width: Number(r.width || 0), height: Number(r.height || 0), day: String(r.day || ''), taken_at: String(r.taken_at || '') }
+    width: Number(r.width || 0), height: Number(r.height || 0), day: String(r.day || ''), taken_at: String(r.taken_at || ''), bytes: Number(r.bytes || 0) }
 }
 
 // For src/routes/photos.ts (the speaker albums, which know their photos by Drive id):
@@ -90,7 +92,7 @@ export async function linksForDrive(c: any, person: string, driveIds: string[], 
   try {
     for (let i = 0; i < ids.length; i += 90) {
       const chunk = ids.slice(i, i + 90)
-      const rs = await all(c, `SELECT pid, drive_id, width, height, day, taken_at FROM event_photos WHERE event_id = ? AND hidden = 0 AND drive_id IN (${chunk.map(() => '?').join(',')})`, eventId, ...chunk)
+      const rs = await all(c, `SELECT pid, drive_id, width, height, day, taken_at, bytes FROM event_photos WHERE event_id = ? AND hidden = 0 AND drive_id IN (${chunk.map(() => '?').join(',')})`, eventId, ...chunk)
       for (const r of rs) out[r.drive_id] = await linksOf(c, person, r, days)
     }
   } catch { /* no event_photos table here yet */ }
@@ -98,34 +100,17 @@ export async function linksForDrive(c: any, person: string, driveIds: string[], 
 }
 
 // A speaker's album (person 's<speaker id>' or 't<talk id>', src/routes/photos.ts; or a named
-// guest's, 'g<id>') holds only photos of that person, found by face, so it gets its own,
-// higher limit (the organiser, 23 Nov 2026: 50; app_settings photo_download_limit_speakers).
-export const DEFAULT_SPEAKER_DOWNLOAD_LIMIT = 50
+// guest's, 'g<id>'), as opposed to an attendee's ('a<id>'). Kept apart in the counts.
 export const isSpeakerAlbum = (person: string) => /^[stg]\d+$/.test(String(person || ''))
 
-export async function downloadLimit(c: any, person = ''): Promise<number> {
-  const speaker = isSpeakerAlbum(person)
+// Records saves of originals (one photo, or every photo in a ZIP). Saving a photo again adds
+// to its times. Never stops a save, and never fails one: a count that cannot be written is lost.
+export async function recordSaves(c: any, person: string, photoIds: number[]): Promise<void> {
+  if (person === ADMIN_PERSON || !photoIds.length) return
   try {
-    const key = speaker ? 'photo_download_limit_speakers' : 'photo_download_limit'
-    const r = await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(key).first() as any
-    const n = parseInt(String(r?.value ?? ''), 10)
-    if (Number.isFinite(n) && n >= 0) return n
-  } catch { /* the default */ }
-  return speaker ? DEFAULT_SPEAKER_DOWNLOAD_LIMIT : DEFAULT_DOWNLOAD_LIMIT
-}
-
-// Counts one save of an original. True: let it through. Saving a photo already saved
-// is always free; a new one only while the person is under the limit.
-export async function countDownload(c: any, person: string, photoId: number, limit: number): Promise<boolean> {
-  if (person === ADMIN_PERSON) return true
-  const again = await c.env.DB.prepare('UPDATE photo_downloads SET times = times + 1, last_at = CURRENT_TIMESTAMP WHERE person = ? AND photo_id = ?').bind(person, photoId).run() as any
-  if (again?.meta?.changes) return true
-  if (limit <= 0) return false
-  const add = await c.env.DB.prepare('INSERT INTO photo_downloads (person, photo_id) SELECT ?, ? WHERE (SELECT COUNT(*) FROM photo_downloads WHERE person = ?) < ? ON CONFLICT (person, photo_id) DO NOTHING')
-    .bind(person, photoId, person, limit).run() as any
-  if (add?.meta?.changes) return true
-  // Two taps on the same new photo at once: the other one counted it.
-  return !!(await c.env.DB.prepare('SELECT 1 AS y FROM photo_downloads WHERE person = ? AND photo_id = ?').bind(person, photoId).first())
+    const q = c.env.DB.prepare('INSERT INTO photo_downloads (person, photo_id) VALUES (?, ?) ON CONFLICT (person, photo_id) DO UPDATE SET times = times + 1, last_at = CURRENT_TIMESTAMP')
+    for (let i = 0; i < photoIds.length; i += 50) await c.env.DB.batch(photoIds.slice(i, i + 50).map(id => q.bind(person, id)))
+  } catch { /* the save goes ahead */ }
 }
 
 export async function downloadsUsed(c: any, person: string): Promise<number> {
@@ -137,15 +122,149 @@ export function downloadName(title: string): string {
   return `BharatAI-Mumbai-2026-${stem}.jpg`
 }
 
+// ---------- many photos at once: one ZIP file ----------
+//
+// "Save all" and "Save selected" on a person's photos page. JPEGs do not shrink, so the ZIP
+// stores each photo as it is and streams it straight from R2: the worker never holds a whole
+// photo. The CRC each file needs is worked out on the way through and written just after the
+// photo (a data descriptor, as client-zip does); Windows, macOS, iPhone Files and Android open
+// these. The exact length is known up front (event_photos.bytes is the original's size), so
+// the browser shows progress. One ZIP holds at most ZIP_MAX_PHOTOS photos and ZIP_MAX_BYTES:
+// no ZIP64 needed, a phone can hold it, and the CRC fits easily in the worker's CPU time. The
+// page asks for a bigger choice in parts.
+export const ZIP_MAX_PHOTOS = 100
+export const ZIP_MAX_BYTES = 900_000_000
+
+// CRC-32 eight bytes at a time ("slicing by 8"): about 0.2 s of CPU per 100 MB, five times
+// the byte-at-a-time loop, so a full 900 MB ZIP stays near 2 s of the worker's CPU time.
+const CRC_T = (() => {
+  const t = new Int32Array(256 * 8)
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c }
+  for (let n = 0; n < 256; n++) { let c = t[n]; for (let k = 1; k < 8; k++) { c = t[c & 255] ^ (c >>> 8); t[k * 256 + n] = c } }
+  return t
+})()
+export function crc32(buf: Uint8Array, prev = 0): number {
+  const t = CRC_T
+  let c = ~prev, i = 0
+  const n = buf.length, end = n - (n & 7)
+  for (; i < end; i += 8) {
+    const a = (buf[i] | (buf[i + 1] << 8) | (buf[i + 2] << 16) | (buf[i + 3] << 24)) ^ c
+    c = t[1792 + (a & 255)] ^ t[1536 + ((a >>> 8) & 255)] ^ t[1280 + ((a >>> 16) & 255)] ^ t[1024 + (a >>> 24)]
+      ^ t[768 + buf[i + 4]] ^ t[512 + buf[i + 5]] ^ t[256 + buf[i + 6]] ^ t[buf[i + 7]]
+  }
+  for (; i < n; i++) c = t[(c ^ buf[i]) & 255] ^ (c >>> 8)
+  return ~c >>> 0
+}
+
+// When the photo was taken, in India, the way a ZIP file stores a date and time.
+function dosStamp(takenAt: string, day: string): [number, number] {
+  let ms = Date.parse(String(takenAt || ''))
+  ms = Number.isFinite(ms) ? ms + 330 * 60000 : Date.parse((/^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '2026-11-20') + 'T12:00:00Z')
+  const d = new Date(ms)
+  return [(d.getUTCHours() << 11) | (d.getUTCMinutes() << 5) | (d.getUTCSeconds() >> 1), ((d.getUTCFullYear() - 1980) << 9) | ((d.getUTCMonth() + 1) << 5) | d.getUTCDate()]
+}
+
+export type ZipPhoto = { id: number; pid: string; drive_id: string; event_id: number; title: string; day: string; taken_at: string; bytes: number }
+type ZipEntry = { key: string; name: Uint8Array; size: number; time: number; date: number; crc: number; offset: number }
+const u16 = (v: DataView, at: number, n: number) => v.setUint16(at, n & 0xffff, true)
+const u32 = (v: DataView, at: number, n: number) => v.setUint32(at, n >>> 0, true)
+const FLAGS = 0x0808 // bit 3: CRC and sizes follow the data; bit 11: UTF-8 names
+
+function localHeader(f: ZipEntry): Uint8Array {
+  const b = new Uint8Array(30 + f.name.length), v = new DataView(b.buffer)
+  u32(v, 0, 0x04034b50); u16(v, 4, 20); u16(v, 6, FLAGS); u16(v, 8, 0); u16(v, 10, f.time); u16(v, 12, f.date)
+  u16(v, 26, f.name.length); b.set(f.name, 30) // CRC and sizes stay 0 here: see the descriptor
+  return b
+}
+function dataDescriptor(f: ZipEntry): Uint8Array {
+  const b = new Uint8Array(16), v = new DataView(b.buffer)
+  u32(v, 0, 0x08074b50); u32(v, 4, f.crc); u32(v, 8, f.size); u32(v, 12, f.size)
+  return b
+}
+function centralDirectory(files: ZipEntry[], at: number): Uint8Array {
+  const size = files.reduce((n, f) => n + 46 + f.name.length, 0)
+  const b = new Uint8Array(size + 22), v = new DataView(b.buffer)
+  let p = 0
+  for (const f of files) {
+    u32(v, p, 0x02014b50); u16(v, p + 4, 20); u16(v, p + 6, 20); u16(v, p + 8, FLAGS); u16(v, p + 10, 0); u16(v, p + 12, f.time); u16(v, p + 14, f.date)
+    u32(v, p + 16, f.crc); u32(v, p + 20, f.size); u32(v, p + 24, f.size); u16(v, p + 28, f.name.length)
+    u32(v, p + 42, f.offset); b.set(f.name, p + 46)
+    p += 46 + f.name.length
+  }
+  u32(v, p, 0x06054b50); u16(v, p + 8, files.length); u16(v, p + 10, files.length); u32(v, p + 12, size); u32(v, p + 16, at)
+  return b
+}
+
+// The photos for these pids, in the order asked: in R2's table, not hidden. Unknown pids are left out.
+export async function photosByPid(c: any, pids: string[], eventId = 1): Promise<ZipPhoto[]> {
+  const ok = [...new Set((pids || []).map(String))].filter(p => PID_RE.test(p))
+  const by = new Map<string, ZipPhoto>()
+  for (let i = 0; i < ok.length; i += 90) {
+    const ch = ok.slice(i, i + 90)
+    for (const r of await all(c, `SELECT id, pid, drive_id, event_id, title, day, taken_at, bytes FROM event_photos WHERE event_id = ? AND hidden = 0 AND pid IN (${ch.map(() => '?').join(',')})`, eventId, ...ch)) by.set(String(r.pid), r)
+  }
+  return ok.map(p => by.get(p)).filter(Boolean) as ZipPhoto[]
+}
+
+// Streams one ZIP of these photos' originals. The caller has checked they are the person's own,
+// within the limits above. A photo that turns out missing or a different size stops the
+// download (the browser shows it failed) rather than giving a broken file.
+export function photosZip(c: any, photos: ZipPhoto[], fileName: string): Response {
+  const enc = new TextEncoder(), used = new Set<string>()
+  let at = 0
+  const files: ZipEntry[] = photos.map(p => {
+    const base = downloadName(p.title)
+    let name = base, k = 2
+    while (used.has(name.toLowerCase())) name = base.replace(/\.jpg$/, `-${k++}.jpg`)
+    used.add(name.toLowerCase())
+    const [time, date] = dosStamp(p.taken_at, p.day)
+    const f: ZipEntry = { key: photoKey(Number(p.event_id), p.pid, 'o'), name: enc.encode(name), size: Number(p.bytes), time, date, crc: 0, offset: at }
+    at += 30 + f.name.length + f.size + 16
+    return f
+  })
+  const total = at + files.reduce((n, f) => n + 46 + f.name.length, 0) + 22
+  const Fixed = (globalThis as any).FixedLengthStream
+  const { readable, writable } = Fixed ? new Fixed(total) : new TransformStream()
+  const pump = (async () => {
+    const w = writable.getWriter()
+    try {
+      for (const f of files) {
+        const obj = await c.env.UPLOADS.get(f.key)
+        if (!obj || !obj.body) throw new Error('not in the bucket: ' + f.key)
+        await w.write(localHeader(f))
+        const r = obj.body.getReader()
+        let crc = 0, n = 0
+        for (;;) {
+          const { done, value } = await r.read()
+          if (done) break
+          const u = value instanceof Uint8Array ? value : new Uint8Array(value)
+          crc = crc32(u, crc); n += u.length
+          await w.write(u)
+        }
+        if (n !== f.size) throw new Error(`size ${n}, not ${f.size}: ${f.key}`)
+        f.crc = crc
+        await w.write(dataDescriptor(f))
+      }
+      await w.write(centralDirectory(files, at))
+      await w.close()
+    } catch (e) { try { await w.abort(e) } catch { /* already closed */ } }
+  })()
+  try { c.executionCtx.waitUntil(pump) } catch { /* no execution context (tests): reading the body drives it */ }
+  const h: Record<string, string> = { ...NOINDEX, 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${fileName}"`, 'Cache-Control': 'private, no-store' }
+  if (!Fixed) h['Content-Length'] = String(total)
+  return new Response(readable, { headers: h })
+}
+
 // What a person sees when a full-size save is refused: a page, in plain words. A small
 // or medium image that is refused answers with a bare status (it sits in an <img>).
-function refusePage(why: 'broken' | 'expired' | 'gone' | 'limit' | 'off', limit = 0): string {
-  const say: Record<string, [string, string]> = {
+type Why = 'broken' | 'expired' | 'gone' | 'off' | 'too-many'
+function refusePage(why: Why): string {
+  const say: Record<Why, [string, string]> = {
     broken: ['This photo link is not complete', 'Please open your photos page again and tap the photo there.'],
     expired: ['This photo link has expired', 'Please open your photos page again from your email or the app. It gives you fresh links.'],
     gone: ['This photo is no longer available', 'It may have been taken down. Your other photos are still on your photos page.'],
-    limit: [`You have saved ${limit} photos`, `Each person can save up to ${limit} full-size photos. You can still look at all your photos and share them from your photos page. If you need more for your company or the press, reply to our email and we will help.`],
     off: ['Photos are not available right now', 'Please try again in a little while.'],
+    'too-many': ['Too many photos in one go', `Please go back to your photos page and save them from there. It splits them into downloads of up to ${ZIP_MAX_PHOTOS} photos.`],
   }
   const [h, p] = say[why]
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Photos</title></head>
@@ -154,9 +273,9 @@ function refusePage(why: 'broken' | 'expired' | 'gone' | 'limit' | 'off', limit 
 <p><a href="${SITE}/" style="color:#C84F00;font-weight:bold">Bharat AI Innovation</a></p></body></html>`
 }
 const NOINDEX = { 'X-Robots-Tag': 'noindex, nofollow', 'X-Content-Type-Options': 'nosniff' }
-function refuse(status: number, original: boolean, why: 'broken' | 'expired' | 'gone' | 'limit' | 'off', limit = 0): Response {
+export function refuse(status: number, original: boolean, why: Why): Response {
   if (!original) return new Response(null, { status, headers: { ...NOINDEX, 'Cache-Control': 'no-store' } })
-  return new Response(refusePage(why, limit), { status, headers: { ...NOINDEX, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
+  return new Response(refusePage(why), { status, headers: { ...NOINDEX, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
 }
 
 // ---------- the photo itself ----------
@@ -180,11 +299,7 @@ st.get('/photo/:pid/:file', async (c) => {
   const h = new Headers({ ...NOINDEX, 'Content-Type': 'image/jpeg' })
   if (obj.size) h.set('Content-Length', String(obj.size))
   if (original) {
-    const limit = await downloadLimit(c, person)
-    if (!(await countDownload(c, person, Number(row.id), limit))) {
-      try { await obj.body?.cancel() } catch { /* nothing to free */ }
-      return refuse(429, true, 'limit', limit)
-    }
+    await recordSaves(c, person, [Number(row.id)])
     h.set('Cache-Control', 'private, no-store')
     h.set('Content-Disposition', `attachment; filename="${downloadName(row.title)}"`)
   } else {
@@ -198,21 +313,17 @@ st.get('/photo/:pid/:file', async (c) => {
 
 const NO_TABLES = { error: 'The photo tables are not in this database yet (migration 0064_event_photos.sql).' }
 
-// How many photos are in, by day; how many people saved how many.
+// How many photos are in, by day; how many people saved how many (speakers' albums and
+// attendees apart).
 st.get('/api/admin/event-photos', async (c) => {
   const ev = Number(c.req.query('event') || 1)
   try {
     const days = await all(c, 'SELECT day, COUNT(*) AS photos, SUM(hidden) AS hidden, SUM(highlight) AS highlights, SUM(raw) AS raw, SUM(bytes) AS bytes FROM event_photos WHERE event_id = ? GROUP BY day ORDER BY day', ev)
-    const limit = await downloadLimit(c)
-    const speakerLimit = await downloadLimit(c, 's0')
-    const dl = await c.env.DB.prepare('SELECT COUNT(DISTINCT d.person) AS people, COUNT(*) AS photos, COALESCE(SUM(d.times), 0) AS saves FROM photo_downloads d JOIN event_photos p ON p.id = d.photo_id WHERE p.event_id = ?').bind(ev).first() as any
-    // Who has used every save: attendees against their limit, speakers' albums
-    // ('s<id>' / 't<id>' / 'g<id>', isSpeakerAlbum) against theirs.
     const SPEAKER_SQL = "(d.person GLOB 's[0-9]*' OR d.person GLOB 't[0-9]*' OR d.person GLOB 'g[0-9]*')"
-    const atLimit = async (speakers: boolean, n: number) => Number(((await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM (SELECT d.person FROM photo_downloads d JOIN event_photos p ON p.id = d.photo_id WHERE p.event_id = ? AND ${speakers ? '' : 'NOT '}${SPEAKER_SQL} GROUP BY d.person HAVING COUNT(*) >= ?)`).bind(ev, Math.max(n, 1)).first()) as any)?.n || 0)
-    return c.json({ days, limit, speaker_limit: speakerLimit, downloads: { people: Number(dl?.people || 0), photos: Number(dl?.photos || 0), saves: Number(dl?.saves || 0),
-      at_limit: await atLimit(false, limit), speakers_at_limit: await atLimit(true, speakerLimit) },
-      signing: !!secretOf(c), bucket: !!c.env.UPLOADS })
+    const sum = async (where: string) => (await c.env.DB.prepare(`SELECT COUNT(DISTINCT d.person) AS people, COUNT(*) AS photos, COALESCE(SUM(d.times), 0) AS saves FROM photo_downloads d JOIN event_photos p ON p.id = d.photo_id WHERE p.event_id = ?${where}`).bind(ev).first()) as any
+    const n = (r: any) => ({ people: Number(r?.people || 0), photos: Number(r?.photos || 0), saves: Number(r?.saves || 0) })
+    const [everyone, speakers] = await Promise.all([sum(''), sum(' AND ' + SPEAKER_SQL)])
+    return c.json({ days, downloads: { ...n(everyone), speakers: n(speakers) }, signing: !!secretOf(c), bucket: !!c.env.UPLOADS })
   } catch { return c.json(NO_TABLES, 503) }
 })
 
@@ -231,32 +342,11 @@ st.get('/api/admin/event-photos/list', async (c) => {
     if (only === 'hidden') where.push('hidden = 1')
     if (only === 'highlight') where.push('highlight = 1')
     const total = Number(((await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM event_photos WHERE ${where.join(' AND ')}`).bind(...args).first()) as any)?.n || 0)
-    const rs = await all(c, `SELECT pid, title, day, taken_at, camera, hall, width, height, raw, hidden, highlight FROM event_photos WHERE ${where.join(' AND ')} ORDER BY day, CASE WHEN taken_at = '' THEN 1 ELSE 0 END, taken_at, title LIMIT ? OFFSET ?`, ...args, size, offset)
+    const rs = await all(c, `SELECT pid, title, day, taken_at, camera, hall, width, height, bytes, raw, hidden, highlight FROM event_photos WHERE ${where.join(' AND ')} ORDER BY day, CASE WHEN taken_at = '' THEN 1 ELSE 0 END, taken_at, title LIMIT ? OFFSET ?`, ...args, size, offset)
     const photos = []
     for (const r of rs) photos.push({ ...(await linksOf(c, ADMIN_PERSON, r, 2)), title: r.title, camera: r.camera, hall: r.hall, raw: !!r.raw, hidden: !!r.hidden, highlight: !!r.highlight })
     return c.json({ total, offset, size, photos })
   } catch { return c.json(NO_TABLES, 503) }
-})
-
-// The download limits (0 = no full-size saves at all): download_limit for attendees and
-// everyone else, speaker_download_limit for speakers' albums. Either or both.
-st.post('/api/admin/event-photos/settings', async (c) => {
-  const b = await c.req.json().catch(() => ({})) as any
-  const given = (k: string) => b[k] !== undefined && b[k] !== null && b[k] !== ''
-  const ok = (v: any) => Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 500
-  if (!given('download_limit') && !given('speaker_download_limit')) return c.json({ error: 'The download limit must be a whole number from 0 to 500.' }, 400)
-  if (given('download_limit') && !ok(b.download_limit)) return c.json({ error: 'The download limit must be a whole number from 0 to 500.' }, 400)
-  if (given('speaker_download_limit') && !ok(b.speaker_download_limit)) return c.json({ error: 'The speakers’ download limit must be a whole number from 0 to 500.' }, 400)
-  const put = "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"
-  const out: any = { success: true }
-  for (const [field, key, word] of [['download_limit', 'photo_download_limit', 'limit'], ['speaker_download_limit', 'photo_download_limit_speakers', 'speaker_limit']]) {
-    if (!given(field)) continue
-    const n = Number(b[field])
-    await c.env.DB.prepare(put).bind(key, String(n)).run()
-    if (hooks.audit) { try { await hooks.audit(c, 'photos.limit', 'app_settings', key, { limit: n }) } catch { /* never fails the change */ } }
-    out[word] = n
-  }
-  return c.json(out)
 })
 
 // Hide a photo (every link to it stops working) or put it in the "best of" set.
