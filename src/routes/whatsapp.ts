@@ -154,7 +154,8 @@ export const ERRORS: Record<number, { words: string; stop?: boolean; soft?: bool
   131042: { words: 'Meta needs a way to pay: add a card in WhatsApp Manager, under Payment settings.', stop: true },
   131031: { words: 'Meta has locked the WhatsApp account. Open WhatsApp Manager to see why.', stop: true },
   368: { words: 'Meta has restricted the WhatsApp account for breaking a rule. Open WhatsApp Manager to see why.', stop: true },
-  133010: { words: 'Our number is not registered with WhatsApp yet. Finish adding the number in Meta.', stop: true },
+  133010: { words: 'Our number is not registered with WhatsApp yet. Register it once in Setup, with a 6-digit PIN.', stop: true },
+  133016: { words: 'Too many tries to register our number: Meta allows 10 in 3 days. Try again after 72 hours.', stop: true },
   190: { words: 'The access key from Meta has expired or is wrong. Paste a new one in Setup.', stop: true },
   10: { words: 'The access key from Meta is not allowed to send WhatsApp messages. Give the system user the two WhatsApp permissions and make a new key.', stop: true },
   200: { words: 'The access key from Meta is not allowed to send WhatsApp messages. Give the system user the two WhatsApp permissions and make a new key.', stop: true },
@@ -811,13 +812,48 @@ wa.post('/api/admin/whatsapp/check', async (c) => {
   if (limit) await saveSetting(c, 'whatsapp_daily_limit', String(limit))
   if (cfg.wabaId) {
     // Meta only calls our webhook for this account once the app is "subscribed" to it.
+    // Another app (a vendor's) may be subscribed to the same account: only ours counts.
     const subs = await graph(cfg, 'GET', `${cfg.wabaId}/subscribed_apps`)
-    if (subs.ok && !(subs.json?.data || []).length) { const s = await graph(cfg, 'POST', `${cfg.wabaId}/subscribed_apps`); out.webhook = s.ok ? 'subscribed' : 'not subscribed: ' + errorWords(s.code, s.message) }
+    const apps = (subs.json?.data || []) as any[]
+    const ours = cfg.appId ? apps.some(x => String(x?.whatsapp_business_api_data?.id || x?.id || '') === cfg.appId) : apps.length > 0
+    if (subs.ok && !ours) { const s = await graph(cfg, 'POST', `${cfg.wabaId}/subscribed_apps`); out.webhook = s.ok ? 'subscribed' : 'not subscribed: ' + errorWords(s.code, s.message) }
     else out.webhook = subs.ok ? 'subscribed' : 'could not be checked: ' + errorWords(subs.code, subs.message)
     if (await ready(c)) out.templates_error = await refreshTemplates(c, cfg)
   }
   await saveSetting(c, 'whatsapp_checked', JSON.stringify(out))
   return c.json({ success: true, check: out, ...(await overview(c)) })
+})
+
+// Registers our number with WhatsApp's Cloud API, once. Until then Meta answers every
+// send with 133010 and the number's status is PENDING. The PIN is the number's two-step
+// PIN: the organiser chooses it the first time (it becomes the PIN) or types the one already
+// set. It goes to Meta and is kept nowhere, not even in the audit log. Meta allows 10 tries
+// in 3 days, so a number that is already CONNECTED is not registered again.
+wa.post('/api/admin/whatsapp/register', async (c) => {
+  const cfg = await loadCfg(c)
+  if (!connected(cfg)) return c.json({ error: 'Paste the access key and the Phone number ID first.' }, 409)
+  const b = await c.req.json().catch(() => ({})) as any
+  const pin = String(b.pin ?? '').replace(/\s+/g, '')
+  if (!/^\d{6}$/.test(pin)) return c.json({ error: 'The PIN is 6 digits.', field: 'pin' }, 400)
+  const remember = async (status: string) => {
+    let ck: any = {}
+    try { ck = JSON.parse(cfg.set.whatsapp_checked || '{}') || {} } catch { ck = {} }
+    ck.number_status = status
+    ck.at = new Date().toISOString()
+    await saveSetting(c, 'whatsapp_checked', JSON.stringify(ck))
+  }
+  const before = await graph(cfg, 'GET', `${cfg.phoneId}?fields=status`)
+  if (before.ok && String(before.json?.status || '').toUpperCase() === 'CONNECTED') {
+    await remember('CONNECTED')
+    return c.json({ success: true, already: true, number_status: 'CONNECTED', ...(await overview(c)) })
+  }
+  const r = await graph(cfg, 'POST', `${cfg.phoneId}/register`, { messaging_product: 'whatsapp', pin })
+  await note(c, 'whatsapp.register', null, { ok: r.ok, code: r.code || null })
+  if (!r.ok) return c.json({ error: errorWords(r.code, r.message) }, 502)
+  const after = await graph(cfg, 'GET', `${cfg.phoneId}?fields=status`)
+  const status = after.ok ? String(after.json?.status || '').toUpperCase() || 'CONNECTED' : 'CONNECTED'
+  await remember(status)
+  return c.json({ success: true, number_status: status, ...(await overview(c)) })
 })
 
 wa.post('/api/admin/whatsapp/settings', async (c) => {

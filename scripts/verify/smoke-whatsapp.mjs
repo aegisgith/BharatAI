@@ -26,6 +26,8 @@ const calls = [];
 let failWith = null;          // { code, message, times } for the next sends
 let templatesAtMeta = [];
 let wam = 0;
+let subsData = [];            // the apps Meta says are subscribed to the account
+let numberStatus = 'PENDING'; // the number's status until it is registered
 const worldFetch = globalThis.fetch;
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url && url.url ? url.url : url);
@@ -40,7 +42,13 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (call.path.startsWith(`${PHONE}?fields=display_phone_number`)) return json({ display_phone_number: '+91 22 5555 0100', verified_name: 'Bharat AI Innovation', quality_rating: 'GREEN', code_verification_status: 'VERIFIED', id: PHONE });
   if (call.path.startsWith(`${PHONE}?fields=whatsapp_business_manager`)) return json({ whatsapp_business_manager_messaging_limit: 'TIER_2K', status: 'CONNECTED', id: PHONE });
-  if (call.path === `${WABA}/subscribed_apps`) return json(call.method === 'GET' ? { data: [] } : { success: true });
+  if (call.path === `${WABA}/subscribed_apps`) return json(call.method === 'GET' ? { data: subsData } : { success: true });
+  if (call.path.startsWith(`${PHONE}?fields=status`)) return json({ status: numberStatus, id: PHONE });
+  if (call.path === `${PHONE}/register`) {
+    if (call.body?.pin === '999999') return json({ error: { message: '(#133016) Too many registration attempts', code: 133016 } }, 400);
+    numberStatus = 'CONNECTED';
+    return json({ success: true });
+  }
   if (call.path.startsWith(`${WABA}/message_templates`)) {
     if (call.method === 'GET') return json({ data: templatesAtMeta });
     if (call.method === 'DELETE') return json({ success: true });
@@ -362,5 +370,36 @@ const ov = (await as('GET', '/api/admin/whatsapp')).json;
 check('the Sent list filters by state, and the overview counts every send with its numbers', r.json?.rows.length >= 6 && r.json.rows.every(x => x.status === 'failed' && /^\+91 /.test(x.number))
   && ov.batches.length === 5 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 2 && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
 check('no answer from any admin route ever carried the access key or the app secret', answers.length > 60 && answers.every(a => !a.includes(TOKEN) && !a.includes(SECRET)), answers.length);
-check('the audit log names what was done, never a value', rows("SELECT detail FROM admin_audit WHERE action LIKE 'whatsapp.%'").length >= 8 && rows("SELECT detail FROM admin_audit WHERE action LIKE 'whatsapp.%'").every(x => !String(x.detail).includes(TOKEN) && !String(x.detail).includes(SECRET)), '');
+// ---------- registering our number (Meta answers 133010 until it is) ----------
+const registers = () => calls.filter(c => c.path === `${PHONE}/register`);
+r = await as('POST', '/api/admin/whatsapp/register', { pin: '12345' });
+check('register: a PIN that is not 6 digits is caught before Meta is asked', r.status === 400 && r.json?.field === 'pin' && registers().length === 0, r.json?.error);
+r = await as('POST', '/api/admin/whatsapp/register', { pin: '999999' });
+check('register: Meta’s "too many tries" comes back in plain words', r.status === 502 && /10 in 3 days/.test(r.json?.error || ''), r.json?.error);
+r = await as('POST', '/api/admin/whatsapp/register', { pin: '482 913' });
+const reg = registers().pop();
+check('register: Meta gets the number and the PIN, the screen learns the number can send', r.status === 200 && r.json?.number_status === 'CONNECTED' && r.json?.checked?.number_status === 'CONNECTED'
+  && reg.method === 'POST' && reg.body.messaging_product === 'whatsapp' && reg.body.pin === '482913' && reg.headers.Authorization === 'Bearer ' + TOKEN, JSON.stringify(r.json?.checked));
+r = await as('POST', '/api/admin/whatsapp/register', { pin: '482913' });
+check('register: a number already registered is not registered again (Meta allows 10 tries in 3 days)', r.status === 200 && r.json?.already === true && registers().length === 2, registers().length);
+check('register: the PIN is kept nowhere, not in an answer, a setting or the audit log', !answers.some(t => t.includes('482913') || t.includes('482 913'))
+  && !rows("SELECT value FROM app_settings WHERE key LIKE 'whatsapp%'").some(x => String(x.value).includes('482913'))
+  && !rows("SELECT detail FROM admin_audit WHERE action LIKE 'whatsapp.%'").some(x => String(x.detail).includes('482913')), '');
+failWith = { code: 133010, message: 'Account not registered', times: 1 };
+r = await as('POST', '/api/admin/whatsapp/test', { kind: 'pass', event: 1, to: '98200 12345' });
+failWith = null;
+check('a send Meta refuses as "not registered" tells the team where to fix it', r.status === 502 && /Register it once in Setup/.test(r.json?.error || ''), r.json?.error);
+
+// ---------- delivery reports: only our own app counts ----------
+await as('POST', '/api/admin/whatsapp/config', { app_id: APP });
+let subPosts = calls.filter(c => c.path === `${WABA}/subscribed_apps` && c.method === 'POST').length;
+subsData = [{ whatsapp_business_api_data: { id: '999000999000', name: 'A vendor' } }];
+r = await as('POST', '/api/admin/whatsapp/check', {});
+check('another app on the account does not count: ours is subscribed too', r.json?.check?.webhook === 'subscribed' && calls.filter(c => c.path === `${WABA}/subscribed_apps` && c.method === 'POST').length === subPosts + 1, r.json?.check?.webhook);
+subsData = [{ whatsapp_business_api_data: { id: APP, name: 'Ours' } }];
+subPosts = calls.filter(c => c.path === `${WABA}/subscribed_apps` && c.method === 'POST').length;
+r = await as('POST', '/api/admin/whatsapp/check', {});
+check('ours already there: not subscribed twice', r.json?.check?.webhook === 'subscribed' && calls.filter(c => c.path === `${WABA}/subscribed_apps` && c.method === 'POST').length === subPosts, '');
+
+check('the audit log names what was done, never a value',rows("SELECT detail FROM admin_audit WHERE action LIKE 'whatsapp.%'").length >= 8 && rows("SELECT detail FROM admin_audit WHERE action LIKE 'whatsapp.%'").every(x => !String(x.detail).includes(TOKEN) && !String(x.detail).includes(SECRET)), '');
 done();

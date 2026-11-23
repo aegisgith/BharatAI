@@ -53,6 +53,8 @@
   function statusChip(s) { return chip(STATUS[s] || [s, 'muted']); }
   function tplChip(s) { return chip(TPL_STATUS[s] || [s, 'muted']); }
   function kindWords(k) { return { photos: 'Photos', pass: 'Pass', custom: 'Announcement', reply: 'Reply' }[k] || k; }
+  // Meta says PENDING (or anything but CONNECTED) until the number is registered for the Cloud API.
+  function notRegistered(ck) { return !!(ck && ck.number_status && String(ck.number_status).toUpperCase() !== 'CONNECTED'); }
   function categoryWords(c) { return String(c).toUpperCase() === 'UTILITY' ? 'Service message (lower cost)' : 'Marketing message'; }
 
   // How a batch stands, from its counts.
@@ -92,6 +94,7 @@
     var ck = d.checked || {};
     var line = d.connected
       ? '<span class="wad-dot wad-dot-on"></span> Connected' + (ck.number ? ': sending from <b>' + esc(ck.number) + '</b>' + (ck.name ? ' (' + esc(ck.name) + ')' : '') : '. Press &ldquo;Check the connection&rdquo; in Setup to see the number.')
+        + (notRegistered(ck) ? ' <b class="wad-bad">Nothing can be sent yet: the number is not registered with WhatsApp.</b> <button class="wad-link" data-act="tab" data-tab="setup">Register it in Setup</button>.' : '')
       : '<span class="wad-dot"></span> Not connected to WhatsApp yet. <button class="wad-link" data-act="tab" data-tab="setup">Open Setup</button> and follow the steps.';
     var t = d.totals || {}, s = d.settings || {};
     var tiles = [
@@ -335,14 +338,15 @@
       'In the app, open <b>WhatsApp &rarr; API Setup</b>. Add the phone number we will send from: a number that is <b>not</b> on WhatsApp on any phone right now (Meta sends it a code by SMS or a call). Give it the display name <b>Bharat AI Innovation</b>. On the same page, copy the <b>Phone number ID</b> and the <b>WhatsApp Business Account ID</b>.',
       'Open <b>App settings &rarr; Basic</b>. Copy the <b>App ID</b> and the <b>App secret</b> (press Show).',
       'For a key that does not run out: in <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener">Business settings &rarr; Users &rarr; System users</a>, add one (Admin), give it the app and the WhatsApp account with full control, press <b>Generate token</b>, choose the app, expiry <b>Never</b>, tick <b>whatsapp_business_messaging</b> and <b>whatsapp_business_management</b>, and copy the long key.',
-      'Paste the five values below, press <b>Save</b>, then <b>Check the connection</b>.',
+      'Paste the five values below, press <b>Save</b>, then <b>Check the connection</b>. If it says <b>Not registered</b>, choose a 6-digit PIN in <b>Register our number</b> (it appears below) and keep the PIN safe: WhatsApp asks for it if the number ever moves.',
       'Back in the app, open <b>WhatsApp &rarr; Configuration</b>. Paste the Callback URL and the Verify token from below, press <b>Verify and save</b>, then switch on <b>messages</b> (and <b>message_template_status_update</b>). This is what brings delivered, read and replies back to us.',
       'In <b>WhatsApp Manager &rarr; Payment settings</b>, add a card. Then open <b>Messages</b> here and send each message for approval.',
       'Later: verify the business in Meta&rsquo;s <b>Security Centre</b>. It raises the limit from 250 people a day to 2000.'
     ];
     var check = ck ? '<div class="wad-stats">'
       + '<div><b>' + esc(ck.number || '-') + '</b><span>Our number</span></div><div><b>' + esc(ck.name || '-') + '</b><span>Name people see</span></div>'
-      + '<div><b>' + esc({ GREEN: 'Good', YELLOW: 'At risk', RED: 'Poor' }[ck.quality] || ck.quality || '-') + '</b><span>Number health</span></div>'
+      + '<div><b>' + esc(ck.number_status ? (notRegistered(ck) ? 'Not registered' : 'Ready') : '-') + '</b><span>Can send</span></div>'
+      + '<div><b>' + esc({ GREEN: 'Good', YELLOW: 'At risk', RED: 'Poor', UNKNOWN: 'Not rated yet' }[ck.quality] || ck.quality || '-') + '</b><span>Number health</span></div>'
       + '<div><b>' + (ck.daily_limit ? num(ck.daily_limit) : '-') + '</b><span>People a day</span></div>'
       + '<div><b>' + esc(ck.webhook === 'subscribed' ? 'On' : ck.webhook ? 'Look below' : '-') + '</b><span>Delivery reports</span></div></div>'
       + (ck.webhook && ck.webhook !== 'subscribed' ? '<p class="wad-warn">Delivery reports: ' + esc(ck.webhook) + '</p>' : '')
@@ -354,6 +358,9 @@
       + '<div class="wad-two">' + box('app_id', 'App ID', 'Digits, from App settings') + box('app_secret', 'App secret', '32 letters and numbers', 'password') + '</div>'
       + box('token', 'Access key (token)', 'The long key from the system user', 'password')
       + '<div class="wad-actions"><button class="wad-btn wad-primary" data-act="cfg-save"' + (busy ? ' disabled' : '') + '>Save</button><button class="wad-btn" data-act="cfg-check"' + (busy || !d.connected ? ' disabled' : '') + '>Check the connection</button></div>' + check + '</div>'
+      + (d.connected && notRegistered(ck) ? '<div class="wad-card"><div class="wad-card-head"><h2>Register our number</h2><p>Meta says our number is not registered for sending yet (' + esc(ck.number_status) + '), so every message is refused. This is done once. Choose a 6-digit PIN: it becomes the number&rsquo;s two-step PIN, so write it down. If the number already has one, type that. It goes to Meta and is kept nowhere here. Meta allows 10 tries in 3 days.</p></div>'
+        + '<div class="wad-test"><label class="wad-field"><span>6-digit PIN</span><input type="password" inputmode="numeric" autocomplete="off" maxlength="6" data-field="regPin" placeholder="6 digits"></label>'
+        + '<button class="wad-btn wad-primary" data-act="register"' + (busy ? ' disabled' : '') + '>Register</button></div></div>' : '')
       + '<div class="wad-card"><div class="wad-card-head"><h2>For step 7: the webhook</h2></div>'
       + copyRow('Callback URL', d.webhook_url) + copyRow('Verify token', d.verify_token)
       + (c.app_secret ? '' : '<p class="wad-warn">Until the App secret is saved above, nothing Meta tells us is believed: messages still go, but they stay at &ldquo;Sent&rdquo; and replies do not arrive.</p>') + '</div>'
@@ -554,6 +561,17 @@
       return;
     }
     if (act === 'cfg-check') { await work(async function () { var r = await opts.api.post('/api/admin/whatsapp/check', {}); checkResult = r.check; take(r); toast('Connected: ' + (r.check.number || 'the number answered') + '.'); }); return; }
+    if (act === 'register') {
+      var pin = val('[data-field="regPin"]').replace(/\s+/g, '');
+      if (!/^\d{6}$/.test(pin)) { toast('The PIN is 6 digits.', 'error'); return; }
+      await work(async function () {
+        var r = await opts.api.post('/api/admin/whatsapp/register', { pin: pin });
+        if (checkResult) checkResult.number_status = r.number_status;
+        take(r);
+        toast(r.already ? 'Our number was already registered. You can send.' : 'Registered. Our number can send now: try the test again.');
+      });
+      return;
+    }
     if (act === 'set-save') {
       var set = { sending: host.querySelector('[data-set="sending"]').checked ? 'on' : 'off' };
       ['per_minute', 'daily_limit', 'hours_from', 'hours_to'].forEach(function (k) { set[k] = val('[data-set="' + k + '"]'); });

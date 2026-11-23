@@ -144,7 +144,7 @@
 .wad-tpl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 18px; padding: 16px 0; border-top: 1px solid var(--wa-line); margin-top: 16px; }
 .wad-form { margin-top: 16px; padding: 16px; border: 2px solid var(--wa-accent); border-radius: 12px; background: #fffdfb; }
 
-.wad-steps { margin: 0; padding-left: 22px; display: grid; gap: 10px; max-width: 82ch; }
+.wad-steps { margin: 0; padding-left: 22px; display: grid; gap: 10px; max-width: 82ch; list-style: decimal; }
 .wad-steps li { padding-left: 4px; }
 .wad-copy { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--wa-line); }
 .wad-copy:first-of-type { border-top: 0; }
