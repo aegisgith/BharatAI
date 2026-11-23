@@ -1,5 +1,5 @@
 # Match speakers against the event faces with AuraFace embeddings (pass 2 output).
-# usage: match.py faces_dir refs_prefix img_dir repo out_dir [threshold] [margin] [floor] [--expand] [--sheets] [--not-faces attendee_albums.json att-skip.json]
+# usage: match.py faces_dir refs_prefix img_dir repo out_dir [threshold] [margin] [floor] [--expand] [--sheets] [--not-faces attendee_albums.json att-skip.json] [--wall-faces wall.json]
 # - One person = every ref under the same normalised name (conference speaker + talk).
 # - A face goes to the best person if score >= threshold and beats the runner-up by margin.
 # - --expand: add each person's 3 surest event faces (score >= 0.55) as extra refs and match
@@ -59,6 +59,17 @@ if '--not-faces' in sys.argv:
                 _b = boxes[at[names[_fi]]]
                 if abs(_b[0] + _b[2] / 2 - _r[2]) < 0.03 and abs(_b[1] + _b[3] / 2 - _r[3]) < 0.03: NOT.add(_fi)
     print('faces left to the attendees who own them', len(NOT))
+# --wall-faces wall.json: faces that are pictures (a portrait on the LED wall, a screen, a
+# standee), from wall.py. Never anyone's match, so the real person in the same photo can be.
+if '--wall-faces' in sys.argv:
+    _byp = {}
+    for _fi, _n in enumerate(names): _byp.setdefault(pids[at[_n]], []).append(_fi)
+    _n0 = len(NOT)
+    for _w in json.load(open(sys.argv[sys.argv.index('--wall-faces') + 1])):
+        for _fi in _byp.get(_w[0], []):
+            _b = boxes[at[names[_fi]]]
+            if abs(_b[0] + _b[2] / 2 - _w[1]) < 0.02 and abs(_b[1] + _b[3] / 2 - _w[2]) < 0.02: NOT.add(_fi)
+    print('wall faces left out', len(NOT) - _n0)
 keep = [i for i, n in enumerate(names) if pids[at[n]] not in SKIP and i not in NOT]
 
 O = np.stack([(F[keep] @ R[groups[k]].T).max(1) for k in gkeys], 1)  # against site photos only

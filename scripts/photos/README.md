@@ -72,6 +72,19 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
      pointing at X: neither is added. It added 212 photos for 56 people.
    - `wrong-matches.json` lists matches found wrong by eye; they are removed first, so no
      burst shot is added from them. Then export `WORK/burst/matches.json` in step 7.
+   - **Never match a picture (the organiser, 23 Nov: "don't match with the wall; match the
+     real person in the hall, stage, room").** The panel screens show each speaker's
+     portrait card, and a card IS their website photo, so it out-scores the real person
+     sitting below it. `venv/python wall.py WORK/faces WORK/refs REPO WORK/wall.json 0.62 0.86`
+     finds rows of portrait cards (three or more speakers' cards at one height, each 0.62+,
+     with real people lower in the frame). Add the faces of every `"WALL"` entry in
+     wrong-matches.json to that list, and pass it to match.py and burst.py as
+     `--wall-faces WORK/wall.json`: the card is then never a match, and the real person in
+     the same photo can be. A lower line (0.55) caught real people seated in the audience.
+     A single small portrait the rule misses (Akhil Gupta's, Abhay Tewari's, Ratan Kumar
+     Kesh's on 23 Nov: they were not on their panels) goes in wrong-matches.json with
+     `"why": "WALL: ..."`, after a look. To find those: anyone whose every photo is a small
+     face in one short window, scoring 0.62+ against the site photo.
    - **A speaker never takes a face an attendee's pass photo claims.** Run the attendee
      step first, then pass its albums to both scripts:
      `--not-faces WORK/att/albums.json REPO/scripts/photos/att-skip.json` (match.py and

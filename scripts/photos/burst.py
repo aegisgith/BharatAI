@@ -3,7 +3,7 @@
 # WINDOW seconds that k is already surely matched in, and this face looks like k's face in
 # THAT photo (same light, same clothes, same angle) by at least SIM, beating every other
 # person's nearby faces by GAP. Faces already given to anyone are never moved.
-# usage: burst.py faces_dir refs_prefix index.json base_matches.json out_dir [SIM] [GAP] [WINDOW] [ORIG_MIN] [--drop wrong-matches.json] [--not-faces attendee_albums.json att-skip.json]
+# usage: burst.py faces_dir refs_prefix index.json base_matches.json out_dir [SIM] [GAP] [WINDOW] [ORIG_MIN] [--drop wrong-matches.json] [--not-faces attendee_albums.json att-skip.json] [--wall-faces wall.json]
 # Writes out_dir/matches.json in match.py's format; the new rows keep their site-photo score
 # (low), so they rank last in the email and are never used to name anyone in a photo.
 import sys, os, json, glob, datetime, collections, numpy as np
@@ -88,6 +88,10 @@ if '--not-faces' in sys.argv:
         for _r in _v['photos']:
             for _fi in byphoto.get(_r[0], []):
                 if abs(fbox[_fi][0] + fbox[_fi][2] / 2 - _r[2]) < 0.03 and abs(fbox[_fi][1] + fbox[_fi][3] / 2 - _r[3]) < 0.03: NOT.add(_fi)
+if '--wall-faces' in sys.argv:
+    for _w in json.load(open(sys.argv[sys.argv.index('--wall-faces') + 1])):
+        for _fi in byphoto.get(_w[0], []):
+            if abs(fbox[_fi][0] + fbox[_fi][2] / 2 - _w[1]) < 0.02 and abs(fbox[_fi][1] + fbox[_fi][3] / 2 - _w[2]) < 0.02: NOT.add(_fi)
 out = json.loads(json.dumps(base))
 added = collections.Counter(); considered = 0
 for fi in range(len(names)):
