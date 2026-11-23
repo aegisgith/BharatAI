@@ -1,5 +1,53 @@
 {
  "_about": "The public photo gallery at /gallery (public/gallery.html). Built by scripts/gen-gallery.mjs. Mumbai photos: \"site\" reuses public/img/mumbai-2026/<site>.webp; \"pid\" is the photo store id (R2 event-photos/1/<pid>/m.jpg, fetched to the sources folder). Data Science Congress 2017 photos: \"file\" is the original in Downloads/Bharat AI/Pics. kind: stage, panel, hall, expo, people, arrivals.",
+ "_hero": "The header photos, in order: they change every 7 seconds. ref is a photo in mumbai2026 (site or slug) or dsc2017 (slug); its caption is shown. pos is where to centre the photo when a phone crops it (x% y%). Only grand, full photos here.",
+ "hero": [
+  {
+   "event": "mumbai2026",
+   "ref": "opening-main-stage",
+   "pos": "60% 40%"
+  },
+  {
+   "event": "mumbai2026",
+   "ref": "full-hall",
+   "pos": "50% 45%"
+  },
+  {
+   "event": "mumbai2026",
+   "ref": "panel-viksit-bharat",
+   "pos": "48% 50%"
+  },
+  {
+   "event": "mumbai2026",
+   "ref": "startup-pavilion-sign",
+   "pos": "52% 40%"
+  },
+  {
+   "event": "mumbai2026",
+   "ref": "panel-telecom",
+   "pos": "50% 50%"
+  },
+  {
+   "event": "mumbai2026",
+   "ref": "hall-packed-talk",
+   "pos": "62% 45%"
+  },
+  {
+   "event": "mumbai2026",
+   "ref": "lamp-lighting",
+   "pos": "50% 35%"
+  },
+  {
+   "event": "dsc2017",
+   "ref": "dsc-everyone-on-stage",
+   "pos": "50% 60%"
+  },
+  {
+   "event": "dsc2017",
+   "ref": "dsc-panel-skills-wide",
+   "pos": "50% 55%"
+  }
+ ],
  "mumbai2026": [
   {
    "kind": "hall",

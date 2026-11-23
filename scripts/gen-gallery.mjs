@@ -8,6 +8,9 @@
 //   node scripts/gen-gallery.mjs --check          fail if the page is out of date or a photo file is missing
 //
 // The list, captions and alt text: scripts/data/gallery.json.
+//   hero[]: the header photos, in the order they change (every 7 seconds). Each "ref" names a photo
+//     already in mumbai2026 or dsc2017, whose caption is shown; "pos" is where a phone centres it.
+//     Written between hero:start / hero:end, plus the preload line for the first one.
 //   mumbai2026[]: "site" reuses public/img/mumbai-2026/<site>.webp (the 17 photos of the home page,
 //     scripts/gen-mumbai-photos.mjs); "pid" is the photo store id: its source is <mumbai folder>/<pid>.jpg,
 //     the 1600px copy from R2 (event-photos/1/<pid>/m.jpg). The sources live in
@@ -47,6 +50,16 @@ for (const ev of EVENTS) for (const e of data[ev.key]) {
   if (!e.alt || !e.caption) throw new Error(`missing alt or caption for ${e.slug || e.site}`);
   if (/centrum|peacock/i.test(e.alt + e.caption)) throw new Error(`hall name in ${e.slug || e.site}`);
 }
+// The header photos (data.hero): each names a photo already in the gallery, so it has a caption and both sizes.
+const hero = (data.hero || []).map((h) => {
+  const ev = EVENTS.find((x) => x.key === h.event);
+  if (!ev) throw new Error(`hero: unknown event "${h.event}"`);
+  const e = data[ev.key].find((x) => x.site === h.ref || x.slug === h.ref);
+  if (!e) throw new Error(`hero: no photo "${h.ref}" in ${h.event}`);
+  if (h.pos && !/^\d{1,3}% \d{1,3}%$/.test(h.pos)) throw new Error(`hero: pos for ${h.ref} must look like "50% 40%"`);
+  return { ev, e, pos: h.pos || '50% 50%' };
+});
+if (hero.length < 2) throw new Error('hero: list at least two header photos in scripts/data/gallery.json');
 
 if (IMAGES >= 0) {
   const [mdir, ddir] = [args[IMAGES + 1], args[IMAGES + 2]];
@@ -90,10 +103,12 @@ const chips = KINDS.map(([k, label], i) => {
 const out = ['<!-- gallery:start -->', '<!-- Written by scripts/gen-gallery.mjs from scripts/data/gallery.json. Do not edit by hand. -->',
   '<div class="gx-bar" role="group" aria-label="Show photos of"><div class="gx-bar-in">', ...chips, '</div></div>'];
 let first = true;
-for (const ev of EVENTS) {
+for (const [n, ev] of EVENTS.entries()) {
   const list = data[ev.key];
   out.push(`<section class="gx-sec" id="${ev.id}" data-event="${esc(ev.label)}" aria-labelledby="${ev.id}-title"><div class="gx-sec-in">`);
-  out.push(`<div class="gx-sec-head"><h2 id="${ev.id}-title">${esc(ev.title)}</h2><p>${esc(ev.sub)}</p></div>`);
+  out.push(`<div class="gx-sec-head"><span class="gx-sec-n" aria-hidden="true">${String(n + 1).padStart(2, '0')}</span>`
+    + `<h2 id="${ev.id}-title">${esc(ev.title)}</h2><p>${esc(ev.sub)}</p>`
+    + `<span class="gx-sec-count">${list.length} photos</span></div>`);
   out.push('<ul class="gx-grid">');
   let i = 0;
   for (const e of list) {
@@ -113,6 +128,23 @@ for (const ev of EVENTS) {
 }
 out.push('<!-- gallery:end -->');
 
+// The header: one layer per photo. Only the first has a src; the page script loads each next
+// one just before it is shown, so a visitor who never waits downloads one header photo.
+// The sizes say how wide the photo is drawn: a tall phone screen crops a 3:2 photo to its height.
+const HERO_SIZES = '(max-width: 767px) 170vw, (max-aspect-ratio: 3/2) 140vh, 100vw';
+const heroOut = ['<!-- hero:start -->', '<!-- Written by scripts/gen-gallery.mjs from "hero" in scripts/data/gallery.json. Do not edit by hand. -->'];
+let preload = '';
+for (const [i, h] of hero.entries()) {
+  const f = files(h.ev, h.e);
+  const s = await dims(f.small), b = await dims(f.big);
+  const srcset = `/${f.small} ${s.width}w, /${f.big} ${b.width}w`;
+  const src = i === 0 ? `src="/${f.big}" srcset="${srcset}" fetchpriority="high"` : `data-src="/${f.big}" data-srcset="${srcset}"`;
+  heroOut.push(`<div class="gx-slide${i === 0 ? ' is-on' : ''}" style="--pos: ${h.pos}" data-cap="${esc(h.e.caption)}" data-event="${esc(h.ev.title)}" data-href="/${f.big}">`
+    + `<img ${src} sizes="${HERO_SIZES}" width="${b.width}" height="${b.height}" alt="" decoding="async"></div>`);
+  if (i === 0) preload = `<link rel="preload" as="image" href="/${f.big}" imagesrcset="${srcset}" imagesizes="${HERO_SIZES}" fetchpriority="high">`;
+}
+heroOut.push('<!-- hero:end -->');
+
 if (missing.length) {
   console.error(`gen-gallery: ${missing.length} photo file(s) missing, e.g. ${missing.slice(0, 3).join(', ')}. Run with --images first.`);
   process.exit(1);
@@ -121,8 +153,12 @@ if (missing.length) {
 const page = fs.readFileSync(PAGE, 'utf8');
 const eol = page.includes('\r\n') ? '\r\n' : '\n';
 const re = /<!-- gallery:start -->[\s\S]*?<!-- gallery:end -->/;
+const reHero = /<!-- hero:start -->[\s\S]*?<!-- hero:end -->/;
+const rePre = /<link rel="preload" as="image"[^>]*>/;
 if (!re.test(page)) throw new Error('gallery.html has no gallery:start / gallery:end markers');
-const next = page.replace(re, out.join(eol));
+if (!reHero.test(page)) throw new Error('gallery.html has no hero:start / hero:end markers');
+if (!rePre.test(page)) throw new Error('gallery.html has no <link rel="preload" as="image"> for the first header photo');
+const next = page.replace(re, out.join(eol)).replace(reHero, heroOut.join(eol)).replace(rePre, preload);
 if (CHECK) {
   if (next !== page) { console.error('gen-gallery: public/gallery.html is out of date. Run node scripts/gen-gallery.mjs'); process.exit(1); }
   console.log(`gen-gallery: public/gallery.html is up to date (${all.length} photos)`);

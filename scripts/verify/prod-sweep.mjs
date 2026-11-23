@@ -140,6 +140,8 @@ check('home menu has the Gallery tab', r.text.includes('<a href="/gallery" class
 r = await hit('/gallery');
 const galleryTiles = (r.text.match(/class="gx-t[ "]/g) || []).length;
 check('/gallery shows Mumbai 2026 and Data Science Congress 2017 photos', r.status === 200 && galleryTiles >= 100 && ['id="mumbai-2026"', 'id="dsc-2017"', 'id="gxViewer"'].every(m => r.text.includes(m)), r.status + ' tiles ' + galleryTiles);
+const heroSlides = (r.text.match(/class="gx-slide[ "]/g) || []).length;
+check('/gallery header has its changing photos', heroSlides >= 2 && r.text.includes('id="gxSegs"') && r.text.includes('id="gxPlay"'), 'slides ' + heroSlides);
 const galleryPhoto = /href="(\/img\/gallery\/[^"]+\.webp)"/.exec(r.text);
 r = galleryPhoto ? await hit(galleryPhoto[1]) : { status: 0 };
 check('a gallery photo file is served', r.status === 200, (galleryPhoto ? galleryPhoto[1] : 'no photo link') + ' ' + r.status);
