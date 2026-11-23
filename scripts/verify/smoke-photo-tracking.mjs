@@ -121,6 +121,11 @@ const out = host.innerHTML;
 check('Admin: under "Sent", opened, looked and downloaded in plain words', out.includes('Opened the email') && out.includes('Looked at their photos') && out.includes('Downloaded 2 photos'), out.length);
 check('Admin: the attendee sent with the picture reads "Not opened yet"', out.includes('Not opened yet') && out.includes('Not looked at their photos yet') && out.includes('Downloaded none yet'), '');
 check('Admin: a summary of the sent, and when counting began', /Of 1 sent:<\/b> 1 looked at their photos, 1 downloaded at least one, 1 of 1 opened the email/.test(out) && /Opens are counted only for emails sent from/.test(out), (out.match(/<b>Of [^<]*<\/b>[^<]*/g) || []).join(' || '));
+const sentAt = rows("SELECT created_at FROM admin_audit WHERE action = 'speaker.photos' AND entity_id = ?", [A.key])[0]?.created_at || '';
+const ist = new Date(sentAt.replace(' ', 'T') + 'Z').toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+check('the API says where each email went', t.json?.people?.[A.key]?.sent_to === 'a.speaker@example.com' && t.json?.people?.[K1]?.sent_to === 'asha@example.com', JSON.stringify(t.json?.people?.[A.key]));
+check('Admin: a sent row says Sent, the India time (not UTC) and to whom', out.includes(`<div class="afd-ok">Sent ${ist}</div><div class="afd-sub">to a.speaker@example.com</div>`) && !out.includes('Sent ' + sentAt), ist + ' vs ' + sentAt);
+check('Admin: a row never sent says "Not sent yet" in red, never the old "Not yet"', out.includes('<div class="afd-bad">Not sent yet</div>') && !/<td>Not yet<\/td>/.test(out), (out.match(/Not sent yet/g) || []).length);
 check("Admin: \"Open their page\" says it is the organiser, so it is never counted", out.includes(`/photos/${A.key}?k=${sig(A.key)}&amp;by=admin`) && !new RegExp(`/photos/${A.key}\\?k=${sig(A.key)}"`).test(out), (out.match(/href="[^"]*photos\/[^"]*"/) || [''])[0]);
 
 done();

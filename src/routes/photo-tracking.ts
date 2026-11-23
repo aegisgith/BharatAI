@@ -132,12 +132,12 @@ pt.get('/api/admin/photo-tracking', async (c) => {
   const all = async (sql: string) => { try { return (((await db.prepare(sql).all()) as any).results || []) as any[] } catch { return [] as any[] } }
   const [marks, sends, saves, openFrom, visitFrom] = await Promise.all([
     all(`SELECT action, entity_id, detail, created_at FROM admin_audit WHERE entity = 'photo_album' AND action IN ('${OPENED}', '${VISITED}')`),
-    all("SELECT entity_id, MAX(created_at) AS last_sent FROM admin_audit WHERE action IN ('speaker.photos', 'attendee.photos') GROUP BY entity_id"),
+    all("SELECT entity_id, created_at AS last_sent, detail FROM admin_audit WHERE action IN ('speaker.photos', 'attendee.photos') ORDER BY id"),
     all("SELECT person, COUNT(*) AS photos, SUM(times) AS times, MAX(last_at) AS last_at FROM photo_downloads WHERE person <> 'admin' GROUP BY person"),
     setting(c, OPEN_FROM), setting(c, VISIT_FROM)])
-  type One = { opened: number; opened_first: string; opened_last: string; visits: number; visited_first: string; visited_last: string; saved: number; saved_last: string; open_tracked: boolean }
+  type One = { opened: number; opened_first: string; opened_last: string; visits: number; visited_first: string; visited_last: string; saved: number; saved_last: string; open_tracked: boolean; sent_to: string }
   const people: Record<string, One> = {}
-  const one = (key: string): One => (people[key] ||= { opened: 0, opened_first: '', opened_last: '', visits: 0, visited_first: '', visited_last: '', saved: 0, saved_last: '', open_tracked: false })
+  const one = (key: string): One => (people[key] ||= { opened: 0, opened_first: '', opened_last: '', visits: 0, visited_first: '', visited_last: '', saved: 0, saved_last: '', open_tracked: false, sent_to: '' })
   const albumKey = (k: string) => String(personFor(k)?.key || k)
   for (const m of marks) {
     let d: any = {}
@@ -151,8 +151,13 @@ pt.get('/api/admin/photo-tracking', async (c) => {
     p.saved += Number(s.photos) || 0
     if (String(s.last_at || '') > p.saved_last) p.saved_last = String(s.last_at || '')
   }
-  // An open can only be seen for an email that carried the picture.
-  for (const s of sends) if (openFrom && String(s.last_sent || '') >= openFrom) one(albumKey(String(s.entity_id))).open_tracked = true
+  // The address each album's last email went to (oldest first, so the last one wins). An open
+  // can only be seen for an email that carried the picture: the last send decides.
+  for (const s of sends) {
+    const p = one(albumKey(String(s.entity_id)))
+    try { const to = String(JSON.parse(s.detail || '{}').to || ''); if (to) p.sent_to = to } catch { /* not JSON */ }
+    p.open_tracked = !!openFrom && String(s.last_sent || '') >= openFrom
+  }
   return c.json({ open_from: openFrom, visit_from: visitFrom, people })
 })
 

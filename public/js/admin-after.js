@@ -59,6 +59,18 @@
       + ' Opens are counted only for emails sent from ' + esc(when(marks.open_from) || 'now') + ' and are a rough guide (some mail apps hide them).'
       + ' Looks are counted from ' + esc(when(marks.visit_from) || 'now') + '. Downloads are counted from the start.</p>';
   }
+  // Sent or not, in one look, so nobody is sent twice: "Sent 23 Nov, 2:21 pm" (India time),
+  // to whom, how many times; or "Not sent yet" and, when it is held, why.
+  function sentOrNot(r, why) {
+    if (r.sent_count) {
+      var m = markOf(r.key), to = (m && m.sent_to) || r.email || '';
+      return '<div class="afd-ok">Sent ' + esc(when(r.sent_at)) + '</div>'
+        + (to ? '<div class="afd-sub">to ' + esc(to) + '</div>' : '')
+        + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '')
+        + marksHtml(r.key);
+    }
+    return '<div class="afd-bad">Not sent yet</div>' + (why ? '<div class="afd-sub">' + esc(why) + '</div>' : '');
+  }
   function adminPage(href) { return href ? href + (href.indexOf('?') >= 0 ? '&' : '?') + 'by=admin' : ''; }
 
   function esc(v) {
@@ -163,7 +175,7 @@
     var rows = exhibitors.map(function (r) {
       var rated = [r.hot ? r.hot + ' hot' : '', r.warm ? r.warm + ' warm' : '', r.cold ? r.cold + ' cold' : ''].filter(Boolean).join(', ');
       var contact = emailOk(r.email) ? esc(r.contact_name || '') + '<div class="afd-sub">' + esc(r.email) + '</div>' : '<span class="afd-bad">No contact email</span>';
-      var sent = r.sent_count ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '') : (hasStuff(r) ? 'Not yet' : '<span class="afd-sub">Nothing recorded</span>');
+      var sent = r.sent_count ? '<span class="afd-ok">Sent ' + esc(when(r.sent_at)) + '</span>' + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '') : (hasStuff(r) ? '<span class="afd-bad">Not sent yet</span>' : '<span class="afd-sub">Nothing recorded</span>');
       return '<tr data-id="' + esc(r.id) + '"><td><b>' + esc(r.company) + '</b>' + (r.booth ? '<div class="afd-sub">Stand ' + esc(r.booth) + '</div>' : '') + '</td>'
         + '<td>' + contact + '</td>'
         + '<td class="afd-n">' + num(r.scanned) + (rated ? '<div class="afd-sub">' + esc(rated) + '</div>' : '') + '</td>'
@@ -204,9 +216,7 @@
       var pics = r.count ? '<b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div>'
         + (r.page ? '<a class="afd-sub" href="' + esc(adminPage(r.page)) + '" target="_blank" rel="noopener">Open their page</a>' : '') : '<span class="afd-sub">None found</span>';
       var mail = r.email ? esc(r.email) + '<div class="afd-sub">' + esc(r.email_note || '') + '</div>' : '<span class="afd-bad">No email</span>';
-      var st = r.status === 'sent' ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '') + marksHtml(r.key)
-        : r.status === 'ready' ? 'Not yet' : '<span class="afd-sub">' + esc(PH_STATUS[r.status] || r.status) + '</span>'
-          + (r.sent_count ? '<div class="afd-ok">Sent ' + esc(r.sent_at) + '</div>' + marksHtml(r.key) : '');
+      var st = sentOrNot(r, r.status === 'ready' || r.status === 'sent' ? '' : (PH_STATUS[r.status] || r.status));
       var canSend = r.count > 0 && !!r.email;
       var word = r.sent_count ? 'Send again' : (r.protocol ? 'Send anyway' : 'Send');
       return '<tr><td><b>' + esc(r.name) + '</b><div class="afd-sub">' + esc([r.org].concat(r.kinds || []).filter(Boolean).join(' · ')) + '</div></td>'
@@ -265,8 +275,7 @@
     }).join('');
     var rows = (attendees.rows || []).map(function (r) {
       var thumbs = (r.thumbs || []).map(function (u) { return '<img src="' + esc(u) + '" alt="" loading="lazy" width="40" height="40">'; }).join('');
-      var st = r.status === 'sent' ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' + marksHtml(r.key) : r.status === 'ready' ? 'Not yet' : '<span class="afd-sub">' + esc(ATT_STATUS[r.status] || r.status) + '</span>'
-        + (r.sent_count ? '<div class="afd-ok">Sent ' + esc(r.sent_at) + '</div>' + marksHtml(r.key) : '');
+      var st = sentOrNot(r, r.status === 'ready' || r.status === 'sent' ? '' : (ATT_STATUS[r.status] || r.status));
       var can = r.count > 0 && ['ready', 'check', 'sent'].indexOf(r.status) >= 0;
       return '<tr><td><b>' + esc(r.name) + '</b><div class="afd-sub">' + esc([r.pass, r.company].filter(Boolean).join(' · ')) + (r.came ? '' : ' · not scanned at the desk') + '</div></td>'
         + '<td>' + esc(r.group_name) + '</td><td><b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div><a class="afd-sub" href="' + esc(adminPage(r.page)) + '" target="_blank" rel="noopener">Open their page</a></td>'
@@ -308,7 +317,8 @@
     var ready = list.filter(function (r) { return r.status === 'ready'; });
     var rows = list.map(function (r) {
       var thumbs = (r.thumbs || []).map(function (u) { return '<img src="' + esc(u) + '" alt="" loading="lazy" width="40" height="40">'; }).join('');
-      var st = r.status === 'sent' ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '') : r.status === 'ready' ? 'Not yet' : '<span class="afd-sub">' + esc(BOOTH_STATUS[r.status] || r.status) + '</span>';
+      var st = r.sent_count ? '<div class="afd-ok">Sent ' + esc(when(r.sent_at)) + '</div>' + (r.email ? '<div class="afd-sub">to ' + esc(r.email) + '</div>' : '') + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '')
+        : '<div class="afd-bad">Not sent yet</div>' + (r.status === 'ready' ? '' : '<div class="afd-sub">' + esc(BOOTH_STATUS[r.status] || r.status) + '</div>');
       var can = r.count > 0 && emailOk(r.email);
       return '<tr><td><b>' + esc(r.company) + '</b>' + (r.booth ? '<div class="afd-sub">Booth ' + esc(r.booth) + '</div>' : '') + '</td>'
         + '<td><b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div></td>'
@@ -412,7 +422,7 @@
       } else if (act === 'send-att') {
         var ar = ((attendees && attendees.rows) || []).find(function (x) { return String(x.key) === String(id); });
         if (!ar) return;
-        var aw = ar.sent_count ? 'Send ' + ar.name + ' their photos again, to ' + ar.email + '?'
+        var aw = ar.sent_count ? ar.name + ' was ALREADY SENT their photos on ' + when(ar.sent_at) + (ar.sent_count > 1 ? ' (' + ar.sent_count + ' times)' : '') + '. Send them again, to ' + ar.email + '?'
           : ar.status === 'check' ? 'The match for ' + ar.name + ' is weaker, so some photos may show someone else. Have you opened their page and checked? Send their ' + ar.count + ' photos to ' + ar.email + '?'
           : 'Send ' + ar.name + ' their ' + ar.count + ' photos, to ' + ar.email + '?';
         if (!w.confirm(aw)) return;
@@ -449,7 +459,7 @@
         if (!pr) return;
         var phAgain = !!pr.sent_count;
         var phWords = phAgain
-          ? 'Send ' + pr.name + ' their photos again, to ' + pr.email + '? They were sent on ' + pr.sent_at + '.'
+          ? pr.name + ' was ALREADY SENT their photos on ' + when(pr.sent_at) + (pr.sent_count > 1 ? ' (' + pr.sent_count + ' times)' : '') + '. Send them again, to ' + pr.email + '?'
           : pr.protocol
             ? pr.name + ' is a government official; their office usually handles this. Send them their ' + pr.count + ' photos anyway, to ' + pr.email + '?'
             : pr.status === 'check'
@@ -480,7 +490,7 @@
       } else if (act === 'send-booth') {
         var br = ((booths && booths.rows) || []).find(function (x) { return String(x.key) === String(id); });
         if (!br) return;
-        var bw = br.sent_count ? 'Send ' + br.company + ' their booth photos again, to ' + br.email + '? They were sent on ' + br.sent_at + '.'
+        var bw = br.sent_count ? br.company + ' was ALREADY SENT their booth photos on ' + when(br.sent_at) + '. Send them again, to ' + br.email + '?'
           : 'Send ' + br.company + ' their ' + br.count + ' booth photos, to ' + br.email + '?';
         if (!w.confirm(bw)) return;
         busy = true; b.disabled = true;
