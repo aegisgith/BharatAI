@@ -363,6 +363,31 @@ check('five refused in a row pauses the send instead of failing everyone', b3.st
 failWith = null;
 r = await as('POST', `/api/admin/whatsapp/batches/${batch4}/cancel`, {});
 check('cancel drops whoever is still waiting', r.status === 200 && msgs("batch_id = ? AND status = 'cancelled'", [batch4]).length === 2 && rows('SELECT status FROM wa_batches WHERE id = ?', [batch4])[0].status === 'cancelled', '');
+
+// ---------- reports and the inbox (23 Nov 2026, evening) ----------
+r = await as('GET', '/api/admin/whatsapp');
+const b3o = (r.json?.batches || []).find(b => b.id === batch3);
+check('a send says why some did not arrive, in plain words, counted', b3o?.reasons?.length === 1 && b3o.reasons[0].n === 1 && /not on WhatsApp/.test(b3o.reasons[0].words), JSON.stringify(b3o?.reasons));
+db.run("INSERT INTO wa_messages (event_id, direction, kind, wa_number, name, template, payload, status, batch_id, test, updated_at) VALUES (1, 'out', 'custom', '919111100009', ?, ?, '{}', 'skipped', ?, 0, datetime('now'))", ['=HYPERLINK("http://x")', custom, batch3]);
+const rep = await W.fetchRaw(new Request(SITE + `/api/admin/whatsapp/batches/${batch3}/report`, { headers: W.admin }));
+const repText = await rep.text();
+const repLines = repText.replace(/^\uFEFF/, '').trim().split(/\r\n/);
+check('a send downloads as a spreadsheet: one line each, the state and the reason in words, India time', rep.status === 200 && /text\/csv/.test(rep.headers.get('content-type') || '') && /attachment; filename="whatsapp-.+-\d+\.csv"/.test(rep.headers.get('content-disposition') || '')
+  && repLines[0].startsWith('Name,Mobile,State,Sent,Delivered,Read') && repLines.length === 5 && repLines.some(l => /Not delivered/.test(l) && /not on WhatsApp/.test(l)) && repLines.some(l => /,Sent,\d{4}-\d\d-\d\d \d\d:\d\d,/.test(l)), repLines.slice(0, 3).join(' | '));
+check('a name that looks like a formula is written as text, never run by the spreadsheet', repLines.some(l => l.startsWith(`"'=HYPERLINK(""http://x"")"`)), repLines.find(l => /HYPERLINK/.test(l)));
+check('the report is for the team only', (await hit('GET', `/api/admin/whatsapp/batches/${batch3}/report`)).status === 401 && (await as('GET', '/api/admin/whatsapp/batches/99999/report')).status === 404, '');
+await hooked(inMsg('919876543210', 'Is the Delhi pass open?', 'wamid.IN9', 'Asha'));
+r = await as('GET', '/api/admin/whatsapp/inbox');
+const asha = r.json?.rows.find(x => x.number === '919876543210'), ravi = r.json?.rows.find(x => x.number === '919811122233');
+check('the inbox marks who is waiting for our reply (they wrote last), and not someone we answered', asha?.waiting === true && ravi?.waiting === false, JSON.stringify([asha?.waiting, ravi?.waiting]));
+r = await as('GET', '/api/admin/whatsapp/thread/919876543210');
+check('a chat shows who is writing: their registration, pass, payment and event', r.json?.person?.attendee_id === idOf(keys[0]) && r.json.person.name === 'Dr. Asha Mehta' && r.json.person.pass === 'Visitor Pass' && r.json.person.payment === 'paid' && r.json.person.email === 'p' + idOf(keys[0]) + '@example.com', JSON.stringify(r.json?.person));
+r = await as('GET', '/api/admin/whatsapp/thread/449999999999');
+check('a number on no registration says so, and nothing breaks', r.status === 200 && r.json?.person === null, JSON.stringify(r.json?.person));
+r = await as('POST', '/api/admin/whatsapp/quick-replies', { list: [{ title: 'Delhi', text: 'Delhi 2027 passes open soon: bharataiinnovation.com/delhi' }, { text: '' }, { title: '', text: 'Thank you for writing to us.' }] });
+const quick = (await as('GET', '/api/admin/whatsapp')).json?.quick;
+check('quick replies: saved for the whole team, an empty one dropped, a missing title taken from the words', r.status === 200 && quick?.length === 2 && quick[0].title === 'Delhi' && quick[1].title === 'Thank you for writing to us.', JSON.stringify(quick));
+check('quick replies need a list', (await as('POST', '/api/admin/whatsapp/quick-replies', { list: 'x' })).status === 400, '');
 await as('POST', '/api/admin/whatsapp/settings', { sending: 'off' });
 await as('POST', '/api/admin/whatsapp/send', { kind: 'custom', template: custom, audience: 'one', number: '90000 33333', name: 'Kiran' });
 const off = (await as('POST', '/api/admin/whatsapp/send', { kind: 'custom', template: custom, audience: 'list', list: 'Z, 9444400001', expect: 1 })).json?.batch;
@@ -374,7 +399,7 @@ await as('POST', '/api/admin/whatsapp/settings', { sending: 'on' });
 r = await as('GET', '/api/admin/whatsapp/messages?status=failed');
 const ov = (await as('GET', '/api/admin/whatsapp')).json;
 check('the Sent list filters by state, and the overview counts every send with its numbers', r.json?.rows.length >= 6 && r.json.rows.every(x => x.status === 'failed' && /^\+91 /.test(x.number))
-  && ov.batches.length === 5 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 2 && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
+  && ov.batches.length === 5 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
 check('no answer from any admin route ever carried the access key or the app secret', answers.length > 60 && answers.every(a => !a.includes(TOKEN) && !a.includes(SECRET)), answers.length);
 // ---------- registering our number (Meta answers 133010 until it is) ----------
 const registers = () => calls.filter(c => c.path === `${PHONE}/register`);

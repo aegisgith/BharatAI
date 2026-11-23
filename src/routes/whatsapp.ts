@@ -742,6 +742,15 @@ wa.get('/w/:code', async (c, next) => {
 
 // ---------- Admin -> WhatsApp ----------
 
+// The team's saved answers for the Replies tab: [{ title, text }], kept in app_settings.
+const QUICK_KEY = 'whatsapp_quick_replies'
+function quickReplies(cfg: Cfg): { title: string; text: string }[] {
+  try {
+    const v = JSON.parse(cfg.set[QUICK_KEY] || '[]')
+    return Array.isArray(v) ? v.filter(x => x && x.text).slice(0, 30).map(x => ({ title: oneLine(x.title || x.text, 40), text: String(x.text).slice(0, 1000) })) : []
+  } catch { return [] }
+}
+
 async function overview(c: any) {
   const cfg = await loadCfg(c)
   const isReady = await ready(c)
@@ -765,16 +774,20 @@ async function overview(c: any) {
   const per = ids.length ? await all(c, `SELECT batch_id, status, COUNT(*) AS n, SUM(CASE WHEN clicked_at IS NOT NULL THEN 1 ELSE 0 END) AS taps FROM wa_messages WHERE batch_id IN (${ids.map(() => '?').join(',')}) GROUP BY batch_id, status`, ...ids) : []
   const replied = ids.length ? await all(c, `SELECT o.batch_id, COUNT(DISTINCT o.wa_number) AS n FROM wa_messages o WHERE o.batch_id IN (${ids.map(() => '?').join(',')})
      AND EXISTS (SELECT 1 FROM wa_messages i WHERE i.direction = 'in' AND i.wa_number = o.wa_number AND i.id > o.id) GROUP BY o.batch_id`, ...ids) : []
+  // Why the ones that did not arrive did not arrive, most common first.
+  const why = ids.length ? await all(c, `SELECT batch_id, COALESCE(error, '') AS error, COUNT(*) AS n FROM wa_messages WHERE batch_id IN (${ids.map(() => '?').join(',')})
+     AND status = 'failed' GROUP BY batch_id, error ORDER BY n DESC`, ...ids) : []
   const sum: Record<string, number> = {}
   let taps = 0
   for (const t of totals) { sum[String(t.status)] = Number(t.n); taps += Number(t.taps || 0) }
-  return { ...base, templates: shapeTemplates(tpls), used_today: await usedToday(c), unread: Number(unread?.n || 0), events,
+  return { ...base, templates: shapeTemplates(tpls), used_today: await usedToday(c), unread: Number(unread?.n || 0), events, quick: quickReplies(cfg),
     totals: { ...sum, taps },
     batches: batches.map(b => {
       const counts: Record<string, number> = {}
       let t = 0
       for (const p of per) if (Number(p.batch_id) === Number(b.id)) { counts[String(p.status)] = Number(p.n); t += Number(p.taps || 0) }
-      return { ...b, counts, taps: t, replied: Number(replied.find(x => Number(x.batch_id) === Number(b.id))?.n || 0) }
+      return { ...b, counts, taps: t, replied: Number(replied.find(x => Number(x.batch_id) === Number(b.id))?.n || 0),
+        reasons: why.filter(x => Number(x.batch_id) === Number(b.id)).slice(0, 6).map(x => ({ words: String(x.error || 'WhatsApp gave no reason'), n: Number(x.n) })) }
     }) }
 }
 wa.get('/api/admin/whatsapp', async (c) => { c.header('Cache-Control', 'no-store'); return c.json(await overview(c)) })
@@ -1125,18 +1138,37 @@ wa.get('/api/admin/whatsapp/inbox', async (c) => {
   const rows = await all(c, `SELECT k.wa_number, k.name, k.unread, k.last_in_at, k.opted_out_at,
        (SELECT payload FROM wa_messages m WHERE m.wa_number = k.wa_number AND m.direction = 'in' ORDER BY m.id DESC LIMIT 1) AS last,
        (SELECT name FROM wa_messages m WHERE m.wa_number = k.wa_number AND m.name <> '' ORDER BY m.id DESC LIMIT 1) AS known,
+       (SELECT direction FROM wa_messages m WHERE m.wa_number = k.wa_number AND COALESCE(m.created_by, '') <> 'automatic' AND m.test = 0 ORDER BY m.id DESC LIMIT 1) AS last_dir,
        CASE WHEN k.last_in_at > datetime('now', '-1 day') THEN 1 ELSE 0 END AS open
      FROM wa_contacts k WHERE k.last_in_at IS NOT NULL ORDER BY k.last_in_at DESC LIMIT 200`)
   return c.json({ rows: rows.map(r => { let t = ''; try { t = String(JSON.parse(r.last || '{}').text || '') } catch { t = '' }
-    return { number: String(r.wa_number), shown: shownNumber(String(r.wa_number)), name: String(r.known || r.name || ''), unread: Number(r.unread || 0), last_in_at: r.last_in_at, last: t.slice(0, 140), open: Number(r.open) === 1, stopped: !!r.opted_out_at } }) })
+    return { number: String(r.wa_number), shown: shownNumber(String(r.wa_number)), name: String(r.known || r.name || ''), unread: Number(r.unread || 0), last_in_at: r.last_in_at, last: t.slice(0, 140), open: Number(r.open) === 1, stopped: !!r.opted_out_at,
+      // They wrote last and nobody on the team has answered yet.
+      waiting: String(r.last_dir || '') === 'in' } }) })
 })
+// Who is writing: the registration behind a number, from a message we sent them, or else
+// the newest registration with the same ten digits. Null when nobody matches.
+async function personFor(c: any, n: string): Promise<any> {
+  try {
+    const sentTo = await one(c, 'SELECT attendee_id FROM wa_messages WHERE wa_number = ? AND attendee_id IS NOT NULL ORDER BY id DESC LIMIT 1', n).catch(() => null)
+    const cols = 'a.id, a.event_id, a.name, a.email, a.badge_type, a.payment_status, a.checked_in_at, e.title AS event'
+    let a = sentTo ? await one(c, `SELECT ${cols} FROM attendees a LEFT JOIN events e ON e.id = a.event_id WHERE a.id = ?`, Number(sentTo.attendee_id)) : null
+    const ten = n.slice(-10)
+    if (!a && ten.length === 10) a = await one(c, `SELECT ${cols} FROM attendees a LEFT JOIN events e ON e.id = a.event_id
+       WHERE REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(a.mobile, ''), ' ', ''), '-', ''), '+', ''), '(', '') LIKE ? ORDER BY a.id DESC LIMIT 1`, '%' + ten)
+    if (!a) return null
+    return { attendee_id: Number(a.id), event_id: Number(a.event_id), name: String(a.name || ''), email: isNoEmail(a.email) ? '' : String(a.email || ''), pass: String(a.badge_type || ''),
+      payment: String(a.payment_status || ''), came: !!a.checked_in_at, event: String(a.event || '') }
+  } catch { return null }
+}
+
 wa.get('/api/admin/whatsapp/thread/:number', async (c) => {
   if (!(await ready(c))) return notReady(c)
   const n = String(c.req.param('number')).replace(/\D/g, '')
   const k = await one(c, "SELECT *, CASE WHEN last_in_at > datetime('now', '-1 day') THEN 1 ELSE 0 END AS open FROM wa_contacts WHERE wa_number = ?", n)
   const rows = await all(c, 'SELECT id, direction, kind, template, payload, status, error, created_at, created_by FROM wa_messages WHERE wa_number = ? ORDER BY id DESC LIMIT 60', n)
   await run(c, 'UPDATE wa_contacts SET unread = 0 WHERE wa_number = ?', n)
-  return c.json({ number: n, shown: shownNumber(n), name: String(k?.name || ''), open: Number(k?.open || 0) === 1, stopped: !!k?.opted_out_at,
+  return c.json({ number: n, shown: shownNumber(n), name: String(k?.name || ''), open: Number(k?.open || 0) === 1, stopped: !!k?.opted_out_at, person: await personFor(c, n),
     messages: rows.reverse().map(r => { let p: any = {}; try { p = JSON.parse(r.payload || '{}') } catch { p = {} }
       return { id: r.id, out: r.direction === 'out', kind: r.kind, text: String(p.text || (p.type ? '[' + p.type + ']' : '')), image: String(p.image || ''), status: r.status, error: r.error || '', at: r.created_at, by: r.created_by || '' } }) })
 })
@@ -1155,6 +1187,38 @@ wa.post('/api/admin/whatsapp/reply', async (c) => {
   if (!sent.ok) return c.json({ error: sent.error }, 502)
   return c.json({ success: true })
 })
+// Quick replies: the team's saved answers. The whole list is sent and kept as one value.
+wa.post('/api/admin/whatsapp/quick-replies', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  if (!Array.isArray(b.list)) return c.json({ error: 'Nothing to save.' }, 400)
+  const list = b.list.filter((x: any) => x && String(x.text || '').trim()).slice(0, 30)
+    .map((x: any) => ({ title: oneLine(x.title || x.text, 40), text: String(x.text).trim().slice(0, 1000) }))
+  await saveSetting(c, QUICK_KEY, JSON.stringify(list))
+  await note(c, 'whatsapp.quick_replies', null, { count: list.length })
+  return c.json({ success: true, quick: list })
+})
+
+// One send as a spreadsheet: who, what happened and when (India time), and why not.
+wa.get('/api/admin/whatsapp/batches/:id/report', async (c) => {
+  if (!(await ready(c))) return notReady(c)
+  const id = Number(c.req.param('id'))
+  const b = await one(c, 'SELECT id, title, created_at FROM wa_batches WHERE id = ?', id)
+  if (!b) return c.json({ error: 'That send is not here.' }, 404)
+  const rows = await all(c, `SELECT m.name, m.wa_number, m.status, m.error, m.sent_at, m.delivered_at, m.read_at, m.clicked_at, m.price_category,
+       (SELECT MIN(i.created_at) FROM wa_messages i WHERE i.direction = 'in' AND i.wa_number = m.wa_number AND i.id > m.id) AS replied_at
+     FROM wa_messages m WHERE m.batch_id = ? ORDER BY m.id`, id)
+  const ist = (t: unknown) => { const s = String(t || ''); if (!s) return ''; const d = Date.parse(s.replace(' ', 'T') + 'Z'); return Number.isFinite(d) ? new Date(d + 19800000).toISOString().slice(0, 16).replace('T', ' ') : '' }
+  // A cell that starts like a formula is read as text by a spreadsheet, never run.
+  const cell = (v: unknown) => { let s = String(v ?? '').replace(/\r?\n/g, ' '); if (/^[=+\-@\t]/.test(s)) s = "'" + s; return /[",]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s }
+  const state: Record<string, string> = { queued: 'Waiting', sending: 'Sending', sent: 'Sent', delivered: 'Delivered', read: 'Read', failed: 'Not delivered', skipped: 'Left out', cancelled: 'Cancelled' }
+  const lines = [['Name', 'Mobile', 'State', 'Sent', 'Delivered', 'Read', 'Tapped the button', 'Replied', 'Billed as', 'Why not delivered'].join(',')]
+  for (const r of rows) lines.push([r.name, shownNumber(String(r.wa_number)).replace(/^\+/, ''), state[String(r.status)] || r.status, ist(r.sent_at), ist(r.delivered_at), ist(r.read_at),
+    ist(r.clicked_at), ist(r.replied_at), r.price_category || '', r.error || ''].map(cell).join(','))
+  await note(c, 'whatsapp.report', id, { rows: rows.length })
+  const file = 'whatsapp-' + String(b.title || 'send').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) + '-' + id + '.csv'
+  return new Response('﻿' + lines.join('\r\n') + '\r\n', { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="${file}"`, 'Cache-Control': 'no-store' } })
+})
+
 // Stop, or start again, by hand: someone asked on a call, or wrote "please remove me".
 wa.post('/api/admin/whatsapp/stop', async (c) => {
   if (!(await ready(c))) return notReady(c)

@@ -19,6 +19,7 @@
   var draft = { kind: 'photos', template: '', audience: 'everyone', event: 1, pass: '', list: '', number: '', name: '', only_new: true };
   var aud = null, audError = '', audKey = '';
   var inbox = null, thread = null, log = null, logStatus = '', logBatch = 0, logQ = '', own = null, ownShow = false;
+  var inboxFilter = 'all', inboxQ = '', quickEdit = false, pickTpl = '';
   var form = null, testTo = '', checkResult = null, first = true;
   try { testTo = w.localStorage.getItem('wa_test_to') || ''; } catch (e) { testTo = ''; }
 
@@ -214,9 +215,16 @@
         + '<button class="wad-btn wad-small" data-act="batch-list" data-id="' + b.id + '">See everyone</button>';
       var bits = [[n.waiting, 'waiting'], [n.gone, 'sent'], [n.delivered, 'delivered'], [n.read, 'read'], [n.taps, 'tapped the button'], [n.replied, 'replied'], [n.failed, 'not delivered'], [n.left, 'left out']]
         .filter(function (x) { return x[0] > 0; }).map(function (x) { return '<b>' + num(x[0]) + '</b> ' + x[1]; }).join(' &middot; ');
+      // Out of everyone WhatsApp was asked to deliver to (sent or refused).
+      var base = n.gone + n.failed;
+      var rate = function (a) { return base ? Math.round((a * 100) / base) + '%' : '-'; };
+      var rates = base ? '<div class="wad-rates">' + [[n.delivered, 'delivered'], [n.read, 'read'], [n.taps, 'tapped the button'], [n.replied, 'replied'], [n.failed, 'not delivered']]
+        .map(function (x) { return '<span><b>' + rate(x[0]) + '</b>' + x[1] + '</span>'; }).join('') + '</div>' : '';
+      var reasons = (b.reasons || []).length ? '<details class="wad-reasons"><summary>Why ' + num(n.failed) + ' did not arrive</summary><ul>'
+        + b.reasons.map(function (r) { return '<li><b>' + num(r.n) + '</b> ' + esc(r.words) + '</li>'; }).join('') + '</ul></details>' : '';
       return '<div class="wad-batch"><div class="wad-batch-top"><b>' + esc(b.title || kindWords(b.kind)) + '</b> ' + chip(st) + '<span class="wad-sub">' + people(n.total) + ' &middot; started ' + esc(when(b.created_at)) + (b.created_by ? ' by ' + esc(b.created_by) : '') + '</span></div>'
-        + '<div class="wad-bar"><span style="width:' + n.pct + '%"></span></div><p class="wad-sub">' + (bits || 'Nothing sent yet') + '</p>'
-        + (b.note ? '<p class="wad-warn">' + esc(b.note) + '</p>' : '') + '<div class="wad-actions">' + buttons + '</div></div>';
+        + '<div class="wad-bar"><span style="width:' + n.pct + '%"></span></div>' + rates + '<p class="wad-sub">' + (bits || 'Nothing sent yet') + '</p>' + reasons
+        + (b.note ? '<p class="wad-warn">' + esc(b.note) + '</p>' : '') + '<div class="wad-actions">' + buttons + '<button class="wad-btn wad-small" data-act="report" data-id="' + b.id + '"><i class="fas fa-download" aria-hidden="true"></i> Download report</button></div></div>';
     }).join('') + '</div>';
   }
 
@@ -234,27 +242,69 @@
 
   // ---------- Replies ----------
 
+  function payWords(p) { return { paid: 'Paid', waived: 'Complimentary', pending: 'Not paid yet', failed: 'Payment failed', refunded: 'Refunded' }[p] || (p ? p : ''); }
+  // The approved messages that can go to this one person now.
+  function threadChoices() {
+    var p = thread && thread.person, out = [];
+    ((D && D.templates) || []).forEach(function (t) {
+      if (t.status !== 'APPROVED') return;
+      if (t.kind === 'custom') out.push(['custom:' + t.name, t.title]);
+      else if (t.kind === 'pass' && p && (p.payment === 'paid' || p.payment === 'waived')) out.push(['pass', 'Their pass (' + (p.pass || 'pass') + ')']);
+      else if (t.kind === 'photos' && p) out.push(['photos', 'Their event photos']);
+    });
+    return out;
+  }
   function repliesHtml() {
     if (!inbox) return '<div class="wad-card"><p class="wad-sub">Loading...</p></div>';
     if (!inbox.length) return '<div class="wad-card"><p class="wad-sub">Nobody has written back yet. When someone replies to a message, it shows here and you can answer.</p></div>';
-    var list = '<div class="wad-inbox">' + inbox.map(function (r) {
+    var q = inboxQ.toLowerCase(), digits = inboxQ.replace(/\D/g, '');
+    var nUnread = inbox.filter(function (r) { return r.unread; }).length, nWaiting = inbox.filter(function (r) { return r.waiting; }).length;
+    var rows = inbox.filter(function (r) {
+      if (inboxFilter === 'unread' && !r.unread) return false;
+      if (inboxFilter === 'waiting' && !r.waiting) return false;
+      if (!q) return true;
+      return String(r.name).toLowerCase().indexOf(q) >= 0 || String(r.last).toLowerCase().indexOf(q) >= 0 || (digits.length >= 3 && r.number.indexOf(digits) >= 0);
+    });
+    var tools = '<div class="wad-filters">' + [['all', 'All', inbox.length], ['waiting', 'Waiting for our reply', nWaiting], ['unread', 'Unread', nUnread]].map(function (x) {
+      return '<button class="wad-filter' + (inboxFilter === x[0] ? ' wad-filter-on' : '') + '" data-act="inbox-filter" data-filter="' + x[0] + '">' + x[1] + ' <span class="wad-n">' + num(x[2]) + '</span></button>';
+    }).join('') + '<input type="search" data-field="inboxQ" value="' + esc(inboxQ) + '" placeholder="Name, number or words" aria-label="Find a chat"></div>';
+    var list = '<div class="wad-inbox">' + (rows.length ? rows.map(function (r) {
       return '<button class="wad-inbox-row' + (thread && thread.number === r.number ? ' wad-inbox-on' : '') + '" data-act="thread" data-number="' + esc(r.number) + '">'
-        + '<span><b>' + esc(r.name || r.shown) + '</b>' + (r.unread ? ' <i class="wad-unread">' + num(r.unread) + '</i>' : '') + (r.stopped ? ' ' + chip(['Stopped', 'bad']) : '') + '</span>'
+        + '<span><b>' + esc(r.name || r.shown) + '</b>' + (r.unread ? ' <i class="wad-unread">' + num(r.unread) + '</i>' : '') + (r.waiting ? ' ' + chip(['Waiting for us', 'wait']) : '') + (r.stopped ? ' ' + chip(['Stopped', 'bad']) : '') + '</span>'
         + '<small>' + esc(r.last || '') + '</small><small>' + esc(when(r.last_in_at)) + '</small></button>';
-    }).join('') + '</div>';
+    }).join('') : '<p class="wad-sub">No chat matches.</p>') + '</div>';
     var right = '<p class="wad-sub">Choose a person to read what they wrote.</p>';
     if (thread) {
-      right = '<div class="wad-thread-head"><b>' + esc(thread.name || thread.shown) + '</b> <span class="wad-sub">' + esc(thread.shown) + '</span>'
+      var p = thread.person;
+      var who = p ? '<div class="wad-person"><b>' + esc(p.name) + '</b>'
+        + '<span>' + esc([p.pass, p.event].filter(Boolean).join(' · ')) + '</span>'
+        + '<span>' + esc([payWords(p.payment), p.came ? 'Came to the event' : ''].filter(Boolean).join(' · ')) + '</span>'
+        + (p.email ? '<span>' + esc(p.email) + '</span>' : '') + '</div>'
+        : '<p class="wad-sub">This number is not on any registration.</p>';
+      var quick = (D && D.quick) || [];
+      var chips = '<div class="wad-quick">' + quick.map(function (x, i) {
+        return '<span class="wad-quick-item"><button class="wad-quick-btn" data-act="quick-use" data-i="' + i + '" title="' + esc(x.text) + '">' + esc(x.title) + '</button>'
+          + (quickEdit ? '<button class="wad-quick-del" data-act="quick-del" data-i="' + i + '" aria-label="Delete ' + esc(x.title) + '">&times;</button>' : '') + '</span>';
+      }).join('') + (quick.length ? '<button class="wad-link" data-act="quick-edit">' + (quickEdit ? 'Done' : 'Edit') + '</button>' : '') + '</div>';
+      var choices = threadChoices();
+      var picker = choices.length ? '<div class="wad-test"><label class="wad-field"><span>' + (thread.open ? 'Or send an approved message' : 'Send an approved message') + '</span><select data-field="pickTpl"><option value="">Choose...</option>'
+        + choices.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (pickTpl === x[0] ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join('') + '</select></label>'
+        + '<button class="wad-btn" data-act="thread-send"' + (busy || thread.stopped ? ' disabled' : '') + '>Send it</button></div>' : '';
+      right = '<div class="wad-thread-head"><b>' + esc(thread.name || (p && p.name) || thread.shown) + '</b> <span class="wad-sub">' + esc(thread.shown) + '</span>'
         + '<button class="wad-btn wad-small" data-act="stop" data-number="' + esc(thread.number) + '" data-on="' + (thread.stopped ? '0' : '1') + '">' + (thread.stopped ? 'Allow messages again' : 'Stop messages to this person') + '</button></div>'
+        + who
         + '<div class="wad-thread">' + thread.messages.map(function (m) {
           return '<div class="wad-msg ' + (m.out ? 'wad-msg-out' : 'wad-msg-in') + '">' + (m.image ? '<img src="' + esc(m.image) + '" alt="" loading="lazy">' : '') + '<p>' + esc(m.text).replace(/\n/g, '<br>') + '</p>'
             + '<small>' + esc(when(m.at)) + (m.out ? ' &middot; ' + esc((STATUS[m.status] || [m.status])[0]) + (m.by ? ' &middot; ' + esc(m.by) : '') : '') + '</small>' + (m.error ? '<small class="wad-bad">' + esc(m.error) + '</small>' : '') + '</div>';
         }).join('') + '</div>'
-        + (thread.open
-          ? '<div class="wad-reply"><textarea rows="2" data-field="replyText" placeholder="Type your reply"></textarea><button class="wad-btn wad-primary" data-act="reply"' + (busy ? ' disabled' : '') + '>Send</button></div>'
-          : '<p class="wad-note">More than 24 hours have passed since they last wrote, so WhatsApp does not allow a typed reply. They can write again, or send them an approved message from the Send tab.</p>');
+        + (thread.stopped ? '<p class="wad-note">This person said STOP, so nothing can be sent to them until they write START.</p>'
+          : thread.open
+            ? chips + '<div class="wad-reply"><textarea rows="2" data-field="replyText" placeholder="Type your reply"></textarea><button class="wad-btn wad-primary" data-act="reply"' + (busy ? ' disabled' : '') + '>Send</button></div>'
+              + '<p class="wad-sub"><button class="wad-link" data-act="quick-save">Save what I typed as a quick reply</button></p>'
+            : '<p class="wad-note">More than 24 hours have passed since they last wrote, so WhatsApp only allows an approved message. They can also write again.</p>')
+        + (thread.stopped ? '' : picker);
     }
-    return '<div class="wad-card wad-split"><div>' + list + '</div><div>' + right + '</div></div>';
+    return '<div class="wad-card">' + tools + '<div class="wad-split"><div>' + list + '</div><div>' + right + '</div></div></div>';
   }
 
   // ---------- Sent ----------
@@ -389,8 +439,14 @@
     if (tab === 'setup') return setupHtml();
     return sendHtml();
   }
+  var drawing = false;
   function draw() {
-    if (!host) return;
+    // Replacing the page can blur a box, and a blur can fire an event that draws again.
+    if (!host || drawing) return;
+    drawing = true;
+    try { drawNow(); } finally { drawing = false; }
+  }
+  function drawNow() {
     var keep = w.document.activeElement && host.contains(w.document.activeElement) ? w.document.activeElement.getAttribute('data-field') || w.document.activeElement.getAttribute('data-form-field') : '';
     host.innerHTML = '<div class="wad">' + headHtml() + (D && D.ready === false ? '' : tabsHtml()) + '<div class="wad-body">' + bodyHtml() + '</div></div>';
     if (keep) { var el = host.querySelector('[data-field="' + keep + '"], [data-form-field="' + keep + '"]'); if (el && el.focus) { try { el.focus(); if (el.setSelectionRange && el.type !== 'number') el.setSelectionRange(el.value.length, el.value.length); } catch (e) { /* a field that cannot take a cursor */ } } }
@@ -508,6 +564,53 @@
       return;
     }
     if (act === 'batch-list') { logBatch = Number(t.getAttribute('data-id')); logStatus = ''; logQ = ''; tab = 'sent'; draw(); loadTab(); return; }
+    if (act === 'report') {
+      await work(async function () {
+        var res = await w.fetch('/api/admin/whatsapp/batches/' + encodeURIComponent(t.getAttribute('data-id')) + '/report', { headers: opts.authHeaders ? opts.authHeaders() : {} });
+        if (!res.ok) { var j = await res.json().catch(function () { return {}; }); throw new Error(j.error || 'The report could not be made.'); }
+        var blob = await res.blob();
+        var name = ((res.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/) || [])[1] || 'whatsapp-report.csv';
+        var a = w.document.createElement('a');
+        a.href = w.URL.createObjectURL(blob); a.download = name;
+        w.document.body.appendChild(a); a.click(); a.remove();
+        w.setTimeout(function () { w.URL.revokeObjectURL(a.href); }, 4000);
+        toast('Downloaded. It opens in Excel or Google Sheets.');
+      });
+      return;
+    }
+    if (act === 'inbox-filter') { inboxFilter = t.getAttribute('data-filter'); draw(); return; }
+    if (act === 'quick-use') {
+      var qr = ((D && D.quick) || [])[Number(t.getAttribute('data-i'))];
+      var box = host.querySelector('[data-field="replyText"]');
+      if (qr && box) { box.value = box.value.trim() ? box.value.replace(/\s*$/, '\n') + qr.text : qr.text; box.focus(); }
+      return;
+    }
+    if (act === 'quick-edit') { quickEdit = !quickEdit; draw(); return; }
+    if (act === 'quick-save' || act === 'quick-del') {
+      var listQ = ((D && D.quick) || []).slice();
+      if (act === 'quick-save') {
+        var said = val('[data-field="replyText"]').trim();
+        if (!said) { toast('Type the reply first, then save it.', 'error'); return; }
+        listQ.push({ title: said.replace(/\s+/g, ' ').slice(0, 40), text: said });
+      } else listQ.splice(Number(t.getAttribute('data-i')), 1);
+      var keepText = val('[data-field="replyText"]');
+      await work(async function () { var r = await opts.api.post('/api/admin/whatsapp/quick-replies', { list: listQ }); D.quick = r.quick; toast(act === 'quick-save' ? 'Saved. It is one tap away now.' : 'Deleted.'); });
+      var again = host.querySelector('[data-field="replyText"]'); if (again) again.value = keepText;
+      return;
+    }
+    if (act === 'thread-send') {
+      if (!thread || !pickTpl) { toast('Choose the message to send.', 'error'); return; }
+      var pp = thread.person || {};
+      var body = pickTpl.indexOf('custom:') === 0 ? { kind: 'custom', template: pickTpl.slice(7), audience: 'one', number: '+' + thread.number, name: thread.name || pp.name || '' }
+        : { kind: pickTpl, event: pp.event_id || 1, attendee_id: pp.attendee_id, only_new: false };
+      await work(async function () {
+        var r = await opts.api.post('/api/admin/whatsapp/send', body);
+        toast('Sent to ' + (r.to || 'them') + '.');
+        pickTpl = '';
+        thread = await opts.api.get('/api/admin/whatsapp/thread/' + encodeURIComponent(thread.number));
+      });
+      return;
+    }
     if (act === 'log-status') { logStatus = t.getAttribute('data-status'); try { await loadLog(); } catch (err) { fail(err); } return; }
     if (act === 'log-find') { logQ = val('[data-field="logQ"]').trim(); try { await loadLog(); } catch (err) { fail(err); } return; }
     if (act === 'log-all') { logBatch = 0; try { await loadLog(); } catch (err) { fail(err); } return; }
@@ -595,6 +698,9 @@
       return;
     }
     if (f === 'testTo') { testTo = el.value; return; }
+    // Typing redraws the list; the "change" that follows when the box loses focus must not.
+    if (f === 'inboxQ') { if (e.type === 'input') { inboxQ = el.value; draw(); } return; }
+    if (f === 'pickTpl') { pickTpl = el.value; return; }
     var ff = el.getAttribute && el.getAttribute('data-form-field');
     if (ff && form) {
       if (ff === 'file') { readPicture(el.files && el.files[0]).then(function (data) { form.image = data; form.image_url = ''; draw(); }).catch(fail); return; }

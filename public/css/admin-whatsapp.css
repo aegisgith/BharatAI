@@ -136,6 +136,25 @@
 .wad-filter { min-height: 36px; padding: 0 12px; border: 1px solid var(--wa-line); border-radius: 999px; background: #fff; color: var(--wa-ink); font-weight: 600; font-size: 13px; cursor: pointer; }
 .wad-filter-on { background: var(--wa-ink); border-color: var(--wa-ink); color: #fff; }
 .wad-filters input { flex: 1 1 160px; max-width: 260px; min-height: 36px; padding: 4px 12px; }
+.wad-n { display: inline-block; min-width: 18px; margin-left: 2px; font-weight: 700; opacity: 0.7; }
+/* A send's results as rates, and why some did not arrive. */
+.wad-rates { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 4px; }
+.wad-rates span { display: grid; color: var(--wa-muted); font-size: 12px; }
+.wad-rates b { color: var(--wa-ink); font-size: 20px; font-weight: 800; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.wad-reasons { margin: 6px 0 0; }
+.wad-reasons summary { cursor: pointer; color: var(--wa-bad); font-weight: 700; font-size: 13px; }
+.wad-reasons ul { margin: 6px 0 0; padding-left: 18px; color: var(--wa-muted); }
+/* Who is writing, from their registration. */
+.wad-person { display: grid; gap: 2px; margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--wa-soft); font-size: 13px; color: var(--wa-muted); }
+.wad-person b { color: var(--wa-ink); font-size: 14px; }
+.wad-person span:empty { display: none; }
+/* Quick replies: one tap puts the saved words in the box. */
+.wad-quick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 10px 0 6px; }
+.wad-quick:empty { display: none; }
+.wad-quick-item { display: inline-flex; align-items: center; border: 1px solid var(--wa-line); border-radius: 999px; background: #fff; }
+.wad-quick-btn { min-height: 32px; max-width: 240px; padding: 0 12px; border: 0; background: none; color: var(--wa-ink); font-size: 13px; font-weight: 600; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wad-quick-del { min-width: 32px; min-height: 32px; border: 0; border-left: 1px solid var(--wa-line); background: none; color: var(--wa-bad); font-size: 16px; cursor: pointer; }
+.wad-quick-btn:focus-visible, .wad-quick-del:focus-visible { outline: 3px solid rgba(200, 79, 0, 0.35); outline-offset: 1px; border-radius: 999px; }
 .wad-table { overflow-x: auto; }
 .wad-table table { width: 100%; border-collapse: collapse; }
 .wad-table th { text-align: left; font-size: 12.5px; color: var(--wa-muted); font-weight: 700; padding: 6px 10px; border-bottom: 1px solid var(--wa-line); white-space: nowrap; }
