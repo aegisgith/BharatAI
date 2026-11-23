@@ -143,7 +143,13 @@ if (pair) {
   l = await as('GET', '/api/admin/speaker-photos');
   const panel = (l.json?.panels || []).find(k => k.id === 's9001');
   check('a listed panellist in none of its photos flags the session for a look', !!panel && panel.flagged && panel.reasons.some(r => r.includes('Dropped Out Person')) && row(X.key)?.status === 'panel', { panel: panel && panel.reasons, status: row(X.key)?.status });
+  const firstSection = (xp.match(/<section><h2>([\s\S]*?)<\/section>/) || ['', ''])[0];
+  const pinned = [...firstSection.matchAll(/\/d\/([A-Za-z0-9_-]+)=w700/g)].map(m => m[1]);
+  const both = (id) => { const ks = new Set((DATA.who[id] || []).filter(w => w[2] < 80).map(w => w[0])); return ks.has(X.key) && ks.has(Y.key); };
+  check("their panel's group shots (photos with both panellists recognised) are pinned at the top of their page, at most three",
+    firstSection.includes('Your panel, all together') && pinned.length >= 1 && pinned.length <= 3 && pinned.every(both), { pinned: pinned.length });
   const pv3 = await as('GET', `/api/admin/speaker-photos/${X.key}/preview`);
+  check('...and they come first in their email', pinned.every(id => (pv3.json?.html || '').includes(id)), '');
   check('the email carries the line-up too (and no email or phone of anyone)', pv3.json?.html.includes('Test panel on AI') && pv3.json?.html.includes('Chief Executive, Org Y') && !pv3.json?.html.includes('y.speaker@example.com'), pv3.status);
   let sx = await as('POST', `/api/admin/speaker-photos/${X.key}/send`, {});
   check("their email waits until the line-up is confirmed", sx.status === 409 && sx.json?.panel === true, sx.status);

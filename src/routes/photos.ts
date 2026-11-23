@@ -197,13 +197,16 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
 // people named in that photo, left to right ([name, "Designation, Organisation", LinkedIn, 1 = them]).
 export function albumPageHTML(a: { name: string; org: string; ids: string[]; focus?: Record<string, [number, number]>; got?: Got;
     saves?: { limit: number; used: number } | null; lineup?: string; names?: Record<string, [string, string, string, number][]>;
-    me?: { key: string; k: string; order: string[] } }): string {
+    me?: { key: string; k: string; order: string[] }; pinned?: string[] }): string {
   const got = a.got || {}
   const names = a.names || {}
   // An attendee's page (me): "Not me" on each photo and "Don't match my photos". A photo is
   // named to the server by its place in their album (me.order), never by an id.
   const me = a.me || null
-  const groups = byDay(a.ids)
+  // pinned: their panel's group shots, first, under their own heading (not repeated below).
+  const pinned = (a.pinned || []).filter(id => a.ids.includes(id))
+  const groups = [...(pinned.length ? [{ day: '', words: pinned.length === 1 ? 'Your panel, all together' : 'Your panel, all together', ids: pinned }] : []),
+    ...byDay(a.ids.filter(id => !pinned.includes(id)))]
   const total = groups.reduce((n, g) => n + g.ids.length, 0)
   const flat = groups.flatMap(g => g.ids)
   let i = 0
@@ -214,9 +217,10 @@ export function albumPageHTML(a: { name: string; org: string; ids: string[]; foc
     const pc = (v: any) => Math.max(0, Math.min(100, Math.round(Number(v))))
     return f && f.length === 2 ? ` style="object-position:${pc(f[0])}% ${pc(f[1])}%"` : ''
   }
-  const sections = groups.map(g => `<section><h2>${escH(g.words)} <span>${g.ids.length}</span></h2><div class="grid">${g.ids.map(id => {
+  // The panel's group shots are shown whole (landscape), not cropped square.
+  const sections = groups.map(g => `<section><h2>${escH(g.words)} <span>${g.ids.length}</span></h2><div class="grid${g.day ? '' : ' wide'}">${g.ids.map(id => {
     const n = i++
-    return `<button type="button" class="ph" data-i="${n}" aria-label="Open photo ${n + 1} of ${total}"><img src="${escH(got[id]?.s || wideUrl(id, 700))}" alt="" loading="${n < 8 ? 'eager' : 'lazy'}" width="250" height="250"${at(id)}></button>`
+    return `<button type="button" class="ph" data-i="${n}" aria-label="Open photo ${n + 1} of ${total}"><img src="${escH(got[id]?.s || wideUrl(id, 700))}" alt="" loading="${n < 8 ? 'eager' : 'lazy'}" width="250" height="250"${g.day ? at(id) : ''}></button>`
   }).join('')}</div></section>`).join('')
   // Per photo: the large view and the full-size save.
   const data = JSON.stringify(flat.map(id => [got[id]?.m || bigUrl(id), got[id]?.o || downloadUrl(id), names[id] || [], me ? me.order.indexOf(id) : -1])).replace(/</g, '\\u003c')
@@ -243,6 +247,8 @@ h2{font-size:17px;margin:26px 0 10px}h2 span{color:var(--sub);font-weight:400;fo
 @media(min-width:640px){.grid{grid-template-columns:repeat(3,1fr)}}@media(min-width:960px){.grid{grid-template-columns:repeat(4,1fr)}}
 .ph{display:block;padding:0;border:0;background:#e9ebf3;border-radius:10px;overflow:hidden;cursor:zoom-in;aspect-ratio:1/1}
 .ph img{display:block;width:100%;height:100%;object-fit:cover}
+.grid.wide{grid-template-columns:1fr}@media(min-width:640px){.grid.wide{grid-template-columns:repeat(2,1fr)}}
+.grid.wide .ph{aspect-ratio:3/2}
 .ph:focus-visible{outline:3px solid var(--brand);outline-offset:2px}
 .note{color:var(--sub);font-size:14px;line-height:1.6;margin:28px 0 0}
 .note a{color:var(--brand);font-weight:600}
@@ -513,6 +519,43 @@ export function checkSession(s: LiveSession, live: Live): PanelCheck {
   return { id: s.id, title: s.title, when: whenWords(s), talk: s.talk, photos: ph.length, flagged: reasons.length > 0, reasons, fp, people, typed: s.typed, others }
 }
 
+// The panel's own group shots (the organiser, 23 Nov 2026: "give all panelist speakers two
+// to three entire panel photo ... which have photos of all the speakers including him/her").
+// From the session's time (and 20 minutes after, for the photo at the end), the photos in
+// which the most of its current line-up are recognised, at least half of them; landscape
+// first, one a minute (not three of one burst). Every panellist gets the same ones.
+// owner: whose album it is for. First the one photo with the most of the panel (often the
+// group photo at the end), then the panel shots they themselves are recognised in, so a
+// big panel does not hand someone three photos of the other end of the stage.
+export function panelShots(s: LiveSession, max = 3, owner = ''): string[] {
+  const keys = new Set(s.people.map(p => p.key).filter(Boolean) as string[])
+  if (s.talk || keys.size < 2) return []
+  const need = Math.max(2, Math.ceil(keys.size / 2))
+  const cand = PHOTO_TIMES.filter(([, d, t]) => d === s.day && t >= 0 && t >= mins(s.start) - PAD && t <= mins(s.end) + 20)
+    .map(([id, , t]) => ({ id, t, n: new Set(WHO(id).filter(w => keys.has(w[0]) && w[2] < 80).map(w => w[0])).size, wide: META[id] && !META[id][2] ? 1 : 0,
+      me: !!owner && WHO(id).some(w => w[0] === owner) }))
+    .filter(x => x.n >= need)
+    .sort((a, b) => b.n - a.n || b.wide - a.wide || a.t - b.t)
+  // Beyond the top one, only photos they are in; others only to reach two.
+  const ordered = [...cand.slice(0, 1).map(x => ({ ...x, top: 1 })), ...cand.filter(x => x.me), ...cand.map(x => ({ ...x, fill: 1 }))]
+  const out: string[] = [], at: number[] = []
+  for (const x of ordered) {
+    if (out.includes(x.id)) continue
+    if (owner && (x as any).fill && out.length >= 2) continue
+    if (at.includes(x.t)) continue
+    out.push(x.id); at.push(x.t)
+    if (out.length === max) break
+  }
+  return out
+}
+// For one person: the group shots of every panel they are on now, at most `max` in all.
+export function panelShotsFor(key: string, live: Live, max = 3): string[] {
+  const out: string[] = []
+  for (const s of (live.byKey.get(key) || []).slice().sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start)))
+    for (const id of panelShots(s, max, key)) if (!out.includes(id) && out.length < max) out.push(id)
+  return out
+}
+
 // The line-ups the organiser has confirmed (admin_audit 'photos.panel_ok', session id -> fp).
 export const PANEL_OK = 'photos.panel_ok'
 async function confirmedPanels(c: any): Promise<Map<string, string>> {
@@ -635,10 +678,14 @@ async function mailFor(c: any, r: Row, live: Live | null = null, hidden: Set<str
   const lineup = lineupHTML(lv.byKey.get(r.key) || [], true)
   const href = await pageUrl(c, r.key)
   const header = hooks.emailHeader ? hooks.emailHeader('Your photos', MUMBAI_WORDS.line) : ''
-  const best = (p ? p.best : []).filter(id => !(hidden && hidden.has(id)))
+  const ok = (id: string) => !(hidden && hidden.has(id))
+  // Their panel's group shots first (the whole panel together), then their own best.
+  const panel = panelShotsFor(r.key, lv).filter(ok)
+  const best = [...panel, ...(p ? p.best : []).filter(id => ok(id) && !panel.includes(id))].slice(0, 6)
+  const extra = panel.filter(id => !(p && p.photos.includes(id))).length
   // Signed for this person (the album key), the small size only; never a hidden photo.
   const got = best.length ? await linksForDrive(c, r.key, best) : {}
-  return photosEmailHTML({ name: r.name, count: r.count, best: shown(best, got, hidden !== null), href, header, talk: r.talk, forSpeaker: r.for_speaker, company: r.company, got, guest: r.guest, lineup })
+  return photosEmailHTML({ name: r.name, count: r.count + extra, best: shown(best, got, hidden !== null), href, header, talk: r.talk, forSpeaker: r.for_speaker, company: r.company, got, guest: r.guest, lineup })
 }
 
 // The live programme, every session's line-up check, the organiser's confirmations, and
@@ -743,18 +790,21 @@ ph.get('/photos/:key', async (c) => {
   const mine = p!.attendee ? await attendeeChoices(c, p!.key) : { optedOut: false, notMe: new Set<string>() }
   if (mine.optedOut) return new Response(albumPageHTML({ name, org, ids: [] }).replace('No photos here yet.', 'You asked us not to match your photos, so there are none here.'), { headers: head })
   const hidden = await hiddenPhotos(c)
-  // Links signed for the album's own key, so every way into this person's page shares
-  // one count of full-size saves. A hidden photo, or one the store has no link for, is left out.
-  const asked = p!.photos.filter(id => !mine.notMe.has(id) && !(hidden && hidden.has(id)))
-  const got = await linksForDrive(c, p!.key, asked)
-  const ids = shown(asked, got, hidden !== null)
-  const saves = Object.keys(got).length ? { limit: await downloadLimit(c, p!.key), used: await downloadsUsed(c, p!.key) } : null
   // Their session(s) and who else is in each photo, from the live programme. Only speakers
   // and named guests are ever named; an attendee never is.
   const live = await liveProgramme(c)
+  // Their panel's group shots join their album, first (even where their own face was too
+  // small to be recognised in them: the line-up says they were on that stage).
+  const panel = panelShotsFor(p!.key, live)
+  // Links signed for the album's own key, so every way into this person's page shares
+  // one count of full-size saves. A hidden photo, or one the store has no link for, is left out.
+  const asked = [...panel, ...p!.photos.filter(id => !panel.includes(id))].filter(id => !mine.notMe.has(id) && !(hidden && hidden.has(id)))
+  const got = await linksForDrive(c, p!.key, asked)
+  const ids = shown(asked, got, hidden !== null)
+  const saves = Object.keys(got).length ? { limit: await downloadLimit(c, p!.key), used: await downloadsUsed(c, p!.key) } : null
   const names: Record<string, [string, string, string, number][]> = {}
   for (const id of ids) names[id] = namesIn(id, p!.key, live)
-  return new Response(albumPageHTML({ name, org, ids, focus: p!.focus, got, saves, lineup: lineupHTML(live.byKey.get(p!.key) || [], false), names,
+  return new Response(albumPageHTML({ name, org, ids, focus: p!.focus, got, saves, lineup: lineupHTML(live.byKey.get(p!.key) || [], false), names, pinned: panel,
     me: p!.attendee ? { key: p!.key, k: String(c.req.query('k') || ''), order: p!.photos } : undefined }), { headers: head })
 })
 
