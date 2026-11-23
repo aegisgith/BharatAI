@@ -22,7 +22,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     const missing = [];
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('response', (r) => { if (r.status() >= 400 && r.url().startsWith(BASE)) missing.push(r.url()); });
-    await page.goto(BASE + '/delhi', { waitUntil: 'load' });
+    await page.goto(BASE + '/', { waitUntil: 'load' });
     await settled(page);
 
     const hero = await page.evaluate(() => {
@@ -41,7 +41,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
 
     await page.click('#nav-toggle');
     await page.waitForTimeout(400);
-    check('the phone menu shows Delhi 2027 as the current tab', await page.locator('#nav-menu a[href="/delhi"].active').isVisible());
+    check('the phone menu shows Home as the current tab (Delhi is the home page)', await page.locator('#nav-menu a[href="/"].active').isVisible());
     await page.click('#nav-toggle');
     await page.waitForTimeout(300);
 
@@ -96,7 +96,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     check('and the team was emailed once', mail.length === 1 && mail[0].Content.ReplyTo.includes('priya@example.com'), mail.length);
 
     // The free pass, as a person on a phone does it: the hero's button, the form, done.
-    await page.goto(BASE + '/delhi', { waitUntil: 'load' });
+    await page.goto(BASE + '/', { waitUntil: 'load' });
     await settled(page);
     await page.click('.dl-hero-actions .btn-primary');
     await page.waitForTimeout(900);
@@ -125,7 +125,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     check('the pass really landed, apart from the enquiry', held.length === 2 && held[1].inquiry_type === 'delhi_pass' && held[1].status === 'waitlisted' && held[1].email === 'asha.rao@example.com', JSON.stringify(held[1]));
     const mailed = await (await ctx.request.get(BASE + '/__mail')).json();
     check('and they were emailed, once', mailed.length === 2 && mailed[1].Recipients.To[0] === 'asha.rao@example.com', mailed.length);
-    await page.goto(BASE + '/delhi', { waitUntil: 'load' });
+    await page.goto(BASE + '/', { waitUntil: 'load' });
     await settled(page);
 
     // Questions
@@ -148,7 +148,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     for (const [w, h, photo] of [[360, 740, 'phone'], [820, 1180, '1600|2400'], [1000, 700, '1600|2400'], [1280, 720, '1600|2400'], [1440, 900, '1600|2400'], [1920, 1080, '2400|1600']]) {
       const c = await browser.newContext({ viewport: { width: w, height: h } });
       const p = await c.newPage();
-      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.goto(BASE + '/', { waitUntil: 'load' });
       await settled(p);
       const r = await p.evaluate(() => {
         const bad = [...document.querySelectorAll('h1,h2,h3,p,li,a.btn,button')].filter((e) => { const x = e.getBoundingClientRect(); return x.width && (x.right > innerWidth + 1 || x.left < -1); }).map((e) => e.textContent.trim().slice(0, 30));
@@ -170,7 +170,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     {
       const c = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const p = await c.newPage();
-      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.goto(BASE + '/', { waitUntil: 'load' });
       await settled(p);
       check('laptop: the hero fits the first screen and shows the building', await p.evaluate(() => { const i = document.querySelector('.dl-photo img').getBoundingClientRect(); return i.top + i.height * 0.5 < innerHeight; }));
       const clear = await p.evaluate(() => [...document.querySelectorAll('.dl-rows li')].every((li) => { const r = document.createRange(); r.selectNodeContents(li.querySelector('b')); return r.getBoundingClientRect().right <= li.querySelector('span').getBoundingClientRect().left; }));
@@ -189,7 +189,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       const p = await c.newPage();
       const errs = [];
       p.on('pageerror', (e) => errs.push(e.message));
-      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.goto(BASE + '/', { waitUntil: 'load' });
       await p.waitForTimeout(1500);
       check(`motion ${label}: the title has finished rising and reads in full`, await p.evaluate(() => {
         const t = document.querySelector('.dl-title').textContent.replace(/\s+/g, ' ').trim();
@@ -229,7 +229,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     {
       const c = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'no-preference' });
       const p = await c.newPage();
-      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.goto(BASE + '/', { waitUntil: 'load' });
       await p.locator('.dl-rows li:nth-child(1)').scrollIntoViewIfNeeded();
       await p.hover('.dl-rows li:nth-child(1)');
       await p.waitForTimeout(900);
@@ -239,7 +239,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     {
       const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
       const p = await c.newPage();
-      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.goto(BASE + '/', { waitUntil: 'load' });
       await settled(p);
       check('animations off: the sentence is left whole, the row pictures and the light are not shown', await p.evaluate(() => !document.querySelector('.dl-who-lead.dl-lit') && document.querySelectorAll('.dl-who-lead span').length === 0 && [...document.querySelectorAll('.dl-rows li > img')].every((i) => getComputedStyle(i).display === 'none') && getComputedStyle(document.querySelector('#updates .dl-beam')).display === 'none'));
       check('animations off: the tiles do not wait on the scroll', await p.evaluate(() => getComputedStyle(document.querySelector('.dl-tiles .dl-tile')).animationTimeline === 'auto'));
@@ -252,7 +252,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       const p = await c.newPage();
       const errs = [];
       p.on('pageerror', (e) => errs.push(e.message));
-      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.goto(BASE + '/', { waitUntil: 'load' });
       await p.waitForTimeout(600);
       check('effects: no library or React is loaded', await p.evaluate(() => !window.React && ![...document.scripts].some((s) => /react|uiverse|framer|gsap/i.test(s.src))));
       // The glider stops on the choice, whichever is chosen.
@@ -296,7 +296,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     {
       const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: 'no-preference' });
       const p = await c.newPage();
-      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.goto(BASE + '/', { waitUntil: 'load' });
       await p.waitForTimeout(600);
       check('effects, phone: no pointer light without a mouse, and the shine runs by itself', await p.evaluate(() => !document.querySelector('.dl-pass-grid').classList.contains('is-lit') && getComputedStyle(document.querySelector('.dl-hero-actions .dl-shine'), '::after').animationName === 'dlShine'));
       await p.locator('#updates').scrollIntoViewIfNeeded();
@@ -312,7 +312,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     {
       const c = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
       const p = await c.newPage();
-      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.goto(BASE + '/', { waitUntil: 'load' });
       await p.waitForTimeout(600);
       const off = await p.evaluate(() => ({ aurora: getComputedStyle(document.querySelector('.dl-aurora'), '::before').animationName, shine: getComputedStyle(document.querySelector('.dl-hero-actions .dl-shine'), '::after').content, ed: getComputedStyle(document.querySelector('.dl-title .ed > span')).webkitTextFillColor, beam: getComputedStyle(document.querySelector('.dl-pass .dl-beam')).display, row: getComputedStyle(document.querySelector('#partner .dl-sale-row b')).color }));
       check('animations off: no aurora movement, no shine, no star, "Delhi 2027" in plain colour, the dark section still reads', off.aurora === 'none' && off.shine === 'none' && !/rgba\(0, 0, 0, 0\)|transparent/.test(off.ed) && off.beam === 'none' && off.row === 'rgb(255, 255, 255)', JSON.stringify(off));
@@ -352,7 +352,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       const hp = await hc.newPage();
       const herr = [];
       hp.on('pageerror', (e) => herr.push(e.message));
-      await hp.goto(BASE + '/', { waitUntil: 'load' });
+      await hp.goto(BASE + '/mumbai', { waitUntil: 'load' }); // the old home page, since 24 Nov 2026
       await settled(hp);
       const r = await hp.evaluate(() => {
         const span = (el) => { const x = document.createRange(); x.selectNodeContents(el); return x.getBoundingClientRect(); };

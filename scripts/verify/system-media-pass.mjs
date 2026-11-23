@@ -15,7 +15,7 @@ const { call, rows } = W;
 const subj = (m) => m?.Content?.Subject || '';
 
 // ---- the way in
-const home = readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8');
+const home = readFileSync(new URL('../../public/mumbai.html', import.meta.url), 'utf8');
 check('the home page footer links to /media-pass', /<li><a href="\/media-pass">Media &amp; Influencer Pass<\/a><\/li>/.test(home));
 let r = await call('/contact');
 check('the contact page\'s Media / Press card links to /media-pass', r.status === 200 && /href="\/media-pass"[^>]*>Apply for a Media &amp; Influencer Pass</.test(r.text));

@@ -5,10 +5,20 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
         xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
 
-    <!-- Home -->
+    <!-- Home: the Delhi edition, 28-29 July 2027 (since 24 Nov 2026) -->
     <url>
         <loc>https://bharataiinnovation.com/</loc>
-        <lastmod>2026-09-26</lastmod>
+        <lastmod>2026-11-24</lastmod>
+        <image:image>
+            <image:loc>https://bharataiinnovation.com/images/og/delhi.jpg</image:loc>
+            <image:title>Bharat AI Innovation Delhi 2027, Bharat Mandapam, New Delhi</image:title>
+        </image:image>
+    </url>
+
+    <!-- Mumbai 2026, the home page until 24 Nov 2026 -->
+    <url>
+        <loc>https://bharataiinnovation.com/mumbai</loc>
+        <lastmod>2026-11-24</lastmod>
         <image:image>
             <image:loc>https://bharataiinnovation.com/images/og/home.jpg</image:loc>
             <image:title>Bharat AI Innovation 2026 — India's B2B platform for AI, 20–21 Nov 2026, WTC Mumbai</image:title>
@@ -116,15 +126,7 @@
             <image:title>Share your Bharat AI moment: I attended, who I met, a talk, a panel</image:title>
         </image:image>
     </url>
-    <!-- Delhi edition, 28-29 July 2027 -->
-    <url>
-        <loc>https://bharataiinnovation.com/delhi</loc>
-        <lastmod>2026-11-05</lastmod>
-        <image:image>
-            <image:loc>https://bharataiinnovation.com/images/og/delhi.jpg</image:loc>
-            <image:title>Bharat AI Innovation Delhi 2027, Bharat Mandapam, New Delhi</image:title>
-        </image:image>
-    </url>
+    <!-- Delhi edition, 28-29 July 2027: its page is the home page -->
     <url>
         <loc>https://bharataiinnovation.com/delhi-exhibit</loc>
         <lastmod>2026-11-12</lastmod>

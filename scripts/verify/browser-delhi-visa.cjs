@@ -27,7 +27,7 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, 
     p.on('pageerror', (e) => errors.push(e.message));
 
     // ---- /delhi ----
-    await p.goto(BASE + '/delhi#travel', { waitUntil: 'domcontentloaded' });
+    await p.goto(BASE + '/#travel', { waitUntil: 'domcontentloaded' });
     await p.waitForSelector('#travel', { timeout: 20000 });
     const sec = await p.evaluate(() => { const s = document.getElementById('travel'); return { text: s.innerText, items: s.querySelectorAll('dl > div').length, visa: !!s.querySelector('a[href="/delhi-visa"]'), official: !!s.querySelector('a[href="https://indianvisaonline.gov.in/"]') }; });
     check('/delhi: "Coming from outside India" with visa, airport, metro, time and money', /Coming from\s*outside India/.test(sec.text) && sec.items === 4 && /Supreme Court/.test(sec.text) && /UTC\+5:30/.test(sec.text) && sec.visa && sec.official, JSON.stringify(sec));

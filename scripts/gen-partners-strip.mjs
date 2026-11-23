@@ -11,8 +11,8 @@
 // put just before the page's <footer> the first time (feedback.html, which has no footer,
 // carries the markers by hand after </main>). Never hand-edit between the markers.
 //
-// Left out on purpose: index.html (its own partners section and the Powered-by line in
-// the hero), the Delhi 2027 pages (another edition: its sponsors are not these), the
+// Left out on purpose: mumbai.html (its own partners section and the Powered-by line in
+// the hero), the Delhi 2027 pages (the home page index.html since 24 Nov 2026 and /delhi-*) (another edition: its sponsors are not these), the
 // redirect pages, 404 and live.html (the hall screen).
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

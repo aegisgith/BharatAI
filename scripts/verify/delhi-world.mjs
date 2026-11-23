@@ -8,7 +8,7 @@ const ROOT = new URL('../../', import.meta.url);
 export const read = (p) => readFileSync(new URL(p, ROOT), 'utf8');
 
 const inlineScript = () => {
-  const blocks = [...read('public/delhi.html').matchAll(/<script>([\s\S]*?)<\/script>/g)];
+  const blocks = [...read('public/index.html').matchAll(/<script>([\s\S]*?)<\/script>/g)];
   if (blocks.length !== 1) throw new Error('expected one inline script on /delhi, found ' + blocks.length);
   return blocks[0][1];
 };

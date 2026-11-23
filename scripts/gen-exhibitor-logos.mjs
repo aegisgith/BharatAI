@@ -6,7 +6,7 @@
 //    trimmed (many arrive as a small wordmark in a big white square), never
 //    enlarged past the source.
 // 2. The block between <!-- exhibitors:start --> and <!-- exhibitors:end --> in
-//    public/index.html (a strip of chips) and public/exhibition.html (the wall).
+//    public/mumbai.html (a strip of chips; the home page until 24 Nov 2026) and public/exhibition.html (the wall).
 // 3. The same markers in public/llms.txt, so AI assistants can name exhibitors.
 // 4. scripts/sql/exhibitor-logos.sql — fills exhibitors.logo_url for the app's
 //    Exhibitors tab. The organiser runs it; it never overwrites a logo set by hand.
@@ -153,7 +153,7 @@ sizeWall(all)
 for (const n of FEATURED) if (!all.some((e) => e.name === n)) { if (FROM_APP) console.log(`[exhibitors] FEATURED ${n} is not in the app`); else throw new Error(`FEATURED names an unknown exhibitor: ${n}`) }
 const { home, grid, llms } = renderWall(all, media)
 
-fill('public/index.html', home)
+fill('public/mumbai.html', home)
 fill('public/partner.html', home)
 fill('public/exhibition.html', grid)
 fill('public/llms.txt', llms)

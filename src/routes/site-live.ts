@@ -330,6 +330,15 @@ async function serveLive(c: any, path: string, files: string[], fills: Fill[]) {
 
 live.get('/exhibition', (c) => serveLive(c, '/exhibition', ['/exhibition', '/exhibition.html'], [fillExhibitionWall, fillTalkCards('exhibition')]))
 live.get('/partner', (c) => serveLive(c, '/partner', ['/partner', '/partner.html'], [fillHomeWall]))
-live.get('/', (c) => serveLive(c, '/', ['/', '/index.html'], [fillHomeWall, fillHomeSpeakers]))
+// 24 Nov 2026, the organiser: "we want to market delhi as new edition so mumbai on home
+// page does not make sense". The home page is now the Delhi 2027 page (public/index.html,
+// static, served by Pages); the old Mumbai home moved to /mumbai and is drawn live as
+// before. /delhi was the Delhi page's address in emails, WhatsApp templates, the app's
+// promo cards and shared links, so it sends people home with their query (?from=app).
+live.get('/mumbai', (c) => serveLive(c, '/mumbai', ['/mumbai', '/mumbai.html'], [fillHomeWall, fillHomeSpeakers]))
+const toHome = (c: any) => c.redirect('/' + new URL(c.req.url).search, 301)
+live.get('/delhi', toHome)
+live.get('/delhi.html', toHome)
+live.get('/delhi/', toHome)
 
 export default live

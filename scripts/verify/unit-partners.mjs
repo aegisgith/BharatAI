@@ -20,7 +20,7 @@ const onDisk = (p) => existsSync(join(ROOT, 'public', p.replace(/^\//, '')))
 // The list
 check('seven partners, in the home page order, and IDFC FIRST Bank as Powered by',
   DATA.partners.length === 7 && DATA.partners[0].name === 'Aegis Superintelligence Lab' && DATA.partners[6].name === 'EXENI' && DATA.powered_by.name === 'IDFC FIRST Bank')
-const home = readFileSync(join(ROOT, 'public/index.html'), 'utf8')
+const home = readFileSync(join(ROOT, 'public/mumbai.html'), 'utf8')
 check('every label is the one the home page strip shows', DATA.partners.every(p => home.includes('ptile-role">' + p.label.replace(/&/g, '&amp;') + '<')),
   DATA.partners.filter(p => !home.includes('ptile-role">' + p.label.replace(/&/g, '&amp;') + '<')).map(p => p.label))
 check('every logo (site and email) is a file on the site', [DATA.powered_by.logo, DATA.powered_by.email_logo, ...DATA.partners.flatMap(p => [p.logo, p.email_logo])].every(onDisk),
@@ -70,7 +70,7 @@ for (const page of ['conference', 'exhibition', 'feedback', 'partner']) {
   const h = readFileSync(join(ROOT, 'public', page + '.html'), 'utf8')
   check(`${page}.html shows it once`, h.split(L.PARTNERS_MARK).length === 2 && h.includes('alt="IDFC FIRST Bank"'))
 }
-for (const page of ['delhi', 'delhi-hi', 'delhi-register', 'index']) {
+for (const page of ['index', 'delhi-hi', 'delhi-register', 'mumbai']) { // index = Delhi since 24 Nov 2026; mumbai has its own strip
   const h = readFileSync(join(ROOT, 'public', page + '.html'), 'utf8')
   check(`${page}.html is left alone`, !h.includes(L.PARTNERS_MARK))
 }

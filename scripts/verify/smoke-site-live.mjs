@@ -102,7 +102,7 @@ check('...and on the website', /Tarun Chugh[\s\S]{0,300}/.test(r.text) && r.text
 // ---- the exhibitor wall and the talk cards, live (18 Nov 2026) ----
 // Dipti Agrawal's photo went on her pass after her talk was added, and Tudip's logo was
 // uploaded in Admin: neither reached the website, which changed only when rebuilt.
-const PAGES = { '/exhibition': 'exhibition.html', '/partner': 'partner.html', '/': 'index.html' };
+const PAGES = { '/exhibition': 'exhibition.html', '/partner': 'partner.html', '/mumbai': 'mumbai.html' };
 const page = (f) => readFileSync(join(ROOT, 'public', f), 'utf8').replace(/^﻿/, '');
 const conferenceAssets = W.env.ASSETS;
 W.env.ASSETS = { fetch: async (req) => {
@@ -159,8 +159,8 @@ r = await W.call('GET', '/exhibition', undefined, anon);
 const diptiCard = card(r.text, 'Dipti Agrawal');
 check('...Dipti’s talk card carries Tudip’s new logo at once, sized from the file', /class="talk-logo"/.test(diptiCard) && /width="400" height="100"[^>]*src="\/api\/uploads\/exhibitors\//.test(diptiCard), diptiCard);
 check('...the wall shows CGI’s new logo at once, with its real size', r.text.includes(`src="${cgiLogo}" width="400" height="100"`), (r.text.match(/exh-logo">[\s\S]{0,200}/) || [''])[0]);
-r = await W.call('GET', '/', undefined, anon);
-check('the home page is drawn live and its strip shows the new logo', r.status === 200 && r.headers.get('x-site-live') === 'live' && r.text.includes(`src="${cgiLogo}" width="400" height="100"`) && r.text.includes('<!-- speakers:start'), [r.status, r.headers.get('x-site-live')]);
+r = await W.call('GET', '/mumbai', undefined, anon);
+check('/mumbai (the home page until 24 Nov 2026) is drawn live and its strip shows the new logo', r.status === 200 && r.headers.get('x-site-live') === 'live' && r.text.includes(`src="${cgiLogo}" width="400" height="100"`) && r.text.includes('<!-- speakers:start'), [r.status, r.headers.get('x-site-live')]);
 check('...its speaker grid is the app’s', /<!-- speakers:start[\s\S]*?Tarun Chugh[\s\S]*?<!-- speakers:end/.test(r.text) && !/<!-- speakers:start[\s\S]*?Nilesh Shah[\s\S]*?<!-- speakers:end/.test(r.text));
 r = await W.call('GET', '/partner', undefined, anon);
 check('/partner too', r.status === 200 && r.text.includes(`src="${cgiLogo}"`));
@@ -181,8 +181,8 @@ r = await W.call('GET', '/conference', undefined, anon);
 check('with the database down: the page as built, status 200', r.status === 200 && r.text === template, [r.status, r.text.length]);
 r = await W.call('GET', '/exhibition', undefined, anon);
 check('...and /exhibition as built, status 200', r.status === 200 && r.text === page('exhibition.html'), [r.status, r.headers.get('x-site-live')]);
-r = await W.call('GET', '/', undefined, anon);
-check('...and the home page as built, status 200', r.status === 200 && r.text === page('index.html'), [r.status, r.headers.get('x-site-live')]);
+r = await W.call('GET', '/mumbai', undefined, anon);
+check('...and /mumbai as built, status 200', r.status === 200 && r.text === page('mumbai.html'), [r.status, r.headers.get('x-site-live')]);
 W.env.DB = goodDB;
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');

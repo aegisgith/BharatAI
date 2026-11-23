@@ -37,7 +37,7 @@ const fill = async (p, v) => {
       const lost = [];
       page.on('pageerror', (e) => errors.push(e.message));
       page.on('response', (r) => { if (r.status() >= 400 && r.url().startsWith(BASE)) lost.push(r.status() + ' ' + r.url()); });
-      await page.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await page.goto(BASE + '/', { waitUntil: 'load' });
       await page.click('.dl-hero-actions .btn-primary');
       await page.waitForTimeout(700);
       await page.locator('.dl-pass:has(h3:text-is("Premium Delegate Pass")) a').click();
@@ -105,7 +105,7 @@ const fill = async (p, v) => {
       const page = await ctx.newPage();
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
-      await page.goto(BASE + '/delhi#booths', { waitUntil: 'load' });
+      await page.goto(BASE + '/#booths', { waitUntil: 'load' });
       await page.locator('.dl-sale-row', { hasText: 'Innovator Booth' }).locator('a').click();
       await page.waitForURL('**/delhi-exhibit?booth=Innovator%20Booth');
       await page.waitForLoadState('load');
@@ -143,7 +143,7 @@ const fill = async (p, v) => {
     for (const [w, h, m] of [[360, 740, true], [390, 844, true], [820, 1180, false], [1280, 720, false], [1920, 1080, false]]) {
       const c = await browser.newContext({ viewport: { width: w, height: h }, isMobile: m, hasTouch: m, deviceScaleFactor: m ? 2 : 1 });
       const p = await c.newPage();
-      for (const u of ['/delhi-register', '/delhi-exhibit', '/delhi']) {
+      for (const u of ['/delhi-register', '/delhi-exhibit', '/']) {
         await p.goto(BASE + u, { waitUntil: 'load' });
         await p.waitForTimeout(400);
         const r = await p.evaluate(() => ({
@@ -161,7 +161,7 @@ const fill = async (p, v) => {
       const p = await c.newPage();
       const errs = [];
       p.on('pageerror', (e) => errs.push(e.message));
-      await p.goto(BASE + '/delhi', { waitUntil: 'load' });
+      await p.goto(BASE + '/', { waitUntil: 'load' });
       for (const sel of ['#passes .dl-pass', '#booths .dl-sale-row', '#partner .dl-sale-row']) {
         await p.locator(sel).first().scrollIntoViewIfNeeded();
         await p.waitForTimeout(900);

@@ -2,7 +2,7 @@
 // D1), turned into what the website shows. One module, two callers (16 Nov 2026):
 //
 //   - scripts/gen-schedule.mjs and scripts/gen-speakers.mjs run it in Node at build time
-//     and write public/conference.html, public/index.html and public/llms.txt;
+//     and write public/conference.html, public/mumbai.html and public/llms.txt;
 //   - the worker runs it on every request for /conference (src/routes/site-live.ts), so a
 //     change made in Admin is on the website within a minute, before any build.
 //

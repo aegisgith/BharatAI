@@ -10,7 +10,7 @@
 // and this writes, between <!-- speakers:start --> and <!-- speakers:end -->:
 //   - public/conference.html: the ministers' grid, then every speaker (the worker draws
 //     the same block live from D1, so this is the template and the fallback);
-//   - public/index.html: the home grid (#spkGrid), everyone who is not a minister; the
+//   - public/mumbai.html (the home page until 24 Nov 2026): the grid (#spkGrid), everyone who is not a minister; the
 //     ministers' row above it stays written by hand (its tags are marketing words);
 //     and the Event's "performer" list in the page's JSON-LD;
 //   - public/llms.txt: one line a person.
@@ -60,7 +60,7 @@ const r = renderSpeakers(programme.speakers, { photoOf: (sp) => photoDims.get(sp
 
 for (const [page, fill] of [
   ['public/conference.html', (t) => fillBlock(t, 'speakers', r.conference)],
-  ['public/index.html', (t) => fillPerformers(fillBlock(t, 'speakers', r.home), r.performers)],
+  ['public/mumbai.html', (t) => fillPerformers(fillBlock(t, 'speakers', r.home), r.performers)],
   ['public/llms.txt', (t) => fillBlock(t, 'speakers', '## Confirmed speakers\n\n' + r.llms + '\n')],
 ]) {
   const src = lf(readFileSync(page, 'utf8'))

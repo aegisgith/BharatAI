@@ -123,7 +123,7 @@ check('an unknown ?interest= is ignored', openPage({ search: '?interest=<b>x' })
 }
 
 // ---- the page's facts ----
-const html = read('public/delhi.html');
+const html = read('public/index.html');
 const body = html.slice(html.indexOf('<body>')).replace(/<script[\s\S]*?<\/script>/g, '').replace(/<style[\s\S]*?<\/style>/g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ');
 check('28 July 2027 really is a Wednesday, 29 July a Thursday', new Date('2027-07-28T12:00:00Z').getUTCDay() === 3 && new Date('2027-07-29T12:00:00Z').getUTCDay() === 4);
 check('the page says Wednesday 28 and Thursday 29 July 2027', body.includes('Wednesday 28 and Thursday 29 July 2027'));
@@ -224,19 +224,20 @@ const badMenu = withMenu.filter((f) => {
   const s = read('public/' + f);
   const menu = s.slice(s.indexOf('class="nav-menu"'), s.indexOf('nav-toggle'));
   const order = [...menu.matchAll(/href="([^"]+)" (?:target="_blank" rel="noopener noreferrer" )?class="nav-link/g)].map((m) => m[1]);
-  const at = order.indexOf('/delhi');
-  return order.filter((h) => h === '/delhi').length !== 1 || order[at - 1] !== '/campus-series' || order[at + 1] !== '/ai-readiness';
+  const at = order.indexOf('/mumbai');
+  return order.includes('/delhi') || order.filter((h) => h === '/mumbai').length !== 1 || order[at - 1] !== '/campus-series' || order[at + 1] !== '/gallery';
 });
-check('every menu has Delhi 2027 once, after Campus Series, before AI Readiness', badMenu.length === 0, badMenu.join(', '));
-check('Delhi 2027 is the current tab only on its own page', read('public/delhi.html').includes('href="/delhi" class="nav-link active"') && withMenu.filter((f) => f !== 'delhi.html' && f !== 'delhi-hi.html' && read('public/' + f).includes('href="/delhi" class="nav-link active"')).length === 0);
+// 24 Nov 2026: Delhi became the home page and the old home moved to /mumbai, in Delhi 2027's place.
+check('every menu has Mumbai once, after Campus Series, before Gallery, and no Delhi 2027 tab', badMenu.length === 0, badMenu.join(', '));
+check('Mumbai is the current tab only on its own page, Home on the home page', read('public/mumbai.html').includes('href="/mumbai" class="nav-link active"') && read('public/index.html').includes('href="/" class="nav-link active"') && withMenu.filter((f) => f !== 'mumbai.html' && read('public/' + f).includes('href="/mumbai" class="nav-link active"')).length === 0);
 const versions = new Set(withMenu.map((f) => (read('public/' + f).match(/style\.css\?v=([\w]+)/) || [])[1]));
 check('one stylesheet version on every page', versions.size === 1, [...versions].join(', '));
 const v = [...versions][0];
 check('the service worker stores that same version', read('public/sw.js').includes(`'/css/style.css?v=${v}'`), v);
 
 // ---- found by search engines and AI crawlers ----
-check('in the sitemap', read('public/sitemap.xml').includes('<loc>https://bharataiinnovation.com/delhi</loc>'));
-check('in llms.txt, as a separate event at Bharat Mandapam', /\[Delhi 2027\]\(https:\/\/bharataiinnovation\.com\/delhi\).*separate event.*Bharat Mandapam/.test(read('public/llms.txt')));
+check('in the sitemap: the home page, and /mumbai; /delhi (a redirect) is not', read('public/sitemap.xml').includes('<loc>https://bharataiinnovation.com/</loc>') && read('public/sitemap.xml').includes('<loc>https://bharataiinnovation.com/mumbai</loc>') && !read('public/sitemap.xml').includes('<loc>https://bharataiinnovation.com/delhi</loc>'));
+check('in llms.txt, as a separate event at Bharat Mandapam', /\[Delhi 2027\]\(https:\/\/bharataiinnovation\.com\/\).*separate event.*Bharat Mandapam/.test(read('public/llms.txt')));
 
 // ---- the home page's heading font and the bar's line ----
 const home = read('public/index.html');

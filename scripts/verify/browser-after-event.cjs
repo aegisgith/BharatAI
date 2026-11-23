@@ -56,7 +56,7 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, 
     await p.locator('#fb-send').tap();
     await p.waitForSelector('#fb-done:not([hidden])', { timeout: 20000 }).catch(() => {});
     const doneState = await p.evaluate(() => ({ title: document.getElementById('fb-done-title').textContent, delhi: !document.getElementById('fb-delhi').hidden, href: document.querySelector('#fb-delhi a').getAttribute('href') }));
-    check('sent: "Thank you, Asha." and Delhi passes offered to a "yes"', doneState.title === 'Thank you, Asha.' && doneState.delhi && doneState.href === '/delhi#passes', JSON.stringify(doneState));
+    check('sent: "Thank you, Asha." and Delhi passes offered to a "yes"', doneState.title === 'Thank you, Asha.' && doneState.delhi && doneState.href === '/#passes', JSON.stringify(doneState));
     if (SHOTS) await p.screenshot({ path: path.join(SHOTS, 'feedback-done.png') });
     const saved = (await sql('SELECT * FROM feedback WHERE attendee_id = 801'))[0] || {};
     check('the answers are saved as given', saved.recommend === 8 && saved.useful === 'exhibition,people' && saved.met === 'several' && saved.entry === 'good' && saved.delhi === 'yes' && saved.fix === 'Signs to the boardrooms', JSON.stringify(saved));

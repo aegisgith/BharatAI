@@ -30,7 +30,7 @@ check('/training-workshop: Premium and VIP struck through in both places', (work
 check('/training-workshop: Delegate too', struck(workshops, '4,999', '8,999'));
 for (const old of ['4,999', '9,999', '19,999']) check('/training-workshop: ' + old + ' is never offered plainly', plainOld(workshops, old) === 0);
 
-for (const f of ['index.html', 'conference.html']) {
+for (const f of ['mumbai.html', 'conference.html']) {
   check(f + ': what search engines are told is the top price is today\'s', read(f).includes('"highPrice": "24999"') && !read(f).includes('"highPrice": "19999"'));
 }
 for (const f of ['conference.html', 'networking.html', 'training-workshop.html', 'delegation.html']) {
@@ -52,8 +52,8 @@ check('/exhibition: what search engines read is the plain price', exhibition.inc
 const fpVersion = (exhibition.match(/js\/floor-plan\.js\?v=([0-9a-z-]+)/) || [])[1] || '';
 check('/exhibition: the floor plan script is a new version, so nobody keeps the old file', fpVersion >= '2026-11-06b', fpVersion);
 check('floor plan: the panel strikes the old price for a pod only', read('js/floor-plan.js').includes("it.type==='pod'") && read('js/floor-plan.js').includes('inr(38000)'));
-check('/partner and the home page show it struck through too', /&#8377;38,000<\/s> &#8377;48,000/.test(read('partner.html')) && /<s>₹38,000<\/s> ₹48,000/.test(read('index.html')));
-check('/delhi, a different event, is not touched', !read('delhi.html').includes('38,000'));
+check('/partner and the home page show it struck through too', /&#8377;38,000<\/s> &#8377;48,000/.test(read('partner.html')) && /<s>₹38,000<\/s> ₹48,000/.test(read('mumbai.html')));
+check('the home page (Delhi, a different event) is not touched', !read('index.html').includes('38,000'));
 
 console.log(fails ? `\n${fails} FAILED` : '\nall unit checks passed');
 process.exit(fails ? 1 : 0);

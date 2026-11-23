@@ -32,7 +32,9 @@ const ROUTES = '_routes.json'
 // talk cards and speaker grid are drawn from the app on every request (site-live.ts),
 // so a logo or photo uploaded in Admin shows within a minute. Their .html spellings
 // stay static.
-const FORCE_DYNAMIC = new Set(['/contact', '/register', '/conference', '/', '/exhibition', '/partner'])
+// Since 24 Nov 2026 the home page is the static Delhi 2027 page and the Mumbai page moved
+// to /mumbai, drawn live in its place. /delhi has no file any more: the Worker sends it home.
+const FORCE_DYNAMIC = new Set(['/contact', '/register', '/conference', '/mumbai', '/exhibition', '/partner'])
 
 // Directories whose files the Worker must serve, never Pages directly. The
 // Campus Series insights reports (public/reports/*.pdf) are given out only

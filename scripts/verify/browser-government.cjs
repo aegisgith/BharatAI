@@ -212,11 +212,11 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
     {
       const c = await browser.newContext({ viewport: { width: 1306, height: 760 } });
       const p = await c.newPage();
-      await p.goto(BASE + '/delhi', { waitUntil: 'domcontentloaded' });
+      await p.goto(BASE + '/mumbai', { waitUntil: 'domcontentloaded' });
       await p.click('#nav-menu a[href="/government"]');
       await p.waitForURL('**/government');
       await settled(p);
-      check('laptop: the Govt tab opens the page from /delhi, and is the current tab', p.url().endsWith('/government') && await p.locator('#nav-menu a[href="/government"].active').isVisible());
+      check('laptop: the Govt tab opens the page from /mumbai, and is the current tab', p.url().endsWith('/government') && await p.locator('#nav-menu a[href="/government"].active').isVisible());
       const r = await p.evaluate(() => {
         const copy = document.querySelector('.gv-hero-copy').getBoundingClientRect();
         const fig = document.querySelector('.gv-figure').getBoundingClientRect();

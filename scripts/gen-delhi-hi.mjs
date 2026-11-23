@@ -1,4 +1,5 @@
-// public/delhi-hi.html, the Delhi 2027 page in Hindi (13 Nov 2026), made from public/delhi.html
+// public/delhi-hi.html, the Delhi 2027 page in Hindi (13 Nov 2026), made from public/index.html
+// (the Delhi page, which became the home page on 24 Nov 2026; it was public/delhi.html)
 // so the design, the effects, the forms and the prices stay the English page's own.
 // Every sentence is swapped by an exact [English, Hindi] pair that must be found the number
 // of times given: when the English page changes, this stops and names the sentence, and
@@ -8,7 +9,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const ROOT = new URL('../', import.meta.url);
-const SRC = new URL('public/delhi.html', ROOT);
+const SRC = new URL('public/index.html', ROOT);
 const OUT = new URL('public/delhi-hi.html', ROOT);
 const en = readFileSync(SRC, 'utf8');
 const crlf = en.includes('\r\n');
@@ -28,9 +29,9 @@ if (!head) problems.push('head: <title> ... first </script> not found');
 else s = s.replace(head[0], `<title>भारत एआई इनोवेशन दिल्ली 2027 · 28–29 जुलाई, भारत मंडपम, नई दिल्ली</title>
     <meta name="description" content="भारत एआई इनोवेशन 28–29 जुलाई 2027 को भारत मंडपम, नई दिल्ली में: मुख्य वक्तव्य, पैनल चर्चाएँ, इनोवेशन टॉक्स और शोकेस, एआई वर्कशॉप, हैकथॉन, प्रदर्शनी और B2B नेटवर्किंग। पास, बूथ और पार्टनरशिप अभी उपलब्ध हैं।">
     <link rel="canonical" href="https://bharataiinnovation.com/delhi-hi">
-    <link rel="alternate" hreflang="en" href="https://bharataiinnovation.com/delhi">
+    <link rel="alternate" hreflang="en" href="https://bharataiinnovation.com/">
     <link rel="alternate" hreflang="hi" href="https://bharataiinnovation.com/delhi-hi">
-    <link rel="alternate" hreflang="x-default" href="https://bharataiinnovation.com/delhi">
+    <link rel="alternate" hreflang="x-default" href="https://bharataiinnovation.com/">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Bharat AI Innovation">
     <meta property="og:locale" content="hi_IN">
@@ -49,16 +50,16 @@ else s = s.replace(head[0], `<title>भारत एआई इनोवेशन
     <meta name="twitter:description" content="भारत का B2B एआई सम्मेलन और प्रदर्शनी 28–29 जुलाई 2027 को भारत मंडपम, नई दिल्ली में।">
     <meta name="twitter:image" content="https://bharataiinnovation.com/images/og/delhi.jpg">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
-    <!-- Made by scripts/gen-delhi-hi.mjs from public/delhi.html. Do not edit by hand. -->`);
+    <!-- Made by scripts/gen-delhi-hi.mjs from public/index.html. Do not edit by hand. -->`);
 swap('<html lang="en">', '<html lang="hi">');
 swap('    <style>\n', "    <style>\n    /* Hindi: Devanagari letters come from Mukta (fonts.css), the rest stays the site's own. */\n    :root { --font-body: 'Manrope', 'Mukta', sans-serif; --font-display: 'Bricolage Grotesque', 'Mukta', sans-serif; }\n    body { font-family: var(--font-body); }\n");
 swap('<a href="#main-content" class="skip-link">Skip to main content</a>', '<a href="#main-content" class="skip-link">मुख्य सामग्री पर जाएँ</a>');
 
 // ---- the menu (its links stay the English pages) ----
-for (const [a, b] of [['Home', 'होम'], ['Conference', 'कॉन्फ्रेंस'], ['Exhibition', 'प्रदर्शनी'], ['Networking', 'नेटवर्किंग'], ['Passes', 'पास'], ['Partner', 'पार्टनर'], ['Govt', 'सरकार'], ['Workshops', 'वर्कशॉप'], ['AI Marketplace', 'एआई मार्केटप्लेस'], ['Campus Series', 'कैंपस सीरीज़'], ['Gallery', 'गैलरी'], ['AI Readiness', 'एआई रेडीनेस'], ['Contact', 'संपर्क']]) {
+for (const [a, b] of [['Mumbai', 'मुंबई'], ['Conference', 'कॉन्फ्रेंस'], ['Exhibition', 'प्रदर्शनी'], ['Networking', 'नेटवर्किंग'], ['Passes', 'पास'], ['Partner', 'पार्टनर'], ['Govt', 'सरकार'], ['Workshops', 'वर्कशॉप'], ['AI Marketplace', 'एआई मार्केटप्लेस'], ['Campus Series', 'कैंपस सीरीज़'], ['Gallery', 'गैलरी'], ['AI Readiness', 'एआई रेडीनेस'], ['Contact', 'संपर्क']]) {
   swap(`class="nav-link">${a}</a>`, `class="nav-link">${b}</a>`);
 }
-swap('class="nav-link active">Delhi 2027</a>', 'class="nav-link active">दिल्ली 2027</a>');
+swap('class="nav-link active">Home</a>', 'class="nav-link active">होम</a>');
 swap('Get your pass', 'अपना पास लें', 3);
 
 // ---- the hero ----
@@ -68,7 +69,7 @@ swap('India’s B2B platform for AI comes to the capital. Two days at Bharat Man
   'भारत का B2B एआई प्लेटफ़ॉर्म अब राजधानी में। भारत मंडपम में दो दिन, उन सरकारी विभागों, उद्यमों और स्टार्टअप्स के साथ जो एआई का उपयोग कर रहे हैं, और उन कंपनियों के साथ जो इसे बना रही हैं।');
 swap('</i> Save the date</a>', '</i> कैलेंडर में जोड़ें</a>', 2);
 swap('<a href="#booths">Apply for a booth</a> or <a href="#partner">become a partner</a>', '<a href="#booths">बूथ के लिए आवेदन करें</a> या <a href="#partner">पार्टनर बनें</a>');
-swap('<a href="/delhi-hi" hreflang="hi" lang="hi">हिन्दी में पढ़ें</a>', '<a href="/delhi" hreflang="en" lang="en">Read in English</a>');
+swap('<a href="/delhi-hi" hreflang="hi" lang="hi">हिन्दी में पढ़ें</a>', '<a href="/" hreflang="en" lang="en">Read in English</a>');
 
 // ---- the programme ----
 swap('What is on in <span class="accent">New Delhi</span>', '<span class="accent">नई दिल्ली</span> में क्या होगा');
@@ -279,6 +280,14 @@ swap('<h4>Contact Us</h4>', '<h4>संपर्क करें</h4>');
 swap('</i> Delhi edition: Bharat Mandapam, Pragati Maidan, New Delhi</p>', '</i> दिल्ली संस्करण: भारत मंडपम, प्रगति मैदान, नई दिल्ली</p>');
 swap('aria-label="Register for Delhi 2027"', 'aria-label="दिल्ली 2027 के लिए रजिस्टर करें"');
 swap('<b>28–29 July 2027</b><span>Bharat Mandapam, New Delhi</span>', '<b>28–29 जुलाई 2027</b><span>भारत मंडपम, नई दिल्ली</span>');
+
+// ---- the Prime Minister's quote (kept on the home page, 24 Nov 2026): the quote stays in his words ----
+swap('alt="Shri Narendra Modi, Hon\'ble Prime Minister of India, speaking on Artificial Intelligence"', 'alt="माननीय प्रधानमंत्री श्री नरेन्द्र मोदी, आर्टिफ़िशियल इंटेलिजेंस पर बोलते हुए"');
+swap('<blockquote class="pm-vision-quote">', '<blockquote class="pm-vision-quote" lang="en">');
+swap('<div class="pm-vision-name">Narendra Modi</div>', '<div class="pm-vision-name">नरेन्द्र मोदी</div>');
+swap('<div class="pm-vision-title">Hon\'ble Prime Minister of India</div>', '<div class="pm-vision-title">माननीय प्रधानमंत्री, भारत</div>');
+swap('This conference is built on PM Modi\'s conviction that AI must strengthen innovation, empower citizens, and drive inclusive growth across every sector of the Indian economy.',
+  'यह सम्मेलन प्रधानमंत्री मोदी के इस विश्वास पर आधारित है कि एआई नवाचार को मज़बूत करे, नागरिकों को सशक्त बनाए और भारतीय अर्थव्यवस्था के हर क्षेत्र में समावेशी विकास को आगे बढ़ाए।');
 
 if (problems.length) {
   console.error('gen-delhi-hi: the English page has changed. Update these pairs:\n  ' + problems.join('\n  '));

@@ -295,7 +295,7 @@ r = await hit('GET', '/register');
 check('/register: the group section books online', /id="delegation-section"[\s\S]{0,400}href="\/group" class="rg-ghost">Bringing a team\? Book for your group/.test(r.text) && !/price of four/.test(r.text), '');
 r = await hit('GET', '/contact');
 check('/contact: the group form opens with the notice and a link to /group, the form kept', r.text.includes('Booking 3 or more passes? Book online with up to 30% off.') && r.text.includes('href="/group"') && r.text.includes('cf-groupsize') && !/5\+ people/.test(r.text), '');
-const site = readFileSync(new URL('../../public/index.html', import.meta.url), 'utf8'), llms = readFileSync(new URL('../../public/llms.txt', import.meta.url), 'utf8');
+const site = readFileSync(new URL('../../public/mumbai.html', import.meta.url), 'utf8'), llms = readFileSync(new URL('../../public/llms.txt', import.meta.url), 'utf8');
 check('the home page and llms.txt state the new rule and link /group', !/price of four/.test(site) && site.includes('https://bharataiinnovation.com/group') && site.includes('href="/group"') && !/price of four/.test(llms) && llms.includes('https://bharataiinnovation.com/group'), '');
 
 console.log(fails() ? `\n${fails()} FAILED` : '\nALL PASSED');

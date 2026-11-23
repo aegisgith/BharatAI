@@ -165,7 +165,7 @@ const table = Object.fromEntries([...src.match(/const DELHI_PASS_PRICES_INR[^{]*
 check('the earlier Mumbai prices are the ones charged', JSON.stringify(table) === JSON.stringify(Object.fromEntries([...src.match(/const PASS_PRICES_INR[^{]*\{([^}]*)\}/)[1].matchAll(/'([^']+)':\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]).filter(([k]) => k in table))), JSON.stringify(table));
 const inr = (n) => n.toLocaleString('en-IN');
 const money = (n) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const delhi = read('public/delhi.html');
+const delhi = read('public/index.html');
 for (const p of PASSES) {
   const base = table[p.value];
   const total = base + Math.round(base * 18) / 100;

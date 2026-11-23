@@ -109,7 +109,7 @@ const widest = (p, ms) => p.evaluate((t) => new Promise((done) => { let most = 0
   check('every tier and option has an Enquire button', [...now.matchAll(/<h3>([^<]+)<\/h3>\s*(?:<p class="tier-subtitle"|<div class="option-price")/g)].every((m) => chosen.includes(decode(m[1]))));
   check('without the script, each button still reaches the sponsorship form', [...now.matchAll(/<a href="([^"]+)"[^>]*data-enquire=/g)].every((m) => m[1] === '/contact#sponsorship'));
   const strip = (h) => { const s = h.replace(/\r\n/g, '\n'); return s.slice(s.indexOf('<!-- exhibitors:start'), s.indexOf('<!-- exhibitors:end -->')); };
-  check('the exhibitor strip is the same block the home page carries', strip(now).length > 1000 && strip(now) === strip(read('public/index.html')));
+  check('the exhibitor strip is the same block the home page carries', strip(now).length > 1000 && strip(now) === strip(read('public/mumbai.html')));
   check('the logo generator keeps this copy up to date', read('scripts/gen-exhibitor-logos.mjs').includes("fill('public/partner.html', home)"));
   check('the motion file carries the MIT notice', read('public/css/partner-motion.css').includes('Permission is hereby granted, free of charge'));
   check('the footer credits both libraries, which the free Skiper UI licence asks for', /pr-credit[\s\S]{0,120}skiper-ui\.com[\s\S]{0,160}VengeanceUI/.test(now));

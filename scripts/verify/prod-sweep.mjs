@@ -18,19 +18,22 @@ r = await hit('/app');
 check('/app 200 with security headers', r.status === 200 && r.h['x-content-type-options'] === 'nosniff' && r.h['x-frame-options'] === 'SAMEORIGIN', r.status + ' ' + JSON.stringify([r.h['x-content-type-options'], r.h['x-frame-options']]));
 r = await hit('/admin');
 check('/admin 200', r.status === 200, r.status);
-for (const p of ['/', '/delhi', '/government', '/campus-djsanghvi', '/campus-series', '/marketplace', '/partner', '/about']) {
+for (const p of ['/', '/mumbai', '/government', '/campus-djsanghvi', '/campus-series', '/marketplace', '/partner', '/about']) {
   r = await hit(p);
   check(`${p} 200`, r.status === 200, r.status);
 }
 r = await hit('/');
 check('static site carries _headers', r.h['x-content-type-options'] === 'nosniff', JSON.stringify(r.h['x-content-type-options']));
 
-r = await hit('/delhi');
-check('/delhi names the venue, the dates and the Delegate Pass price', r.text.includes('Bharat Mandapam') && r.text.includes('28–29 July 2027') && r.text.includes('₹4,999'), r.status);
+// 24 Nov 2026: the Delhi page is the home page; /delhi (emails, WhatsApp, the app) sends people there.
+r = await hit('/delhi?from=app');
+check('/delhi sends people home, keeping ?from', r.status === 301 && r.h.location === '/?from=app', r.status + ' ' + r.h.location);
+r = await hit('/');
+check('the home page is Delhi: the venue, the dates and the Delegate Pass price', r.text.includes('Bharat Mandapam') && r.text.includes('28–29 July 2027') && r.text.includes('₹4,999'), r.status);
 r = await hit('/delhi-2027.ics');
 check('the Delhi calendar file is a calendar file', r.status === 200 && r.text.includes('DTSTART;VALUE=DATE:20270728') && !String(r.h['content-type'] || '').includes('html'), r.status + ' ' + r.h['content-type']);
 r = await hit('/');
-check('the home menu has the Delhi 2027 tab', r.text.includes('href="/delhi" class="nav-link"'), 'no tab');
+check('the home menu has the Mumbai tab, and Home is the current tab', r.text.includes('href="/mumbai" class="nav-link"') && r.text.includes('href="/" class="nav-link active"'), 'no tab');
 r = await hit('/training-workshop');
 check('/training-workshop has the call for workshop partners and its form', r.status === 200 && r.text.includes('id="wp-form"') && r.text.includes('Call for Workshop'), r.status);
 r = await hit('/partner');
@@ -131,15 +134,15 @@ r = await hit('/app');
 const appTag = /<script src="(\/app\.js\?v=[0-9a-f]{8})"><\/script>/.exec(r.text);
 r = appTag ? await hit(appTag[1]) : { status: 0, text: '' };
 check('app code carries the Visitor fixes', ['function inboxEmpty', 'function downloadAgendaIcs', 'function renderVisitorChecklist', 'function inviteColleague', "reason === 'passcard'"].every(m => r.text.includes(m)), (appTag ? appTag[1] : 'no versioned /app.js tag') + ' ' + r.status);
-r = await hit('/');
-// Mumbai is over (23 Nov 2026): the home page sells no Mumbai pass. It thanks
+r = await hit('/mumbai');
+// Mumbai is over (23 Nov 2026). Since 24 Nov this is /mumbai, the home page until then: the home page sells no Mumbai pass. It thanks
 // Mumbai and points to Delhi; its Delhi buttons carry ?source=home-... so the
 // Delhi form records which one brought a buyer (delhi-home-hero, delhi-home-cta).
-check('home hero thanks Mumbai and leads to Delhi, and sells no Mumbai pass', r.status === 200 && r.text.includes('Thank you, Mumbai') && r.text.includes('href="/delhi"') && !/\/register(\?source=[a-z0-9-]+)?#delegate/.test(r.text) && !r.text.includes('Get my Delegate Pass') && !r.text.includes('id="stickyCta"') && !r.text.includes('5,000+'), r.status);
+check('home hero thanks Mumbai and leads to Delhi, and sells no Mumbai pass', r.status === 200 && r.text.includes('Thank you, Mumbai') && r.text.includes('href="/"') && r.text.includes('href="/mumbai" class="nav-link active"') && !/\/register(\?source=[a-z0-9-]+)?#delegate/.test(r.text) && !r.text.includes('Get my Delegate Pass') && !r.text.includes('id="stickyCta"') && !r.text.includes('5,000+'), r.status);
 // No pass price anywhere on the home page (the organiser, 4 Nov 2026): prices
 // live on /passes and /delhi. Booth prices may stay.
 const passPrices = ['4,999', '8,999', '9,999', '14,999', '19,999', '24,999', '3,999', 'INR 999', '&#8377;999', '₹999'].filter(p => r.text.includes(p));
-check('home Delhi buttons are tagged and no pass price is on the page', ['/delhi-register?source=home-hero', '/delhi-register?source=home-cta'].every(m => r.text.includes(m)) && passPrices.length === 0, 'tags, or prices: ' + passPrices.join(' '));
+check('/mumbai: its Delhi buttons are tagged and no pass price is on the page', ['/delhi-register?source=mumbai-hero', '/delhi-register?source=mumbai-cta'].every(m => r.text.includes(m)) && passPrices.length === 0, 'tags, or prices: ' + passPrices.join(' '));
 // The photo gallery (23 Nov 2026): its own tab in every menu, and the page holds both events'
 // photos. A photo file is checked too: the menu went live once before the page existed.
 check('home menu has the Gallery tab', r.text.includes('<a href="/gallery" class="nav-link">Gallery</a>'), 'no Gallery link');

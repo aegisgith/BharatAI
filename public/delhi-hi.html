@@ -6,9 +6,9 @@
     <title>भारत एआई इनोवेशन दिल्ली 2027 · 28–29 जुलाई, भारत मंडपम, नई दिल्ली</title>
     <meta name="description" content="भारत एआई इनोवेशन 28–29 जुलाई 2027 को भारत मंडपम, नई दिल्ली में: मुख्य वक्तव्य, पैनल चर्चाएँ, इनोवेशन टॉक्स और शोकेस, एआई वर्कशॉप, हैकथॉन, प्रदर्शनी और B2B नेटवर्किंग। पास, बूथ और पार्टनरशिप अभी उपलब्ध हैं।">
     <link rel="canonical" href="https://bharataiinnovation.com/delhi-hi">
-    <link rel="alternate" hreflang="en" href="https://bharataiinnovation.com/delhi">
+    <link rel="alternate" hreflang="en" href="https://bharataiinnovation.com/">
     <link rel="alternate" hreflang="hi" href="https://bharataiinnovation.com/delhi-hi">
-    <link rel="alternate" hreflang="x-default" href="https://bharataiinnovation.com/delhi">
+    <link rel="alternate" hreflang="x-default" href="https://bharataiinnovation.com/">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Bharat AI Innovation">
     <meta property="og:locale" content="hi_IN">
@@ -27,7 +27,7 @@
     <meta name="twitter:description" content="भारत का B2B एआई सम्मेलन और प्रदर्शनी 28–29 जुलाई 2027 को भारत मंडपम, नई दिल्ली में।">
     <meta name="twitter:image" content="https://bharataiinnovation.com/images/og/delhi.jpg">
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
-    <!-- Made by scripts/gen-delhi-hi.mjs from public/delhi.html. Do not edit by hand. -->
+    <!-- Made by scripts/gen-delhi-hi.mjs from public/index.html. Do not edit by hand. -->
 
     <link rel="preload" href="/fonts/manrope-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/bricolage-grotesque-latin-400-800.woff2" as="font" type="font/woff2" crossorigin>
@@ -482,6 +482,8 @@
     .sticky-cta .btn { flex: none; width: auto !important; padding: 0.7rem 1.15rem; min-height: 46px; font-size: 0.92rem; }
     @media (prefers-reduced-motion: reduce) { .sticky-cta, .sticky-cta.is-on { transition: none; } }
     @media print { .sticky-cta { display: none; } }
+        /* The Prime Minister's quote (style.css), shorter on a phone as it was on the old home page */
+        @media (max-width: 768px) { .pm-vision-section { padding: 2.75rem 0 !important; } }
     </style>
 </head>
 <body>
@@ -494,7 +496,7 @@
                 <img width="120" height="50" loading="eager" fetchpriority="high" decoding="async" src="/images/logo-nav.webp" alt="Bharat AI Innovation Logo" style="height:44px;width:auto;border-radius:12px;padding:6px;background:rgba(255,255,255,0.95);box-shadow:0 2px 8px rgba(0,0,0,0.08);">
             </a>
             <div class="nav-menu" id="nav-menu">
-                <a href="/" class="nav-link">होम</a>
+                <a href="/" class="nav-link active">होम</a>
                 <a href="/conference" class="nav-link">कॉन्फ्रेंस</a>
                 <a href="/exhibition" class="nav-link">प्रदर्शनी</a>
                 <a href="/networking" class="nav-link">नेटवर्किंग</a>
@@ -504,7 +506,7 @@
                 <a href="/training-workshop" class="nav-link">वर्कशॉप</a>
                 <a href="/marketplace" class="nav-link">एआई मार्केटप्लेस</a>
                 <a href="/campus-series" class="nav-link">कैंपस सीरीज़</a>
-                <a href="/delhi" class="nav-link active">दिल्ली 2027</a>
+                <a href="/mumbai" class="nav-link">मुंबई</a>
                 <a href="/gallery" class="nav-link">गैलरी</a>
                 <a href="/ai-readiness" class="nav-link">एआई रेडीनेस</a>
                 <a href="https://bellaward.com" target="_blank" rel="noopener noreferrer" class="nav-link">AGBA</a>
@@ -537,7 +539,35 @@
                 <a href="#passes" class="btn btn-primary btn-lg dl-shine">अपना पास लें <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                 <a href="/delhi-2027.ics" id="dl-save-date" class="btn btn-ghost btn-lg" download="bharat-ai-innovation-delhi-2027.ics"><i class="fas fa-calendar-plus" aria-hidden="true"></i> कैलेंडर में जोड़ें</a>
             </div>
-            <p class="dl-hero-alt"><a href="#booths">बूथ के लिए आवेदन करें</a> या <a href="#partner">पार्टनर बनें</a> · <a href="/delhi" hreflang="en" lang="en">Read in English</a></p>
+            <p class="dl-hero-alt"><a href="#booths">बूथ के लिए आवेदन करें</a> या <a href="#partner">पार्टनर बनें</a> · <a href="/" hreflang="en" lang="en">Read in English</a></p>
+        </div>
+    </section>
+
+    <!-- ===== PM MODI VISION QUOTE (kept from the Mumbai home page, 24 Nov 2026) ===== -->
+    <section class="pm-vision-section section-pad-sm" id="pm-vision">
+        <div class="pm-vision-bg-pattern"></div>
+        <div class="container">
+            <div class="pm-vision-card reveal">
+                <div class="pm-vision-media">
+                    <div class="pm-vision-img-frame">
+                        <img width="1024" height="653" loading="lazy" decoding="async" src="images/pm-modi.jpg" alt="माननीय प्रधानमंत्री श्री नरेन्द्र मोदी, आर्टिफ़िशियल इंटेलिजेंस पर बोलते हुए">
+                    </div>
+                </div>
+                <div class="pm-vision-content">
+                    <div class="pm-vision-quote-mark"><i class="fas fa-quote-left"></i></div>
+                    <blockquote class="pm-vision-quote" lang="en">
+                        Artificial Intelligence represents a transformation of the same magnitude as historic turning points in human civilization.
+                    </blockquote>
+                    <div class="pm-vision-attribution">
+                        <div class="pm-vision-name">नरेन्द्र मोदी</div>
+                        <div class="pm-vision-title">माननीय प्रधानमंत्री, भारत</div>
+                    </div>
+                    <div class="pm-vision-divider"></div>
+                    <p class="pm-vision-inspired">
+                        यह सम्मेलन प्रधानमंत्री मोदी के इस विश्वास पर आधारित है कि एआई नवाचार को मज़बूत करे, नागरिकों को सशक्त बनाए और भारतीय अर्थव्यवस्था के हर क्षेत्र में समावेशी विकास को आगे बढ़ाए।
+                    </p>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -1116,7 +1146,7 @@
         + '&text=' + encodeURIComponent('Bharat AI Innovation Delhi 2027')
         + '&dates=20270728/20270730'
         + '&location=' + encodeURIComponent('Bharat Mandapam, Pragati Maidan, New Delhi')
-        + '&details=' + encodeURIComponent('India’s B2B AI conference and exhibition. https://bharataiinnovation.com/delhi');
+        + '&details=' + encodeURIComponent('India’s B2B AI conference and exhibition. https://bharataiinnovation.com/');
       ['dl-save-date', 'dl-save-date-2'].forEach(function (id) {
         var a = document.getElementById(id);
         if (!a) return;
