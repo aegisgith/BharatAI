@@ -128,6 +128,33 @@ check('each photo in the list carries links signed for the organiser', /[?&]u=ad
 r = await get(p0.o.replace('https://bharataiinnovation.com', ''));
 check("the organiser's own full-size saves are never counted", r.status === 200 && saved('admin') === 0, { status: r.status, n: saved('admin') });
 
+// ---- a speaker's album (routes/photos.ts keys 's<speaker id>' / 't<talk id>'): its own
+// limit, 50 (the organiser, 23 Nov 2026), since the album holds only photos of them ----
+const more = Array.from({ length: 60 }, (_, i) => ('S' + String(i).padStart(2, '0') + 'speakerabcd').slice(0, 12));
+more.forEach((pid, i) => {
+  db.run('INSERT INTO event_photos (event_id, pid, drive_id, title, day, taken_at, camera, hall, width, height, bytes, raw) VALUES (1, ?, ?, ?, ?, ?, ?, ?, 6000, 4000, 9, 0)',
+    [pid, 'sdrive' + i, `SP${i}.JPG`, '2026-11-21', '2026-11-21T05:00:00Z', 'Cam 1', '']);
+  store.set(`event-photos/1/${pid}/o.jpg`, new Uint8Array([0xff, 0xd8, 0x6f, i]));
+});
+for (let i = 0; i < 15; i++) await get(link(more[i], 'o', 's123'));
+r = await get(link(more[15], 'o', 's123'));
+check("a speaker's album saves a 16th different photo (speakers' limit 50, not 15)", r.status === 200 && saved('s123') === 16, { status: r.status, n: saved('s123') });
+for (let i = 16; i < 50; i++) await get(link(more[i], 'o', 's123'));
+r = await get(link(more[50], 'o', 's123'));
+check('...and is refused at the 51st, with the page that says why', r.status === 429 && saved('s123') === 50 && /You have saved 50 photos/.test(await r.text()), { status: r.status, n: saved('s123') });
+r = await get(link(more[0], 'o', 't45'));
+check("an Innovation Talk speaker's album ('t<id>') has its own count", r.status === 200 && saved('t45') === 1, { status: r.status, n: saved('t45') });
+r = await as('GET', '/api/admin/event-photos');
+check('the summary keeps them apart: attendees at their limit, speakers at theirs', r.status === 200 && r.json.limit === 15 && r.json.speaker_limit === 50
+  && r.json.downloads.at_limit === 1 && r.json.downloads.speakers_at_limit === 1, r.json && { limit: r.json.limit, speaker_limit: r.json.speaker_limit, downloads: r.json.downloads });
+r = await as('POST', '/api/admin/event-photos/settings', { speaker_download_limit: 501 });
+check("a speakers' limit over 500 is refused", r.status === 400, r.status);
+r = await as('POST', '/api/admin/event-photos/settings', { speaker_download_limit: 55 });
+check("the organiser raises the speakers' limit to 55, the attendees' stays 15", r.status === 200 && r.json.speaker_limit === 55 && r.json.limit === undefined
+  && rows("SELECT value FROM app_settings WHERE key = 'photo_download_limit'")[0].value === '15', r.json);
+r = await get(link(more[50], 'o', 's123'));
+check('...and the 51st now saves', r.status === 200 && saved('s123') === 51, { status: r.status, n: saved('s123') });
+
 // ---- a database without migration 0064 ----
 const W2 = await talksWorld({ seedTalks: false });
 W2.env.UPLOADS = env.UPLOADS;

@@ -97,13 +97,21 @@ export async function linksForDrive(c: any, person: string, driveIds: string[], 
   return out
 }
 
-export async function downloadLimit(c: any): Promise<number> {
+// A speaker's album (person 's<speaker id>' or 't<talk id>', src/routes/photos.ts) holds
+// only photos of that speaker, found by face, so it gets its own, higher limit (the
+// organiser, 23 Nov 2026: 50; app_settings photo_download_limit_speakers).
+export const DEFAULT_SPEAKER_DOWNLOAD_LIMIT = 50
+export const isSpeakerAlbum = (person: string) => /^[st]\d+$/.test(String(person || ''))
+
+export async function downloadLimit(c: any, person = ''): Promise<number> {
+  const speaker = isSpeakerAlbum(person)
   try {
-    const r = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'photo_download_limit'").first() as any
+    const key = speaker ? 'photo_download_limit_speakers' : 'photo_download_limit'
+    const r = await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(key).first() as any
     const n = parseInt(String(r?.value ?? ''), 10)
     if (Number.isFinite(n) && n >= 0) return n
   } catch { /* the default */ }
-  return DEFAULT_DOWNLOAD_LIMIT
+  return speaker ? DEFAULT_SPEAKER_DOWNLOAD_LIMIT : DEFAULT_DOWNLOAD_LIMIT
 }
 
 // Counts one save of an original. True: let it through. Saving a photo already saved
@@ -172,7 +180,7 @@ st.get('/photo/:pid/:file', async (c) => {
   const h = new Headers({ ...NOINDEX, 'Content-Type': 'image/jpeg' })
   if (obj.size) h.set('Content-Length', String(obj.size))
   if (original) {
-    const limit = await downloadLimit(c)
+    const limit = await downloadLimit(c, person)
     if (!(await countDownload(c, person, Number(row.id), limit))) {
       try { await obj.body?.cancel() } catch { /* nothing to free */ }
       return refuse(429, true, 'limit', limit)
@@ -196,9 +204,14 @@ st.get('/api/admin/event-photos', async (c) => {
   try {
     const days = await all(c, 'SELECT day, COUNT(*) AS photos, SUM(hidden) AS hidden, SUM(highlight) AS highlights, SUM(raw) AS raw, SUM(bytes) AS bytes FROM event_photos WHERE event_id = ? GROUP BY day ORDER BY day', ev)
     const limit = await downloadLimit(c)
+    const speakerLimit = await downloadLimit(c, 's0')
     const dl = await c.env.DB.prepare('SELECT COUNT(DISTINCT d.person) AS people, COUNT(*) AS photos, COALESCE(SUM(d.times), 0) AS saves FROM photo_downloads d JOIN event_photos p ON p.id = d.photo_id WHERE p.event_id = ?').bind(ev).first() as any
-    const full = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM (SELECT d.person FROM photo_downloads d JOIN event_photos p ON p.id = d.photo_id WHERE p.event_id = ? GROUP BY d.person HAVING COUNT(*) >= ?)').bind(ev, Math.max(limit, 1)).first() as any
-    return c.json({ days, limit, downloads: { people: Number(dl?.people || 0), photos: Number(dl?.photos || 0), saves: Number(dl?.saves || 0), at_limit: Number(full?.n || 0) },
+    // Who has used every save: attendees against their limit, speakers' albums
+    // ('s<id>' / 't<id>', isSpeakerAlbum) against theirs.
+    const SPEAKER_SQL = "(d.person GLOB 's[0-9]*' OR d.person GLOB 't[0-9]*')"
+    const atLimit = async (speakers: boolean, n: number) => Number(((await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM (SELECT d.person FROM photo_downloads d JOIN event_photos p ON p.id = d.photo_id WHERE p.event_id = ? AND ${speakers ? '' : 'NOT '}${SPEAKER_SQL} GROUP BY d.person HAVING COUNT(*) >= ?)`).bind(ev, Math.max(n, 1)).first()) as any)?.n || 0)
+    return c.json({ days, limit, speaker_limit: speakerLimit, downloads: { people: Number(dl?.people || 0), photos: Number(dl?.photos || 0), saves: Number(dl?.saves || 0),
+      at_limit: await atLimit(false, limit), speakers_at_limit: await atLimit(true, speakerLimit) },
       signing: !!secretOf(c), bucket: !!c.env.UPLOADS })
   } catch { return c.json(NO_TABLES, 503) }
 })
@@ -225,14 +238,25 @@ st.get('/api/admin/event-photos/list', async (c) => {
   } catch { return c.json(NO_TABLES, 503) }
 })
 
-// The download limit for everyone (0 = no full-size saves at all).
+// The download limits (0 = no full-size saves at all): download_limit for attendees and
+// everyone else, speaker_download_limit for speakers' albums. Either or both.
 st.post('/api/admin/event-photos/settings', async (c) => {
   const b = await c.req.json().catch(() => ({})) as any
-  const n = Number(b.download_limit)
-  if (!Number.isInteger(n) || n < 0 || n > 500) return c.json({ error: 'The download limit must be a whole number from 0 to 500.' }, 400)
-  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('photo_download_limit', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(String(n)).run()
-  if (hooks.audit) { try { await hooks.audit(c, 'photos.limit', 'app_settings', 'photo_download_limit', { limit: n }) } catch { /* never fails the change */ } }
-  return c.json({ success: true, limit: n })
+  const given = (k: string) => b[k] !== undefined && b[k] !== null && b[k] !== ''
+  const ok = (v: any) => Number.isInteger(Number(v)) && Number(v) >= 0 && Number(v) <= 500
+  if (!given('download_limit') && !given('speaker_download_limit')) return c.json({ error: 'The download limit must be a whole number from 0 to 500.' }, 400)
+  if (given('download_limit') && !ok(b.download_limit)) return c.json({ error: 'The download limit must be a whole number from 0 to 500.' }, 400)
+  if (given('speaker_download_limit') && !ok(b.speaker_download_limit)) return c.json({ error: 'The speakers’ download limit must be a whole number from 0 to 500.' }, 400)
+  const put = "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"
+  const out: any = { success: true }
+  for (const [field, key, word] of [['download_limit', 'photo_download_limit', 'limit'], ['speaker_download_limit', 'photo_download_limit_speakers', 'speaker_limit']]) {
+    if (!given(field)) continue
+    const n = Number(b[field])
+    await c.env.DB.prepare(put).bind(key, String(n)).run()
+    if (hooks.audit) { try { await hooks.audit(c, 'photos.limit', 'app_settings', key, { limit: n }) } catch { /* never fails the change */ } }
+    out[word] = n
+  }
+  return c.json(out)
 })
 
 // Hide a photo (every link to it stops working) or put it in the "best of" set.

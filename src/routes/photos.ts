@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { isProtocol } from './speaker-brief'
 import { firstName } from './talk-brief'
 import { MUMBAI_WORDS, normName } from './conference'
+import { linksForDrive, downloadLimit, downloadsUsed } from './photo-store'
 import ALBUMS from '../data/speaker-photos.json'
 
 // ==================== SPEAKER PHOTOS (23 Nov 2026) ====================
@@ -26,9 +27,11 @@ import ALBUMS from '../data/speaker-photos.json'
 //   handle protocol); { anyway: true } sends to one.
 // - Sent = an admin_audit row (action 'speaker.photos', entity 'photo_album', the key).
 //
-// Photos are shown straight from Google Drive (lh3.googleusercontent.com), so the
-// Drive folder must stay "Anyone with the link: Viewer". Every /api/admin/* route here
-// is behind the admin middleware in index.tsx.
+// Photos come from our own copies in R2 (routes/photo-store.ts, linksForDrive): small and
+// large views, and full-size saves counted per person (50 for a speaker's album). A photo
+// not in R2 yet is shown from Google Drive (lh3.googleusercontent.com), which needs the
+// Drive folder at "Anyone with the link: Viewer"; once every photo is in R2 the folder can
+// be Restricted. Every /api/admin/* route here is behind the admin middleware in index.tsx.
 
 type Contact = { email: string; source: string; note: string; protocol?: boolean }
 type Hooks = {
@@ -77,6 +80,10 @@ export function bigUrl(id: string): string { return `https://lh3.googleuserconte
 // The whole photo, not cropped: the email shows it as it is; the page crops it square
 // itself, around their face.
 export function wideUrl(id: string, width = 600): string { return `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=w${width}` }
+// Our own copies (routes/photo-store.ts, R2, since 23 Nov 2026): s 600 px, m 1600 px, o the
+// original, each link signed for one person and one photo; saving an o is counted (50 for a
+// speaker's album). A photo not in R2 yet falls back to Drive, below.
+export type Got = Record<string, { s: string; m: string; o: string }>
 export function isRaw(id: string): boolean { return !!(DATA.photos[id] && DATA.photos[id][3]) }
 export function downloadUrl(id: string): string {
   return isRaw(id) ? `https://lh3.googleusercontent.com/d/${encodeURIComponent(id)}=s0` : `https://drive.google.com/uc?export=download&id=${encodeURIComponent(id)}`
@@ -126,7 +133,7 @@ function sameText(a: string, b: string): boolean {
 // The email. `forSpeaker` false: it goes to the company's booth contact, who is asked
 // to pass it on to the speaker.
 export function photosEmailHTML(a: { name: string; count: number; best: string[]; href: string; header: string; talk: boolean;
-    forSpeaker: boolean; company?: string }): { subject: string; html: string } {
+    forSpeaker: boolean; company?: string; got?: Got }): { subject: string; html: string } {
   const words = MUMBAI_WORDS
   const first = firstName(a.name)
   const n = a.count
@@ -138,7 +145,9 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
     : `Here are the photos of ${a.name} from ${a.talk ? 'their Innovation Talk' : 'their session'} at ${words.name} in Mumbai: ${photosWord} in all. Please pass this email on to ${first}.`
   // Whole photos, two a row: a square crop of a wide panel shot can leave them out of it.
   const pics = a.best.slice(0, 6)
-  const cell = (id: string) => `<td width="50%" style="padding:3px;vertical-align:top"><a href="${escH(a.href)}"><img src="${escH(wideUrl(id, 560))}" width="268" alt="Photo of ${escH(a.name)}" style="display:block;width:100%;max-width:268px;height:auto;border:0;border-radius:8px"></a></td>`
+  // Only the small size (s) ever goes in an email: mail scanners open links, and an
+  // original (o) would spend the person's saves.
+  const cell = (id: string) => `<td width="50%" style="padding:3px;vertical-align:top"><a href="${escH(a.href)}"><img src="${escH(a.got?.[id]?.s || wideUrl(id, 560))}" width="268" alt="Photo of ${escH(a.name)}" style="display:block;width:100%;max-width:268px;height:auto;border:0;border-radius:8px"></a></td>`
   const rows: string[] = []
   for (let i = 0; i < pics.length; i += 2) rows.push('<tr>' + pics.slice(i, i + 2).map(cell).join('') + (pics.length - i === 1 ? '<td width="50%"></td>' : '') + '</tr>')
   const grid = pics.length ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 18px">${rows.join('')}</table>` : ''
@@ -162,7 +171,11 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
 
 // Their page. Everything it needs is in the page: the photo ids sit in a JSON block
 // that the small script below reads (no inline handlers, no quotes to escape).
-export function albumPageHTML(a: { name: string; org: string; ids: string[]; focus?: Record<string, [number, number]> }): string {
+// got: our own signed links per Drive id (a photo missing from it is shown from Drive);
+// saves: how many originals they may save and have saved, when the photos come from R2.
+export function albumPageHTML(a: { name: string; org: string; ids: string[]; focus?: Record<string, [number, number]>; got?: Got;
+    saves?: { limit: number; used: number } | null }): string {
+  const got = a.got || {}
   const groups = byDay(a.ids)
   const total = groups.reduce((n, g) => n + g.ids.length, 0)
   const flat = groups.flatMap(g => g.ids)
@@ -176,9 +189,14 @@ export function albumPageHTML(a: { name: string; org: string; ids: string[]; foc
   }
   const sections = groups.map(g => `<section><h2>${escH(g.words)} <span>${g.ids.length}</span></h2><div class="grid">${g.ids.map(id => {
     const n = i++
-    return `<button type="button" class="ph" data-i="${n}" aria-label="Open photo ${n + 1} of ${total}"><img src="${escH(wideUrl(id, 700))}" alt="" loading="${n < 8 ? 'eager' : 'lazy'}" width="250" height="250"${at(id)}></button>`
+    return `<button type="button" class="ph" data-i="${n}" aria-label="Open photo ${n + 1} of ${total}"><img src="${escH(got[id]?.s || wideUrl(id, 700))}" alt="" loading="${n < 8 ? 'eager' : 'lazy'}" width="250" height="250"${at(id)}></button>`
   }).join('')}</div></section>`).join('')
-  const data = JSON.stringify(flat.map(id => [id, downloadUrl(id)])).replace(/</g, '\\u003c')
+  // Per photo: the large view and the full-size save.
+  const data = JSON.stringify(flat.map(id => [got[id]?.m || bigUrl(id), got[id]?.o || downloadUrl(id)])).replace(/</g, '\\u003c')
+  const s = a.saves
+  const savesLine = s ? (s.used >= s.limit
+    ? `You have saved ${s.limit} photos at full size, the most each person can. You can still look at all of them here.`
+    : `You can save up to ${s.limit} of your photos at full size${s.used ? ` (${s.used} saved so far)` : ''}.`) : ''
   const title = `Photos of ${a.name}`
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><title>${escH(title)} · ${escH(MUMBAI_WORDS.name)}</title>
@@ -214,7 +232,7 @@ dialog::backdrop{background:#0b0c12}
 <h1>${escH(title)}</h1>
 <p class="lead">${total === 1 ? '1 photo' : total + ' photos'}${a.org ? ' · ' + escH(a.org) : ''} · ${escH(MUMBAI_WORDS.line).replace(' · ', ' &middot; ')}</p></div></header>
 <main class="wrap">${sections || '<p class="note">No photos here yet.</p>'}
-<p class="note">Tap a photo to see it large and download it at full size. You are welcome to use and share these photos; if you post them on LinkedIn, please tag Bharat AI Innovation.<br>
+<p class="note">Tap a photo to see it large and download it at full size.${savesLine ? ' ' + escH(savesLine) : ''} You are welcome to use and share these photos; if you post them on LinkedIn, please tag Bharat AI Innovation.<br>
 A computer found these photos by matching faces, so one or two may show someone else.<br>
 Next: <a href="${SITE}/delhi">Bharat AI Innovation, New Delhi, 28 and 29 July 2027</a>.</p></main>
 <dialog id="lb" aria-label="Photo"><div class="lb">
@@ -230,7 +248,7 @@ Next: <a href="${SITE}/delhi">Bharat AI Innovation, New Delhi, 28 and 29 July 20
   var at = 0;
   function show(i){
     at = (i + ids.length) % ids.length;
-    img.src = 'https://lh3.googleusercontent.com/d/' + encodeURIComponent(ids[at][0]) + '=w2000';
+    img.src = ids[at][0];
     n.textContent = 'Photo ' + (at + 1) + ' of ' + ids.length;
     dl.href = ids[at][1];
   }
@@ -318,14 +336,19 @@ async function mailFor(c: any, r: Row) {
   const p = personFor(r.key)
   const href = await pageUrl(c, r.key)
   const header = hooks.emailHeader ? hooks.emailHeader('Your photos', MUMBAI_WORDS.line) : ''
-  return photosEmailHTML({ name: r.name, count: r.count, best: p ? p.best : [], href, header, talk: r.talk, forSpeaker: r.for_speaker, company: r.company })
+  const best = p ? p.best : []
+  // Signed for this person (the album key), the small size only.
+  const got = best.length ? await linksForDrive(c, r.key, best) : {}
+  return photosEmailHTML({ name: r.name, count: r.count, best, href, header, talk: r.talk, forSpeaker: r.for_speaker, company: r.company, got })
 }
 
 // ---------- routes ----------
 
 ph.get('/api/admin/speaker-photos', async (c) => {
   const rows = await rowsFor(c, 1)
-  const withLinks = await Promise.all(rows.map(async r => ({ ...r, page: r.count ? await pageUrl(c, r.key) : '', thumbs: r.best.map(id => thumbUrl(id, 120)) })))
+  // The small pictures on the list, from R2 as the organiser ('admin', never counted).
+  const got = await linksForDrive(c, 'admin', [...new Set(rows.flatMap(r => r.best))])
+  const withLinks = await Promise.all(rows.map(async r => ({ ...r, page: r.count ? await pageUrl(c, r.key) : '', thumbs: r.best.map(id => got[id]?.s || thumbUrl(id, 120)) })))
   const counts: Record<string, number> = {}
   for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1
   return c.json({ generated: DATA.generated, folder: DATA.folder, rows: withLinks, counts, photos: Object.keys(DATA.photos || {}).length })
@@ -378,7 +401,11 @@ ph.get('/photos/:key', async (c) => {
     if (p!.speakers.length) org = String(((await c.env.DB.prepare('SELECT organisation FROM speakers WHERE id = ?').bind(p!.speakers[0]).first()) as any)?.organisation || '')
     else if (p!.talks.length) org = String(((await c.env.DB.prepare('SELECT company FROM innovation_talks WHERE id = ?').bind(p!.talks[0]).first()) as any)?.company || '')
   } catch { /* the page shows without it */ }
-  return new Response(albumPageHTML({ name: p!.name, org, ids: p!.photos, focus: p!.focus }), { headers: head })
+  // Links signed for the album's own key, so every way into this person's page shares
+  // one count of full-size saves.
+  const got = await linksForDrive(c, p!.key, p!.photos)
+  const saves = Object.keys(got).length ? { limit: await downloadLimit(c, p!.key), used: await downloadsUsed(c, p!.key) } : null
+  return new Response(albumPageHTML({ name: p!.name, org, ids: p!.photos, focus: p!.focus, got, saves }), { headers: head })
 })
 
 export default ph
