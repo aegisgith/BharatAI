@@ -750,6 +750,8 @@
         }
         .gallery-foot { display: flex; gap: 0.75rem; justify-content: center; align-items: center; flex-wrap: wrap; margin-top: 1.75rem; }
         .gallery-foot .show-all { margin: 0; }
+        #past-gallery .gallery-sub { margin: 3.25rem auto 1.5rem; }
+        #past-gallery .gallery-sub .section-title { font-size: clamp(1.35rem, 2.8vw, 1.95rem); }
 
         /* --- Campus Series and venue, shortened --- */
         /* --- Partners (the organiser, 16 Nov 2026; rebuilt the same evening after
@@ -2410,6 +2412,59 @@
             </div>
             <div class="gallery-foot">
                 <button type="button" class="show-all" data-show-all="galleryGrid" data-more="See all {n} photos" data-less="Show fewer photos" aria-expanded="false" hidden><span class="show-label">See all photos</span><span class="chev" aria-hidden="true"></span></button>
+            </div>
+
+            <!-- The predecessor's grandest photos, kept beside Mumbai's (23 Nov 2026, the
+                 organiser: "those photos are grand"), always labelled as Data Science
+                 Congress. 720px copies from scripts/gen-home-images.mjs (DSC_BEST). -->
+            <div class="section-header reveal gallery-sub">
+                <h3 class="section-title">Before Bharat AI Innovation: <span class="accent">Data Science Congress</span></h3>
+                <p class="section-subtitle">Its predecessor, which started in 2017.</p>
+            </div>
+            <div class="gallery-grid" id="dscGrid" data-show="3,5">
+                <figure class="gallery-card reveal">
+                    <img width="1600" height="1066" decoding="async" src="images/gallery/7C2A3159.webp" srcset="img/t/7C2A3159.webp 720w, images/gallery/7C2A3159.webp 1600w" sizes="(max-width: 768px) 100vw, 50vw" alt="A panel on data science in e-commerce and retail, on the big stage at Data Science Congress" loading="lazy">
+                    <figcaption>The main stage</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-1">
+                    <img width="720" height="480" decoding="async" src="img/t/577B0776.webp" alt="A keynote speaker on a large lit stage between two tall screens at Data Science Congress" loading="lazy">
+                    <figcaption>Keynote</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-2">
+                    <img width="720" height="480" decoding="async" src="img/t/7C2A2823.webp" alt="Shri Y. S. Chowdary, then Minister of State for Science and Technology, speaking at Data Science Congress" loading="lazy">
+                    <figcaption>A minister’s address</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-3">
+                    <img width="720" height="480" decoding="async" src="img/t/MNP_3286.webp" alt="A panel on data science in banking and finance, on the wide red stage at Data Science Congress" loading="lazy">
+                    <figcaption>Banking and finance panel</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-4">
+                    <img width="720" height="480" decoding="async" src="img/t/OMY_3658.webp" alt="A panel on building skills for data-driven organisations at Data Science Congress" loading="lazy">
+                    <figcaption>Skills panel</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-1">
+                    <img width="720" height="480" decoding="async" src="img/t/7C2A2991.webp" alt="NVIDIA’s Managing Director giving a keynote at Data Science Congress" loading="lazy">
+                    <figcaption>NVIDIA keynote</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-2">
+                    <img width="720" height="480" decoding="async" src="img/t/7C2A2946.webp" alt="A panel on using data for better governance and society at Data Science Congress" loading="lazy">
+                    <figcaption>Governance panel</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-3">
+                    <img width="720" height="480" decoding="async" src="img/t/MNP_3564.webp" alt="Five women in conversation on a panel at Data Science Congress" loading="lazy">
+                    <figcaption>Women in data science</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-4">
+                    <img width="720" height="480" decoding="async" src="img/t/OMY_4127.webp" alt="A panel on data science in media and entertainment at Data Science Congress" loading="lazy">
+                    <figcaption>Media panel</figcaption>
+                </figure>
+                <figure class="gallery-card reveal reveal-delay-1">
+                    <img width="720" height="480" decoding="async" src="img/t/577B0642.webp" alt="The red-carpet entrance to Data Science Congress" loading="lazy">
+                    <figcaption>The entrance</figcaption>
+                </figure>
+            </div>
+            <div class="gallery-foot">
+                <button type="button" class="show-all" data-show-all="dscGrid" data-more="See all {n} photos" data-less="Show fewer photos" aria-expanded="false" hidden><span class="show-label">See all photos</span><span class="chev" aria-hidden="true"></span></button>
                 <a href="/past-speakers" class="btn btn-outline">Meet the past speakers <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
             </div>
         </div>
