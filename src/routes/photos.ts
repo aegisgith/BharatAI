@@ -575,7 +575,16 @@ async function sentLog(c: any): Promise<Map<string, { at: string; n: number; to:
 }
 
 // waiting: album keys whose session line-up is flagged and not yet confirmed (status 'panel').
-async function rowsFor(c: any, eventId = 1, waiting: Set<string> = new Set()): Promise<Row[]> {
+// Photos the organiser hid in Admin (event_photos.hidden = 1): never shown, counted or
+// emailed. null = no photo store on this database (no migration 0064, e.g. a test world):
+// photos are then shown from Drive. With the store, a photo it does not give a link for
+// is left out, never shown from Drive (a hidden photo must not come back that way).
+export async function hiddenPhotos(c: any): Promise<Set<string> | null> {
+  try { return new Set((await all(c, 'SELECT drive_id FROM event_photos WHERE hidden = 1 AND drive_id IS NOT NULL')).map((r: any) => String(r.drive_id))) } catch { return null }
+}
+export function shown(ids: string[], got: Got, store: boolean): string[] { return store ? ids.filter(id => got[id]) : ids }
+
+async function rowsFor(c: any, eventId = 1, waiting: Set<string> = new Set(), hidden: Set<string> | null = null): Promise<Row[]> {
   const [speakers, talks, contacts, sent] = await Promise.all([
     all(c, 'SELECT id, name, role, organisation, email, is_published FROM speakers WHERE event_id = ?', eventId).catch(() => [] as any[]),
     all(c, 'SELECT id, speaker_name, speaker_title, company, status FROM innovation_talks WHERE event_id = ?', eventId).catch(() => [] as any[]),
@@ -598,6 +607,7 @@ async function rowsFor(c: any, eventId = 1, waiting: Set<string> = new Set()): P
     const source = spEmail ? 'speaker' : tc ? tc.source : gEmail ? 'guest' : 'none'
     const protocol = sps.some(s => isProtocol(s)) || tks.some(t => !!(contacts[String(t.id)] || {}).protocol) || (!!guest && isProtocol({ name: guest.name, role: guest.title }))
     const s = sent.get(key)
+    if (hidden && hidden.size) { photos = photos.filter(id => !hidden.has(id)); best = best.filter(id => !hidden.has(id)) }
     const count = byDay(photos).reduce((n, g) => n + g.ids.length, 0)
     const status = !count ? 'no-photos' : protocol ? 'protocol' : !email ? 'no-email' : s ? 'sent' : waiting.has(key) ? 'panel' : check ? 'check' : 'ready'
     const isGuest = !!guest && !sps.length && !tks.length
@@ -619,16 +629,16 @@ async function rowsFor(c: any, eventId = 1, waiting: Set<string> = new Set()): P
   return rows
 }
 
-async function mailFor(c: any, r: Row, live: Live | null = null) {
+async function mailFor(c: any, r: Row, live: Live | null = null, hidden: Set<string> | null = null) {
   const p = personFor(r.key)
   const lv = live || await liveProgramme(c)
   const lineup = lineupHTML(lv.byKey.get(r.key) || [], true)
   const href = await pageUrl(c, r.key)
   const header = hooks.emailHeader ? hooks.emailHeader('Your photos', MUMBAI_WORDS.line) : ''
-  const best = p ? p.best : []
-  // Signed for this person (the album key), the small size only.
+  const best = (p ? p.best : []).filter(id => !(hidden && hidden.has(id)))
+  // Signed for this person (the album key), the small size only; never a hidden photo.
   const got = best.length ? await linksForDrive(c, r.key, best) : {}
-  return photosEmailHTML({ name: r.name, count: r.count, best, href, header, talk: r.talk, forSpeaker: r.for_speaker, company: r.company, got, guest: r.guest, lineup })
+  return photosEmailHTML({ name: r.name, count: r.count, best: shown(best, got, hidden !== null), href, header, talk: r.talk, forSpeaker: r.for_speaker, company: r.company, got, guest: r.guest, lineup })
 }
 
 // The live programme, every session's line-up check, the organiser's confirmations, and
@@ -639,17 +649,18 @@ async function panelState(c: any) {
   const ok = await confirmedPanels(c)
   const waiting = new Set<string>()
   for (const k of live.byKey.keys()) if (waitingFor(k, live, checks, ok).length) waiting.add(k)
-  return { live, checks, ok, waiting }
+  return { live, checks, ok, waiting, hidden: await hiddenPhotos(c) }
 }
 
 // ---------- routes ----------
 
 ph.get('/api/admin/speaker-photos', async (c) => {
   const st = await panelState(c)
-  const rows = await rowsFor(c, 1, st.waiting)
+  const rows = await rowsFor(c, 1, st.waiting, st.hidden)
   // The small pictures on the list, from R2 as the organiser ('admin', never counted).
   const got = await linksForDrive(c, 'admin', [...new Set(rows.flatMap(r => r.best))])
-  const withLinks = await Promise.all(rows.map(async r => ({ ...r, page: r.count ? await pageUrl(c, r.key) : '', thumbs: r.best.map(id => got[id]?.s || thumbUrl(id, 120)) })))
+  const withLinks = await Promise.all(rows.map(async r => ({ ...r, page: r.count ? await pageUrl(c, r.key) : '',
+    thumbs: shown(r.best, got, st.hidden !== null).map(id => got[id]?.s || thumbUrl(id, 120)) })))
   const counts: Record<string, number> = {}
   for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1
   // Every session with a line-up to check: flagged ones first, then the rest (for a look).
@@ -663,10 +674,10 @@ ph.get('/api/admin/speaker-photos', async (c) => {
 ph.get('/api/admin/speaker-photos/:key/preview', async (c) => {
   const key = c.req.param('key')
   const st = await panelState(c)
-  const r = (await rowsFor(c, 1, st.waiting)).find(x => x.key === key)
+  const r = (await rowsFor(c, 1, st.waiting, st.hidden)).find(x => x.key === key)
   if (!r) return c.json({ error: 'That person is not on the list any more.' }, 404)
   if (!r.count) return c.json({ error: 'No photos of ' + r.name + ' were found.' }, 409)
-  const mail = await mailFor(c, r, st.live)
+  const mail = await mailFor(c, r, st.live, st.hidden)
   return c.json({ to: r.email, subject: mail.subject, html: mail.html, page: await pageUrl(c, r.key), status: r.status })
 })
 
@@ -674,7 +685,7 @@ ph.post('/api/admin/speaker-photos/:key/send', async (c) => {
   const b = await c.req.json().catch(() => ({})) as any
   const key = c.req.param('key')
   const st = await panelState(c)
-  const r = (await rowsFor(c, 1, st.waiting)).find(x => x.key === key)
+  const r = (await rowsFor(c, 1, st.waiting, st.hidden)).find(x => x.key === key)
   if (!r) return c.json({ error: 'That person is not on the list any more.' }, 404)
   if (!r.count) return c.json({ error: 'No photos of ' + r.name + ' were found.' }, 409)
   if (r.status === 'panel') return c.json({ error: 'Check the line-up of ' + r.name + '’s session first (Panels to check, above), so the email names the right people.', panel: true }, 409)
@@ -683,7 +694,7 @@ ph.post('/api/admin/speaker-photos/:key/send', async (c) => {
   if (r.sent_count && !b.again) return c.json({ error: r.name + ' was already sent their photos on ' + r.sent_at + '.', already: true }, 409)
   if (!secretOf(c)) return c.json({ error: 'Photo links cannot be signed on this server.' }, 503)
   if (!hooks.sendEmail) return c.json({ error: 'Email is not set up on this server.' }, 503)
-  const mail = await mailFor(c, r, st.live)
+  const mail = await mailFor(c, r, st.live, st.hidden)
   const sent = await hooks.sendEmail(c, r.email, mail.subject, mail.html)
   if (!sent.ok) return c.json({ error: sent.error || 'The email did not go.' }, 502)
   if (hooks.audit) {
@@ -731,10 +742,12 @@ ph.get('/photos/:key', async (c) => {
   // An attendee who said "Don't match my photos" sees no photos, and "Not me" photos are gone.
   const mine = p!.attendee ? await attendeeChoices(c, p!.key) : { optedOut: false, notMe: new Set<string>() }
   if (mine.optedOut) return new Response(albumPageHTML({ name, org, ids: [] }).replace('No photos here yet.', 'You asked us not to match your photos, so there are none here.'), { headers: head })
-  const ids = p!.photos.filter(id => !mine.notMe.has(id))
+  const hidden = await hiddenPhotos(c)
   // Links signed for the album's own key, so every way into this person's page shares
-  // one count of full-size saves.
-  const got = await linksForDrive(c, p!.key, ids)
+  // one count of full-size saves. A hidden photo, or one the store has no link for, is left out.
+  const asked = p!.photos.filter(id => !mine.notMe.has(id) && !(hidden && hidden.has(id)))
+  const got = await linksForDrive(c, p!.key, asked)
+  const ids = shown(asked, got, hidden !== null)
   const saves = Object.keys(got).length ? { limit: await downloadLimit(c, p!.key), used: await downloadsUsed(c, p!.key) } : null
   // Their session(s) and who else is in each photo, from the live programme. Only speakers
   // and named guests are ever named; an attendee never is.
@@ -808,17 +821,19 @@ async function attendeeRows(c: any): Promise<AttRow[]> {
       choices.set(k, ch)
     }
   } catch { /* no audit table */ }
+  const hidden = await hiddenPhotos(c)
   const rows: AttRow[] = []
   for (const k of keys) {
     const al = ATT.albums[k], a = people.get(Number(k.slice(1)))
     if (!a) continue // no longer registered
     const ch = choices.get(k)
-    const count = al.photos.filter(id => !(ch && ch.notMe.has(id))).length
+    const keep = (id: string) => !(ch && ch.notMe.has(id)) && !(hidden && hidden.has(id))
+    const count = al.photos.filter(keep).length
     const email = String(a.email || '').trim().toLowerCase()
     const s = sent.get(k)
     const status = ch && ch.out ? 'opted-out' : !count ? 'no-photos' : a.unsubscribed_at ? 'unsubscribed' : !email || /@no-email\.invalid$/.test(email) ? 'no-email' : s ? 'sent' : al.check ? 'check' : 'ready'
     rows.push({ key: k, id: Number(a.id), name: String(a.name || ''), email, company: String(a.company || ''), pass: String(a.badge_type || ''), group: al.group,
-      group_name: (ATT.groups || [])[al.group] || '', came: al.came, check: al.check, count, best: al.best.filter(id => !(ch && ch.notMe.has(id))).slice(0, 6),
+      group_name: (ATT.groups || [])[al.group] || '', came: al.came, check: al.check, count, best: al.best.filter(keep).slice(0, 6),
       status, sent_at: s ? s.at : '', sent_count: s ? s.n : 0 })
   }
   const order: Record<string, number> = { ready: 0, check: 1, sent: 2, 'no-email': 3, unsubscribed: 4, 'opted-out': 5, 'no-photos': 6 }
@@ -829,13 +844,15 @@ async function attendeeMail(c: any, r: AttRow) {
   const href = await pageUrl(c, r.key)
   const header = hooks.emailHeader ? hooks.emailHeader('Your photos', MUMBAI_WORDS.line) : ''
   const got = r.best.length ? await linksForDrive(c, r.key, r.best) : {}
+  const store = (await hiddenPhotos(c)) !== null
   // No line-up and no one else's name: an attendee's email is only their own photos.
-  return photosEmailHTML({ name: r.name, count: r.count, best: r.best, href, header, talk: false, forSpeaker: true, got, attendee: true })
+  return photosEmailHTML({ name: r.name, count: r.count, best: shown(r.best, got, store), href, header, talk: false, forSpeaker: true, got, attendee: true })
 }
 ph.get('/api/admin/attendee-photos', async (c) => {
   const rows = await attendeeRows(c)
+  const store = (await hiddenPhotos(c)) !== null
   const got = await linksForDrive(c, 'admin', [...new Set(rows.flatMap(r => r.best.slice(0, 3)))])
-  const out = await Promise.all(rows.map(async r => ({ ...r, page: await pageUrl(c, r.key), thumbs: r.best.slice(0, 3).map(id => got[id]?.s || thumbUrl(id, 120)) })))
+  const out = await Promise.all(rows.map(async r => ({ ...r, page: await pageUrl(c, r.key), thumbs: shown(r.best.slice(0, 3), got, store).map(id => got[id]?.s || thumbUrl(id, 120)) })))
   const groups = (ATT.groups || []).map((g, i) => {
     const mine = rows.filter(r => r.group === i), n = (st: string) => mine.filter(r => r.status === st).length
     return { group: i, name: g, found: mine.length, ready: n('ready'), check: n('check'), sent: n('sent'), no_email: n('no-email') + n('unsubscribed'), opted_out: n('opted-out'), not_scanned: mine.filter(r => !r.came).length }

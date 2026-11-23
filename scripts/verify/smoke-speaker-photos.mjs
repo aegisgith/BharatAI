@@ -220,8 +220,8 @@ const html2 = await (await page(A.key, sig(A.key))).text();
 const ids2 = JSON.parse((html2.match(/<script type="application\/json" id="ids">([\s\S]*?)<\/script>/) || [])[1] || '[]');
 const r2 = (part, drive) => `/photo/${pidOf[drive]}/${part}.jpg?u=${encodeURIComponent(A.key)}`;
 check('the page shows a photo in R2 from our own link, signed for this album', inR2.every(d => html2.includes(r2('s', d))), inR2);
-check('...its large view and full-size save are ours too; the rest still come from Drive', inR2.every(d => ids2.some(x => x[0].includes(r2('m', d)) && x[1].includes(r2('o', d))))
-  && ids2.filter(x => /lh3\.googleusercontent\.com/.test(x[0])).length === A.photos.length - inR2.length, ids2.slice(0, 2));
+check('...its large view and full-size save are ours too; with the store present nothing comes from Drive', inR2.every(d => ids2.some(x => x[0].includes(r2('m', d)) && x[1].includes(r2('o', d))))
+  && ids2.length === inR2.length && !ids2.some(x => /googleusercontent|drive\.google/.test(x[0] + x[1])), ids2.length);
 check('the page says a speaker may save up to 50', html2.includes('You can save up to 50 of your photos at full size'), (html2.match(/You can save[^.]*\./) || [])[0]);
 const pv2 = await as('GET', `/api/admin/speaker-photos/${A.key}/preview`);
 check('the email shows its photo in R2 by our small link, and never a full-size link', pv2.json?.html.includes(r2('s', A.best[0])) && !/\/o\.jpg/.test(pv2.json?.html || ''), (pv2.json?.html.match(/\/photo\/[^"]+/) || [])[0]);
@@ -238,5 +238,12 @@ const got3 = await W.fetchRaw(new Request('https://bharataiinnovation.com' + o(i
 check('...and stops at the speakers\' limit (2 here)', got3.status === 429, got3.status);
 const html3 = await (await page(A.key, sig(A.key))).text();
 check('the page then says they have saved the most they can', html3.includes('You have saved 2 photos at full size'), (html3.match(/You (have|can) save[^.]*\./) || [])[0]);
+// A photo the organiser hides in Admin (event_photos.hidden) is gone everywhere, never shown from Drive instead.
+db.run('UPDATE event_photos SET hidden = 1 WHERE pid = ?', [pidOf[A.best[0]]]);
+const html4 = await (await page(A.key, sig(A.key))).text();
+l = await as('GET', '/api/admin/speaker-photos');
+const pv4 = await as('GET', `/api/admin/speaker-photos/${A.key}/preview`);
+check('a hidden photo is gone from their page, their count and their email, and not shown from Drive', !html4.includes(pidOf[A.best[0]]) && !html4.includes(A.best[0])
+  && row(A.key)?.count === A.photos.length - 1 && !(pv4.json?.html || '').includes(pidOf[A.best[0]]) && !(pv4.json?.html || '').includes(A.best[0]), { count: row(A.key)?.count, of: A.photos.length });
 
 done();
