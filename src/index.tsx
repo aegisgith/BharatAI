@@ -23,6 +23,7 @@ import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERRO
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import exhibitorMedia, { configureExhibitorMedia } from './routes/exhibitor-media'
 import whatsapp, { configureWhatsapp, whatsappTick } from './routes/whatsapp'
+import adminAssist from './routes/admin-assist'
 import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, SUMMIT_EVENT_NAME, SUMMIT_WHEN } from './routes/agent-summit'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
@@ -701,6 +702,10 @@ configureWhatsapp({ audit, actor: (c: any) => adminActor(c).actor, columns: (c: 
     return href
   } })
 app.route('/', whatsapp)
+// Ask, in Admin (24 Nov 2026): Ctrl+K or the Ask button answers a question from the
+// dashboard's own totals with Workers AI, and holds back any answer whose numbers the
+// totals do not hold. Behind the /api/admin/* middleware; routes/admin-assist.ts.
+app.route('/', adminAssist)
 // The event-week email (16 Nov 2026): "Get ready for 20 and 21 Nov" to delegates,
 // exhibitors and everyone else, a checklist of photo, pass, LinkedIn badge, the app and
 // meetings, each step a sign-in button; a campaign of kind event_week (BULK EMAIL
@@ -41670,7 +41675,8 @@ function adminPageHTML(): string {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
   <title>Admin Dashboard - Bharat AI Innovation 2026</title>
   <link rel="stylesheet" href="${FA_CSS}">
   <!-- Served from here since 30 Oct 2026, pinned: the CDN copy was unpinned (a
@@ -41858,6 +41864,9 @@ function adminPageHTML(): string {
        after the inline one, so utilities have always won ties against the page
        CSS above. Moving the link earlier would flip that cascade. -->
   <link rel="stylesheet" href="${TW_CSS}">
+  <!-- After Tailwind on purpose: the frame's look (sidebar groups, top bar, Ask box,
+       phone bottom bar, Overview briefing) wins ties with the utilities. -->
+  <link rel="stylesheet" href="/css/admin-shell.css?v=20261124">
 </head>
 <body class="min-h-screen flex">
 
@@ -41897,23 +41906,66 @@ function adminPageHTML(): string {
     <div class="sidebar-header p-5 border-b border-white/10 flex items-center gap-3">
       <img src="/images/logo-nav.webp" alt="BHAI" class="w-10 h-10 rounded-lg object-contain shrink-0">
       <div class="sidebar-header-text flex-1 min-w-0">
-        <h1 class="font-bold text-sm">BHAI</h1>
-        <p class="text-[10px] text-gray-400">Admin Dashboard</p>
+        <h1 class="font-bold text-sm">Bharat AI Innovation</h1>
+        <p class="text-[10px] text-gray-400">Admin</p>
       </div>
       <button onclick="toggleSidebar()" class="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-gray-400 hover:text-white" title="Toggle sidebar">
         <i class="fas fa-chevron-left text-xs sidebar-toggle-icon transition-transform"></i>
       </button>
     </div>
-    <nav class="p-3 flex-1 space-y-1">
+    <nav class="p-3 flex-1 space-y-1" aria-label="Admin screens">
+      <!-- Grouped 24 Nov 2026 (was one list of 26). A group folds from its heading and
+           remembers it (public/js/admin-shell.js); the group of the screen you are on
+           always opens. Every button is unchanged, so data-section is the way in. -->
       <button onclick="switchSection('overview')" class="sidebar-btn sidebar-active w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all" data-section="overview" title="Overview">
         <i class="fas fa-chart-pie w-5 text-center shrink-0"></i><span class="sidebar-label">Overview</span>
       </button>
+      <div class="as-nav-group" data-group="people">
+        <button type="button" class="as-group-label" aria-expanded="true"><span>People</span><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+        <div class="as-group-items">
       <button onclick="switchSection('attendees')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="attendees" title="Attendees">
         <i class="fas fa-users w-5 text-center shrink-0"></i><span class="sidebar-label">Attendees</span>
       </button>
+      <button onclick="switchSection('badge-desk')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="badge-desk" title="Badge Desk">
+        <i class="fas fa-qrcode w-5 text-center shrink-0"></i><span class="sidebar-label">Badge Desk</span>
+      </button>
+      <button onclick="switchSection('workshops')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="workshops" title="Workshop Seats">
+        <i class="fas fa-laptop-code w-5 text-center shrink-0"></i><span class="sidebar-label">Workshop Seats</span>
+      </button>
+      <button onclick="switchSection('rooms')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="rooms" title="Boardrooms">
+        <i class="fas fa-door-open w-5 text-center shrink-0"></i><span class="sidebar-label">Boardrooms</span>
+      </button>
+      <button onclick="switchSection('media')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="media" title="Media &amp; Influencer Pass requests">
+        <i class="fas fa-newspaper w-5 text-center shrink-0"></i><span class="sidebar-label">Media &amp; Influencer <span id="media-new-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Requests waiting for a decision"></span></span>
+      </button>
+        </div>
+      </div>
+      <div class="as-nav-group" data-group="programme">
+        <button type="button" class="as-group-label" aria-expanded="true"><span>Programme</span><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+        <div class="as-group-items">
       <button onclick="switchSection('sessions')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="sessions" title="Conference: programme, speakers, halls">
         <i class="fas fa-microphone-lines w-5 text-center shrink-0"></i><span class="sidebar-label">Conference</span>
       </button>
+      <button onclick="switchSection('innovation')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="innovation" title="Innovation Talks">
+        <i class="fas fa-lightbulb w-5 text-center shrink-0"></i><span class="sidebar-label">Innovation Talks</span>
+      </button>
+      <button onclick="switchSection('startup-pitch')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="startup-pitch" title="Startup Pitch">
+        <i class="fas fa-rocket w-5 text-center shrink-0"></i><span class="sidebar-label">Startup Pitch</span>
+      </button>
+      <button onclick="switchSection('awards')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="awards" title="Awards">
+        <i class="fas fa-trophy w-5 text-center shrink-0"></i><span class="sidebar-label">Awards</span>
+      </button>
+      <button onclick="switchSection('liveqa')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="liveqa" title="Live Q&amp;A: questions from the room and the moderator links">
+        <i class="fas fa-comments w-5 text-center shrink-0"></i><span class="sidebar-label">Live Q&amp;A</span>
+      </button>
+      <button onclick="switchSection('announcements')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="announcements" title="Announcements">
+        <i class="fas fa-bullhorn w-5 text-center shrink-0"></i><span class="sidebar-label">Announcements</span>
+      </button>
+        </div>
+      </div>
+      <div class="as-nav-group" data-group="expo">
+        <button type="button" class="as-group-label" aria-expanded="true"><span>Exhibition &amp; sponsors</span><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+        <div class="as-group-items">
       <button onclick="switchSection('exhibitors')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="exhibitors" title="Exhibitors">
         <i class="fas fa-store w-5 text-center shrink-0"></i><span class="sidebar-label">Exhibitors</span>
       </button>
@@ -41928,74 +41980,65 @@ function adminPageHTML(): string {
       <button onclick="switchSection('sponsorship')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="sponsorship" title="Sponsorship">
         <i class="fas fa-bullhorn w-5 text-center shrink-0"></i><span class="sidebar-label">Sponsorship</span>
       </button>
-      <button onclick="switchSection('awards')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="awards" title="Awards">
-        <i class="fas fa-trophy w-5 text-center shrink-0"></i><span class="sidebar-label">Awards</span>
+      <button onclick="switchSection('boothleads')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="boothleads" title="Booth Leads: who can scan at each booth, their leads, and the scanning guide">
+        <i class="fas fa-id-card w-5 text-center shrink-0"></i><span class="sidebar-label">Booth Leads</span>
       </button>
-      <button onclick="switchSection('announcements')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="announcements" title="Announcements">
-        <i class="fas fa-bullhorn w-5 text-center shrink-0"></i><span class="sidebar-label">Announcements</span>
-      </button>
-      <button onclick="switchSection('innovation')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="innovation" title="Innovation Talks">
-        <i class="fas fa-lightbulb w-5 text-center shrink-0"></i><span class="sidebar-label">Innovation Talks</span>
-      </button>
-      <button onclick="switchSection('startup-pitch')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="startup-pitch" title="Startup Pitch">
-        <i class="fas fa-rocket w-5 text-center shrink-0"></i><span class="sidebar-label">Startup Pitch</span>
-      </button>
+      <a href="/marketplace/admin" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all no-underline" title="AI Marketplace: review company listings">
+        <i class="fas fa-robot w-5 text-center shrink-0"></i><span class="sidebar-label">AI Marketplace <span id="mp-pending-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Listings waiting for review"></span></span>
+      </a>
+        </div>
+      </div>
+      <div class="as-nav-group" data-group="inbox">
+        <button type="button" class="as-group-label" aria-expanded="true"><span>Inbox</span><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+        <div class="as-group-items">
       <button onclick="switchSection('inquiries')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="inquiries" title="Inquiries">
         <i class="fas fa-inbox w-5 text-center shrink-0"></i><span class="sidebar-label">Inquiries</span>
       </button>
       <button onclick="switchSection('submissions')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="submissions" title="Submissions: logos, photos and team lists sent by email">
         <i class="fas fa-image w-5 text-center shrink-0"></i><span class="sidebar-label">Submissions <span id="sub-new-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Waiting for a decision"></span></span>
       </button>
-      <button onclick="switchSection('media')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="media" title="Media &amp; Influencer Pass requests">
-        <i class="fas fa-newspaper w-5 text-center shrink-0"></i><span class="sidebar-label">Media &amp; Influencer <span id="media-new-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Requests waiting for a decision"></span></span>
+      <button onclick="switchSection('whatsapp')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="whatsapp" title="WhatsApp: photos, passes and announcements from our own number, and the replies">
+        <i class="fas fa-comment-dots w-5 text-center shrink-0"></i><span class="sidebar-label">WhatsApp</span>
       </button>
-      <a href="/marketplace/admin" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all no-underline" title="AI Marketplace: review company listings">
-        <i class="fas fa-robot w-5 text-center shrink-0"></i><span class="sidebar-label">AI Marketplace <span id="mp-pending-badge" class="hidden ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300" title="Listings waiting for review"></span></span>
-      </a>
+        </div>
+      </div>
+      <div class="as-nav-group" data-group="money">
+        <button type="button" class="as-group-label" aria-expanded="true"><span>Money &amp; reports</span><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+        <div class="as-group-items">
       <button onclick="switchSection('payments')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="payments" title="Payments & Invoices">
         <i class="fas fa-file-invoice-dollar w-5 text-center shrink-0"></i><span class="sidebar-label">Payments</span>
-      </button>
-      <button onclick="switchSection('workshops')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="workshops" title="Workshop Seats">
-        <i class="fas fa-laptop-code w-5 text-center shrink-0"></i><span class="sidebar-label">Workshop Seats</span>
-      </button>
-      <button onclick="switchSection('badge-desk')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="badge-desk" title="Badge Desk">
-        <i class="fas fa-qrcode w-5 text-center shrink-0"></i><span class="sidebar-label">Badge Desk</span>
-      </button>
-      <button onclick="switchSection('boothleads')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="boothleads" title="Booth Leads: who can scan at each booth, their leads, and the scanning guide">
-        <i class="fas fa-id-card w-5 text-center shrink-0"></i><span class="sidebar-label">Booth Leads</span>
       </button>
       <button onclick="switchSection('analytics')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="analytics" title="Analytics">
         <i class="fas fa-chart-bar w-5 text-center shrink-0"></i><span class="sidebar-label">Analytics</span>
       </button>
-      <button onclick="switchSection('rooms')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="rooms" title="Boardrooms">
-        <i class="fas fa-door-open w-5 text-center shrink-0"></i><span class="sidebar-label">Boardrooms</span>
-      </button>
       <button onclick="switchSection('after')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="after" title="After the Event: feedback survey and exhibitor results">
         <i class="fas fa-flag-checkered w-5 text-center shrink-0"></i><span class="sidebar-label">After the Event</span>
       </button>
-      <button onclick="switchSection('whatsapp')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="whatsapp" title="WhatsApp: photos, passes and announcements from our own number, and the replies">
-        <i class="fas fa-comment-dots w-5 text-center shrink-0"></i><span class="sidebar-label">WhatsApp</span>
-      </button>
-      <button onclick="switchSection('liveqa')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="liveqa" title="Live Q&amp;A: questions from the room and the moderator links">
-        <i class="fas fa-comments w-5 text-center shrink-0"></i><span class="sidebar-label">Live Q&amp;A</span>
-      </button>
+        </div>
+      </div>
+      <div class="as-nav-group" data-group="next">
+        <button type="button" class="as-group-label" aria-expanded="true"><span>Next events</span><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+        <div class="as-group-items">
       <button onclick="switchSection('delhi2027')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="delhi2027" title="Delhi 2027: partner and discount codes">
         <i class="fas fa-ticket w-5 text-center shrink-0"></i><span class="sidebar-label">Delhi 2027</span>
       </button>
       <button onclick="switchSection('agentsummit')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="agentsummit" title="AI Agent Summit 2027: passes, showcase applications, partners">
         <i class="fas fa-robot w-5 text-center shrink-0"></i><span class="sidebar-label">AI Agent Summit</span>
       </button>
-      <div class="border-t border-white/10 my-2"></div>
+        </div>
+      </div>
+      <div class="as-nav-end">
       <button onclick="switchSection('settings')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="settings" title="Settings">
         <i class="fas fa-cog w-5 text-center shrink-0"></i><span class="sidebar-label">Settings</span>
       </button>
+      </div>
     </nav>
     <div class="sidebar-footer p-4 border-t border-white/10">
       <a href="/" class="flex items-center gap-2 text-xs text-gray-400 hover:text-white transition" title="View Public Site">
-        <i class="fas fa-external-link-alt shrink-0"></i><span class="sidebar-footer-text">View Public Site</span>
+        <i class="fas fa-external-link-alt shrink-0"></i><span class="sidebar-footer-text">View the website</span>
       </a>
       <button onclick="adminLogout()" class="mt-2 flex items-center gap-2 text-xs text-red-400 hover:text-red-300 transition" title="Logout">
-        <i class="fas fa-sign-out-alt shrink-0"></i><span class="sidebar-footer-text">Logout</span>
+        <i class="fas fa-sign-out-alt shrink-0"></i><span class="sidebar-footer-text">Sign out</span>
       </button>
     </div>
   </aside>
@@ -42014,8 +42057,14 @@ function adminPageHTML(): string {
         </div>
       </div>
       <div class="flex items-center gap-3">
+        <!-- Ask: Ctrl+K anywhere. Goes to a screen as you type, answers a question from the
+             dashboard's own totals (POST /api/admin/assist). Laptop only; a phone has it
+             in the middle of the bottom bar. -->
+        <button type="button" id="as-ask-btn" class="as-askbar" data-as-open aria-label="Ask AI or go to a screen (Ctrl+K)" title="Ask AI or go to a screen (Ctrl+K)">
+          <i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i><span>Ask AI or go to&hellip;</span><kbd>Ctrl K</kbd>
+        </button>
         <span id="admin-identity" class="hidden sm:inline px-3 py-1.5 rounded-lg text-xs font-medium glass text-gray-300"></span>
-        <button onclick="refreshCurrentSection()" class="px-3 py-1.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition"><i class="fas fa-sync-alt mr-1"></i>Refresh</button>
+        <button onclick="refreshCurrentSection()" class="as-refresh px-3 py-1.5 rounded-lg text-xs font-medium glass hover:bg-white/10 transition" title="Refresh this screen" aria-label="Refresh this screen"><i class="fas fa-sync-alt" aria-hidden="true"></i><span class="as-lbl">Refresh</span></button>
         <button id="live-chip" onclick="toggleAutoRefresh()" title="Auto-refresh Overview and Badge Desk every 60s" class="px-3 py-1.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 transition"><i class="fas fa-circle text-[6px] mr-1 badge-pulse"></i>Live</button>
       </div>
     </header>
@@ -42068,6 +42117,16 @@ function adminPageHTML(): string {
     </div>
   </main>
 
+  <!-- Phones and small tablets: the places reached most, under the thumb. Ask opens the
+       same box as Ctrl+K; Menu opens the sidebar as a drawer. Hidden from 1024px. -->
+  <nav id="as-tabbar" aria-label="Quick navigation">
+    <button type="button" data-as-tab="overview" onclick="switchSection('overview')"><i class="fas fa-chart-pie" aria-hidden="true"></i><span>Home</span></button>
+    <button type="button" data-as-tab="attendees" onclick="switchSection('attendees')"><i class="fas fa-users" aria-hidden="true"></i><span>Attendees</span></button>
+    <button type="button" class="as-tab-ask" data-as-open aria-label="Ask AI or go to a screen"><span class="as-tab-orb"><i class="fas fa-wand-magic-sparkles" aria-hidden="true"></i></span><span>Ask</span></button>
+    <button type="button" data-as-tab="inquiries" onclick="switchSection('inquiries')"><i class="fas fa-inbox" aria-hidden="true"></i><span>Inbox</span><span id="as-tab-inbox-n" class="as-tab-n" hidden></span></button>
+    <button type="button" data-as-tab="menu" onclick="openMobileSidebar()" aria-label="All screens"><i class="fas fa-bars" aria-hidden="true"></i><span>Menu</span></button>
+  </nav>
+
   <!-- Modal Container -->
   <div id="modal-container" class="fixed inset-0 z-40 modal-overlay hidden flex items-center justify-center p-4">
     <div id="modal-box" class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.15) transparent;"></div>
@@ -42079,6 +42138,7 @@ function adminPageHTML(): string {
   <script src="/static/event-week.js?v=20261116"></script>
   <script src="/static/entry-slots.js?v=20261120"></script>
   <script src="/admin.js?v=${adminScriptVersion()}"></script>
+  <script src="/js/admin-shell.js?v=20261124"></script>
   <script src="/static/exhibitor-media.js?v=20261118b"></script>
   <script src="/static/workshop-reminder.js?v=2026111503"></script>
 </body>
@@ -42502,8 +42562,8 @@ function adminPageScript(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { agentsummit:'AI Agent Summit 2027', overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', media:'Media & Influencer Pass', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', whatsapp:'WhatsApp', liveqa:'Live Q&A', delhi2027:'Delhi 2027', settings:'Settings' };
-      const subtitles = { agentsummit:'Event 3, Saturday 17 April 2027: passes, payments, showcase applications and partners', overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', media:'Requests from journalists and creators: read the answers, then approve and issue the pass, or decline', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', whatsapp:'Photos, passes and announcements sent from our own WhatsApp number, and the replies', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', delhi2027:'Partner and discount codes for Delhi passes, and what each has sold', settings:'Configure email, API keys and app settings' };
+      const titles = { agentsummit:'AI Agent Summit 2027', overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', media:'Media & Influencer Pass', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', whatsapp:'WhatsApp', liveqa:'Live Q&A', delhi2027:'Delhi 2027', boothleads:'Booth Leads', settings:'Settings' };
+      const subtitles = { agentsummit:'Event 3, Saturday 17 April 2027: passes, payments, showcase applications and partners', overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', media:'Requests from journalists and creators: read the answers, then approve and issue the pass, or decline', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', whatsapp:'Photos, passes and announcements sent from our own WhatsApp number, and the replies', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', delhi2027:'Partner and discount codes for Delhi passes, and what each has sold', boothleads:'Who can scan at each booth, their leads, and the scanning guide', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -42519,6 +42579,8 @@ function adminPageScript(): string {
       if (activeBtn && activeBtn.scrollIntoView) {
         try { activeBtn.scrollIntoView({ block: 'nearest' }); } catch (_) {}
       }
+      // The bottom bar, the sidebar group and the recent list (public/js/admin-shell.js).
+      if (window.AdminShell) AdminShell.onSection(sec);
       // On a phone the drawer covers the content it just navigated to.
       if (isMobileLayout()) closeMobileSidebar();
       refreshCurrentSection();
@@ -42588,6 +42650,9 @@ function adminPageScript(): string {
         if (!AUTO_REFRESH_SECTIONS[currentSection]) return;
         if (document.querySelector('#modal-container:not(.hidden)')) return;
         if (document.getElementById('inv-modal')) return;
+        // Someone typing a question into the Overview's briefing card is left to finish it.
+        var typing = document.activeElement;
+        if (typing && typing.closest && typing.closest('#ov-brief, #ov-jump')) return;
         refreshCurrentSection();
       }, 60000);
     }
@@ -44389,6 +44454,8 @@ function adminPageScript(): string {
       try { b = await api.get('/api/admin/events/' + EID + '/board'); } catch (e) { el.innerHTML = ''; return; }
       if (!b || bodyError(b) || !Array.isArray(b.passes)) { el.innerHTML = ''; return; }
       el.innerHTML = boardHTML(b, ev);
+      // The same numbers feed Today at a glance and Ask, so they ask for nothing more.
+      if (window.AdminShell) AdminShell.gotBoard(b, ev);
     }
     async function loadOverview() {
       var _ovEl = document.getElementById('section-overview');
@@ -44415,6 +44482,8 @@ function adminPageScript(): string {
       }
 
       document.getElementById('section-overview').innerHTML = \`
+        <!-- Today at a glance: the AI's short summary and the way to ask (admin-shell.js). -->
+        <div id="ov-brief"></div>
         <div class="mb-6">
           <div class="glass rounded-2xl p-5 glow">
             <div class="flex items-center justify-between">
@@ -44430,7 +44499,7 @@ function adminPageScript(): string {
           </div>
         </div>
 
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="ov-kpis grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           \${[
             {icon:'fa-users',label:'Total Attendees',value:stats.attendees,color:'primary',section:'attendees'},
             {icon:'fa-door-open',label:'Checked In',value:(typeof stats.checkedIn === 'number' ? stats.checkedIn : 0),color:'green',section:'badge-desk'},
@@ -44449,12 +44518,14 @@ function adminPageScript(): string {
           \`).join('')}
         </div>
 
+        <!-- Jump to each part of a long page; sticks under the top bar (admin-shell.js). -->
+        <nav id="ov-jump" aria-label="Jump to a part of the Overview"></nav>
         <!-- Pass & badge: who tried, who got stuck (loadHelpFunnel), under the tiles so it is seen. -->
         <div id="help-funnel" class="mb-6"></div>
         <!-- Who holds which pass, money from passes, what is waiting on a person (loadBoard). -->
         <div id="ov-board" class="mb-6"></div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div id="ov-audience" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div class="glass rounded-xl p-5">
             <div class="flex items-center justify-between mb-3">
               <h3 class="font-semibold text-sm"><i class="fas fa-user-tie text-primary-400 mr-2"></i>Who is coming, by seniority</h3>
@@ -44472,7 +44543,7 @@ function adminPageScript(): string {
         </div>
 
         <!-- Which organisations are sending people: the question every sponsor asks -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div id="ov-orgs" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div class="glass rounded-xl p-5">
             <h3 class="font-semibold mb-3 text-sm"><i class="fas fa-building text-primary-400 mr-2"></i>Top organisations</h3>
             <div id="top-orgs" class="text-sm"></div>
@@ -44484,7 +44555,7 @@ function adminPageScript(): string {
         </div>
 
         <!-- Where registrations came from: the per-panel count a host or a sponsor asks for -->
-        <div class="grid grid-cols-1 gap-6 mb-6">
+        <div id="ov-sources" class="grid grid-cols-1 gap-6 mb-6">
           <div class="glass rounded-xl p-5">
             <div class="flex items-baseline justify-between mb-3">
               <h3 class="font-semibold text-sm"><i class="fas fa-graduation-cap text-primary-400 mr-2"></i>Registration source</h3>
@@ -44496,7 +44567,7 @@ function adminPageScript(): string {
         </div>
 
         <!-- Lunch Pack & Notification Dashboard -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div id="ov-lunch" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <div class="glass rounded-xl p-5">
             <div class="flex items-center justify-between mb-4">
               <h3 class="font-semibold text-sm"><i class="fas fa-utensils text-amber-400 mr-2"></i>Lunch Pack Calculator</h3>
@@ -44582,7 +44653,7 @@ function adminPageScript(): string {
         </div>
 
         <!-- Engagement Tracker -->
-        <div class="glass rounded-xl p-5 mb-6">
+        <div id="ov-engagement" class="glass rounded-xl p-5 mb-6">
           <div class="flex items-center justify-between mb-4">
             <h3 class="font-semibold text-sm"><i class="fas fa-chart-line text-emerald-400 mr-2"></i>Engagement Tracker</h3>
             <span class="text-[10px] text-gray-500">Post-notification actions</span>
@@ -44632,7 +44703,7 @@ function adminPageScript(): string {
         </div>
 
         <!-- RSVP Status -->
-        <div class="glass rounded-xl p-5 mb-6">
+        <div id="ov-rsvp" class="glass rounded-xl p-5 mb-6">
           <div class="flex items-center justify-between mb-4">
             <h3 class="font-semibold text-sm"><i class="fas fa-clipboard-check text-amber-400 mr-2"></i>RSVP Status</h3>
             <button onclick="resendNonResponders()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-orange-600 hover:bg-orange-500 text-white transition" title="Resend email to attendees who were notified but haven't responded"><i class="fas fa-redo mr-1"></i>Resend to Non-Responders</button>
@@ -44682,7 +44753,7 @@ function adminPageScript(): string {
         </div>
 
         <!-- Thank you + feedback survey, after the event has ended. -->
-        <div class="glass rounded-xl p-5 mb-6 border border-amber-500/20" \${eventHasEnded(event) ? '' : 'hidden'}>
+        <div id="ov-thanks" class="glass rounded-xl p-5 mb-6 border border-amber-500/20" \${eventHasEnded(event) ? '' : 'hidden'}>
           <div class="flex items-center justify-between mb-4">
             <h3 class="font-semibold text-sm"><i class="fas fa-heart text-pink-400 mr-2"></i>Thank you + how was it?</h3>
           </div>
@@ -44722,7 +44793,7 @@ function adminPageScript(): string {
           </div>
         </div>
 
-        <div class="glass rounded-xl p-5">
+        <div id="ov-recent" class="glass rounded-xl p-5">
           <h3 class="font-semibold mb-3 text-sm"><i class="fas fa-user-plus text-green-400 mr-2"></i>Recent Registrations</h3>
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -44746,6 +44817,7 @@ function adminPageScript(): string {
       \`;
 
       markSectionFresh();
+      if (window.AdminShell) AdminShell.onOverview(stats);
       loadNotifyRunStrip();
       loadNetMailStrip();
       loadHelpFunnel();
@@ -45274,7 +45346,7 @@ function adminPageScript(): string {
             \${(dupData.nameGroups||0) > 0 ? '<span class="text-xs text-gray-400 ml-1">' + dupData.nameGroups + ' similar names</span>' : ''}
             \${attSearching && attSearchRanked ? '<span class="text-xs text-indigo-400 ml-2"><i class="fas fa-sort-amount-down mr-0.5"></i>Best matches first</span>' : attSortCol ? '<span class="text-xs text-indigo-400 ml-2"><i class="fas fa-sort-amount-'+(attSortDir==='asc'?'up':'down')+' mr-0.5"></i>Sorted by '+attSortCol.replace('_',' ')+'</span><button onclick="resetAttSort()" class="text-[10px] text-gray-500 hover:text-white ml-1" title="Reset sort"><i class="fas fa-times-circle"></i></button>' : ''}
           </div>
-          <div class="flex gap-2 flex-wrap">
+          <div class="att-actions flex gap-2 flex-wrap">
             <button onclick="notifyAllAttendees()" class="px-4 py-2 rounded-xl text-xs font-medium bg-amber-600 hover:bg-amber-500 text-white transition"><i class="fas fa-envelope mr-1.5"></i>Notify All</button>
             <button onclick="startPhotoChase()" class="att-toolbar-btn px-4 py-2 rounded-xl text-xs font-medium bg-orange-600 hover:bg-orange-500 text-white transition" title="Email everyone who has no photo yet, asking for one. Paced and resumable."><i class="fas fa-camera mr-1.5"></i><span class="lbl">Ask for photos</span></button>
             <button onclick="openProfileReminderCampaign()" class="px-4 py-2 rounded-xl text-xs font-medium bg-orange-600/60 hover:bg-orange-500 text-white transition" title="Ask attendees with a blank photo, designation, city or industry to complete their profile"><i class="fas fa-id-card mr-1.5"></i>Chase Profiles</button>
