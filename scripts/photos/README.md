@@ -63,7 +63,7 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
 6b. `venv/python burst.py WORK/faces WORK/refs WORK/index.json WORK/out/matches.json WORK/burst 0.60 0.10 90 0.25 --drop REPO/scripts/photos/wrong-matches.json`
    (23 Nov, the organiser: "relax the rule so everyone gets the most photos"). Adds the
    shots where someone looks away, without a lower threshold: lowering it to 0.47 gave
-   Falguni Vasu, Surbhi Gupta, Sudhir Kumar Rai and Anita Ram strangers' faces.
+   Surbhi Gupta, Sudhir Kumar Rai and Anita Ram strangers' faces.
    - A face joins person X only when the **same camera took a photo of X within 90
      seconds** that X is surely matched in, this face looks like X's face in that photo by
      **0.60** (same light, clothes and angle, so far easier than the site photo), beats
@@ -72,6 +72,12 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
      pointing at X: neither is added. It added 212 photos for 56 people.
    - `wrong-matches.json` lists matches found wrong by eye; they are removed first, so no
      burst shot is added from them. Then export `WORK/burst/matches.json` in step 7.
+   - **Before calling a match wrong, check the programme, not only the face.** On 23 Nov
+     Falguni Vasu's photos were taken out because the woman looked older than her site
+     photo and wore thick glasses. They were her: she moderated the Insurance panel, and
+     the photos are from that hall at that hour, with a microphone. Site photos can be ten
+     years old. Wrong means the place or the day cannot be theirs (Surbhi Gupta's one: a
+     woman at an exhibitor's booth on the day she was not there).
 7. `venv/python export.py WORK/out/matches.json WORK/index.json WORK/img REPO/src/data/speaker-photos.json`,
    then `npm run build` and `node scripts/verify/smoke-speaker-photos.mjs`.
    - Up to six photos per person go in the email: landscape only (two whole photos a row),
