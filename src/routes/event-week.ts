@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { titledName } from '../lib/greet'
 
 // ==================== THE EVENT-WEEK EMAIL (16 Nov 2026) ====================
 //
@@ -78,13 +79,8 @@ const validEmail = (e: any) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '')
 
 // ---------- pure helpers (scripts/verify/smoke-event-week.mjs checks them) ----------
 
-// "riddhi" and "DR. RAJESH KUMAR" both arrive from imports; the greeting wants "Riddhi".
-export function firstName(name: any): string {
-  const words = String(name || '').trim().split(/\s+/).filter(w => !/^(dr|prof|mr|mrs|ms|miss|shri|smt|er|ca|adv|hon[’']?ble)\.?$/i.test(w))
-  const w = words[0] || ''
-  if (!/[a-z]/i.test(w)) return ''
-  return w === w.toUpperCase() || w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w
-}
+// "riddhi" -> "Riddhi", "DR. RAJESH KUMAR" -> "Dr. Rajesh" (src/lib/greet.ts). '' when unusable.
+export function firstName(name: any): string { return titledName(name) }
 
 // Which email a person gets, from their row.
 export function kindOf(a: any): Kind {

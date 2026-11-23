@@ -77,7 +77,7 @@ const h2 = r.json.html || '';
 check('a "seat" preview: their workshop by day in the subject', r.status === 200 && r.json.kind === 'seat' && r.json.subject === 'Your workshop on Friday: AI, Trust and Evolving Skills using IBM Bob', r.json.subject);
 check('it gives the IBM Bob steps and both links', h2.includes('Your workshop seat is booked') && h2.includes('bob.ibm.com/trial') && h2.includes('bob.ibm.com/download') && h2.includes('/docs/ibm-bob-install-guide.pdf') && h2.includes('/training-workshop#ibm-workshop'));
 check('it lists no other workshop', !h2.includes('From Prototype to Production'));
-check('the greeting leaves out the title of address', h2.includes('Dear Bina,'));
+check('the greeting keeps the title: Dear Dr. Bina (the organiser, 23 Nov 2026)', h2.includes('Dear Dr. Bina,'));
 
 r = await send(109, { preview: true });
 check('a name and organisation are escaped', !r.json.html.includes('<b>Bad</b>') && r.json.html.includes('&lt;b&gt;Bad&lt;/b&gt;'), r.json.html.match(/Dear[^<]*/));

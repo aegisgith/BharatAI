@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { titledName } from '../lib/greet'
 
 // ==================== A GUEST WITH ONLY A MOBILE NUMBER (16 Nov 2026) ====================
 //
@@ -93,15 +94,9 @@ const all = async (c: any, sql: string, ...args: any[]) => (((await c.env.DB.pre
 const clean = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max)
 const ref = (id: number | string) => 'BHAI-2026-' + String(id).padStart(5, '0')
 
-// How the message and the page greet them: the first name, or the title and surname for
-// "Dr. Kavita Shah" (Hello Dr. Shah), never "Hello Dr.".
-const TITLE_WORD = /^(dr|prof|mr|mrs|ms|miss|shri|smt|sri|kum|col|capt|cdr|gen|adv|er|ca|cs)\.?$/i
-export function greetName(name: string): string {
-  const w = String(name || '').trim().split(/\s+/).filter(Boolean)
-  if (!w.length) return ''
-  if (TITLE_WORD.test(w[0]) && w.length > 1) return w[0] + ' ' + w[w.length - 1]
-  return w[0]
-}
+// How the message and the page greet them: "Dr. Kavita Shah" -> "Hello Dr. Kavita", never
+// "Hello Dr." (the organiser's rule for every message, 23 Nov 2026; src/lib/greet.ts).
+export function greetName(name: string): string { return titledName(name) }
 const firstName = greetName
 
 // The number as WhatsApp wants it: country code and digits, nothing else. Ten digits

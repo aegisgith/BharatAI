@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { organiserTeam, ownersOf, setOwner, clearOwner, isOwnerKind } from '../lib/team'
+import { titledName } from '../lib/greet'
 
 // ==================== CONFERENCE MANAGER (12 Nov 2026) ====================
 //
@@ -1422,7 +1423,7 @@ export function slotEmailHTML(sp: any, slots: any[], note: string, header: strin
         ${s.hall?.location ? `<tr><td style="color:#6b7280;padding-right:14px">Finding it</td><td>${escH(s.hall.location)}</td></tr>` : ''}
       </table></div>`
   }
-  const first_name = escH(String(sp.name || '').replace(/^(hon[’']?ble|shri\.?|smt\.?|dr\.?|mr\.?|ms\.?|mrs\.?|prof\.?)\s+/gi, '').split(/\s+/)[0] || 'there')
+  const first_name = escH(titledName(sp.name) || 'there')
   const html = `<!DOCTYPE html><html><body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
   <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e7e9f5">
     ${header}

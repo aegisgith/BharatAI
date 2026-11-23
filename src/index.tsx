@@ -23,6 +23,7 @@ import { organiserTeam } from './lib/team'
 import { SENDER_DOMAIN, sendAs, sendersFor, pickSender } from './lib/senders'
 import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
 import { invoicePdf } from './lib/invoice-pdf'
+import { titledName } from './lib/greet'
 import { signInLink as mpSignInLink } from './routes/marketplace'
 import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPageHTML, marketplaceAdminPageHTML, marketplaceFaqPageHTML } from './routes/marketplace-pages'
 
@@ -1948,7 +1949,7 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
   const fromName = (await settingValue(c, 'sender_name')) || 'Bharat AI Innovation'
   const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
   const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
-  const firstName = esc(String(attendee.name || '').trim().split(/\s+/)[0] || 'there')
+  const firstName = esc(titledName(attendee.name) || 'there')
 
   // Every button is a deep link into the app: ?action=social-card opens the
   // card (which asks for a photo first), main-event-yes / main-event-no record
@@ -2247,7 +2248,7 @@ const escEmail = (v: any) => String(v ?? '')
 // Subjects are plain text: strip anything that could wrap a line, and cap the length.
 const netPlain = (v: any, max = 80) => String(v ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, max)
 
-const netFirstName = (v: any) => escEmail(String(v || '').trim().split(/\s+/)[0] || 'there')
+const netFirstName = (v: any) => escEmail(titledName(v) || 'there')
 
 // Ids arrive from JSON bodies and from D1 rows, so they can differ in type for the
 // same person. Compare as strings or a self-notify slips through.
@@ -3709,7 +3710,7 @@ async function settleShowcaseOrder(c: any, order: any, trackingId: string, payme
         <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
           ${emailBrandHeader('Your showcase slot is booked', '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
           <div style="padding:28px;">
-            <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${payEsc(String(a.name || '').split(' ')[0] || 'there')}</strong>,</p>
+            <p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${payEsc(titledName(a.name) || 'there')}</strong>,</p>
             ${payP('Thank you. Your payment has arrived and your Innovation Showcase slot is booked.')}
             ${rows}
             <ul style="margin:0 0 16px 18px;padding:0;font-size:14px;line-height:1.7;color:#555;">
@@ -3888,8 +3889,8 @@ async function offerAudienceRows(c: any, audience: string, ids?: any[]): Promise
 // One offer email, as the campaign pump sends it. Preview builds it with no link minted.
 async function offerMail(c: any, audience: string, a: any, to: string, preview: boolean): Promise<{ subject: string; html: string }> {
   const name = String(a?.name || '').trim()
-  const first = payEsc(name.split(/\s+/)[0] || 'there')
-  const firstPlain = (name.split(/\s+/)[0] || '').replace(/[^\p{L}\p{N} .'-]/gu, '').slice(0, 30)
+  const first = payEsc(titledName(name) || 'there')
+  const firstPlain = titledName(name).replace(/[^\p{L}\p{N} .'’-]/gu, '').slice(0, 30)
   const hello = firstPlain ? firstPlain + ', ' : ''
   const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
   const signedIn = async (q: string) => {
@@ -5106,7 +5107,7 @@ async function payReminderMail(c: any, r: any, preview: boolean): Promise<{ subj
       }
     } catch { /* the plain link still opens the app, which asks them to sign in */ }
   }
-  const first = payEsc(String(r.name || '').trim().split(/\s+/)[0] || 'there')
+  const first = payEsc(titledName(r.name) || 'there')
   const pass = payEsc(r.pass_type || 'pass')
   const amount = rupees(Math.round(Number(r.amount || 0) * 100))
   const WHAT: Record<string, string> = {
@@ -14551,7 +14552,7 @@ app.post('/api/attendees/:id/panels/:slug/rsvp', async (c) => {
 // the person registered for), so no unsubscribe footer.
 async function sendPanelReminderEmail(c: any, attendee: any, panel: CampusPanel, opts: { preview?: boolean } = {}): Promise<{ ok: boolean; error?: string; html?: string }> {
   const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
-  const firstName = esc(String(attendee.name || '').trim().split(/\s+/)[0] || 'there')
+  const firstName = esc(titledName(attendee.name) || 'there')
   const yes = opts.preview ? '#preview-yes' : await panelRsvpUrl(c, attendee.id, panel.slug, 'yes')
   const no = opts.preview ? '#preview-no' : await panelRsvpUrl(c, attendee.id, panel.slug, 'no')
   const guest = !isHostMember(panel, attendee)
@@ -15558,7 +15559,7 @@ async function leadsGuideRecipients(c: any, exId: number): Promise<{ to: LeadsGu
     if (validEmailSyntax(email) && !out.has(email)) out.set(email, { email, first: String(m.first_name || '').trim(), kind: 'team', accountId: 0 })
   }
   const s = await c.env.DB.prepare('SELECT contact_name FROM exhibitor_team_settings WHERE exhibitor_id = ?').bind(exId).first().catch(() => null) as any
-  const contactFirst = String(s?.contact_name || '').trim().split(/\s+/)[0] || ''
+  const contactFirst = titledName(s?.contact_name)
   for (const a of await rows("SELECT id, email FROM mp_companies WHERE exhibitor_id = ? AND role <> 'admin' ORDER BY id", exId)) {
     const email = String(a.email || '').trim().toLowerCase()
     if (validEmailSyntax(email) && !out.has(email)) out.set(email, { email, first: contactFirst, kind: 'contact', accountId: Number(a.id) })
@@ -16602,7 +16603,7 @@ async function markReportEmail(c: any, email: string, r: { ok: boolean; error?: 
 // it is the first mail after the panel and the person may not want a second.
 async function sendReportsEmail(c: any, person: any, opts: { tokenSubject: string; panel?: CampusPanel; preview?: boolean }): Promise<{ ok: boolean; error?: string; html?: string }> {
   const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
-  const firstName = esc(String(person.name || '').trim().split(/\s+/)[0] || 'there')
+  const firstName = esc(titledName(person.name) || 'there')
   const reports = Object.values(INSIGHTS_REPORTS)
   const links: Record<string, string> = {}
   const watchLinks: Record<string, string> = {}
@@ -17456,13 +17457,9 @@ function notifyKind(a: any): NotifyKind {
 const PASS_KEY: Record<string, string> = { 'Delegate Pass': 'delegate', 'Premium Delegate Pass': 'premium', 'VIP Pass': 'vip', 'Academic Pass': 'academic', 'Student Pass': 'student', 'Expo Pass': 'expo' }
 
 // "riddhi" and "DR. RAJESH KUMAR" both arrive from imports; the subject and the
-// greeting want "Riddhi" and "Rajesh". '' when there is no usable word.
-function greetingName(name: any): string {
-  const words = String(name || '').trim().split(/\s+/).filter(w => !/^(dr|prof|mr|mrs|ms|miss|shri|smt|er|ca|adv)\.?$/i.test(w))
-  const w = words[0] || ''
-  if (!/[a-z]/i.test(w)) return ''
-  return w === w.toUpperCase() || w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w
-}
+// greeting want "Riddhi" and "Dr. Rajesh" ("Shri Sachin Itkar" for an official: the
+// organiser's rule for every email, src/lib/greet.ts). '' when there is no usable word.
+function greetingName(name: any): string { return titledName(name) }
 
 // Built apart from the send so Notify All can show the exact mail first. preview:
 // no sign-in token (a new one would cancel the link this person already holds), no
@@ -18653,7 +18650,7 @@ function attendeeProfileGaps(a: any): string[] {
 async function profileReminderEmailHTML(c: any, attendee: any, link: string): Promise<string> {
   const esc = (v: any) => String(v ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch] as string))
   const gaps = attendeeProfileGaps(attendee)
-  const firstName = String(attendee.name || '').trim().split(/\s+/)[0] || 'there'
+  const firstName = titledName(attendee.name) || 'there'
   const needsPhoto = gaps.includes('photo')
   const humanGaps = gaps.length < 2 ? gaps[0] : gaps.slice(0, -1).join(', ') + ' and ' + gaps[gaps.length - 1]
 
@@ -20457,7 +20454,7 @@ async function upgradeOfferMail(c: any, a: any, offer: { pass: string; key: stri
   const amounts = passAmounts(offer.pass)
   const total = amounts ? rupees(amounts.total) : ''
   const base = amounts ? (amounts.base / 100).toLocaleString('en-IN') : ''
-  const firstPlain = String(a.name || '').replace(/[<>\r\n]/g, ' ').trim().split(/\s+/)[0].slice(0, 40) || 'there'
+  const firstPlain = titledName(String(a.name || '').replace(/[<>\r\n]/g, ' ')).slice(0, 40) || 'there'
   const first = payEsc(firstPlain)
   const academic = offer.key === 'student'
   // What the site itself promises for each pass, and nothing more (conference
@@ -22984,7 +22981,7 @@ function inqScore(r: any, now: number, today: string): { score: number; band: st
 function inqMerge(text: string, r: any, owner: string): string {
   const name = String(r?.name || '').trim()
   return String(text || '')
-    .replace(/\{first_name\}/g, name.split(/\s+/)[0] || 'there')
+    .replace(/\{first_name\}/g, titledName(name) || 'there')
     .replace(/\{name\}/g, name || 'there')
     .replace(/\{organi[sz]ation\}/g, String(r?.organization || '').trim() || 'your organisation')
     .replace(/\{owner\}/g, owner || 'Team Bharat AI Innovation')
@@ -23279,7 +23276,7 @@ async function inqApplyChange(c: any, ids: number[], ch: InquiryChange, action: 
 // address a day; a connection may set off a few an hour, no more.
 function inquiryAckHtml(row: any, owner: string): string {
   const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
-  const first = String(row.name || '').trim().split(/\s+/)[0] || 'there'
+  const first = titledName(row.name) || 'there'
   const ref = 'BHAI-INQ-' + String(row.id ?? '').padStart(5, '0')
   const next: Record<string, [string, string]> = {
     booth_inquiry: ['See the floor plan and booth prices', 'https://bharataiinnovation.com/exhibition'],
@@ -23465,7 +23462,7 @@ const BOOTH_APP_PER_IP_HOUR = 30
 
 function boothApplicantHtml(ev: { name: string; when: string }, a: { id: any; name: string; booth: string; company: string; product: string }): string {
   const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
-  const first = String(a.name || '').trim().split(/\s+/)[0] || 'there'
+  const first = titledName(a.name) || 'there'
   const ref = 'BHAI-INQ-' + String(a.id ?? '').padStart(5, '0')
   const line = (k: string, v: string) => `<tr><td style="padding:6px 12px 6px 0;color:#666;font-size:13px;vertical-align:top;white-space:nowrap;">${k}</td><td style="padding:6px 0;font-size:13.5px;color:#1E2140;"><strong>${esc(v)}</strong></td></tr>`
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
@@ -24093,7 +24090,7 @@ function visaLetterApplicantHtml(p: { ref: string; name: string; nationality: st
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
       ${emailBrandHeader('We have your request', DELHI_WHEN)}
       <div style="padding:26px 24px;">
-        <p style="margin:0 0 8px;font-size:16px;font-weight:bold;color:#1E2140;">Hello ${e(String(p.name).split(/\s+/)[0])},</p>
+        <p style="margin:0 0 8px;font-size:16px;font-weight:bold;color:#1E2140;">Hello ${e(titledName(p.name) || String(p.name))},</p>
         <p style="margin:0 0 18px;font-size:14px;line-height:1.6;color:#444;">We have your request for a letter for your visa application to Bharat AI Innovation Delhi 2027. Our team will reply by email.</p>
         <table style="width:100%;border-collapse:collapse;margin:0 0 18px;">
           ${line('Reference', p.ref)}
@@ -24276,7 +24273,7 @@ app.get('/api/feedback', async (c) => {
     answer = await c.env.DB.prepare('SELECT recommend, useful, met, entry, delhi, fix, updated_at FROM feedback WHERE event_id = ? AND attendee_id = ?').bind(AFTER_EVENT_ID, id).first()
   } catch (e: any) { if (!feedbackTableMissing(e)) throw e }
   return c.json({
-    first_name: netPlain(String(a.name || '').trim().split(/\s+/)[0] || '', 40),
+    first_name: netPlain(titledName(a.name), 40),
     answered: answer ? {
       recommend: answer.recommend, useful: String(answer.useful || '').split(',').filter(Boolean),
       met: answer.met || '', entry: answer.entry || '', delhi: answer.delhi || '', fix: answer.fix || '', updated_at: answer.updated_at,
@@ -24451,7 +24448,7 @@ async function exhibitorResultsMail(c: any, r: any, preview = false): Promise<{ 
     const acct = byId || (r.email ? await c.env.DB.prepare('SELECT id FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(String(r.email).toLowerCase()).first().catch(() => null) as any : null)
     if (acct) leadsUrl = await mpSignInLink(c, acct.id, 'leads')
   }
-  const first = String(r.contact_name || '').trim().split(/\s+/)[0]
+  const first = titledName(r.contact_name)
   const tile = (n: number, label: string, sub = '') => `<td valign="top" style="width:50%;padding:6px;"><div style="background:#F8F9FB;border-radius:10px;padding:16px 10px;text-align:center;">
       <div style="font-size:30px;line-height:1.1;font-weight:bold;color:#1E2140;">${n}</div>
       <div style="margin-top:6px;font-size:13px;line-height:1.4;color:#555;">${label}</div>${sub ? `<div style="margin-top:4px;font-size:12px;color:#888;">${sub}</div>` : ''}</div></td>`
@@ -24712,7 +24709,7 @@ async function sendDelhiPassEmail(c: any, p: { name: string; email: string; comp
   const fromEmail = senderEmailOrDefault(await g('sender_email'))
   const fromName = (await g('sender_name')) || 'Bharat AI Innovation'
   const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
-  const first = String(p.name).split(/\s+/)[0]
+  const first = titledName(p.name) || 'there'
   const line = (k: string, v: string) => `<tr><td style="padding:7px 12px 7px 0;color:#666;font-size:13px;vertical-align:top;white-space:nowrap;">${k}</td><td style="padding:7px 0;font-size:13.5px;color:#1E2140;"><strong>${esc(v)}</strong></td></tr>`
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
@@ -25987,7 +25984,7 @@ async function groupEmails(c: any, x: { order: any; kind: { qty: number; pass: s
       <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
         ${emailBrandHeader(title, '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
         <div style="padding:28px;">${inner}</div></div></body></html>`
-    const hi = (name: any) => `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${payEsc(String(name || '').split(' ')[0] || 'there')}</strong>,</p>`
+    const hi = (name: any) => `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${payEsc(titledName(name) || 'there')}</strong>,</p>`
 
     // Each person: their pass, who booked it, and their own link into the app. Few,
     // so one after another with a short pause.
@@ -26127,9 +26124,9 @@ app.get('/group', async (c) => {
   let invite: { token: string; first: string; company: string; left: number } | null = null
   if (ref && open) {
     const a = await colleagueInviter(c, ref)
-    // "Dr. RAJESH KUMAR" reads as "Rajesh": no title, no capitals shouting.
-    const word = String(a?.name || '').trim().replace(/^((dr|mr|mrs|ms|miss|shri|smt|prof|er|ca)\.?\s+)+/i, '').split(/\s+/)[0] || ''
-    const first = word.length > 1 && word === word.toUpperCase() ? word[0] + word.slice(1).toLowerCase() : word
+    // "Dr. RAJESH KUMAR" reads as "Dr. Rajesh": the title kept, no capitals shouting
+    // (the organiser's rule, 23 Nov 2026, src/lib/greet.ts).
+    const first = titledName(a?.name)
     if (a) invite = { token: ref, first: first || 'Your colleague', company: String(a.company || '').trim(), left: Math.max(0, COLLEAGUE_LINK_PASSES - await colleagueLinkUsed(c, Number(a.id))) }
   }
   if (ref) c.header('X-Robots-Tag', 'noindex')
@@ -26539,7 +26536,7 @@ const mediaMailShell = (title: string, inner: string) => `<!DOCTYPE html><html><
 
 function mediaPassAckMail(a: MediaPassAnswers, id: number, updated: boolean): { subject: string; html: string } {
   const e = payEsc, pass = MEDIA_PASS_BADGE[a.kind]
-  const first = a.name.split(' ')[0] || a.name
+  const first = titledName(a.name) || a.name
   const an = pass === 'Influencer Pass' ? 'an' : 'a'
   const html = mediaMailShell('We have your request', `
         ${payP('Hi <strong>' + e(first) + '</strong>,')}
@@ -26930,7 +26927,7 @@ async function mediaPassApprovedMail(c: any, x: { name: string; email: string; p
   try {
     if (await verifiedLoginEnabled(c)) href += '&token=' + (await createLoginToken(c, 1, email, PROFILE_LINK_TTL_MINUTES, 2)).token
   } catch { /* the plain link opens the sign-in box on their address */ }
-  const first = String(x.name || '').trim().split(' ')[0] || 'there'
+  const first = titledName(x.name) || 'there'
   const html = mediaMailShell('Your request is approved', `
         ${payP('Hi <strong>' + e(first) + '</strong>,')}
         ${payP(x.kept
@@ -26951,7 +26948,7 @@ async function mediaPassApprovedMail(c: any, x: { name: string; email: string; p
 
 function mediaPassDeclinedMail(x: { name: string; kind: string; note: string }): { subject: string; html: string } {
   const e = payEsc
-  const first = String(x.name || '').trim().split(' ')[0] || 'there'
+  const first = titledName(x.name) || 'there'
   const pass = MEDIA_PASS_BADGE[x.kind] || 'Media Pass'
   const html = mediaMailShell('About your request', `
         ${payP('Hi <strong>' + e(first) + '</strong>,')}
@@ -52947,7 +52944,7 @@ function adminPageScript(): string {
     // own stylesheet, both loaded the first time Inquiries opens. The Overview
     // board's links name a type first (openEnquiriesOfType).
     let inquiryFilterType = '';
-    var INQ_DESK_VERSION = '20261115s';
+    var INQ_DESK_VERSION = '20261123t';
     var inqDeskAssets = null;
     function openEnquiriesOfType(type) {
       inquiryFilterType = type;

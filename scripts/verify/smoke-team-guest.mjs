@@ -78,7 +78,7 @@ check('an email already on the list: the same', r.status === 409 && r.json?.hold
 r = await add({ name: 'Dr. Kavita Shah', mobile: '9123456789', pass: 'vip' });
 const g2 = r.json?.guest, v = who(g2?.id);
 check('a VIP Pass, complimentary, with lunch', r.status === 201 && v?.badge_type === 'VIP Pass' && v.payment_status === 'waived' && v.lunch_inclusion === 'Yes', JSON.stringify(v));
-check('the message says it is complimentary, and greets "Dr. Shah", not "Dr."', g2.message.includes('Your complimentary VIP Pass for Bharat AI Innovation 2026 is ready.') && g2.message.startsWith('Hello Dr. Shah,'), g2.message);
+check('the message says it is complimentary, and greets "Dr. Kavita" (title and first name, the organiser, 23 Nov 2026), never "Dr."', g2.message.includes('Your complimentary VIP Pass for Bharat AI Innovation 2026 is ready.') && g2.message.startsWith('Hello Dr. Kavita,'), g2.message);
 r = await add({ name: 'Arun Mehta', mobile: '+91 9000000001', pass: 'delegate', email: 'arun@mehta.in', company: 'Mehta & Co' }, RAVI);
 const g3 = r.json?.guest, d = who(g3?.id);
 check('a Delegate Pass, complimentary, with lunch, and the email they gave', r.status === 201 && d?.badge_type === 'Delegate Pass' && d.payment_status === 'waived' && d.lunch_inclusion === 'Yes' && d.email === 'arun@mehta.in' && d.marketing_consent === null, JSON.stringify(d));

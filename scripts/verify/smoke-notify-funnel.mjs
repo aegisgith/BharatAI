@@ -162,7 +162,7 @@ person(6, 'Kiran Pai', 'kiran@example.com', { badge_type: 'Delegate Pass', payme
 person(7, 'Sam Rao', 'sam@example.com', { badge_type: 'Speaker', payment_status: 'waived' });
 let n0 = sent.length;
 await hit('POST', '/api/admin/attendees/5/notify', {}, ADMIN);
-check('a paid Delegate: "Meera, your Delegate Pass is ready", the gold badge, no upgrade block', subj(n0) === 'Meera, your Delegate Pass is ready' && body(n0).includes('gold Delegate badge') && !body(n0).includes('Make it the full conference'), subj(n0));
+check('a paid Delegate: "Dr. Meera, your Delegate Pass is ready", the gold badge, no upgrade block', subj(n0) === 'Dr. Meera, your Delegate Pass is ready' && body(n0).includes('gold Delegate badge') && !body(n0).includes('Make it the full conference'), subj(n0));
 check('and one line to move up to Premium for the difference', body(n0).includes('pass=premium') && body(n0).includes('for the difference'), '');
 n0 = sent.length;
 await hit('POST', '/api/admin/attendees/6/notify', {}, ADMIN);

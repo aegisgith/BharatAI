@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { organiserTeam, cleanOwnerName, teamMemberNamed } from '../lib/team'
+import { titledName } from '../lib/greet'
 
 type Bindings = {
   DB: D1Database
@@ -2396,7 +2397,7 @@ const sendTeamRequest = async (c: any, ex: { id: number; company_name: string },
   const deadline = await teamDeadline(c)
   const photos = members.filter(m => !m.photo_url).length
   const fromSheet = members.filter(m => m.added_by === 'sheet').length
-  const first = String(allow.contact_name || '').trim().split(/\s+/)[0] || ''
+  const first = titledName(allow.contact_name)
   const booth = htmlEsc(boothLabel(allow) || 'booth')
   const body = p(`Dear ${htmlEsc(first || `${ex.company_name} team`)},`)
     + p('Greetings from Bharat AI Innovation!')

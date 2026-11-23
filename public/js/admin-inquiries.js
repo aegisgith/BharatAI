@@ -130,11 +130,42 @@
   function isLate(r, now, sla) { return (r.status || 'new') === 'new' && hoursSince(r.created_at, now) >= sla; }
   function isDue(r, today) { return isOpen(r) && !!r.next_action_at && String(r.next_action_at) <= today; }
 
+  // "Dr. Rajkumar", "Shri Sachin Itkar", "Abhay": the name the server's titledName()
+  // (src/lib/greet.ts) gives {first_name}, so the preview reads like the email.
+  var GREET_TITLE = /^(hon[’']?ble|shri|sri|smt|dr|prof|col|capt|cdr|gen|maj|brig|lt|mr|mrs|ms|miss|kum|er|ca|cs|adv)\.?$/i;
+  var GREET_RANK = /^(col|capt|cdr|gen|maj|brig|lt)$/;
+  function tidyWord(w) {
+    if (/\./.test(w)) return w;
+    if (w.length <= 2) return w.toUpperCase();
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  }
+  function titledName(name) {
+    var words = String(name == null ? '' : name).replace(/\s*\([^)]*\)\s*$/, '').trim().split(/\s+/).filter(Boolean);
+    var kept = [], formal = false;
+    while (words.length && GREET_TITLE.test(words[0])) {
+      var t = words.shift().replace(/\.$/, '').toLowerCase();
+      if (/^hon/.test(t)) { kept.push('Hon’ble'); formal = true; }
+      else if (t === 'shri') { kept.push('Shri'); formal = true; }
+      else if (t === 'sri') { kept.push('Sri'); formal = true; }
+      else if (GREET_RANK.test(t)) { kept.push(t.charAt(0).toUpperCase() + t.slice(1) + '.'); formal = true; }
+      else if (t === 'smt') { kept.push('Smt.'); formal = true; }
+      else if (t === 'dr') kept.push('Dr.');
+      else if (t === 'prof') kept.push('Prof.');
+    }
+    if (!words.length || !/[a-z]/i.test(words[0])) return '';
+    var joined = words.join(' ');
+    var shouted = joined === joined.toUpperCase() || joined === joined.toLowerCase();
+    var bare = words[0].replace(/\./g, '');
+    var initial = bare.length === 1 || (bare.length === 2 && (/\./.test(words[0]) || bare === bare.toUpperCase()));
+    var shown = formal || initial ? words : [words[0]];
+    return kept.concat(shouted ? shown.map(tidyWord) : shown).join(' ');
+  }
+
   // The same fields the server fills in (inqMerge), for the preview under a reply.
   function merge(text, r, owner) {
     var name = String((r && r.name) || '').trim();
     return String(text || '')
-      .replace(/\{first_name\}/g, name.split(/\s+/)[0] || 'there')
+      .replace(/\{first_name\}/g, titledName(name) || 'there')
       .replace(/\{name\}/g, name || 'there')
       .replace(/\{organi[sz]ation\}/g, String((r && r.organization) || '').trim() || 'your organisation')
       .replace(/\{owner\}/g, owner || 'Team Bharat AI Innovation')

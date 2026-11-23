@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { titledName } from '../lib/greet'
 import { conferenceReady, hallsFor, hallLabel, dayLabel, clock, MUMBAI_WORDS } from './conference'
 import { NO_EMAIL_SQL } from './team-guests'
 
@@ -159,7 +160,8 @@ export const BRING: Record<string, { short: string; steps: string[]; links: { hr
 
 // ---------- pure helpers (scripts/verify/smoke-workshop-reminder.mjs checks each) ----------
 
-const firstName = (name: any) => String(name || '').replace(/^(hon[’']?ble|shri\.?|smt\.?|dr\.?|mr\.?|ms\.?|mrs\.?|prof\.?)\s+/gi, '').trim().split(/\s+/)[0] || 'there'
+// "Dr. Rajkumar", "Shri Sachin Itkar" (src/lib/greet.ts: the organiser's rule for every email).
+const firstName = (name: any) => titledName(name) || 'there'
 
 // "Friday 20 November, 11:30 am to 1:00 pm", or "Day and time to be announced".
 export function whenText(w: { starts_at?: any; ends_at?: any }): string {

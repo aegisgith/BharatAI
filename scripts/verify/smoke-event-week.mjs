@@ -161,7 +161,7 @@ const order = q('SELECT attendee_id FROM campaign_recipients WHERE campaign_id =
 check('its order: the exhibitor, then the paid passes, then the Expo Pass', order === '2,1,10,6', order);
 r = await hit('POST', `/api/admin/campaigns/${camp}/pump`, { batch: 8 }, ADMIN);
 check('one pump of 8 sends all 4 at once: no send gap for this email', r.status === 200 && r.json.sent === 4 && r.json.remaining === 0 && sent.length === 5, JSON.stringify(r.json));
-check('the exhibitor\u2019s email went to him with his booth; the Speaker got the paid version', to(1).includes('rohan@booth') && body(1).includes('Booth A12') && to(3).includes('meera@') && /^Meera, get ready/.test(subj(3)), subj(1) + ' | ' + subj(3));
+check('the exhibitor\u2019s email went to him with his booth; the Speaker got the paid version, greeted Dr. Meera (the organiser, 23 Nov 2026)', to(1).includes('rohan@booth') && body(1).includes('Booth A12') && to(3).includes('meera@') && /^Dr. Meera, get ready/.test(subj(3)), subj(1) + ' | ' + subj(3));
 st = await hit('GET', '/api/admin/event-week/status', undefined, ADMIN);
 check('after the run nobody on a paid pass is left; the free audience is untouched', st.json.left?.passes === 0 && st.json.left?.free === 3 && st.json.open_run === null, JSON.stringify(st.json?.left));
 r = await hit('POST', '/api/admin/campaigns', { kind: 'event_week', audience: 'passes' }, ADMIN);

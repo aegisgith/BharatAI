@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { titledName } from '../lib/greet'
 
 // ==================== AI AGENT SUMMIT 2027 (event 3), 15 Nov 2026 ====================
 //
@@ -561,7 +562,7 @@ app.post('/api/agent-summit/enquire', async (c) => {
     metadata: { edition: EDITION, tier: String(b.tier || ''), job_title: text(b.job_title, 100), page: 'ai-agent-summit/partners' },
   })
   await h.audit(c, 'summit.enquire', 'inquiry', id, { tier: String(b.tier || '') }, { actor: 'public registration', kind: 'public' })
-  return c.json({ ok: true, reference: 'AAS27-E' + id, message: `Thank you, ${name.split(' ')[0]}. Our partnerships team will reply within one working day with the partner deck and what is still open. Your reference is AAS27-E${id}.` }, 201)
+  return c.json({ ok: true, reference: 'AAS27-E' + id, message: `Thank you, ${titledName(name) || name}. Our partnerships team will reply within one working day with the partner deck and what is still open. Your reference is AAS27-E${id}.` }, 201)
 })
 
 // ---- admin (behind index.tsx's /api/admin/* guard) ----

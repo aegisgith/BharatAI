@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { titledName } from '../lib/greet'
 import { adminReady, conferenceReady, sessionsWithSpeakers, hallsFor, wordsFor, hallLabel, dayLabel, clock, ROLE_WORD, splitSpeakerLine, normName, draftFilterSql } from './conference'
 
 // ==================== SPEAKER BRIEFS (12 Nov 2026) ====================
@@ -169,7 +170,8 @@ export function icsText(s: any, words: { name: string; venue: string }, nowIso =
     'END:VEVENT', 'END:VCALENDAR', ''].join('\r\n')
 }
 
-const firstName = (name: any) => String(name || '').replace(/^(hon[’']?ble|shri\.?|smt\.?|dr\.?|mr\.?|ms\.?|mrs\.?|prof\.?)\s+/gi, '').split(/\s+/)[0] || 'there'
+// "Dr. Rajkumar", "Shri Sachin Itkar" (src/lib/greet.ts: the organiser's rule for every email).
+const firstName = (name: any) => titledName(name) || 'there'
 const who = (p: { name: string; org: string }) => p.org ? `${p.name} (${p.org})` : p.name
 const whenLine = (s: any) => `${dayLabel(s.start_time)}, ${clock(s.start_time)} to ${clock(s.end_time)}`
 

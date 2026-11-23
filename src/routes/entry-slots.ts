@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { adminReady, sessionsWithSpeakers, hallLabel, clock } from './conference'
 import { peopleOf, isProtocol } from './speaker-brief'
+import { titledName } from '../lib/greet'
 
 // ==================== ENTRY TIMES FOR THE FREE VISITOR PASS (17 Nov 2026) ====================
 //
@@ -201,13 +202,8 @@ export function satWindow(nowMs = Date.now()): { open: boolean; window: string; 
   return { open: m >= 6 * 60 && m < 23 * 60 + 30, window: '6am to 11:30pm IST', ist_time: ist.toISOString().slice(11, 16) + ' IST' }
 }
 
-// "riddhi" and "DR. RAJESH KUMAR" both arrive from imports; the greeting wants "Riddhi".
-export function firstName(name: any): string {
-  const words = String(name || '').trim().split(/\s+/).filter(w => !/^(dr|prof|mr|mrs|ms|miss|shri|smt|er|ca|adv|hon[’']?ble)\.?$/i.test(w))
-  const w = words[0] || ''
-  if (!/[a-z]/i.test(w)) return ''
-  return w === w.toUpperCase() || w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w
-}
+// "riddhi" -> "Riddhi", "DR. RAJESH KUMAR" -> "Dr. Rajesh" (src/lib/greet.ts). '' when unusable.
+export function firstName(name: any): string { return titledName(name) }
 
 // A free pass holder of the conference: the only people an entry time is for. Not an
 // exhibitor's guest (registration_source 'exhibitor:<id>', given from the exhibitor's
