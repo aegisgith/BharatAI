@@ -60,6 +60,18 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
      The site-photo floor stops those extra references from pulling in lookalikes.
    - Look at every `qa_*.jpg` before exporting. Each row shows the site photo, then the
      matched faces with their scores, weakest last.
+6b. `venv/python burst.py WORK/faces WORK/refs WORK/index.json WORK/out/matches.json WORK/burst 0.60 0.10 90 0.25 --drop REPO/scripts/photos/wrong-matches.json`
+   (23 Nov, the organiser: "relax the rule so everyone gets the most photos"). Adds the
+   shots where someone looks away, without a lower threshold: lowering it to 0.47 gave
+   Falguni Vasu, Surbhi Gupta, Sudhir Kumar Rai and Anita Ram strangers' faces.
+   - A face joins person X only when the **same camera took a photo of X within 90
+     seconds** that X is surely matched in, this face looks like X's face in that photo by
+     **0.60** (same light, clothes and angle, so far easier than the site photo), beats
+     every other person's nearby faces by 0.10, scores 0.25 against X's site photo, and
+     looks no more like anyone else's site photo (0.45+). Two faces in one photo both
+     pointing at X: neither is added. It added 212 photos for 56 people.
+   - `wrong-matches.json` lists matches found wrong by eye; they are removed first, so no
+     burst shot is added from them. Then export `WORK/burst/matches.json` in step 7.
 7. `venv/python export.py WORK/out/matches.json WORK/index.json WORK/img REPO/src/data/speaker-photos.json`,
    then `npm run build` and `node scripts/verify/smoke-speaker-photos.mjs`.
    - Up to six photos per person go in the email: landscape only (two whole photos a row),
@@ -86,7 +98,9 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
 1. Read the list (ids, pass, photo link, check-in days; no names or emails) into `WORK/att/list.json`:
    `npx wrangler d1 execute bharatai-production --remote --json --command "SELECT a.id, a.badge_type AS pass, a.avatar_url AS photo, (SELECT group_concat(k.day) FROM checkins k WHERE k.attendee_id = a.id) AS days FROM attendees a WHERE a.event_id = 1 AND trim(COALESCE(a.avatar_url,'')) <> '' ORDER BY a.id" > WORK/att/list.json`
    then download each photo to `WORK/att/avatars/<id>.img` (dl step in the session notes).
-2. `venv-ort/python att_match.py models WORK/faces WORK/refs WORK/img WORK/att WORK/att/albums.json 0.58 0.10 0.65`. Attendee face data stays in memory.
+2. `venv-ort/python att_match.py models WORK/faces WORK/refs WORK/img WORK/att WORK/att/albums.json 0.58 0.10 0.65 REPO/scripts/photos/att-skip.json --burst WORK/burst/matches.json`. Attendee face data stays in memory.
+   `--burst` adds burst shots the same way as step 6b (0.62 to their face in a photo
+   taken within 90 seconds, 0.45 against their pass photo), and never takes a speaker's face.
 3. `venv/python att_qa.py ...` and look at the sheets, then `venv/python att_export.py WORK/att/albums.json WORK/index.json WORK/img REPO/src/data/attendee-photos.json`, build, `smoke-speaker-photos.mjs`, push.
 4. People newly found show as ready in Admin, After the Event, Attendee photos. Anyone who said "Don’t match my photos" (admin_audit photos.opt_out) is never emailed; leave them out of the next run too.
 

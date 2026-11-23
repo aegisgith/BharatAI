@@ -104,6 +104,59 @@ for fi in np.where((best >= nsp) & (bv >= TH) & (bv - sec >= MARGIN))[0]:
     a = albums.setdefault('a%d' % p['id'], {'pass': p['pass'], 'group': group_of(p['pass']), 'came': bool(p['days']), 'photos': {}})
     if bv[fi] > a['photos'].get(pid, [0])[0]:
         a['photos'][pid] = [float(bv[fi]), float(b[0] + b[2] / 2), float(b[1] + b[3] / 2), float(b[2])]
+# --burst speaker_matches.json: also add the shots where someone faces away, from burst
+# shots. A face joins attendee X only when the same camera took a photo within BWIN seconds
+# that X is surely in, this face looks like X's face in THAT photo (same light and clothes)
+# by BSIM and beats everyone else's nearby faces (speakers' too) by BGAP, it still scores
+# BORIG against X's pass photo, and it looks no more like any speaker or guest. Faces already
+# given to anyone are never moved. The added rows keep their pass-photo score, so they rank
+# last and never decide 'check'.
+if '--burst' in sys.argv:
+    import datetime, collections
+    BSIM, BGAP, BWIN, BORIG = 0.62, 0.10, 90, TH - 0.13
+    SPM = json.load(open(sys.argv[sys.argv.index('--burst') + 1], encoding='utf-8'))
+    meta = {f['id']: f for f in idx}
+    def when(pid):
+        f = meta.get(pid)
+        if not f or f['mimeType'] != 'image/jpeg': return None
+        return datetime.datetime.fromisoformat(f['modifiedTime'].replace('Z', '+00:00')).timestamp()
+    def cam(pid): return meta[pid]['title'][:4] if pid in meta else ''
+    fpid = [pids[at[n]] for n in names]; fbox = [boxes[at[n]] for n in names]
+    byphoto = collections.defaultdict(list)
+    for i, p in enumerate(fpid): byphoto[p].append(i)
+    def face_at(pid, cx, cy):
+        c = byphoto.get(pid, [])
+        return min(c, key=lambda i: (fbox[i][0] + fbox[i][2] / 2 - cx) ** 2 + (fbox[i][1] + fbox[i][3] / 2 - cy) ** 2) if c else None
+    taken, bycam = set(), collections.defaultdict(list)
+    def mark(label, pid, cx, cy):
+        fi = face_at(pid, cx, cy)
+        if fi is None: return
+        taken.add(fi); t = when(pid)
+        if t is not None: bycam[cam(pid)].append((t, label, fi))
+    for k, v in SPM.items():
+        for r in v['photos']: mark('s:' + k, r[0], r[3], r[4])
+    for k, a in albums.items():
+        for pid, v in a['photos'].items(): mark(k, pid, v[1], v[2])
+    col = {'a%d' % people[keep[j]]['id']: j for j in range(len(keep))}
+    added = 0
+    for fi in range(len(names)):
+        if fi in taken: continue
+        pid = fpid[fi]; t = when(pid)
+        if t is None: continue
+        near = [(lab, f2) for (t2, lab, f2) in bycam.get(cam(pid), []) if abs(t2 - t) <= BWIN and fpid[f2] != pid]
+        if not near: continue
+        sims = collections.defaultdict(float)
+        for lab, f2 in near: sims[lab] = max(sims[lab], float(F[fi] @ F[f2]))
+        ranked = sorted(sims.items(), key=lambda x: -x[1])
+        lab, s = ranked[0]; s2 = ranked[1][1] if len(ranked) > 1 else 0.0
+        if lab.startswith('s:') or s < BSIM or s - s2 < BGAP or pid in albums[lab]['photos']: continue
+        own = float(S_at[fi, col[lab]])
+        if own < BORIG or S_sp[fi].max() >= max(0.45, own): continue
+        if any(f3 != fi and f3 not in taken and max(float(F[f3] @ F[f2]) for l2, f2 in near if l2 == lab) >= BSIM for f3 in byphoto[pid]): continue
+        b = fbox[fi]
+        albums[lab]['photos'][pid] = [own, float(b[0] + b[2] / 2), float(b[1] + b[3] / 2), float(b[2])]
+        added += 1
+    print('burst shots added', added, flush=True)
 out = {}
 for k, a in albums.items():
     ph = sorted(a['photos'].items(), key=lambda x: -x[1][0])
