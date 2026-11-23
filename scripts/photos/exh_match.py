@@ -61,11 +61,14 @@ def aspect(pid):
     except Exception: return 1.0
 asp = {p: aspect(p) for p in per}
 final = {}
+BACKDROP = {r['key']: bool(r.get('backdrop')) for r in names}
 for k, got in out.items():
     keep = []
     for p, (s, c) in got.items():
         s = s * asp[p]
-        if s >= (0.20 if (per[p] >= 3 or stage(p)) else 0.06): keep.append([p, round(s, 3), c])
+        # A backdrop company is only looked for in the booth-camera folder, and its own name
+        # is one of the stage's words (IDFC), so the stage-words test is not for it.
+        if s >= (0.20 if (per[p] >= 3 or (stage(p) and not BACKDROP.get(k))) else 0.06): keep.append([p, round(s, 3), c])
     if keep: final[k] = sorted(keep, key=lambda x: -x[1])
 out = final
 json.dump(out, open(OUT, 'w'))
