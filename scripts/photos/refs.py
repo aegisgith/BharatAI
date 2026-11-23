@@ -8,6 +8,13 @@ rec=cv2.FaceRecognizerSF.create(os.path.join(M,'sface.onnx'),'')
 people=[]
 for s in p['speakers']: people.append({'kind':'speaker','id':s['id'],'name':s['name'],'org':s.get('organisation',''),'photo':s.get('photo_url') or ''})
 for t in p['talks']: people.append({'kind':'talk','id':t['id'],'name':t['speaker_name'],'org':t.get('company',''),'photo':t.get('photo_url') or ''})
+# Speakers added to D1 after the programme snapshot (scripts/photos/extra-speakers.json), each
+# with ref-photos/speaker-<id>.jpg; their album key is s<id> like any speaker.
+XS=os.path.join(REPO,'scripts','photos','extra-speakers.json')
+if os.path.exists(XS):
+    have={x['id'] for x in people if x['kind']=='speaker'}
+    for e in json.load(open(XS,encoding='utf-8')):
+        if e['id'] not in have: people.append({'kind':'speaker','id':e['id'],'name':e['name'],'org':e.get('organisation',''),'photo':''})
 # Guests who were not on the programme (scripts/photos/guests.json), each with ref-photos/guest-<id>.jpg.
 GJ=os.path.join(REPO,'scripts','photos','guests.json')
 if os.path.exists(GJ):
