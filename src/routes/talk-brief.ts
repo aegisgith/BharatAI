@@ -56,6 +56,31 @@ const STARTS_RE = /^(\d{4})-(\d{2})-(\d{2}) ([01]\d|2[0-3]):([0-5]\d)$/
 export function firstName(name: any): string {
   return String(name || '').replace(/^(hon[’']?ble|shri\.?|smt\.?|dr\.?|mr\.?|ms\.?|mrs\.?|prof\.?)\s+/gi, '').trim().split(/\s+/)[0] || 'there'
 }
+// The name after "Dear" (the organiser, 23 Nov 2026: "when someone is Dr. address them as
+// Dear Dr. Rajkumar, not Rajkumar; all govt officials ... Shri before name").
+// Dr. / Prof. stay with the first name: "Dr. Rajkumar". Hon'ble / Shri / Smt. take the full
+// name: "Shri Sachin Itkar". Mr / Ms / Mrs are dropped, as before, and so is a trailing
+// "(IAS)". Titles come only from the stored name: who is an official, and whether Shri or
+// Smt., is never guessed here; the organiser puts it in the name in Admin.
+export function dearName(name: any): string {
+  let rest = String(name || '').replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim()
+  const kept: string[] = []
+  let formal = false
+  for (let m = /^(hon[’']?ble|shri|smt|dr|prof|mr|ms|mrs)\.?\s+/i.exec(rest); m; m = /^(hon[’']?ble|shri|smt|dr|prof|mr|ms|mrs)\.?\s+/i.exec(rest)) {
+    const t = m[1].toLowerCase()
+    if (/^hon/.test(t)) { kept.push(m[1]); formal = true }
+    else if (t === 'shri') { kept.push('Shri'); formal = true }
+    else if (t === 'smt') { kept.push('Smt.'); formal = true }
+    else if (t === 'dr') kept.push('Dr.')
+    else if (t === 'prof') kept.push('Prof.')
+    rest = rest.slice(m[0].length)
+  }
+  if (!rest) return 'there'
+  const first = rest.split(' ')[0]
+  // "K.K. Singh": an initial is no name to greet someone by.
+  const shown = formal || /^[A-Za-z]{1,2}\.|^[A-Za-z]$/.test(first) ? rest : first
+  return [...kept, shown].join(' ')
+}
 export function timed(t: any): boolean { return STARTS_RE.test(String(t?.starts_at || '')) && Number(t?.duration_min) > 0 && !!String(t?.hall || '').trim() }
 export function endOf(startsAt: string, minutes: number): string {
   const m = STARTS_RE.exec(String(startsAt || ''))
