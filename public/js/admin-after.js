@@ -23,6 +23,7 @@
   var exhibitors = [];
   var photos = null;
   var attendees = null;
+  var findInfo = null;
   var busy = false;
 
   function esc(v) {
@@ -239,7 +240,21 @@
     return '<section class="afd-card">' + head
       + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Group</th><th class="afd-n">Found</th><th class="afd-n">Ready</th><th class="afd-n">Look first</th><th class="afd-n">Sent</th><th class="afd-n">No email or opted out</th><th><span class="afd-sr">Send</span></th></tr></thead><tbody>' + groups + '</tbody></table></div>'
       + '<p class="afd-note">"Send to N ready" leaves out the weaker matches: open their preview and page first, then send them one by one. <span id="afd-att-progress" aria-live="polite"></span></p>'
+      + findHtml()
       + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Person</th><th>Group</th><th>Photos</th><th>Email</th><th>Photos email</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+  }
+
+  // "Are you in the photos?" (23 Nov 2026): everyone registered and not found yet is asked to
+  // add a clear photo of themselves in the app; the next matching run finds them and their
+  // photos email follows. A bulk run of kind find_photos, sent by the minute clock.
+  function findHtml() {
+    var f = findInfo;
+    if (!f) return '';
+    if (f.error) return '<p class="afd-warn">' + esc(f.error) + '</p>';
+    return '<div class="afd-panel"><b>Not found yet: ' + num(f.audience) + ' people</b>'
+      + '<p class="afd-note">They registered for Mumbai but are in none of the photos we can match, mostly because they have no clear photo in the app. Email them &ldquo;' + esc(f.subject) + '&rdquo;: add a clear photo of yourself in the app and we will find your photos. After they add one, the matching is run again and their photos email follows here. Leaves out anyone found, unsubscribed or who asked not to be matched.</p>'
+      + '<div class="afd-actions"><button type="button" class="afd-btn afd-small" data-act="preview-find">Preview</button>'
+      + '<button type="button" class="afd-btn afd-small afd-primary" data-act="send-find"' + (f.audience ? '' : ' disabled') + '>Email ' + num(f.audience) + ' people</button></div></div>';
   }
 
   function draw() {
@@ -314,6 +329,15 @@
         busy = true; b.disabled = true;
         await sendOne(r.id, again);
         toast('Results sent to ' + r.company + '.');
+        await refresh();
+      } else if (act === 'preview-find') {
+        preview('Are you in the photos? email', '', findInfo.subject, findInfo.html);
+      } else if (act === 'send-find') {
+        var fn = Number((findInfo && findInfo.audience) || 0);
+        if (!fn || !w.confirm('Email ' + fn.toLocaleString('en-IN') + ' people "' + findInfo.subject + '", asking them to add a clear photo in the app? It goes out at about 30 a minute.')) return;
+        busy = true; b.disabled = true;
+        await opts.startCampaign('find_photos', { audience: 'not_found', title: 'Are you in the photos?' });
+        toast('Started. It goes out at about 30 a minute.');
         await refresh();
       } else if (act === 'preview-att') {
         var av = await opts.api.get('/api/admin/attendee-photos/' + encodeURIComponent(id) + '/preview');
@@ -411,12 +435,14 @@
       opts.api.get('/api/admin/feedback/summary').catch(function (e) { return { error: e.message }; }),
       opts.api.get('/api/admin/exhibitor-results').catch(function (e) { return { error: e.message, results: [] }; }),
       opts.api.get('/api/admin/speaker-photos').catch(function (e) { return { error: e.message, rows: [] }; }),
-      opts.api.get('/api/admin/attendee-photos').catch(function (e) { return { error: e.message, rows: [], groups: [] }; })
+      opts.api.get('/api/admin/attendee-photos').catch(function (e) { return { error: e.message, rows: [], groups: [] }; }),
+      opts.api.get('/api/admin/find-photos').catch(function (e) { return { error: e.message }; })
     ]);
     survey = out[0] || {};
     exhibitors = (out[1] && out[1].results) || [];
     photos = out[2] || { rows: [] };
     attendees = out[3] || { rows: [], groups: [] };
+    findInfo = out[4] || null;
     draw();
     if (out[0] && out[0].error) toast('The survey numbers did not load: ' + out[0].error, 'error');
     if (out[1] && out[1].error) toast('The exhibitor numbers did not load: ' + out[1].error, 'error');

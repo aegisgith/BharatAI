@@ -10,6 +10,7 @@ import siteLive, { configureSiteLive } from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief, saturdaySpeakerReminders } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/talk-brief'
 import speakerPhotos, { configurePhotos } from './routes/photos'
+import findPhotos, { configureFindPhotos, findPhotosWhereSql } from './routes/find-photos'
 import photoStore, { configurePhotoStore } from './routes/photo-store'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
 import entrySlots, { configureEntrySlots, entrySlotAudienceRows, entryReofferAudienceRows, satOpenAudienceRows, inSlot as entryInSlot, satWindow } from './routes/entry-slots'
@@ -636,6 +637,19 @@ app.route('/', speakerPhotos)
 // (app_settings, default 15) different photos each. routes/photo-store.ts.
 configurePhotoStore({ audit })
 app.route('/', photoStore)
+// "Are you in the photos?" (23 Nov 2026): everyone registered and not found yet is asked to
+// add a clear photo in the app, so the next matching run finds them. A bulk run of kind
+// find_photos; routes/find-photos.ts. The button signs them in at their profile.
+configureFindPhotos({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader,
+  profileLink: async (c: any, eventId: number, email: string) => {
+    const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+    let href = appUrl + '?email=' + encodeURIComponent(email) + '&action=complete-profile'
+    try {
+      if (await verifiedLoginEnabled(c)) href += '&token=' + (await createLoginToken(c, eventId, email, PROFILE_LINK_TTL_MINUTES, 3)).token
+    } catch { /* the plain link opens the sign-in box on their address */ }
+    return href
+  } })
+app.route('/', findPhotos)
 // The event-week email (16 Nov 2026): "Get ready for 20 and 21 Nov" to delegates,
 // exhibitors and everyone else, a checklist of photo, pass, LinkedIn badge, the app and
 // meetings, each step a sign-in button; a campaign of kind event_week (BULK EMAIL
@@ -20678,6 +20692,7 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'networking' ? `/api/admin/attendees/${r.attendee_id}/send-networking`
     : kind === 'waitlist_confirm' ? `/api/admin/attendees/${r.attendee_id}/send-waitlist-confirm`
     : kind === 'feedback' ? `/api/admin/attendees/${r.attendee_id}/send-feedback`
+    : kind === 'find_photos' ? `/api/admin/attendees/${r.attendee_id}/send-find-photos`
     : kind === 'workshop_invite' ? `/api/admin/attendees/${r.attendee_id}/send-workshop-invite`
     : kind === 'event_week' ? `/api/admin/attendees/${r.attendee_id}/send-event-week`
     : kind === 'entry_slot' ? `/api/admin/attendees/${r.attendee_id}/send-entry-slot`
@@ -20734,6 +20749,13 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
   // Nobody who unsubscribed, nobody who said no to marketing on a form (0042).
   // The unsubscribe page promises exactly this.
   const sc = await suppressionClause(c)
+  if (kind === 'find_photos') {
+    // Everyone registered and not found in the photos yet (routes/find-photos.ts).
+    const { results } = await c.env.DB.prepare(
+      `SELECT id, name, email FROM attendees WHERE event_id = ? AND ${findPhotosWhereSql()}${mc}${sc} ORDER BY id`
+    ).bind(eventId).all()
+    return (results as any[]) || []
+  }
   if (kind === 'upgrade') {
     // Free Visitors only, in one of the two audiences, never anyone already on an
     // upgrade campaign. The send checks the pass again, in case it changed since.
@@ -20794,7 +20816,7 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week', 'entry_slot', 'entry_reoffer', 'sat_open'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week', 'entry_slot', 'entry_reoffer', 'sat_open', 'find_photos'].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
@@ -20854,6 +20876,7 @@ app.post('/api/admin/campaigns', async (c) => {
     : kind === 'sat_open' ? 'Free Visitor Pass: Saturday open to all'
     : kind === 'thankyou' ? 'Post-event thank you'
     : kind === 'profile_reminder' ? 'Complete your profile'
+    : kind === 'find_photos' ? 'Are you in the photos?'
     : kind === 'waitlist_confirm' ? 'Waiting list: your Free Visitor Pass is confirmed'
     : kind === 'feedback' ? 'Feedback survey'
     : kind === 'workshop_invite' ? 'Workshop invitation' : 'Announcement')).slice(0, 160)
@@ -20917,7 +20940,7 @@ async function tickCampaigns(c: any): Promise<any[]> {
     try {
       // The event-week email is not paced by the send gap (routes/event-week.ts): ten a
       // minute, so a few thousand go in a day and not a week.
-      const r = await pumpCampaign(c, k.id, k.kind === 'sat_open' ? 50 : k.kind === 'day2_programme' ? 40 : k.kind === 'feedback' ? 30 : k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
+      const r = await pumpCampaign(c, k.id, k.kind === 'sat_open' ? 50 : k.kind === 'day2_programme' ? 40 : k.kind === 'feedback' || k.kind === 'find_photos' ? 30 : k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
       out.push({ id: k.id, sent: r.body?.sent ?? null, remaining: r.body?.remaining ?? null, wait_seconds: r.body?.wait_seconds ?? 0 })
     } catch (e: any) { out.push({ id: k.id, error: String(e?.message || e).slice(0, 200) }) }
   }
@@ -42425,7 +42448,7 @@ function adminPageScript(): string {
     // After the Event: the feedback survey and each exhibitor's results live in
     // /js/admin-after.js (one global, AfterDesk) with their own stylesheet, loaded the
     // first time the section opens. Bump AFTER_DESK_VERSION on any change to either.
-    var AFTER_DESK_VERSION = '20261123d';
+    var AFTER_DESK_VERSION = '20261123e';
     var afterDeskAssets = null;
     function afterDeskLoadAssets() {
       if (window.AfterDesk) return Promise.resolve();
