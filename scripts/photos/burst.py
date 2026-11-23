@@ -3,7 +3,7 @@
 # WINDOW seconds that k is already surely matched in, and this face looks like k's face in
 # THAT photo (same light, same clothes, same angle) by at least SIM, beating every other
 # person's nearby faces by GAP. Faces already given to anyone are never moved.
-# usage: burst.py faces_dir refs_prefix index.json base_matches.json out_dir [SIM] [GAP] [WINDOW] [ORIG_MIN] [--drop wrong-matches.json]
+# usage: burst.py faces_dir refs_prefix index.json base_matches.json out_dir [SIM] [GAP] [WINDOW] [ORIG_MIN] [--drop wrong-matches.json] [--not-faces attendee_albums.json att-skip.json]
 # Writes out_dir/matches.json in match.py's format; the new rows keep their site-photo score
 # (low), so they rank last in the email and are never used to name anyone in a photo.
 import sys, os, json, glob, datetime, collections, numpy as np
@@ -74,10 +74,24 @@ for k, lst in sure.items():
     for fi, t, c in lst: bycam[c].append((t, k, fi))
 for c in bycam: bycam[c].sort()
 
+# --not-faces attendee_albums.json [att-skip.json]: a face an attendee's pass photo already
+# claims is never added to a speaker (the same rule as match.py's).
+NOT = set()
+if '--not-faces' in sys.argv:
+    _i = sys.argv.index('--not-faces')
+    _alb = json.load(open(sys.argv[_i + 1]))['albums']
+    _skip = set()
+    if len(sys.argv) > _i + 2 and not sys.argv[_i + 2].startswith('--') and os.path.exists(sys.argv[_i + 2]):
+        _skip = {'a%d' % int(x['id']) for x in json.load(open(sys.argv[_i + 2], encoding='utf-8'))}
+    for _k, _v in _alb.items():
+        if _k in _skip: continue
+        for _r in _v['photos']:
+            for _fi in byphoto.get(_r[0], []):
+                if abs(fbox[_fi][0] + fbox[_fi][2] / 2 - _r[2]) < 0.03 and abs(fbox[_fi][1] + fbox[_fi][3] / 2 - _r[3]) < 0.03: NOT.add(_fi)
 out = json.loads(json.dumps(base))
 added = collections.Counter(); considered = 0
 for fi in range(len(names)):
-    if fi in taken: continue
+    if fi in taken or fi in NOT: continue
     pid = fpid[fi]; t = when(pid)
     if t is None: continue
     near = [(k, f2) for (t2, k, f2) in bycam.get(cam(pid), []) if abs(t2 - t) <= WINDOW and fpid[f2] != pid]

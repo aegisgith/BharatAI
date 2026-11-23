@@ -72,6 +72,15 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
      pointing at X: neither is added. It added 212 photos for 56 people.
    - `wrong-matches.json` lists matches found wrong by eye; they are removed first, so no
      burst shot is added from them. Then export `WORK/burst/matches.json` in step 7.
+   - **A speaker never takes a face an attendee's pass photo claims.** Run the attendee
+     step first, then pass its albums to both scripts:
+     `--not-faces WORK/att/albums.json REPO/scripts/photos/att-skip.json` (match.py and
+     burst.py). On 23 Nov organiser Tushar Waghmode's album held 11 stage photos of an
+     Innovation Talk speaker with a similar beard, and Dipti Agrawal's held 5 of a
+     delegate: each face matched the attendee's own pass photo far better (0.77 against
+     0.57). `att-skip.json` lists attendees who ARE a speaker (Bhupesh Daheria, Vishal
+     Rally): their pass photo is their own, so their faces stay with the speaker album
+     and they get no second album.
    - **Before calling a match wrong, check the programme, not only the face.** On 23 Nov
      Falguni Vasu's photos were taken out because the woman looked older than her site
      photo and wore thick glasses. They were her: she moderated the Insurance panel, and

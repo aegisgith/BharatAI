@@ -1,5 +1,5 @@
 # Match speakers against the event faces with AuraFace embeddings (pass 2 output).
-# usage: match.py faces_dir refs_prefix img_dir repo out_dir [threshold] [margin] [--expand] [--sheets]
+# usage: match.py faces_dir refs_prefix img_dir repo out_dir [threshold] [margin] [floor] [--expand] [--sheets] [--not-faces attendee_albums.json att-skip.json]
 # - One person = every ref under the same normalised name (conference speaker + talk).
 # - A face goes to the best person if score >= threshold and beats the runner-up by margin.
 # - --expand: add each person's 3 surest event faces (score >= 0.55) as extra refs and match
@@ -36,7 +36,30 @@ def key(n):
 groups = {}
 for i, p in enumerate(people): groups.setdefault(key(p['name']), []).append(i)
 gkeys = list(groups)
-keep = [i for i, n in enumerate(names) if pids[at[n]] not in SKIP]
+# --not-faces attendee_albums.json [att-skip.json]: faces an attendee's own pass photo already
+# claims (att_match.py gives a face to an attendee only when it beats every speaker's site
+# photo by its margin) are not for any speaker: not matched, and never used as an extra
+# reference by --expand. Without this, Tushar Waghmode's album took 30 stage photos of an
+# Innovation Talk speaker with a similar beard (23 Nov), and the extra references then
+# pulled in more of him. Attendees in att-skip.json are speakers themselves, so their
+# faces stay available.
+NOT = set()
+if '--not-faces' in sys.argv:
+    _i = sys.argv.index('--not-faces')
+    _alb = json.load(open(sys.argv[_i + 1]))['albums']
+    _skip = set()
+    if len(sys.argv) > _i + 2 and not sys.argv[_i + 2].startswith('--') and os.path.exists(sys.argv[_i + 2]):
+        _skip = {'a%d' % int(x['id']) for x in json.load(open(sys.argv[_i + 2], encoding='utf-8'))}
+    _byp = {}
+    for _fi, _n in enumerate(names): _byp.setdefault(pids[at[_n]], []).append(_fi)
+    for _k, _v in _alb.items():
+        if _k in _skip: continue
+        for _r in _v['photos']:
+            for _fi in _byp.get(_r[0], []):
+                _b = boxes[at[names[_fi]]]
+                if abs(_b[0] + _b[2] / 2 - _r[2]) < 0.03 and abs(_b[1] + _b[3] / 2 - _r[3]) < 0.03: NOT.add(_fi)
+    print('faces left to the attendees who own them', len(NOT))
+keep = [i for i, n in enumerate(names) if pids[at[n]] not in SKIP and i not in NOT]
 
 O = np.stack([(F[keep] @ R[groups[k]].T).max(1) for k in gkeys], 1)  # against site photos only
 def assign(refsets):
