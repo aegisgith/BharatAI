@@ -19,6 +19,11 @@ MARGIN = float(sys.argv[8]) if len(sys.argv) > 8 else 0.10
 SURE = float(sys.argv[9]) if len(sys.argv) > 9 else 0.65
 TH_NOT, SURE_NOT = TH + 0.04, SURE + 0.03
 SAME = 0.55   # an attendee photo this close to a speaker/guest reference is that person
+# Attendees never matched on their own (scripts/photos/att-skip.json, e.g. a speaker whose
+# pass photo differs from their site photo): [{"id": 6, "why": "..."}].
+SKIP = set()
+if len(sys.argv) > 10 and os.path.exists(sys.argv[10]):
+    SKIP = {int(x['id']) for x in json.load(open(sys.argv[10], encoding='utf-8'))}
 PRIORITY = [('Speakers', ('Speaker', 'Exhibition Speaker')), ('VIP guests', ('VIP Pass', 'VIP Guest')),
             ('Delegates', ('Delegate Pass', 'Premium Delegate Pass')), ('Organisers', ('Organiser',)),
             ('Exhibitors', ('Exhibitor',)), ('Visitors and others', ())]
@@ -66,7 +71,7 @@ groups = {}
 for i, p in enumerate(rp): groups.setdefault(key(p['name']), []).append(i)
 G = list(groups.values())
 same = (A @ R.T).max(1) if len(A) else np.zeros(0)
-keep = [i for i in range(len(people)) if same[i] < SAME]
+keep = [i for i in range(len(people)) if same[i] < SAME and people[i]['id'] not in SKIP]
 print('left out as already a speaker or guest', len(people) - len(keep), flush=True)
 
 # Every event face.

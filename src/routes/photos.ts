@@ -147,7 +147,7 @@ function sameText(a: string, b: string): boolean {
 // The email. `forSpeaker` false: it goes to the company's booth contact, who is asked
 // to pass it on to the speaker.
 export function photosEmailHTML(a: { name: string; count: number; best: string[]; href: string; header: string; talk: boolean;
-    forSpeaker: boolean; company?: string; got?: Got; guest?: boolean; lineup?: string; attendee?: boolean }): { subject: string; html: string } {
+    forSpeaker: boolean; company?: string; got?: Got; guest?: boolean; lineup?: string; attendee?: boolean; guestRole?: string }): { subject: string; html: string } {
   const words = MUMBAI_WORDS
   // "Dear Dr. Rajkumar," / "Dear Shri Sachin Itkar," (the organiser, 23 Nov 2026).
   const first = dearName(a.name)
@@ -157,6 +157,8 @@ export function photosEmailHTML(a: { name: string; count: number; best: string[]
   const greeting = a.forSpeaker ? `Dear ${first},` : `Dear ${a.company ? a.company + ' team' : 'team'},`
   const thanks = a.attendee
     ? `Thank you for coming to ${words.name} in Mumbai. We found ${photosWord} of you by matching the profile photo you added in the event app. Here are a few of them.`
+    : a.guest && /organis/i.test(a.guestRole || '')
+    ? `Thank you for everything you did to make ${words.name} in Mumbai happen. Our photographers took ${photosWord} of you. Here are a few of them.`
     : a.guest
     ? `Thank you for joining ${words.name} in Mumbai as our special guest. Our photographers took ${photosWord} of you. Here are a few of them.`
     : a.forSpeaker
@@ -600,7 +602,7 @@ export function namesIn(id: string, owner: string, live: Live): [string, string,
 // ---------- reading who gets what ----------
 
 type Row = { key: string; name: string; org: string; kinds: string[]; count: number; best: string[]; email: string; email_source: string;
-  email_note: string; protocol: boolean; status: string; sent_at: string; sent_count: number; talk: boolean; company: string; for_speaker: boolean; guest: boolean }
+  email_note: string; protocol: boolean; status: string; sent_at: string; sent_count: number; talk: boolean; company: string; for_speaker: boolean; guest: boolean; guest_role: string }
 
 async function sentLog(c: any): Promise<Map<string, { at: string; n: number; to: string }>> {
   const out = new Map<string, { at: string; n: number; to: string }>()
@@ -658,7 +660,7 @@ async function rowsFor(c: any, eventId = 1, waiting: Set<string> = new Set(), hi
       kinds: [...(sps.length ? ['Speaker'] : []), ...(tks.length ? ['Innovation Talk'] : []), ...(isGuest ? [guest!.role || 'Guest'] : [])], count, best: best.slice(0, 3),
       email, email_source: source, email_note: spEmail ? "The speaker's own email" : tc ? tc.note : gEmail ? 'From the guest list' : 'No email on file', protocol, status,
       sent_at: s ? s.at : '', sent_count: s ? s.n : 0, talk: !sps.length && tks.length > 0, company: tks[0]?.company || sps[0]?.organisation || '',
-      for_speaker: isGuest || source === 'speaker' || source === 'team', guest: isGuest })
+      for_speaker: isGuest || source === 'speaker' || source === 'team', guest: isGuest, guest_role: isGuest ? String(guest!.role || '') : '' })
   }
   for (const p of albumPeople()) build(p.key, p.name, p.speakers || [], p.talks || [], p.photos || [], p.best || [], !!p.check, p.guest || null)
   // Everyone on the programme with no photo found, so the list shows who is missing.
@@ -685,7 +687,7 @@ async function mailFor(c: any, r: Row, live: Live | null = null, hidden: Set<str
   const extra = panel.filter(id => !(p && p.photos.includes(id))).length
   // Signed for this person (the album key), the small size only; never a hidden photo.
   const got = best.length ? await linksForDrive(c, r.key, best) : {}
-  return photosEmailHTML({ name: r.name, count: r.count + extra, best: shown(best, got, hidden !== null), href, header, talk: r.talk, forSpeaker: r.for_speaker, company: r.company, got, guest: r.guest, lineup })
+  return photosEmailHTML({ name: r.name, count: r.count + extra, best: shown(best, got, hidden !== null), href, header, talk: r.talk, forSpeaker: r.for_speaker, company: r.company, got, guest: r.guest, guestRole: r.guest_role, lineup })
 }
 
 // The live programme, every session's line-up check, the organiser's confirmations, and

@@ -100,7 +100,8 @@ if (G) {
   const gh = await gp.text();
   check("the guest's page opens with their title", gp.status === 200 && gh.includes('Photos of ' + G.name) && gh.includes(G.guest.title.replace(/&/g, '&amp;')), gp.status);
   const gv = await as('GET', `/api/admin/speaker-photos/${G.key}/preview`);
-  check('the guest email thanks them as our special guest', gv.status === 200 && /as our special guest/.test(gv.json?.html || '') && gv.json?.subject === 'Your photos from Bharat AI Innovation 2026', gv.status);
+  const thanks = /organis/i.test(G.guest.role || '') ? /everything you did to make/ : /as our special guest/;
+  check('the guest email thanks them for their part (an organiser for their work, a guest as our special guest)', gv.status === 200 && thanks.test(gv.json?.html || '') && gv.json?.subject === 'Your photos from Bharat AI Innovation 2026', gv.status);
 }
 
 // ---- an official ----

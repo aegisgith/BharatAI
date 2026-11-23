@@ -38,5 +38,77 @@
     "role": "VIP guest",
     "email": "daphnepillai@mes.ac.in",
     "note": "VIP Pass (attendee 4133), no pass photo. Reference: her official portrait on mes.ac.in (Mahatma Education Society). Found by session c2 at the organiser’s ask, 23 Nov 2026."
+  },
+  {
+    "id": 7,
+    "name": "Raj Kadam",
+    "title": "Innovation Evangelist, Bharat AI Innovation",
+    "role": "Organiser",
+    "email": "raj@aegis.edu.in",
+    "note": "Organising team (Organiser pass, attendee 108); reference: their own pass photo. Added 23 Nov 2026 at the organiser’s ask (via session c2), so the team are matched like speakers (with --expand) and get one email each."
+  },
+  {
+    "id": 8,
+    "name": "Anita Ram",
+    "title": "Head - Industry & Innovation Ecosystem Partnerships, Bharat AI Innovation",
+    "role": "Organiser",
+    "email": "anita.r@aegis.edu.in",
+    "note": "Organising team (Organiser pass, attendee 3292); reference: their own pass photo. Added 23 Nov 2026 at the organiser’s ask (via session c2), so the team are matched like speakers (with --expand) and get one email each."
+  },
+  {
+    "id": 9,
+    "name": "Tushar Waghmode",
+    "title": "Monk Evangelist, Bharat AI Innovation",
+    "role": "Organiser",
+    "email": "tushar@aegis.edu.in",
+    "note": "Organising team (Organiser pass, attendee 531 and 2337); reference: their own pass photos. Added 23 Nov 2026 at the organiser’s ask (via session c2), so the team are matched like speakers (with --expand) and get one email each."
+  },
+  {
+    "id": 10,
+    "name": "Akshay Khilare",
+    "title": "Innovation Evangelist, Bharat AI Innovation",
+    "role": "Organiser",
+    "email": "akshay@aegis.edu.in",
+    "note": "Organising team (Organiser pass, attendee 1102 and 2094); reference: their own pass photos. Added 23 Nov 2026 at the organiser’s ask (via session c2), so the team are matched like speakers (with --expand) and get one email each."
+  },
+  {
+    "id": 11,
+    "name": "Kajal Kesarwani",
+    "title": "Social Media Marketing, Bharat AI Innovation",
+    "role": "Organiser",
+    "email": "kajal@aegis.edu.in",
+    "note": "Organising team (Organiser pass, attendee 1201); reference: their own pass photo. Added 23 Nov 2026 at the organiser’s ask (via session c2), so the team are matched like speakers (with --expand) and get one email each."
+  },
+  {
+    "id": 12,
+    "name": "Puja Deka",
+    "title": "Innovation Evangelist, Bharat AI Innovation",
+    "role": "Organiser",
+    "email": "puja@aegis.edu.in",
+    "note": "Organising team (Organiser pass, attendee 1202); reference: their own pass photo. Added 23 Nov 2026 at the organiser’s ask (via session c2), so the team are matched like speakers (with --expand) and get one email each."
+  },
+  {
+    "id": 13,
+    "name": "Ayesha Ansari",
+    "title": "Innovation Evangelist, Bharat AI Innovation",
+    "role": "Organiser",
+    "email": "ayesha.a@aegis.edu.in",
+    "note": "Organising team (Organiser pass, attendee 1390); reference: their own pass photo. Added 23 Nov 2026 at the organiser’s ask (via session c2), so the team are matched like speakers (with --expand) and get one email each."
+  },
+  {
+    "id": 14,
+    "name": "Aswin Kumar",
+    "title": "Innovation Evangelist, Bharat AI Innovation",
+    "role": "Organiser",
+    "email": "aswin@aegis.edu.in",
+    "note": "Organising team (Organiser pass, attendee 368); reference: their own pass photo. Added 23 Nov 2026 at the organiser’s ask (via session c2), so the team are matched like speakers (with --expand) and get one email each."
+  },
+  {
+    "id": 15,
+    "name": "Vishal Mane",
+    "title": "Operation Manager, Bharat AI Innovation",
+    "role": "Organiser",
+    "email": "vishal.m@aegis.edu.in",
+    "note": "Organising team (Organiser pass, attendee 1406); reference: their own pass photo. Added 23 Nov 2026 at the organiser’s ask (via session c2), so the team are matched like speakers (with --expand) and get one email each."
   }
 ]

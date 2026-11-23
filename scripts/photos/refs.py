@@ -18,14 +18,18 @@ if os.path.exists(XS):
 # Guests who were not on the programme (scripts/photos/guests.json), each with ref-photos/guest-<id>.jpg.
 GJ=os.path.join(REPO,'scripts','photos','guests.json')
 if os.path.exists(GJ):
-    for g in json.load(open(GJ,encoding='utf-8')): people.append({'kind':'guest','id':g['id'],'name':g['name'],'org':g.get('title',''),'photo':''})
+    for g in json.load(open(GJ,encoding='utf-8')):
+        people.append({'kind':'guest','id':g['id'],'name':g['name'],'org':g.get('title',''),'photo':''})
+        # A second reference (ref-photos/guest-<id>-2.jpg, e.g. a second pass photo): same person.
+        if os.path.exists(os.path.join(REPO,'scripts','photos','ref-photos',f"guest-{g['id']}-2.jpg")):
+            people.append({'kind':'guest2','id':g['id'],'name':g['name'],'org':g.get('title',''),'photo':''})
 feats=[];keep=[];fail=[]
 # A better reference than the site photo, when the organiser gave one: scripts/photos/ref-photos/<kind>-<id>.jpg
 # (23 Nov 2026: Dr. Abhijit Gangopadhyay's site photo also shows his face on the stage screen behind him).
 OVR=os.path.join(REPO,'scripts','photos','ref-photos')
 for x in people:
     f=os.path.join(REPO,'public'+x['photo']) if x['photo'].startswith('/images') else ''
-    o=os.path.join(OVR,f"{x['kind']}-{x['id']}.jpg")
+    o=os.path.join(OVR,f"guest-{x['id']}-2.jpg") if x['kind']=='guest2' else os.path.join(OVR,f"{x['kind']}-{x['id']}.jpg")
     if os.path.exists(o): f=o; x['photo_file']=o
     if not f or not os.path.exists(f): fail.append((x['name'],'no photo')); continue
     im=cv2.cvtColor(np.array(Image.open(f).convert('RGB')),cv2.COLOR_RGB2BGR)
