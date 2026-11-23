@@ -621,18 +621,13 @@
    "w": 144,
    "h": 144
   },
-  "manpreet-singh-manna": {
-   "src": "images/sched/manpreet-singh-manna.webp?v=3907f7d8",
-   "w": 144,
-   "h": 144
-  },
   "tarun-anand": {
    "src": "images/sched/tarun-anand.webp?v=adaccc9f",
    "w": 144,
    "h": 144
   },
-  "raju-haldankar": {
-   "src": "images/sched/raju-haldankar.webp?v=af4c9d96",
+  "jayantrao-patil": {
+   "src": "images/sched/jayantrao-patil.webp?v=be741f60",
    "w": 144,
    "h": 144
   },
@@ -733,6 +728,16 @@
   },
   "pramod-prakash": {
    "src": "images/sched/pramod-prakash.webp?v=a7139bf0",
+   "w": 144,
+   "h": 144
+  },
+  "manpreet-singh-manna": {
+   "src": "images/sched/manpreet-singh-manna.webp?v=3907f7d8",
+   "w": 144,
+   "h": 144
+  },
+  "raju-haldankar": {
+   "src": "images/sched/raju-haldankar.webp?v=af4c9d96",
    "w": 144,
    "h": 144
   },
@@ -1278,13 +1283,6 @@
    "lw": 57,
    "lh": 31
   },
-  "images/org-logos/cimr.webp": {
-   "src": "images/sched/logo-cimr.webp?v=4734295b",
-   "w": 82,
-   "h": 80,
-   "lw": 41,
-   "lh": 40
-  },
   "images/org-logos/mgm-ihs.webp": {
    "src": "images/sched/logo-mgm-ihs.webp?v=f429053f",
    "w": 184,
@@ -1339,6 +1337,13 @@
    "w": 80,
    "h": 80,
    "lw": 40,
+   "lh": 40
+  },
+  "images/org-logos/cimr.webp": {
+   "src": "images/sched/logo-cimr.webp?v=4734295b",
+   "w": 82,
+   "h": 80,
+   "lw": 41,
    "lh": 40
   },
   "images/org-logos/favicon-alkemlabs.com.png": {

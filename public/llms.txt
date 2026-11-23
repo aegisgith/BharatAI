@@ -129,11 +129,10 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 - **Pravin Kumar** — Chief Market Information Security Officer & Data Protection Officer, National Payments Corporation of India (NPCI) (AI Governance)
 - **Sudhir Kumar Rai** — Director, Data Science, Trellix (AI in Cybersecurity)
 - **Dr. Lakshmi Mohan** — Pro Vice Chancellor, ITM Skills University (Education Panel)
-- **Dr. Manpreet Singh Manna** — Founding Executive Director, GCC School (Education Panel)
 - **Dr. Priyesh Gandhi** — Provost (Vice Chancellor), Sigma University (Education Panel)
 - **Dr. Shashank D Dalvi** — Vice Chancellor, MGM Institute of Health Sciences (Education Panel)
-- **Raju Haldankar** — President, Chetana's Institute of Management & Research (Education Panel)
 - **Amita Madhvani** — Founder, Ram Madhvani Films
+- **Prof. Dr. Jayantrao Patil** — Director, R. C. Patel Institute of Technology, Shirpur (Education Panel)
 - **Dr. Saurabh N. Mehta** — Chief Academic Officer & Professor, Vidyalankar Institute of Technology, Mumbai (Education Panel)
 - **Sankalp Rawal** — screenwriter, director, and performance poet
 - **Dr. Parijat Shukla** — PhD, Iowa State University (Speech Recognition)
@@ -303,7 +302,7 @@ Digital media partner: The Mainstream.
 - **Shishir Sharan** (CEO, Daten Intelligenz Software, AIGyan Technologies)
 - **Dr Rahul Ghodke** (Senior Vice President & Business Unit leader., CGI) — Your Next Colleague Is an AI: Lessons from Delivering Technology Operations for Global Clients
 - **Shashank KP** (CTO, RedFerns Tech Private Limited) — From Intelligence to Innovation: Building the Next Wave
-- **Dr. Anand Deshpande** (CSO, Algo Analytics) — AI-based Business Transformations in Manufacturing and Industrial Domains
+- **Dr. Anand Deshpande** (CSO, Algo Analytics) — AI Bases Business Transformations for Manufacturing  And  Financial Services
 - **Ambrish Agarwal** (Director, Ai Vie Insights Private Limited) — Everyday AI for enterprise applications
 - **Saurabh Singh** (CEO & Co-Founder, Zanopy AI) — Don’t Just Build with AI. Sell with It.
 - **Seema Sutradhar** (Founder & CEO, SEEM ( brand in fintech and sustainability consulting)) — Digital Transformation in systemically important banks and others

@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-20T01:15:59.063Z",
+ "generated_at": "2026-11-23T03:51:17.058Z",
  "live": true,
  "event": {
   "id": 1,
@@ -3165,7 +3165,7 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-21 16:30",
    "end_time": "2026-11-21 17:30",
-   "speaker_name": "Dr. Saurabh N. Mehta (Vidyalankar Institute of Technology), Dr. Lakshmi Mohan (ITM Skills University), Dr. Manpreet Singh Manna (GCC School / SLIET), Tarun Anand (Universal AI University), Raju Haldankar (Chetana's Institute of Management & Research), Dr. Shashank D. Dalvi (MGM Institute of Health Sciences), Madhvendra Singh (Electronics Sector Skill Council of India)",
+   "speaker_name": "Dr. Saurabh N. Mehta (Vidyalankar Institute of Technology), Dr. Lakshmi Mohan (ITM Skills University), Tarun Anand (Universal AI University), Prof. Dr. Jayantrao Patil (R. C. Patel Institute of Technology), Dr. Shashank D. Dalvi (MGM Institute of Health Sciences), Madhvendra Singh (Electronics Sector Skill Council of India)",
    "speaker_title": "",
    "links": [
     {
@@ -3177,11 +3177,7 @@
      "role": "panellist"
     },
     {
-     "speaker_id": 69,
-     "role": "panellist"
-    },
-    {
-     "speaker_id": 72,
+     "speaker_id": 174,
      "role": "panellist"
     },
     {
@@ -3207,25 +3203,17 @@
      "part": "panellist"
     },
     {
-     "speaker_id": 69,
-     "name": "Dr. Manpreet Singh Manna",
-     "role": "Founding Executive Director",
-     "organisation": "GCC School",
-     "photo_url": "/images/speaker-manpreet-singh-manna-sq.webp",
-     "part": "panellist"
-    },
-    {
      "speaker_id": null,
      "name": "Tarun Anand",
      "info": "Universal AI University",
      "part": ""
     },
     {
-     "speaker_id": 72,
-     "name": "Raju Haldankar",
-     "role": "President",
-     "organisation": "Chetana's Institute of Management & Research",
-     "photo_url": "/images/speaker-raju-haldankar-sq.webp",
+     "speaker_id": 174,
+     "name": "Prof. Dr. Jayantrao Patil",
+     "role": "Director",
+     "organisation": "R. C. Patel Institute of Technology, Shirpur",
+     "photo_url": "/images/speaker-jayantrao-patil-sq.webp",
      "part": "panellist"
     },
     {
@@ -4220,20 +4208,6 @@
    "sort_order": 62
   },
   {
-   "id": 69,
-   "slug": "manpreet-singh-manna",
-   "name": "Dr. Manpreet Singh Manna",
-   "role": "Founding Executive Director",
-   "organisation": "GCC School",
-   "topic": "Education Panel",
-   "photo_url": "/images/speaker-manpreet-singh-manna-sq.webp",
-   "bio": "",
-   "linkedin_url": "",
-   "is_featured": 0,
-   "is_published": 1,
-   "sort_order": 63
-  },
-  {
    "id": 70,
    "slug": "priyesh-gandhi",
    "name": "Dr. Priyesh Gandhi",
@@ -4262,20 +4236,6 @@
    "sort_order": 65
   },
   {
-   "id": 72,
-   "slug": "raju-haldankar",
-   "name": "Raju Haldankar",
-   "role": "President",
-   "organisation": "Chetana's Institute of Management & Research",
-   "topic": "Education Panel",
-   "photo_url": "/images/speaker-raju-haldankar-sq.webp",
-   "bio": "",
-   "linkedin_url": "",
-   "is_featured": 0,
-   "is_published": 1,
-   "sort_order": 66
-  },
-  {
    "id": 106,
    "slug": "amita-madhvani",
    "name": "Amita Madhvani",
@@ -4285,6 +4245,20 @@
    "photo_url": "/images/speakers/amita-madhvani.webp",
    "bio": "",
    "linkedin_url": "https://www.linkedin.com/in/ram-madhvani-7b8143364/",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 66
+  },
+  {
+   "id": 174,
+   "slug": "jayantrao-patil",
+   "name": "Prof. Dr. Jayantrao Patil",
+   "role": "Director",
+   "organisation": "R. C. Patel Institute of Technology, Shirpur",
+   "topic": "Education Panel",
+   "photo_url": "/images/speaker-jayantrao-patil-sq.webp",
+   "bio": "",
+   "linkedin_url": "",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 66
@@ -4506,7 +4480,7 @@
    "role": "Chief Distribution Officer & Joint President",
    "organisation": "Star Union Dai-ichi Life Insurance",
    "topic": "AI in Insurance",
-   "photo_url": "",
+   "photo_url": "/images/speakers/arindam-ghosh.webp",
    "bio": "",
    "linkedin_url": "",
    "is_featured": 0,
@@ -5466,7 +5440,7 @@
    "company": "Algo Analytics",
    "speaker_name": "Dr. Anand Deshpande",
    "speaker_title": "CSO",
-   "topic": "",
+   "topic": "AI Bases Business Transformations for Manufacturing  And  Financial Services",
    "starts_at": null,
    "duration_min": 10,
    "hall": "",

@@ -1,5 +1,5 @@
 {
-  "source": "the app (Admin → Conference), 2026-11-20T01:15:59.063Z",
+  "source": "the app (Admin → Conference), 2026-11-23T03:51:17.058Z",
   "days": [
     "2026-11-20",
     "2026-11-21"
@@ -2384,23 +2384,16 @@
           "listed": true
         },
         {
-          "name": "Dr. Manpreet Singh Manna",
-          "org": "GCC School",
-          "role": "Founding Executive Director",
-          "photo": "/images/speaker-manpreet-singh-manna-sq.webp",
-          "listed": true
-        },
-        {
           "name": "Tarun Anand",
           "org": "Universal AI University",
           "role": "",
           "photo": ""
         },
         {
-          "name": "Raju Haldankar",
-          "org": "Chetana's Institute of Management & Research",
-          "role": "President",
-          "photo": "/images/speaker-raju-haldankar-sq.webp",
+          "name": "Prof. Dr. Jayantrao Patil",
+          "org": "R. C. Patel Institute of Technology, Shirpur",
+          "role": "Director",
+          "photo": "/images/speaker-jayantrao-patil-sq.webp",
           "listed": true
         },
         {
