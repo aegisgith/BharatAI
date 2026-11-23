@@ -17,7 +17,7 @@
 // Resumable: every photo sent is a line in <dir>/progress.jsonl; a re-run skips them.
 // A photo Drive would not give is a line in <dir>/failed.jsonl, tried again next run.
 //
-// usage: node scripts/photo-store/upload.mjs <dir with manifest.json> [--limit N] [--batch 120] [--fetch 6] [--event 1]
+// usage: node scripts/photo-store/upload.mjs <dir with manifest.json> [--limit N] [--batch 120] [--fetch 6] [--puts 8] [--event 1]
 import { readFileSync, appendFileSync, existsSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -96,9 +96,12 @@ async function stageBatch(rows, no) {
   return { dir, out };
 }
 
+// 8 at a time: at 12 (with 6 Drive fetches) the line was full, and a batch stopped part
+// way with no message (23 Nov, batch 6), while other calls on this computer timed out.
+const PUTS = Math.max(1, Number(opt('puts', 8)));
 function bulkPut(listFile) {
   return new Promise((ok) => {
-    const p = spawn('npx', ['wrangler', 'r2', 'bulk', 'put', BUCKET, '--remote', '--filename', listFile, '--content-type', 'image/jpeg', '--concurrency', '12'],
+    const p = spawn('npx', ['wrangler', 'r2', 'bulk', 'put', BUCKET, '--remote', '--filename', listFile, '--content-type', 'image/jpeg', '--concurrency', String(PUTS)],
       { shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let log = '';
     p.stdout.on('data', d => { log += d; }); p.stderr.on('data', d => { log += d; });
@@ -118,10 +121,12 @@ for (let b = 0; b < batches.length; b++) {
   if (out.length) {
     const listFile = join(dir, 'list.json');
     writeFileSync(listFile, JSON.stringify(out.flatMap(x => x.files)));
+    // Up to three tries, a minute apart: R2 puts are safe to repeat.
     let res = await bulkPut(listFile);
-    if (res.code !== 0) res = await bulkPut(listFile);   // once more: R2 puts are safe to repeat
+    for (let t = 2; t <= 3 && res.code !== 0; t++) { await new Promise(ok => setTimeout(ok, 60000)); res = await bulkPut(listFile); }
     if (res.code !== 0) {
-      console.error(`batch ${b} did not upload (exit ${res.code}); its photos stay to do. wrangler said:\n${res.log.slice(-1500)}`);
+      const errs = res.log.split('\n').filter(l => /error|fail|timeout|refused|reset/i.test(l)).slice(0, 8).join('\n');
+      console.error(`batch ${b} did not upload (exit ${res.code}); its photos stay to do. wrangler said:\n${errs || res.log.slice(-600)}`);
       failed += out.length;
     } else {
       const at = new Date().toISOString();
