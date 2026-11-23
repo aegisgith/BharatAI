@@ -762,7 +762,7 @@ async function overview(c: any) {
     webhook_url: SITE + '/api/whatsapp/webhook', verify_token: await verifyToken(c), checked,
     settings: { sending: cfg.set.whatsapp_sending === 'off' ? 'off' : 'on', per_minute: numberSetting(cfg, 'whatsapp_per_minute', DEFAULT_PER_MINUTE, 1, 60),
       daily_limit: numberSetting(cfg, 'whatsapp_daily_limit', DEFAULT_DAILY_LIMIT, 1, 1000000), hours_from: from, hours_to: to },
-    open_now: indiaHour() >= from && indiaHour() < to, footer: FOOTER }
+    open_now: indiaHour() >= from && indiaHour() < to, footer: FOOTER, mcp: mcpState(cfg) }
   if (!isReady) return { ...base, templates: shapeTemplates([]), batches: [], totals: {}, used_today: 0, unread: 0, events: [], passes: [] }
   const [tpls, batches, totals, unread, events] = await Promise.all([
     templateRows(c),
@@ -1260,6 +1260,145 @@ wa.post('/api/admin/whatsapp/own/mark', async (c) => {
      VALUES (1, 'out', 'photos', ?, ?, ?, ?, '', ?, ?, 'sent', 1, ?, datetime('now'), datetime('now'))`,
     p.number, p.attendee_id, p.person, p.name.slice(0, 120), JSON.stringify({ text: p.text, own: 1 }), p.target, actorOf(c))
   return c.json({ success: true, sent: true })
+})
+
+// ---------- Claude's own way in: an MCP server on our WhatsApp desk ----------
+//
+// The organiser makes a key in Admin -> WhatsApp -> Setup; it is shown once, inside the
+// `claude mcp add` command they paste in a terminal. Only its SHA-256 is kept. Every tool
+// runs through the same admin routes as the screen (so the same rules: approved messages
+// only, STOP, the hours, the pace, the day's limit, a bulk send only with the count that
+// was shown), signed in the audit log as "Claude (MCP)". Streamable HTTP, JSON answers.
+const MCP_KEY = 'whatsapp_mcp_key'
+const MCP_META = 'whatsapp_mcp_key_meta'
+const MCP_ACTOR = 'Claude (MCP)'
+const sha256 = async (s: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))).map(b => b.toString(16).padStart(2, '0')).join('')
+const mcpMeta = (cfg: Cfg) => { try { return JSON.parse(cfg.set[MCP_META] || '{}') || {} } catch { return {} } }
+export function mcpState(cfg: Cfg) { const m = mcpMeta(cfg); return { on: !!cfg.set[MCP_KEY], created_at: m.created_at || '', created_by: m.created_by || '', last_used_at: m.last_used_at || '' } }
+
+wa.post('/api/admin/whatsapp/mcp-key', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  if (b.off) {
+    await saveSetting(c, MCP_KEY, '')
+    await note(c, 'whatsapp.mcp.off', null, {})
+    return c.json({ success: true, mcp: mcpState(await loadCfg(c)) })
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  const key = 'bwa_' + btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  await saveSetting(c, MCP_KEY, await sha256(key))
+  await saveSetting(c, MCP_META, JSON.stringify({ created_at: new Date().toISOString(), created_by: actorOf(c) || 'team' }))
+  await note(c, 'whatsapp.mcp.key', null, { made: true })
+  const url = SITE + '/api/whatsapp/mcp'
+  // The one time the key leaves the server: inside the command to paste.
+  return c.json({ success: true, key, url, command: `claude mcp add --transport http bharat_whatsapp ${url} --header "Authorization: Bearer ${key}"`, mcp: mcpState(await loadCfg(c)) })
+})
+
+const MCP_TOOLS: { name: string; description: string; inputSchema: any }[] = [
+  { name: 'whatsapp_status', description: 'Where WhatsApp stands: our sending number and whether it can send, today\'s count and limit, the sending hours, unread replies, every message template with its approval status (only APPROVED ones can be sent), and the latest sends with their numbers.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'whatsapp_audience', description: 'Count who a send would reach and who is left out and why, with how the message reads. Sends nothing. Always call this before whatsapp_send_bulk and pass its count as expect. kind: photos (each person\'s own event photos), pass (their pass for an event), custom (an approved announcement, named by template). audience for custom: everyone, came, not_came, pass:<Pass name>, list (with list: one "name, mobile" per line), one (with number and name).', inputSchema: { type: 'object', properties: { kind: { type: 'string', enum: ['photos', 'pass', 'custom'] }, template: { type: 'string', description: 'For custom: the template name from whatsapp_status' }, event: { type: 'number', description: 'Event id for pass and custom (1 = Mumbai 2026)' }, audience: { type: 'string' }, list: { type: 'string' }, number: { type: 'string' }, name: { type: 'string' }, only_new: { type: 'boolean', description: 'Leave out anyone already sent this (default true)' } }, required: ['kind'] } },
+  { name: 'whatsapp_send_test', description: 'Send one test of a message to a mobile number (the organiser\'s own phone). It reads exactly as the first person\'s would, but never signs the tester in as anyone.', inputSchema: { type: 'object', properties: { kind: { type: 'string', enum: ['photos', 'pass', 'custom'] }, template: { type: 'string' }, event: { type: 'number' }, to: { type: 'string', description: 'Mobile number, for example 98765 43210' } }, required: ['kind', 'to'] } },
+  { name: 'whatsapp_send_one', description: 'Send an approved message to one person now: an announcement to a typed number (kind custom, template, number, name), or someone\'s own pass or photos (kind pass or photos, attendee_id). Confirm the person and the message with the organiser first.', inputSchema: { type: 'object', properties: { kind: { type: 'string', enum: ['photos', 'pass', 'custom'] }, template: { type: 'string' }, event: { type: 'number' }, number: { type: 'string' }, name: { type: 'string' }, attendee_id: { type: 'number' } }, required: ['kind'] } },
+  { name: 'whatsapp_send_bulk', description: 'Queue a send to a whole audience. It goes by itself from the minute clock, only between the sending hours, at the set pace and within the day\'s limit. expect must equal the count whatsapp_audience just returned and the organiser agreed to; if the list changed, nothing is sent and the new count comes back. Never call this without the organiser\'s explicit yes to that count.', inputSchema: { type: 'object', properties: { kind: { type: 'string', enum: ['photos', 'pass', 'custom'] }, template: { type: 'string' }, event: { type: 'number' }, audience: { type: 'string' }, list: { type: 'string' }, only_new: { type: 'boolean' }, expect: { type: 'number' } }, required: ['kind', 'expect'] } },
+  { name: 'whatsapp_sends', description: 'The latest sends (campaigns): sent, delivered, read, tapped, replied, not delivered as numbers and rates, and why some did not arrive.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'whatsapp_send_people', description: 'The people in one send, or every message, with each one\'s state (sent, delivered, read, failed...) and the reason when it failed. Newest 200.', inputSchema: { type: 'object', properties: { batch_id: { type: 'number' }, status: { type: 'string', enum: ['', 'queued', 'sent', 'delivered', 'read', 'tapped', 'failed', 'skipped'] }, q: { type: 'string', description: 'Name or number' } } } },
+  { name: 'whatsapp_control_send', description: 'Pause, resume or cancel (the rest of) a running send.', inputSchema: { type: 'object', properties: { batch_id: { type: 'number' }, action: { type: 'string', enum: ['pause', 'resume', 'cancel'] } }, required: ['batch_id', 'action'] } },
+  { name: 'whatsapp_inbox', description: 'People who wrote to us, newest first: unread counts, whether they are waiting for our reply, whether the 24-hour reply window is open, STOP.', inputSchema: { type: 'object', properties: { filter: { type: 'string', enum: ['all', 'waiting', 'unread'] } } } },
+  { name: 'whatsapp_chat', description: 'One conversation (by the number from whatsapp_inbox): every message both ways, and who the person is (registration, pass, payment, event). Reading it clears its unread mark.', inputSchema: { type: 'object', properties: { number: { type: 'string' } }, required: ['number'] } },
+  { name: 'whatsapp_reply', description: 'Type a free-text reply to someone who wrote within the last 24 hours (WhatsApp refuses it after that; then use whatsapp_send_one with an approved message). Show the organiser the words first.', inputSchema: { type: 'object', properties: { number: { type: 'string' }, text: { type: 'string' } }, required: ['number', 'text'] } },
+]
+
+// A tool runs as one admin request on this same app, signed as Claude.
+async function mcpCall(c: any, method: string, path: string, body?: any): Promise<{ status: number; json: any }> {
+  const req = new Request(SITE + path, { method, headers: { 'Content-Type': 'application/json', 'X-Admin-Actor': MCP_ACTOR }, body: body === undefined ? undefined : JSON.stringify(body) })
+  const res = await wa.fetch(req, c.env, c.executionCtx)
+  return { status: res.status, json: await res.json().catch(() => ({})) }
+}
+const rateOf = (b: any) => {
+  const k = b.counts || {}, gone = (k.sent || 0) + (k.delivered || 0) + (k.read || 0), failed = k.failed || 0, base = gone + failed
+  const pct = (n: number) => base ? Math.round((n * 100) / base) + '%' : '-'
+  return { id: b.id, title: b.title, status: b.status, note: b.note || '', total: b.total, started: b.created_at, by: b.created_by, waiting: (k.queued || 0) + (k.sending || 0), sent: gone,
+    delivered: (k.delivered || 0) + (k.read || 0), read: k.read || 0, tapped: b.taps || 0, replied: b.replied || 0, failed, left_out: (k.skipped || 0) + (k.cancelled || 0),
+    rates: { delivered: pct((k.delivered || 0) + (k.read || 0)), read: pct(k.read || 0), tapped: pct(b.taps || 0), replied: pct(b.replied || 0) }, why_not_delivered: b.reasons || [] }
+}
+async function mcpTool(c: any, name: string, a: any): Promise<{ status: number; json: any }> {
+  const pick = (o: any, keys: string[]) => Object.fromEntries(keys.filter(k => o[k] !== undefined && o[k] !== null && o[k] !== '').map(k => [k, o[k]]))
+  const spec = (x: any) => pick(x, ['kind', 'template', 'event', 'audience', 'list', 'number', 'name', 'only_new', 'attendee_id'])
+  switch (name) {
+    case 'whatsapp_status': {
+      const r = await mcpCall(c, 'GET', '/api/admin/whatsapp')
+      const d = r.json || {}, ck = d.checked || {}
+      return { status: r.status, json: { connected: !!d.connected, number: ck.number || '', name: ck.name || '', can_send: !ck.number_status || String(ck.number_status).toUpperCase() === 'CONNECTED', number_health: ck.quality || '',
+        sending: d.settings?.sending, today: { sent: d.used_today, limit: d.settings?.daily_limit }, hours_india: `${d.settings?.hours_from}:00-${d.settings?.hours_to}:00`, open_now: d.open_now, per_minute: d.settings?.per_minute,
+        unread_replies: d.unread, templates: (d.templates || []).map((t: any) => ({ name: t.name, title: t.title, kind: t.kind, status: t.status, category: t.meta_category || t.category, reads: t.preview })),
+        latest_sends: (d.batches || []).slice(0, 5).map(rateOf) } }
+    }
+    case 'whatsapp_audience': return mcpCall(c, 'POST', '/api/admin/whatsapp/audience', spec(a))
+    case 'whatsapp_send_test': return mcpCall(c, 'POST', '/api/admin/whatsapp/test', { ...spec(a), to: a.to })
+    case 'whatsapp_send_one': {
+      const s: any = spec(a)
+      if (s.kind === 'custom') { s.audience = 'one'; if (!s.number) return { status: 400, json: { error: 'Give the number (and the name) to send to.' } } }
+      else if (!s.attendee_id) return { status: 400, json: { error: 'Give attendee_id: a pass or photos go to one registered person.' } }
+      return mcpCall(c, 'POST', '/api/admin/whatsapp/send', { ...s, only_new: false })
+    }
+    case 'whatsapp_send_bulk': {
+      if (!(Number(a.expect) > 0)) return { status: 400, json: { error: 'expect is the count from whatsapp_audience that the organiser agreed to.' } }
+      if (a.audience === 'one') return { status: 400, json: { error: 'For one person use whatsapp_send_one.' } }
+      return mcpCall(c, 'POST', '/api/admin/whatsapp/send', { ...spec(a), expect: Number(a.expect) })
+    }
+    case 'whatsapp_sends': { const r = await mcpCall(c, 'GET', '/api/admin/whatsapp'); return { status: r.status, json: { sends: (r.json?.batches || []).map(rateOf) } } }
+    case 'whatsapp_send_people': {
+      const q = new URLSearchParams(pick(a, ['status', 'q']) as any); if (Number(a.batch_id) > 0) q.set('batch', String(Math.floor(Number(a.batch_id))))
+      return mcpCall(c, 'GET', '/api/admin/whatsapp/messages?' + q.toString())
+    }
+    case 'whatsapp_control_send': return mcpCall(c, 'POST', `/api/admin/whatsapp/batches/${Math.floor(Number(a.batch_id) || 0)}/${encodeURIComponent(String(a.action || ''))}`, {})
+    case 'whatsapp_inbox': {
+      const r = await mcpCall(c, 'GET', '/api/admin/whatsapp/inbox'), f = String(a.filter || 'all')
+      const rows = (r.json?.rows || []).filter((x: any) => f === 'waiting' ? x.waiting : f === 'unread' ? x.unread > 0 : true)
+      return { status: r.status, json: { chats: rows } }
+    }
+    case 'whatsapp_chat': return mcpCall(c, 'GET', '/api/admin/whatsapp/thread/' + encodeURIComponent(String(a.number || '').replace(/\D/g, '')))
+    case 'whatsapp_reply': return mcpCall(c, 'POST', '/api/admin/whatsapp/reply', { number: String(a.number || '').replace(/\D/g, ''), text: a.text })
+  }
+  return { status: 404, json: { error: 'No such tool: ' + name } }
+}
+
+wa.get('/api/whatsapp/mcp', (c) => c.json({ error: 'This MCP server answers POST (Streamable HTTP, JSON).' }, 405))
+wa.post('/api/whatsapp/mcp', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const cfg = await loadCfg(c)
+  const given = (c.req.header('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
+  if (!cfg.set[MCP_KEY] || !given || !sameText(await sha256(given), cfg.set[MCP_KEY])) return c.json({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Not allowed: make a key in Admin -> WhatsApp -> Setup.' } }, 401)
+  if (Number(c.req.header('content-length') || 0) > 200000) return c.json({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Too large.' } }, 413)
+  const body = await c.req.json().catch(() => null)
+  if (!body) return c.json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, 400)
+  const m = mcpMeta(cfg)
+  // Note the use at most once a minute; it is shown on the Setup tab.
+  if (!m.last_used_at || Date.now() - Date.parse(m.last_used_at) > 60000) await saveSetting(c, MCP_META, JSON.stringify({ ...m, last_used_at: new Date().toISOString() }))
+  const one1 = async (msg: any): Promise<any> => {
+    if (!msg || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') return msg && msg.id !== undefined ? { jsonrpc: '2.0', id: msg.id, error: { code: -32600, message: 'Invalid request' } } : null
+    const id = msg.id
+    if (id === undefined) return null // a notification needs no answer
+    const ok = (result: any) => ({ jsonrpc: '2.0', id, result })
+    if (msg.method === 'initialize') return ok({ protocolVersion: String(msg.params?.protocolVersion || '2025-03-26'), capabilities: { tools: { listChanged: false } },
+      serverInfo: { name: 'bharat-ai-whatsapp', version: '1.0.0' },
+      instructions: 'Bharat AI Innovation\'s own WhatsApp desk (the same as Admin -> WhatsApp). Read with whatsapp_status first. Before any bulk send: whatsapp_audience, show the organiser the count, the left-out reasons and the wording, offer whatsapp_send_test, and only after an explicit yes call whatsapp_send_bulk with that count. Messages a business starts must be APPROVED templates; free text only within 24 hours of the person writing.' })
+    if (msg.method === 'ping') return ok({})
+    if (msg.method === 'tools/list') return ok({ tools: MCP_TOOLS })
+    if (msg.method === 'tools/call') {
+      const name = String(msg.params?.name || ''), args = msg.params?.arguments || {}
+      if (!MCP_TOOLS.some(t => t.name === name)) return { jsonrpc: '2.0', id, error: { code: -32602, message: 'Unknown tool: ' + name } }
+      const r = await mcpTool(c, name, args)
+      const isError = r.status >= 400 || !!r.json?.error
+      return ok({ content: [{ type: 'text', text: JSON.stringify(r.json ?? {}, null, 1).slice(0, 60000) }], isError })
+    }
+    return { jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not found: ' + msg.method } }
+  }
+  if (Array.isArray(body)) {
+    const out = (await Promise.all(body.slice(0, 20).map(one1))).filter(Boolean)
+    return out.length ? c.json(out) : c.body(null, 202)
+  }
+  const out = await one1(body)
+  return out ? c.json(out) : c.body(null, 202)
 })
 
 export default wa

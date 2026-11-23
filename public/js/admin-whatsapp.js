@@ -20,6 +20,7 @@
   var aud = null, audError = '', audKey = '';
   var inbox = null, thread = null, log = null, logStatus = '', logBatch = 0, logQ = '', own = null, ownShow = false;
   var inboxFilter = 'all', inboxQ = '', quickEdit = false, pickTpl = '';
+  var mcpNew = null; // the key's command, shown once after it is made
   var form = null, testTo = '', checkResult = null, first = true;
   try { testTo = w.localStorage.getItem('wa_test_to') || ''; } catch (e) { testTo = ''; }
 
@@ -414,6 +415,7 @@
       + '<div class="wad-card"><div class="wad-card-head"><h2>For step 7: the webhook</h2></div>'
       + copyRow('Callback URL', d.webhook_url) + copyRow('Verify token', d.verify_token)
       + (c.app_secret ? '' : '<p class="wad-warn">Until the App secret is saved above, nothing Meta tells us is believed: messages still go, but they stay at &ldquo;Sent&rdquo; and replies do not arrive.</p>') + '</div>'
+      + mcpHtml(d.mcp || {})
       + '<div class="wad-card"><div class="wad-card-head"><h2>How fast, and when</h2></div>'
       + '<div class="wad-two"><label class="wad-field"><span>Messages a minute (1 to 60)</span><input type="number" min="1" max="60" data-set="per_minute" value="' + esc(s.per_minute) + '"></label>'
       + '<label class="wad-field"><span>People in 24 hours (WhatsApp&rsquo;s limit for us)</span><input type="number" min="1" data-set="daily_limit" value="' + esc(s.daily_limit) + '"></label></div>'
@@ -424,6 +426,20 @@
       + '<div class="wad-card"><div class="wad-card-head"><h2>Someone asked us to stop</h2><p>Anyone who replies STOP is taken off by itself. If someone asks on a call, type their number here.</p></div>'
       + '<div class="wad-test"><label class="wad-field"><span>Mobile number</span><input type="tel" data-field="stopNumber" placeholder="98765 43210"></label>'
       + '<button class="wad-btn" data-act="stop-typed" data-on="1">Stop messages</button><button class="wad-btn" data-act="stop-typed" data-on="0">Allow again</button></div></div>';
+  }
+  // Claude's own way in (an MCP server on this desk), switched on with a key made here.
+  function mcpHtml(m) {
+    var head = '<div class="wad-card"><div class="wad-card-head"><h2>Let Claude use WhatsApp</h2><p>Claude (in Claude Code on your computer) can then check sends and replies, count who a message reaches, send a test, answer a chat and start a send, with the same rules as this screen: approved messages only, STOP respected, the sending hours and pace, and a send to many only with the count you agreed. Everything it does is in the log as &ldquo;Claude (MCP)&rdquo;.</p></div>';
+    if (mcpNew) {
+      return head + '<p class="wad-warn">Copy this now: the key is shown only once. Paste it in a terminal in the project folder and press Enter. Then start a new Claude chat.</p>'
+        + copyRow('Command', mcpNew.command)
+        + '<div class="wad-actions"><button class="wad-btn" data-act="mcp-hide">I have copied it</button></div></div>';
+    }
+    if (m.on) {
+      return head + '<p class="wad-status"><span class="wad-dot wad-dot-on"></span> Switched on' + (m.created_at ? ': key made ' + esc(when(m.created_at)) + (m.created_by ? ' by ' + esc(m.created_by) : '') : '') + (m.last_used_at ? '. Last used ' + esc(when(m.last_used_at)) : '. Not used yet') + '.</p>'
+        + '<div class="wad-actions"><button class="wad-btn" data-act="mcp-make"' + (busy ? ' disabled' : '') + '>Make a new key (the old one stops)</button><button class="wad-btn" data-act="mcp-off"' + (busy ? ' disabled' : '') + '>Switch off</button></div></div>';
+    }
+    return head + '<div class="wad-actions"><button class="wad-btn wad-primary" data-act="mcp-make"' + (busy ? ' disabled' : '') + '>Make a key for Claude</button></div></div>';
   }
   function copyRow(label, value) {
     return '<div class="wad-copy"><span>' + esc(label) + '</span><code>' + esc(value || 'Not available on this server') + '</code>' + (value ? '<button class="wad-btn wad-small" data-act="copy" data-copy="' + esc(value) + '">Copy</button>' : '') + '</div>';
@@ -579,6 +595,18 @@
       return;
     }
     if (act === 'inbox-filter') { inboxFilter = t.getAttribute('data-filter'); draw(); return; }
+    if (act === 'mcp-make' || act === 'mcp-off') {
+      if (act === 'mcp-make' && D && D.mcp && D.mcp.on && !w.confirm('Make a new key? The one Claude uses now stops working.')) return;
+      if (act === 'mcp-off' && !w.confirm('Switch off Claude\'s access to WhatsApp?')) return;
+      await work(async function () {
+        var r = await opts.api.post('/api/admin/whatsapp/mcp-key', act === 'mcp-off' ? { off: true } : {});
+        D.mcp = r.mcp;
+        mcpNew = act === 'mcp-make' ? { command: r.command } : null;
+        toast(act === 'mcp-off' ? 'Switched off.' : 'Key made. Copy the command now.');
+      });
+      return;
+    }
+    if (act === 'mcp-hide') { mcpNew = null; draw(); return; }
     if (act === 'quick-use') {
       var qr = ((D && D.quick) || [])[Number(t.getAttribute('data-i'))];
       var box = host.querySelector('[data-field="replyText"]');

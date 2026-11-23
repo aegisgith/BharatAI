@@ -388,6 +388,47 @@ r = await as('POST', '/api/admin/whatsapp/quick-replies', { list: [{ title: 'Del
 const quick = (await as('GET', '/api/admin/whatsapp')).json?.quick;
 check('quick replies: saved for the whole team, an empty one dropped, a missing title taken from the words', r.status === 200 && quick?.length === 2 && quick[0].title === 'Delhi' && quick[1].title === 'Thank you for writing to us.', JSON.stringify(quick));
 check('quick replies need a list', (await as('POST', '/api/admin/whatsapp/quick-replies', { list: 'x' })).status === 400, '');
+
+// ---------- Claude's own way in: the MCP server on the desk ----------
+const mcp = async (key, body) => {
+  const res = await W.fetchRaw(new Request(SITE + '/api/whatsapp/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { Authorization: 'Bearer ' + key } : {}) }, body: JSON.stringify(body) }));
+  return { status: res.status, json: await res.json().catch(() => null) };
+};
+const call = async (key, name, args = {}) => { const r = await mcp(key, { jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name, arguments: args } }); const t = r.json?.result?.content?.[0]?.text; return { ...r, data: t ? JSON.parse(t) : null, isError: r.json?.result?.isError }; };
+check('MCP: nothing without a key (none made yet)', (await mcp('bwa_guess', { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status === 401 && (await mcp('', { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status === 401, '');
+r = await as('POST', '/api/admin/whatsapp/mcp-key', {});
+const mkey = r.json?.key;
+const ovm = (await as('GET', '/api/admin/whatsapp')).text;
+check('MCP: the key is shown once inside the command to paste; afterwards only "on" and its dates', r.status === 200 && /^bwa_[A-Za-z0-9_-]{43}$/.test(mkey || '') && r.json.command === `claude mcp add --transport http bharat_whatsapp ${SITE}/api/whatsapp/mcp --header "Authorization: Bearer ${mkey}"`
+  && !ovm.includes(mkey) && JSON.parse(ovm).mcp.on === true && !rows("SELECT value FROM app_settings WHERE key LIKE 'whatsapp%'").some(x => String(x.value).includes(mkey)), r.text.slice(0, 120));
+r = await mcp(mkey, { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'claude-code', version: '2' } } });
+check('MCP: initialize answers with tools and the rules for a send', r.status === 200 && r.json?.result?.protocolVersion === '2025-06-18' && !!r.json.result.capabilities.tools && /explicit yes/.test(r.json.result.instructions), JSON.stringify(r.json).slice(0, 200));
+check('MCP: a notification gets no body', (await W.fetchRaw(new Request(SITE + '/api/whatsapp/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + mkey }, body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) }))).status === 202, '');
+r = await mcp(mkey, { jsonrpc: '2.0', id: 2, method: 'tools/list' });
+const toolNames = (r.json?.result?.tools || []).map(x => x.name);
+check('MCP: the tools are listed, each with its input', toolNames.length === 11 && ['whatsapp_status', 'whatsapp_audience', 'whatsapp_send_bulk', 'whatsapp_reply', 'whatsapp_chat'].every(x => toolNames.includes(x)) && r.json.result.tools.every(x => x.inputSchema?.type === 'object'), toolNames.join(','));
+let mc = await call(mkey, 'whatsapp_status');
+check('MCP: status reads the number, the day, and every template with its approval', !mc.isError && mc.data.connected === true && mc.data.templates.some(x => x.name === custom && x.status === 'APPROVED') && Array.isArray(mc.data.latest_sends) && typeof mc.data.today.limit === 'number', JSON.stringify(mc.data).slice(0, 200));
+mc = await call(mkey, 'whatsapp_audience', { kind: 'custom', template: custom, audience: 'list', list: 'Meera, 9555500001\nJoy, 9555500002', only_new: false });
+check('MCP: an audience is counted without sending anything', !mc.isError && mc.data.count === 2, JSON.stringify(mc.data).slice(0, 200));
+const sentBeforeMcp = sends().length;
+mc = await call(mkey, 'whatsapp_send_bulk', { kind: 'custom', template: custom, audience: 'list', list: 'Meera, 9555500001\nJoy, 9555500002', only_new: false, expect: 3 });
+check('MCP: a bulk send with a count that does not match is refused and nothing is queued', mc.isError === true && /changed/.test(mc.data.error) && mc.data.count === 2 && msgs("wa_number IN ('919555500001', '919555500002')").length === 0, JSON.stringify(mc.data));
+mc = await call(mkey, 'whatsapp_send_bulk', { kind: 'custom', template: custom, audience: 'one', number: '9555500001', expect: 1 });
+check('MCP: one person is never a bulk send', mc.isError === true && /send_one/.test(mc.data.error), JSON.stringify(mc.data));
+mc = await call(mkey, 'whatsapp_reply', { number: '+91 98765 43210', text: 'Delhi passes open in January. We will write to you first.' });
+const mreply = msgs("wa_number = '919876543210' AND kind = 'reply'").pop();
+check('MCP: a reply within the 24 hours goes, signed as "Claude (MCP)" on the message', !mc.isError && sends().length === sentBeforeMcp + 1 && mreply?.created_by === 'Claude (MCP)', JSON.stringify(mreply));
+mc = await call(mkey, 'whatsapp_inbox', { filter: 'waiting' });
+check('MCP: the inbox filter: Asha is no longer waiting once answered', !mc.isError && !mc.data.chats.some(x => x.number === '919876543210'), JSON.stringify(mc.data.chats.map(x => x.number)));
+mc = await call(mkey, 'whatsapp_sends');
+check('MCP: sends come back with rates and the reasons', !mc.isError && mc.data.sends.some(x => x.id === batch3 && x.failed === 1 && x.why_not_delivered.length === 1 && /%$/.test(x.rates.delivered)), JSON.stringify(mc.data.sends.find(x => x.id === batch3)));
+check('MCP: an unknown tool and an unknown method say so', (await mcp(mkey, { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'drop_tables' } })).json?.error?.code === -32602 && (await mcp(mkey, { jsonrpc: '2.0', id: 9, method: 'resources/list' })).json?.error?.code === -32601, '');
+r = await as('POST', '/api/admin/whatsapp/mcp-key', {});
+check('MCP: a new key stops the old one', (await mcp(mkey, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status === 401 && (await mcp(r.json.key, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status === 200, '');
+r = await as('POST', '/api/admin/whatsapp/mcp-key', { off: true });
+check('MCP: switched off, nothing gets in', r.json?.mcp?.on === false && (await mcp(mkey, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status === 401, '');
+check('MCP: making a key is for the team only', (await hit('POST', '/api/admin/whatsapp/mcp-key', {})).status === 401, '');
 await as('POST', '/api/admin/whatsapp/settings', { sending: 'off' });
 await as('POST', '/api/admin/whatsapp/send', { kind: 'custom', template: custom, audience: 'one', number: '90000 33333', name: 'Kiran' });
 const off = (await as('POST', '/api/admin/whatsapp/send', { kind: 'custom', template: custom, audience: 'list', list: 'Z, 9444400001', expect: 1 })).json?.batch;
