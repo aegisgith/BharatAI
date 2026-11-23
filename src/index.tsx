@@ -9755,8 +9755,47 @@ app.get('/api/admin/workshops', async (c) => {
         AND a.id NOT IN (SELECT attendee_id FROM workshop_seats WHERE event_id = 1)
       ORDER BY a.name`
   ).bind(...tiers).all()).results || [])
+  // Whether the app gives each seat holder the workshop certificate (23 Nov 2026, so the
+  // organisers can see and preview it here). The same rule as
+  // GET /api/attendees/:id/certificate-eligibility: a check-in at the venue on the
+  // workshop's day, and the workshop over. The preview in this screen asks that endpoint
+  // for the person; this mark is the list's quick read of it.
+  try {
+    const list = await workshopList(c)
+    const ev = await c.env.DB.prepare('SELECT end_date FROM events WHERE id = 1').first() as any
+    const thereIds = new Set<string>()
+    if (await checkinsReady(c)) {
+      for (const r of ((await c.env.DB.prepare(
+        `SELECT s.attendee_id FROM workshop_seats s JOIN workshops w ON w.id = s.workshop_id
+          WHERE s.event_id = 1 AND EXISTS (SELECT 1 FROM checkins k WHERE k.attendee_id = s.attendee_id AND k.day = substr(w.starts_at, 1, 10))`
+      ).all()).results || []) as any[]) thereIds.add(String(r.attendee_id))
+    }
+    const firstIn = new Map<string, string>()
+    for (const r of ((await c.env.DB.prepare(
+      'SELECT a.id, a.checked_in_at FROM workshop_seats s JOIN attendees a ON a.id = s.attendee_id WHERE s.event_id = 1 AND a.checked_in_at IS NOT NULL'
+    ).all()).results || []) as any[]) firstIn.set(String(r.id), String(r.checked_in_at))
+    for (const s of seats as any[]) {
+      const w = list.find((x: any) => x.id === s.workshop_id) as any
+      const day = String((w && w.starts_at) || '').slice(0, 10)
+      const over = workshopIsOver(w, ev && ev.end_date)
+      const fi = firstIn.get(String(s.id))
+      const there = day ? (thereIds.has(String(s.id)) || (!!fi && istDate(fi) === day)) : !!fi
+      s.cert = !over ? 'not_over' : there ? 'ready' : 'not_there'
+      s.cert_day = day || null
+    }
+  } catch { /* the list still loads; the marks are left off */ }
   return c.json({ ready: true, switch_closes: await workshopSwitchCloses(c), workshops: await workshopList(c), seats, unchosen })
 })
+
+// Is the workshop over, in India time? Its end time; with none, the day after its day;
+// with no day at all, the event's last day. Shared by the attendee's own certificate check
+// and Admin → Workshops so the two cannot disagree.
+function workshopIsOver(w: any, eventEnd?: any): boolean {
+  if (!w) return false
+  const nowIst = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ')
+  const day = String(w.starts_at || '').slice(0, 10)
+  return w.ends_at ? nowIst >= String(w.ends_at) : day ? nowIst.slice(0, 10) > day : (!!eventEnd && nowIst.slice(0, 10) >= String(eventEnd))
+}
 
 // Admin: the slot, the room, the seats and whether it is open for choosing.
 app.post('/api/admin/workshops/:id', async (c) => {
@@ -14446,9 +14485,8 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
     if (await workshopsReady(c)) {
       const ws = await c.env.DB.prepare('SELECT w.title, w.speaker, w.starts_at, w.ends_at FROM workshop_seats s JOIN workshops w ON w.id = s.workshop_id WHERE s.attendee_id = ? ORDER BY s.id LIMIT 1').bind(id).first() as any
       if (ws) {
-        const nowIst = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ')
         const day = String(ws.starts_at || '').slice(0, 10)
-        const over = ws.ends_at ? nowIst >= String(ws.ends_at) : day ? nowIst.slice(0, 10) > day : (!!row.end_date && todayIst >= String(row.end_date))
+        const over = workshopIsOver(ws, row.end_date)
         let there = attended
         if (day && await checkinsReady(c)) {
           there = !!(await c.env.DB.prepare('SELECT 1 AS hit FROM checkins WHERE attendee_id = ? AND day = ?').bind(id, day).first()) || (attended && istDate(row.checked_in_at) === day)
@@ -29999,6 +30037,7 @@ function mainPageHTML(): string {
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
+  <script src="/js/cert-render.js?v=20261123" defer></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261102"></script>
@@ -38908,62 +38947,17 @@ function mainPageScript(): string {
         return;
       }
       showToast('Generating your certificate…', 'info');
-      const W = 1600, H = 1130;
-      const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
-      const ctx = canvas.getContext('2d');
-      const px = (u) => '/api/image-proxy?url=' + encodeURIComponent(u);
-      // Background
-      const bg = ctx.createLinearGradient(0, 0, W, H);
-      bg.addColorStop(0, '#0b0d1a'); bg.addColorStop(1, '#141730');
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-      // Saffron corner glow
-      const glow = ctx.createRadialGradient(W*0.85, H*0.1, 40, W*0.85, H*0.1, 700);
-      glow.addColorStop(0, 'rgba(255,107,0,0.22)'); glow.addColorStop(1, 'rgba(255,107,0,0)');
-      ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-      // Double border
-      ctx.strokeStyle = 'rgba(255,107,0,0.55)'; ctx.lineWidth = 4; ctx.strokeRect(40, 40, W-80, H-80);
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1.5; ctx.strokeRect(58, 58, W-116, H-116);
-      // Logo
-      try { const logo = await loadImage(px('https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png'));
-        const lw = 150, lh = logo.height * (lw/logo.width); ctx.drawImage(logo, (W-lw)/2, 110, lw, lh); } catch(e) {}
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ff9a52'; ctx.font = '600 26px Inter, Arial'; ctx.fillText('CERTIFICATE OF PARTICIPATION', W/2, 320);
-      ctx.fillStyle = '#c8c9d6'; ctx.font = '400 22px Inter, Arial'; ctx.fillText('This is proudly presented to', W/2, 400);
-      ctx.fillStyle = '#ffffff'; ctx.font = '700 68px Georgia, serif'; ctx.fillText(user.name || 'Attendee', W/2, 500);
-      // underline
-      const uw = Math.min(560, (user.name||'').length * 34 + 120);
-      const ug = ctx.createLinearGradient(W/2-uw/2, 0, W/2+uw/2, 0);
-      ug.addColorStop(0,'rgba(255,107,0,0)'); ug.addColorStop(0.5,'rgba(255,107,0,0.9)'); ug.addColorStop(1,'rgba(255,107,0,0)');
-      ctx.fillStyle = ug; ctx.fillRect(W/2-uw/2, 528, uw, 3);
-      ctx.fillStyle = '#c8c9d6'; ctx.font = '400 24px Inter, Arial';
-      ctx.fillText(ws ? 'for taking part in the workshop' : 'for participating in', W/2, 600);
-      // A long workshop title is set smaller until it fits between the borders.
-      const headline = ws ? String(ws.title || 'Workshop') : 'Bharat AI Innovation 2026';
-      let hs = 40;
-      ctx.fillStyle = '#ffffff'; ctx.font = '700 ' + hs + 'px Inter, Arial';
-      while (hs > 24 && ctx.measureText(headline).width > W - 260) { hs -= 2; ctx.font = '700 ' + hs + 'px Inter, Arial'; }
-      ctx.fillText(headline, W/2, 660);
-      ctx.fillStyle = '#9698ac'; ctx.font = '400 22px Inter, Arial';
-      ctx.fillText(ws ? ((ws.speaker ? 'conducted by ' + ws.speaker + ' at ' : 'at ') + 'Bharat AI Innovation 2026') : "India's B2B AI Conference & Exhibition", W/2, 705);
-      ctx.fillText('20–21 November 2026 · World Trade Center, Mumbai', W/2, 745);
-      if (!ws) {
-        var certPass = String((gate && gate.pass) || '').trim();
-        var certWs = gate && gate.workshop && gate.workshop.eligible ? String(gate.workshop.title || '') : '';
-        if (certPass) { ctx.fillStyle = '#ff9a52'; ctx.font = '600 24px Inter, Arial'; ctx.fillText('Pass: ' + certPass, W/2, 805); }
-        if (certWs) {
-          var certLine = 'Workshop attended: ' + certWs, certSize = 22;
-          ctx.fillStyle = '#c8c9d6'; ctx.font = '400 ' + certSize + 'px Inter, Arial';
-          while (certSize > 15 && ctx.measureText(certLine).width > W - 260) { certSize -= 1; ctx.font = '400 ' + certSize + 'px Inter, Arial'; }
-          ctx.fillText(certLine, W/2, 848);
-        }
-      }
-      // Signature line
-      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(W/2-150, 900, 300, 2);
-      ctx.fillStyle = '#9698ac'; ctx.font = '400 18px Inter, Arial'; ctx.fillText('Organizing Committee · Aegis Knowledge Trust', W/2, 935);
-      ctx.fillStyle = '#6b6a63'; ctx.font = '400 15px Inter, Arial';
-      ctx.fillText('Certificate ID: ' + (ws ? 'BHAI-WS-' : 'BHAI-CERT-') + String(user.id).padStart(4,'0'), W/2, 1010);
+      // Drawn by /js/cert-render.js (23 Nov 2026), the same file Admin previews with,
+      // so the organisers check exactly what the attendee downloads.
+      if (!window.BhaiCert) { showToast('Your certificate could not be drawn. Please reload the page and try again.', 'error'); return; }
+      const canvas = await BhaiCert.draw({
+        id: user.id, name: user.name || '',
+        workshop: ws ? { title: ws.title, speaker: ws.speaker } : null,
+        pass: gate && gate.pass,
+        workshopAttended: !ws && gate && gate.workshop && gate.workshop.eligible ? String(gate.workshop.title || '') : '',
+      });
       // Download
-      const how = await deliverImage(canvas.toDataURL('image/png'), ws ? 'BharatAI-2026-Workshop-Certificate.png' : 'BharatAI-2026-Certificate.png', { title: ws ? 'Your workshop certificate' : 'Your certificate' });
+      const how = await deliverImage(canvas.toDataURL('image/png'), BhaiCert.filename(!!ws), { title: ws ? 'Your workshop certificate' : 'Your certificate' });
       if (how === 'downloaded') showToast('Certificate downloaded', 'success');
     }
 
@@ -41690,6 +41684,7 @@ function adminPageHTML(): string {
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
+  <script src="/js/cert-render.js?v=20261123" defer></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
@@ -42955,13 +42950,17 @@ function adminPageScript(): string {
               '<td class="py-2 pr-3 text-gray-400">' + deskEsc(p.company || '') + '</td>' +
               '<td class="py-2 pr-3 text-gray-400">' + deskEsc(p.email || '') + '</td>' +
               '<td class="py-2 pr-3 text-gray-400">' + deskEsc(p.badge_type || '') + '</td>' +
+              '<td class="py-2 pr-3 whitespace-nowrap">' + adminCertMark(p) + '</td>' +
               '<td class="py-2"><select onchange="adminWsAssign(' + Number(p.id) + ', this.value)" class="px-2 py-1 rounded-lg text-xs"><option value="">Move or remove</option>' + options(w.id) + '<option value="none">Remove the seat</option></select></td>' +
             '</tr>';
-          }).join('') || '<tr><td colspan="5" class="py-3 text-gray-500">Nobody has taken a seat yet.</td></tr>';
+          }).join('') || '<tr><td colspan="6" class="py-3 text-gray-500">Nobody has taken a seat yet.</td></tr>';
           return '<div class="glass rounded-2xl p-5 mb-5">' +
             '<div class="flex flex-wrap items-start justify-between gap-3 mb-4">' +
               '<div class="min-w-0"><h3 class="font-bold text-base">' + deskEsc(w.title) + '</h3><p class="text-xs text-gray-400">' + deskEsc(w.speaker) + '</p></div>' +
-              '<span class="px-3 py-1 rounded-full text-xs font-semibold ' + (w.left > 0 ? 'bg-green-500/15 text-green-300' : 'bg-red-500/15 text-red-300') + '">' + w.taken + ' of ' + w.capacity + ' seats taken</span>' +
+              '<div class="flex flex-wrap items-center gap-2">' +
+                '<button onclick="adminCertSample(' + Number(w.id) + ')" class="px-3 py-1 rounded-full text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-award mr-1.5"></i>Preview certificate</button>' +
+                '<span class="px-3 py-1 rounded-full text-xs font-semibold ' + (w.left > 0 ? 'bg-green-500/15 text-green-300' : 'bg-red-500/15 text-red-300') + '">' + w.taken + ' of ' + w.capacity + ' seats taken</span>' +
+              '</div>' +
             '</div>' +
             '<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-xs text-gray-400">' +
               '<label>Starts (IST)<input id="ws-start-' + w.id + '" value="' + deskEsc(w.starts_at || '') + '" placeholder="e.g. 2026-11-21 14:00" class="' + inputCls + '"></label>' +
@@ -42972,7 +42971,7 @@ function adminPageScript(): string {
             '</div>' +
             '<button onclick="adminWsSave(' + w.id + ')" class="px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30">Save slot and seats</button>' +
             '<p class="text-[11px] text-gray-500 mt-2">Leave the times empty and the app says &ldquo;Day and time to be announced&rdquo;.</p>' +
-            '<div class="overflow-x-auto mt-4"><table class="w-full text-xs"><thead><tr class="text-left text-gray-500 border-b border-white/10"><th class="py-2 pr-3 font-medium">Name</th><th class="py-2 pr-3 font-medium">Organisation</th><th class="py-2 pr-3 font-medium">Email</th><th class="py-2 pr-3 font-medium">Pass</th><th class="py-2 font-medium"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+            '<div class="overflow-x-auto mt-4"><table class="w-full text-xs"><thead><tr class="text-left text-gray-500 border-b border-white/10"><th class="py-2 pr-3 font-medium">Name</th><th class="py-2 pr-3 font-medium">Organisation</th><th class="py-2 pr-3 font-medium">Email</th><th class="py-2 pr-3 font-medium">Pass</th><th class="py-2 pr-3 font-medium">Certificate</th><th class="py-2 font-medium"></th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
           '</div>';
         }).join('');
         var waiting = d.unchosen.map(function (p) {
@@ -42988,6 +42987,7 @@ function adminPageScript(): string {
             '<button onclick="adminWsCloses()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30">Save cut-off</button>' +
             '<button onclick="adminWsCsv()" class="px-4 py-2 rounded-lg text-xs font-semibold glass text-gray-300 hover:bg-white/10 ml-auto"><i class="fas fa-download mr-1.5"></i>Download CSV</button>' +
           '</div>' +
+          adminCertSummary(d.seats) +
           cards +
           '<div class="glass rounded-2xl p-5"><h3 class="font-bold text-base mb-1">Paid for a seat, not chosen yet (' + d.unchosen.length + ')</h3>' +
             '<p class="text-xs text-gray-400 mb-3">Premium Delegate and VIP passes that are paid. They choose in the app; you can also place them here.</p>' + waiting + '</div>';
@@ -43029,6 +43029,96 @@ function adminPageScript(): string {
       a.href = URL.createObjectURL(new Blob([lines.join('\\n')], { type: 'text/csv' }));
       a.download = 'workshop-seats.csv';
       document.body.appendChild(a); a.click(); a.remove();
+    }
+
+    // ============ CERTIFICATE PREVIEW (23 Nov 2026) ============
+    // The organiser: "show me how the certificate looks ... provision to preview it in
+    // admin". Drawn by /js/cert-render.js, the file the app draws the attendee's own copy
+    // with, so this is exactly what they download. A sample per workshop (Workshops), and
+    // any person's own certificates (Workshops and Attendees) with the app's answer on
+    // whether they can download them (GET /api/attendees/:id/certificate-eligibility).
+    var _certItems = [];
+    function adminCertMark(p) {
+      var tag = p.cert === 'ready' ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-green-500/15 text-green-300" title="Checked in at the venue on the workshop day">Gets it in the app</span>'
+        : p.cert === 'not_there' ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-gray-500/10 text-gray-400" title="No check-in at the venue on ' + deskEsc(p.cert_day || 'the workshop day') + '">Not checked in that day</span>'
+        : p.cert === 'not_over' ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-gray-500/10 text-gray-400">After the workshop</span>' : '';
+      return tag + '<button onclick="adminCertFor(' + Number(p.id) + ', &quot;workshop&quot;)" class="ml-2 px-2 py-0.5 rounded text-[10px] bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="See their certificate"><i class="fas fa-award mr-1"></i>View</button>';
+    }
+    function adminCertSummary(seats) {
+      var marked = (seats || []).filter(function (s) { return !!s.cert; });
+      if (!marked.length) return '';
+      var ready = marked.filter(function (s) { return s.cert === 'ready'; }).length;
+      return '<div class="glass rounded-2xl p-4 mb-5 text-sm text-gray-300"><i class="fas fa-award text-primary-300 mr-2"></i>' +
+        '<strong class="text-white">' + ready + ' of ' + marked.length + '</strong> seat holders can download a workshop certificate in the app ' +
+        '<span class="text-gray-500">(sign in, tap their photo, then My connections and meetings, then Workshop certificate)</span>. ' +
+        'It needs a check-in at the venue on the workshop day. Press <strong>Preview certificate</strong> on a workshop to see it, or <strong>View</strong> beside a person.</div>';
+    }
+    function adminCertFile(name, isWorkshop) {
+      var who = String(name || '').trim().replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      return (isWorkshop ? 'BharatAI-2026-Workshop-Certificate' : 'BharatAI-2026-Certificate') + (who ? '-' + who : '') + '.png';
+    }
+    function adminCertOpen(title, sub, items) {
+      _certItems = items;
+      openModal(
+        '<div class="flex items-start justify-between gap-3 mb-1"><h3 class="font-bold text-lg">' + deskEsc(title) + '</h3>' +
+          '<button onclick="closeModal()" class="text-gray-400 hover:text-white px-2" aria-label="Close"><i class="fas fa-times"></i></button></div>' +
+        (sub ? '<p class="text-xs text-gray-400 mb-4">' + sub + '</p>' : '') +
+        items.map(function (it, i) {
+          var state = it.sample ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-gray-500/10 text-gray-300">Sample</span>'
+            : it.ok ? '<span class="px-2 py-0.5 rounded-full text-[10px] bg-green-500/15 text-green-300">They can download it in the app</span>'
+            : '<span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/15 text-amber-300">Locked in the app</span>';
+          return '<div class="mb-5">' +
+            '<div class="flex flex-wrap items-center gap-2 mb-2"><span class="text-sm font-semibold">' + deskEsc(it.label) + '</span>' + state + '</div>' +
+            (!it.sample && !it.ok && it.reason ? '<p class="text-xs text-gray-400 mb-2">The app tells them: &ldquo;' + deskEsc(it.reason) + '&rdquo;</p>' : '') +
+            '<img src="' + it.url + '" alt="' + deskEsc(it.label) + '" class="w-full rounded-lg border border-white/10">' +
+            '<button onclick="adminCertDownload(' + i + ')" class="mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30"><i class="fas fa-download mr-1.5"></i>Download PNG</button>' +
+          '</div>';
+        }).join(''));
+    }
+    function adminCertDownload(i) {
+      var it = _certItems[i];
+      if (!it) return;
+      // Handing out a certificate the app withholds is the organisers' call, made knowingly
+      // (for example someone who sat the workshop but was never scanned in).
+      if (!it.sample && !it.ok && !confirm(it.who + ' cannot download this one in the app.' + String.fromCharCode(10, 10) + (it.reason || '') +
+          String.fromCharCode(10, 10) + 'Download it anyway, to send by hand?')) return;
+      var a = document.createElement('a');
+      a.href = it.url; a.download = it.file;
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+    async function adminCertSample(wid) {
+      var w = ((_adminWs && _adminWs.workshops) || []).find(function (x) { return Number(x.id) === Number(wid); });
+      if (!w) return;
+      if (!window.BhaiCert) { toast('The certificate drawing did not load. Reload the page and try again.', 'error'); return; }
+      try {
+        var cv = await BhaiCert.draw({ id: 0, name: 'Attendee Name', workshop: { title: w.title, speaker: w.speaker } });
+        adminCertOpen('Workshop certificate', 'A sample. Each person&rsquo;s own copy carries their name and their number (BHAI-WS- and their attendee number).',
+          [{ sample: true, label: w.title, url: cv.toDataURL('image/png'), file: adminCertFile('sample', true) }]);
+      } catch (e) { toast('Could not draw the certificate: ' + (e.message || e), 'error'); }
+    }
+    async function adminCertFor(id, first) {
+      if (!window.BhaiCert) { toast('The certificate drawing did not load. Reload the page and try again.', 'error'); return; }
+      var pick = function (list) { return (list || []).find(function (x) { return String(x.id) === String(id); }); };
+      var person = pick(_adminWs && _adminWs.seats) || pick(lastAttendees);
+      var name = person ? String(person.name || '').trim() : '';
+      if (!name) { toast('Could not find this person. Reload the list and try again.', 'error'); return; }
+      try {
+        var g = await api.get('/api/attendees/' + Number(id) + '/certificate-eligibility');
+        var bad = bodyError(g);
+        if (bad) { toast(bad, 'error'); return; }
+        var items = [];
+        var conf = await BhaiCert.draw({ id: id, name: name, pass: g.pass,
+          workshopAttended: g.workshop && g.workshop.eligible ? String(g.workshop.title || '') : '' });
+        items.push({ who: name, label: 'Certificate of participation', ok: !!g.eligible, reason: g.reason || '',
+          url: conf.toDataURL('image/png'), file: adminCertFile(name, false) });
+        if (g.workshop) {
+          var wc = await BhaiCert.draw({ id: id, name: name, workshop: { title: g.workshop.title, speaker: g.workshop.speaker } });
+          var wItem = { who: name, label: 'Workshop certificate: ' + String(g.workshop.title || ''), ok: !!g.workshop.eligible,
+            reason: g.workshop.reason || '', url: wc.toDataURL('image/png'), file: adminCertFile(name, true) };
+          if (first === 'workshop') items.unshift(wItem); else items.push(wItem);
+        }
+        adminCertOpen(name, 'Exactly what they download from the app. ' + (g.workshop ? '' : 'No workshop seat, so no workshop certificate.'), items);
+      } catch (e) { toast('Could not read their certificate: ' + (e.message || e), 'error'); }
     }
 
     async function loadPayments() {
@@ -45291,6 +45381,7 @@ function adminPageScript(): string {
                     <button onclick="openEditAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-primary-500/20 text-primary-300 hover:bg-primary-500/30" title="Full Edit"><i class="fas fa-edit"></i></button>
                     <button onclick='adminDownloadPass(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Delegate",payment_status:a.payment_status||"",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30" title="Download Pass"><i class="fas fa-id-badge"></i></button>
                     <button onclick='adminDownloadSocialCard(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Visitor Pass",payment_status:a.payment_status||"",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-violet-500/20 text-violet-300 hover:bg-violet-500/30" title="Download their &quot;I&#39;m attending&quot; social card"><i class="fas fa-share-alt"></i></button>
+                    <button onclick="adminCertFor(\${a.id})" class="px-2 py-1 rounded text-xs bg-orange-500/20 text-orange-300 hover:bg-orange-500/30" title="Their certificates: see, and whether the app gives them"><i class="fas fa-award"></i></button>
                     <button onclick="notifyAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
                     \${a.checked_in_at ? '<button onclick="resetCheckin(' + Number(a.id) + ')" class="px-2 py-1 rounded text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30" title="Checked in ' + escH(a.checked_in_at) + (a.checked_in_by ? ' by ' + escH(a.checked_in_by) : '') + '. Click to reset the check-in so they can be admitted again."><i class="fas fa-door-open"></i></button>' : ''}
                     <button onclick="deleteAttendee(\${a.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete"><i class="fas fa-trash"></i></button>
