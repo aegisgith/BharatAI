@@ -28039,7 +28039,7 @@ function passComparisonHTML(): string {
 // the page belongs under. The app's bar sent Home to /app and, on a phone, offered no menu at all.
 function siteHeaderHTML(current: string): string {
   const menu: [string, string][] = [
-    ['/', 'Home'], ['/conference', 'Conference'], ['/exhibition', 'Exhibition'], ['/networking', 'Networking'], ['/passes', 'Passes'],
+    ['/', 'Home'], ['/conference', 'Conference'], ['/exhibition', 'Exhibition'], ['/networking', 'Networking'], ['/passes', 'Passes'], ['/delhi-accommodation', 'Hotels'],
     ['/partner', 'Partner'], ['/government', 'Govt'], ['/training-workshop', 'Workshops'], ['/marketplace', 'AI Marketplace'],
     ['/campus-series', 'Campus Series'], ['/mumbai', 'Mumbai'], ['/gallery', 'Gallery'], ['/ai-readiness', 'AI Readiness'], ['https://bellaward.com', 'AGBA'], ['/contact', 'Contact'],
   ]

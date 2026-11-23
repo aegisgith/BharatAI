@@ -38,13 +38,13 @@ const fill = async (p, v) => {
       page.on('pageerror', (e) => errors.push(e.message));
       page.on('response', (r) => { if (r.status() >= 400 && r.url().startsWith(BASE)) lost.push(r.status() + ' ' + r.url()); });
       await page.goto(BASE + '/', { waitUntil: 'load' });
-      await page.click('.dl-hero-actions .btn-primary');
-      await page.waitForTimeout(700);
-      await page.locator('.dl-pass:has(h3:text-is("Premium Delegate Pass")) a').click();
-      await page.waitForURL('**/delhi-register#premium');
+      // 24 Nov 2026: the home page shows no price; its buttons go to the pass form, where the prices are.
+      check('the hero button goes to the pass form', (await page.getAttribute('.dl-hero-actions .btn-primary', 'href')) === '/delhi-register?source=home-hero');
+      await page.locator('#take-part a', { hasText: 'Get an Academic Pass' }).click();
+      await page.waitForURL('**/delhi-register?source=home-academia#academic');
       await page.waitForLoadState('load');
-      check('the card opens the form on that pass, with what it costs', await page.locator('input[value="Premium Delegate Pass"]').isChecked() && (await page.textContent('#dr-total')).includes('₹11,798.82'), await page.textContent('#dr-total'));
-      const geo = await page.evaluate(() => ({ over: document.documentElement.scrollWidth - innerWidth, tap: [...document.querySelectorAll('.dr-field input:not(#dr-website), .dr-field select, .dr-submit, .dr-pass > span')].filter((e) => e.getBoundingClientRect().height < 44).map((e) => e.id || e.textContent.slice(0, 20)) }));
+      check('the Academia card opens the form on the Academic Pass, with what it costs', await page.locator('input[value="Academic Pass"]').isChecked() && (await page.textContent('#dr-total')).includes('₹1,178.82'), await page.textContent('#dr-total'));
+      const geo = await page.evaluate(() => ({ over: document.documentElement.scrollWidth - innerWidth, tap: [...document.querySelectorAll('.dr-field input:not(#dr-website), .dr-field select, .dr-submit, .dr-pass > span')].filter((e) => { const h = e.getBoundingClientRect().height; return h > 0 && h < 44; }).map((e) => e.id || e.textContent.slice(0, 20)) }));
       check('390px: no sideways scroll, and every box is big enough to tap', geo.over <= 0 && geo.tap.length === 0, JSON.stringify(geo));
       await page.click('#dr-submit');
       check('empty: asks for the name, on screen, and goes nowhere', (await page.textContent('#dr-error')).includes('name') && await page.locator('#dr-error').isVisible() && page.url().includes('/delhi-register'));
@@ -105,8 +105,9 @@ const fill = async (p, v) => {
       const page = await ctx.newPage();
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
-      await page.goto(BASE + '/#booths', { waitUntil: 'load' });
-      await page.locator('.dl-sale-row', { hasText: 'Innovator Booth' }).locator('a').click();
+      // The booth prices are on /exhibition#delhi since 24 Nov 2026.
+      await page.goto(BASE + '/exhibition#delhi', { waitUntil: 'load' });
+      await page.locator('.dx-sale-row', { hasText: 'Innovator Booth' }).locator('a').click();
       await page.waitForURL('**/delhi-exhibit?booth=Innovator%20Booth');
       await page.waitForLoadState('load');
       check('booth: the row opens the application on that booth', (await page.inputValue('#da-booth')) === 'Innovator Booth');
@@ -162,11 +163,11 @@ const fill = async (p, v) => {
       const errs = [];
       p.on('pageerror', (e) => errs.push(e.message));
       await p.goto(BASE + '/', { waitUntil: 'load' });
-      for (const sel of ['#passes .dl-pass', '#booths .dl-sale-row', '#partner .dl-sale-row']) {
+      for (const sel of ['#take-part .dl-pass', '#booths .dl-also li', '#partner .dl-chips li']) {
         await p.locator(sel).first().scrollIntoViewIfNeeded();
         await p.waitForTimeout(900);
       }
-      check('animations on: the price lists appear', await p.evaluate(() => ['#passes .dl-pass', '#booths .dl-sale-row', '#partner .dl-sale-row'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
+      check('animations on: the ways to take part, the booths and the partnerships appear', await p.evaluate(() => ['#take-part .dl-pass', '#booths .dl-also li', '#partner .dl-chips li'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
       check('no errors', errs.length === 0, errs.join(' | '));
       await c.close();
     }

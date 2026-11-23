@@ -226,9 +226,9 @@ const widest = (p, ms) => p.evaluate((t) => new Promise((done) => { let most = 0
   const row = rows[rows.length - 1] || {};
   check('form: one enquiry reached the database', rows.length === before + 1, rows.length - before);
   check('form: as a sponsorship enquiry', row.inquiry_type === 'sponsorship', row.inquiry_type);
-  check('form: its subject names what they chose', row.subject === 'Sponsorship · Conference Bag', row.subject);
+  check('form: its subject names what they chose', row.subject === 'Delhi 2027 · Sponsorship · Conference Bag', row.subject);
   check('form: with their details', row.name === 'Test Sponsor' && row.email === 'head@testbank.example' && row.organization === 'Test Bank' && row.phone === '+91 90000 00000', JSON.stringify(row));
-  check('form: and their goals', /Interested in: Conference Bag/.test(row.message) && /Reach CIOs in banking/.test(row.message), row.message);
+  check('form: and their goals', /Interested in, for Delhi 2027 \(28–29 July 2027, Bharat Mandapam\): Conference Bag/.test(row.message) && /Reach CIOs in banking/.test(row.message), row.message);
   const mail = await (await fetch(BASE + '/__mail')).json();
   check('form: the team is emailed', JSON.stringify(mail).includes('Conference Bag') || JSON.stringify(mail).includes('Test Sponsor'), JSON.stringify(mail).slice(0, 200));
   check('phone: no script errors', p.errs.length === 0, p.errs.join(' | '));

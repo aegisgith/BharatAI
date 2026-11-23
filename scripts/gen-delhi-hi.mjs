@@ -56,17 +56,18 @@ swap('    <style>\n', "    <style>\n    /* Hindi: Devanagari letters come from M
 swap('<a href="#main-content" class="skip-link">Skip to main content</a>', '<a href="#main-content" class="skip-link">मुख्य सामग्री पर जाएँ</a>');
 
 // ---- the menu (its links stay the English pages) ----
-for (const [a, b] of [['Mumbai', 'मुंबई'], ['Conference', 'कॉन्फ्रेंस'], ['Exhibition', 'प्रदर्शनी'], ['Networking', 'नेटवर्किंग'], ['Passes', 'पास'], ['Partner', 'पार्टनर'], ['Govt', 'सरकार'], ['Workshops', 'वर्कशॉप'], ['AI Marketplace', 'एआई मार्केटप्लेस'], ['Campus Series', 'कैंपस सीरीज़'], ['Gallery', 'गैलरी'], ['AI Readiness', 'एआई रेडीनेस'], ['Contact', 'संपर्क']]) {
+for (const [a, b] of [['Mumbai', 'मुंबई'], ['Conference', 'कॉन्फ्रेंस'], ['Exhibition', 'प्रदर्शनी'], ['Networking', 'नेटवर्किंग'], ['Passes', 'पास'], ['Hotels', 'होटल'], ['Partner', 'पार्टनर'], ['Govt', 'सरकार'], ['Workshops', 'वर्कशॉप'], ['AI Marketplace', 'एआई मार्केटप्लेस'], ['Campus Series', 'कैंपस सीरीज़'], ['Gallery', 'गैलरी'], ['AI Readiness', 'एआई रेडीनेस'], ['Contact', 'संपर्क']]) {
   swap(`class="nav-link">${a}</a>`, `class="nav-link">${b}</a>`);
 }
 swap('class="nav-link active">Home</a>', 'class="nav-link active">होम</a>');
-swap('Get your pass', 'अपना पास लें', 3);
+swap('Get your pass', 'अपना पास लें', 5);
 
 // ---- the hero ----
 swap('<span>28–29 July 2027</span>', '<span>28–29 जुलाई 2027</span>');
 swap('<span>Bharat Mandapam<span class="dl-wide">, New Delhi</span></span>', '<span>भारत मंडपम<span class="dl-wide">, नई दिल्ली</span></span>');
-swap('India’s B2B platform for AI comes to the capital. Two days at Bharat Mandapam with the government departments, enterprises and startups using AI, and the companies building it.',
-  'भारत का B2B एआई प्लेटफ़ॉर्म अब राजधानी में। भारत मंडपम में दो दिन, उन सरकारी विभागों, उद्यमों और स्टार्टअप्स के साथ जो एआई का उपयोग कर रहे हैं, और उन कंपनियों के साथ जो इसे बना रही हैं।');
+swap('<p class="dl-kicker">International AI Conference &amp; Exhibition</p>', '<p class="dl-kicker">अंतरराष्ट्रीय एआई कॉन्फ्रेंस और प्रदर्शनी</p>');
+swap('India’s B2B platform for AI comes to the capital. Two days at Bharat Mandapam for government, enterprises, startups, academia and international delegations: the people using AI, and the companies building it.',
+  'भारत का B2B एआई प्लेटफ़ॉर्म अब राजधानी में। भारत मंडपम में दो दिन, सरकार, उद्यमों, स्टार्टअप्स, शिक्षा जगत और अंतरराष्ट्रीय प्रतिनिधिमंडलों के लिए: जो एआई का उपयोग कर रहे हैं, और जो कंपनियाँ इसे बना रही हैं।');
 swap('</i> Save the date</a>', '</i> कैलेंडर में जोड़ें</a>', 2);
 swap('<a href="#booths">Apply for a booth</a> or <a href="#partner">become a partner</a>', '<a href="#booths">बूथ के लिए आवेदन करें</a> या <a href="#partner">पार्टनर बनें</a>');
 swap('<a href="/delhi-hi" hreflang="hi" lang="hi">हिन्दी में पढ़ें</a>', '<a href="/" hreflang="en" lang="en">Read in English</a>');
@@ -97,79 +98,115 @@ for (const [a, b] of [
   ['Photos from Bharat AI Innovation in Mumbai, November 2026. The workshop, hackathon and cross-border photos are from Data Science Congress, the predecessor to Bharat AI Innovation. The roundtable photo is a World Trade Center Mumbai boardroom.', 'तस्वीरें भारत एआई इनोवेशन मुंबई, नवंबर 2026 की हैं। वर्कशॉप, हैकथॉन और अंतरराष्ट्रीय संवाद की तस्वीरें डेटा साइंस कांग्रेस (भारत एआई इनोवेशन का पहले का रूप) की हैं। गोलमेज़ बैठक की तस्वीर वर्ल्ड ट्रेड सेंटर मुंबई के एक बोर्डरूम की है।'],
 ]) swap(a, b);
 
-// ---- passes ----
-swap('Passes for <span class="accent">New Delhi</span>', '<span class="accent">नई दिल्ली</span> के लिए पास');
-swap('The same passes as Mumbai. Pay online now, and your receipt comes by email.', 'मुंबई जैसे ही पास। अभी ऑनलाइन भुगतान करें, रसीद ईमेल पर आ जाएगी।');
-swap('<h3>Academic Pass</h3>', '<h3>एकेडमिक पास</h3>');
-swap('<h3>Delegate Pass</h3>', '<h3>डेलीगेट पास</h3>');
-swap('<h3>Premium Delegate Pass</h3>', '<h3>प्रीमियम डेलीगेट पास</h3>');
-swap('<h3>VIP Pass</h3>', '<h3>वीआईपी पास</h3>');
-swap('<span>+ 18% GST</span>', '<span>+ 18% जीएसटी</span>', 4);
-swap('For students and faculty with a valid ID.', 'मान्य पहचान पत्र वाले छात्रों और शिक्षकों के लिए।');
-swap('<li>Guaranteed entry on both days</li>', '<li>दोनों दिन पक्का प्रवेश</li>', 2);
-swap('<li>Conference sessions and exhibition</li>', '<li>कॉन्फ्रेंस सत्र और प्रदर्शनी</li>', 2);
-swap('<li>Student networking zone</li>', '<li>छात्र नेटवर्किंग ज़ोन</li>');
-swap('<li>Certificate of participation</li>', '<li>भागीदारी प्रमाणपत्र</li>', 2);
-swap('>Get this pass</a>', '>यह पास लें</a>', 4);
-swap('For coming to the conference.', 'कॉन्फ्रेंस में आने के लिए।');
-swap('<li>Networking lunch and conference kit</li>', '<li>नेटवर्किंग लंच और कॉन्फ्रेंस किट</li>');
-swap('<li>Full directory, conversations and meetings</li>', '<li>पूरी डायरेक्टरी, बातचीत और मीटिंग</li>');
-swap('A Delegate Pass with a workshop seat.', 'वर्कशॉप सीट के साथ डेलीगेट पास।');
-swap('<li>Everything in the Delegate Pass</li>', '<li>डेलीगेट पास की सभी सुविधाएँ</li>');
-swap('<li>One hands-on workshop, seats first come, first served</li>', '<li>एक व्यावहारिक वर्कशॉप; सीटें पहले आओ, पहले पाओ</li>');
-swap('The full event, with the leaders’ evening.', 'पूरा आयोजन, लीडर्स इवनिंग के साथ।');
-swap('<li>Everything in the Premium Delegate Pass</li>', '<li>प्रीमियम डेलीगेट पास की सभी सुविधाएँ</li>');
-swap('<li>Bharat AI Leaders’ Evening, Day 1</li>', '<li>भारत एआई लीडर्स इवनिंग, पहला दिन</li>');
-swap('<li>VIP lounge and priority seating</li>', '<li>वीआईपी लाउंज और आगे की सीटें</li>');
-swap('<li>Speaker meet &amp; greet</li>', '<li>वक्ताओं से मुलाक़ात</li>');
-swap('<b>Visitor Pass, free.</b> Exhibition only, entry by time slot. <a href="#updates" data-interest="attend">Register to join the waitlist</a>',
-  '<b>विज़िटर पास, मुफ़्त।</b> केवल प्रदर्शनी, तय समय-स्लॉट में प्रवेश। <a href="#updates" data-interest="attend">प्रतीक्षा सूची में शामिल होने के लिए रजिस्टर करें</a>');
-swap('Teams of five or more: five passes for the price of four (Delegate or Premium Delegate), on request. A pass is for Delhi only. Your entry pass and the app for Delhi come by email closer to the event.',
-  'पाँच या अधिक लोगों की टीम: चार की क़ीमत में पाँच पास (डेलीगेट या प्रीमियम डेलीगेट), अनुरोध पर। पास केवल दिल्ली के लिए है। प्रवेश पास और दिल्ली का ऐप आयोजन के क़रीब ईमेल से आएगा।');
-
-// ---- booths ----
-swap('Book a booth in <span class="accent">New Delhi</span>', '<span class="accent">नई दिल्ली</span> में बूथ बुक करें');
-swap('The same sizes and prices as Mumbai. We will publish the floor plan later.', 'मुंबई जैसे ही आकार और दाम। फ़्लोर प्लान बाद में प्रकाशित होगा।');
-swap('Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.',
-  'बताइए आप क्या दिखाएँगे। हम हर आवेदन की समीक्षा करते हैं, ताकि प्रदर्शनी उन लोगों के काम की रहे जो ख़रीदने आते हैं। हम 2 कार्यदिवसों में जवाब देते हैं। स्वीकृति मिलने पर हमारी टीम आपकी जगह और बूथ बुक करने का अगला कदम बताएगी।');
-swap('A booth at Bharat AI Innovation in Mumbai, November 2026.', 'भारत एआई इनोवेशन मुंबई (नवंबर 2026) का एक बूथ।');
-swap(' exhibitor passes · ', ' एग्ज़िबिटर पास · ', 5);
-swap(' exhibitor pass · ', ' एग्ज़िबिटर पास · ', 2);
-swap(' sqft) · ', ' वर्ग फ़ुट) · ', 7);
-swap(' min Innovation Talk</span>', ' मिनट इनोवेशन टॉक</span>', 7);
-swap('>Apply for this booth</a>', '>इस बूथ के लिए आवेदन करें</a>', 7);
-swap('<small>+ GST</small>', '<small>+ जीएसटी</small>', 12);
-swap('<a href="/exhibition">See what each booth includes</a>', '<a href="/exhibition">देखें हर बूथ में क्या शामिल है</a>');
-
-// ---- partners ----
-swap('Partner with us in <span class="accent">New Delhi</span>', '<span class="accent">नई दिल्ली</span> में हमारे पार्टनर बनें');
-swap('The same partnerships and sponsorships as Mumbai, at the same prices.', 'मुंबई जैसी ही पार्टनरशिप और स्पॉन्सरशिप, उन्हीं दामों पर।');
-swap('<h3 class="dl-sale-head">Partnership tiers</h3>', '<h3 class="dl-sale-head">पार्टनरशिप स्तर</h3>');
-swap('<h3 class="dl-sale-head">Branding and activation</h3>', '<h3 class="dl-sale-head">ब्रांडिंग और एक्टिवेशन</h3>');
+// ---- the vision and the plan (24 Nov 2026) ----
+swap('Our vision: AI for a <span class="accent">Viksit Bharat</span>', 'हमारा विज़न: <span class="accent">विकसित भारत</span> के लिए एआई');
+swap('India’s ministries, public sector companies and leading enterprises make their AI decisions in Delhi. Bharat AI Innovation brings together the people who buy AI, the people who build it and the people who write its rules, so that good ideas become real projects across India.',
+  'भारत के मंत्रालय, सार्वजनिक क्षेत्र की कंपनियाँ और प्रमुख उद्यम अपने एआई फ़ैसले दिल्ली में लेते हैं। भारत एआई इनोवेशन एआई ख़रीदने वालों, उसे बनाने वालों और उसके नियम लिखने वालों को एक साथ लाता है, ताकि अच्छे विचार पूरे भारत में असली परियोजनाएँ बनें।');
+swap('<p class="dl-plan-head">Our plan for the two days</p>', '<p class="dl-plan-head">दो दिनों की हमारी योजना</p>');
 for (const [a, b] of [
-  ['<span>1 slot, exclusive. “[Your Company] Presents Bharat AI Innovation Delhi 2027”</span>', '<span>1 स्लॉट, एक्सक्लूसिव। “[आपकी कंपनी] प्रस्तुत करती है भारत एआई इनोवेशन दिल्ली 2027”</span>'],
-  ['<span>1 slot, exclusive. Technology and infrastructure branding</span>', '<span>1 स्लॉट, एक्सक्लूसिव। टेक्नोलॉजी और इंफ्रास्ट्रक्चर ब्रांडिंग</span>'],
-  ['<span>1 slot, exclusive. Co-shape the conference themes and tracks</span>', '<span>1 स्लॉट, एक्सक्लूसिव। कॉन्फ्रेंस के विषय और ट्रैक साथ मिलकर तय करें</span>'],
-  ['<span>4 slots. Category exclusivity in FinTech, HealthTech, AgriTech or MfgTech</span>', '<span>4 स्लॉट। फ़िनटेक, हेल्थटेक, एग्रीटेक या मैन्युफ़ैक्चरिंग टेक में श्रेणी की एक्सक्लूसिविटी</span>'],
-  ['<span>For those championing new technologies and startups</span>', '<span>नई तकनीकों और स्टार्टअप्स को आगे बढ़ाने वालों के लिए</span>'],
-  ['<span>A panel you curate, with your own leader moderating</span>', '<span>आपका तैयार किया पैनल, जिसका संचालन आपके अपने लीडर करें</span>'],
-  ['<span>Co-branded round table on AI policy</span>', '<span>एआई नीति पर को-ब्रांडेड गोलमेज़ बैठक</span>'],
-  ['<span>Host the whole evening</span>', '<span>पूरी शाम की मेज़बानी करें</span>'],
-  ['<span>The only brand on every attendee’s lanyard</span>', '<span>हर प्रतिभागी के लैन्यार्ड पर केवल आपका ब्रांड</span>'],
-  ['<span>The only brand on the bag delegates take home</span>', '<span>डेलीगेट्स जो बैग घर ले जाते हैं, उस पर केवल आपका ब्रांड</span>'],
-  ['<span>The networking lunch, presented by you, on both days</span>', '<span>दोनों दिन नेटवर्किंग लंच, आपकी ओर से</span>'],
-  ['<span>For AI companies: the named AI Partner of the event</span>', '<span>एआई कंपनियों के लिए: आयोजन का घोषित एआई पार्टनर</span>'],
-  ['<span>Your brand on the trophies and the awards moment</span>', '<span>ट्रॉफ़ियों और पुरस्कार के पल पर आपका ब्रांड</span>'],
-  ['<span>Invite-only, on a theme you set</span>', '<span>केवल आमंत्रण पर, आपके तय किए विषय पर</span>'],
-  ['<span>A launch, an MoU signing or a campaign of your own</span>', '<span>लॉन्च, समझौता ज्ञापन (MoU) पर हस्ताक्षर, या आपका अपना अभियान</span>'],
-  ['<p>₹1.2 Cr</p>', '<p>₹1.2 करोड़</p>'],
-  ['<p>Custom</p>', '<p>कस्टम</p>'],
+  ['<b>Show what works</b><span>Startups, companies and government teams show AI already in use, on stage and on the exhibition floor.</span>', '<b>जो काम करता है, वह दिखाएँ</b><span>स्टार्टअप्स, कंपनियाँ और सरकारी टीमें मंच पर और प्रदर्शनी में वह एआई दिखाती हैं जो पहले से उपयोग में है।</span>'],
+  ['<b>Decide together</b><span>Leaders from government and industry meet in panels and closed-door roundtables to agree on what comes next.</span>', '<b>मिलकर तय करें</b><span>सरकार और उद्योग के लीडर पैनल और बंद कमरे की गोलमेज़ बैठकों में आगे की दिशा तय करते हैं।</span>'],
+  ['<b>Do business</b><span>Buyers meet the companies building AI, in meetings booked before the event and on the floor.</span>', '<b>व्यापार करें</b><span>ख़रीदार एआई बनाने वाली कंपनियों से मिलते हैं, पहले से तय मीटिंग में और प्रदर्शनी में।</span>'],
+  ['<b>Build skills</b><span>Hands-on workshops and hackathons for working teams, faculty and students.</span>', '<b>कौशल बढ़ाएँ</b><span>कामकाजी टीमों, शिक्षकों और छात्रों के लिए व्यावहारिक वर्कशॉप और हैकथॉन।</span>'],
 ]) swap(a, b);
-swap(' Lakhs</p>', ' लाख</p>', 3);
-swap(' Lakhs <small>', ' लाख <small>', 5);
-swap('<p>On request</p>', '<p>अनुरोध पर</p>', 5);
-swap('>Enquire</a>', '>पूछताछ करें</a>', 15);
-swap('Choose one and leave your details, and our team will call you. <a href="/partner">See what each one includes</a>', 'एक विकल्प चुनें और अपनी जानकारी दें, हमारी टीम आपको कॉल करेगी। <a href="/partner">देखें हर एक में क्या शामिल है</a>');
+
+// ---- the Government AI Showcase ----
+swap('Government <span class="accent">AI Showcase</span>', 'सरकारी <span class="accent">एआई शोकेस</span>');
+swap('Central ministries, state governments and their departments show the AI work they have already done: to improve governance, to make citizens’ lives better and to deliver public services faster and more simply.',
+  'केंद्रीय मंत्रालय, राज्य सरकारें और उनके विभाग वह एआई काम दिखाते हैं जो वे कर चुके हैं: शासन बेहतर बनाने, नागरिकों का जीवन आसान बनाने और सार्वजनिक सेवाएँ तेज़ और सरल बनाने के लिए।');
+for (const [a, b] of [
+  ['<li><b>On stage.</b> Innovation Talks &amp; Showcase by ministries, departments and state governments.</li>', '<li><b>मंच पर।</b> मंत्रालयों, विभागों और राज्य सरकारों के इनोवेशन टॉक्स और शोकेस।</li>'],
+  ['<li><b>On the floor.</b> Pavilions for central and state governments, with live demonstrations.</li>', '<li><b>प्रदर्शनी में।</b> केंद्र और राज्य सरकारों के पवेलियन, लाइव प्रदर्शन के साथ।</li>'],
+  ['<li><b>In the room.</b> Closed-door roundtables where officials and industry plan what to build next.</li>', '<li><b>बैठकों में।</b> बंद कमरे की गोलमेज़ बैठकें, जहाँ अधिकारी और उद्योग तय करते हैं कि आगे क्या बनाना है।</li>'],
+  ['<li><b>Across states.</b> See what has worked in one state, and take it to another.</li>', '<li><b>राज्यों के बीच।</b> देखें कि एक राज्य में क्या सफल रहा, और उसे दूसरे राज्य तक ले जाएँ।</li>'],
+  ['Showcase your initiative <i', 'अपनी पहल दिखाएँ <i'],
+]) swap(a, b);
+
+// ---- India and the world ----
+swap('India and <span class="accent">the world</span>', 'भारत और <span class="accent">दुनिया</span>');
+swap('Embassies, high commissions, trade offices and delegations from other countries are invited to take part: to meet India’s AI buyers and builders, and to talk to government.',
+  'दूतावासों, उच्चायोगों, व्यापार कार्यालयों और दूसरे देशों के प्रतिनिधिमंडलों को भाग लेने का निमंत्रण है: भारत के एआई ख़रीदारों और निर्माताओं से मिलने, और सरकार से बात करने के लिए।');
+for (const [a, b] of [
+  ['<li><b>Country pavilions.</b> Show your country’s AI companies on the exhibition floor.</li>', '<li><b>देश के पवेलियन।</b> प्रदर्शनी में अपने देश की एआई कंपनियाँ दिखाएँ।</li>'],
+  ['<li><b>Delegations.</b> Bring a business or government delegation, with meetings booked before you arrive.</li>', '<li><b>प्रतिनिधिमंडल।</b> व्यापार या सरकारी प्रतिनिधिमंडल लाएँ, आने से पहले तय मीटिंग के साथ।</li>'],
+  ['<li><b>Cross-border dialogue.</b> Speak on stage about AI cooperation with India.</li>', '<li><b>अंतरराष्ट्रीय संवाद।</b> भारत के साथ एआई सहयोग पर मंच से बोलें।</li>'],
+  ['<li><b>Roundtables.</b> Closed-door, between two countries or several, on a theme you set.</li>', '<li><b>गोलमेज़ बैठकें।</b> बंद कमरे में, दो या कई देशों के बीच, आपके तय किए विषय पर।</li>'],
+  ['Bring a delegation <i', 'प्रतिनिधिमंडल लाएँ <i'],
+  ['>Visa letter</a>', '>वीज़ा पत्र</a>'],
+]) swap(a, b);
+
+// ---- take part ----
+swap('Take part in <span class="accent">New Delhi</span>', '<span class="accent">नई दिल्ली</span> में भाग लें');
+swap('For companies, startups, small businesses and campuses.', 'कंपनियों, स्टार्टअप्स, छोटे व्यवसायों और शिक्षण संस्थानों के लिए।');
+for (const [a, b] of [
+  ['<h3>Corporates</h3>', '<h3>कॉर्पोरेट</h3>'],
+  ['Enterprises, and the companies that bring them AI.', 'उद्यम, और वे कंपनियाँ जो उन तक एआई पहुँचाती हैं।'],
+  ['<li>Speak on a CXO panel or host a roundtable</li>', '<li>सीएक्सओ पैनल में बोलें या गोलमेज़ बैठक की मेज़बानी करें</li>'],
+  ['<li>Show your AI products to buyers</li>', '<li>ख़रीदारों को अपने एआई उत्पाद दिखाएँ</li>'],
+  ['<li>Partner with the event</li>', '<li>आयोजन के पार्टनर बनें</li>'],
+  ['>Partner with us</a>', '>हमारे पार्टनर बनें</a>'],
+  ['<h3>Startups</h3>', '<h3>स्टार्टअप्स</h3>'],
+  ['Startups building AI products.', 'एआई उत्पाद बनाने वाले स्टार्टअप्स।'],
+  ['<li>A Startup Pod with an Innovation Talk</li>', '<li>इनोवेशन टॉक के साथ एक स्टार्टअप पॉड</li>'],
+  ['<li>Startup Pitch on stage</li>', '<li>मंच पर स्टार्टअप पिच</li>'],
+  ['<li>Meet enterprise and government buyers</li>', '<li>उद्यमों और सरकार के ख़रीदारों से मिलें</li>'],
+  ['>Apply for a Startup Pod</a>', '>स्टार्टअप पॉड के लिए आवेदन करें</a>'],
+  ['<h3>MSMEs</h3>', '<h3>एमएसएमई</h3>'],
+  ['Small and medium businesses ready to use AI.', 'एआई अपनाने को तैयार छोटे और मध्यम व्यवसाय।'],
+  ['<li>See AI tools you can use now</li>', '<li>ऐसे एआई टूल देखें जिन्हें आप अभी उपयोग कर सकते हैं</li>'],
+  ['<li>Hands-on workshops for your team</li>', '<li>आपकी टीम के लिए व्यावहारिक वर्कशॉप</li>'],
+  ['<li>Meet vendors in booked meetings</li>', '<li>तय मीटिंग में वेंडरों से मिलें</li>'],
+  ['<h3>Academia</h3>', '<h3>शिक्षा जगत</h3>'],
+  ['Universities, colleges, faculty and students.', 'विश्वविद्यालय, कॉलेज, शिक्षक और छात्र।'],
+  ['<li>An Academic Pass for students and faculty</li>', '<li>छात्रों और शिक्षकों के लिए एकेडमिक पास</li>'],
+  ['<li>Hackathons and workshops</li>', '<li>हैकथॉन और वर्कशॉप</li>'],
+  ['<li>Meet the companies that use and build AI</li>', '<li>एआई का उपयोग करने और उसे बनाने वाली कंपनियों से मिलें</li>'],
+  ['>Get an Academic Pass</a>', '>एकेडमिक पास लें</a>'],
+]) swap(a, b);
+
+// ---- partners: what can be sponsored (the prices are on /partner#delhi) ----
+swap('Partner with us in <span class="accent">New Delhi</span>', '<span class="accent">नई दिल्ली</span> में हमारे पार्टनर बनें');
+swap('Put your brand in front of the people who buy AI, build it and write its rules, in the capital.', 'अपने ब्रांड को राजधानी में उन लोगों के सामने रखें जो एआई ख़रीदते हैं, बनाते हैं और उसके नियम लिखते हैं।');
+for (const [a, b] of [
+  ['<li>Title Partner</li>', '<li>टाइटल पार्टनर</li>'],
+  ['<li>Powered Partner</li>', '<li>पावर्ड पार्टनर</li>'],
+  ['<li>Knowledge Partner</li>', '<li>नॉलेज पार्टनर</li>'],
+  ['<li>Associate Partner</li>', '<li>एसोसिएट पार्टनर</li>'],
+  ['<li>Innovation Partner</li>', '<li>इनोवेशन पार्टनर</li>'],
+  ['<li>AI Leadership Panel</li>', '<li>एआई लीडरशिप पैनल</li>'],
+  ['<li>Leaders Round Table</li>', '<li>लीडर्स राउंड टेबल</li>'],
+  ['<li>Bharat AI Leaders’ Evening Partner</li>', '<li>भारत एआई लीडर्स इवनिंग पार्टनर</li>'],
+  ['<li>Networking Lunch</li>', '<li>नेटवर्किंग लंच</li>'],
+  ['<li>Lanyard and bag</li>', '<li>लैन्यार्ड और बैग</li>'],
+  ['<li>Custom activation</li>', '<li>कस्टम एक्टिवेशन</li>'],
+  ['See all partnerships <i', 'सभी पार्टनरशिप देखें <i'],
+  ['>Talk to our team</a>', '>हमारी टीम से बात करें</a>'],
+]) swap(a, b);
+
+// ---- booths: the kinds of booth (the sizes and prices are on /exhibition#delhi) ----
+swap('Exhibit in <span class="accent">New Delhi</span>', '<span class="accent">नई दिल्ली</span> में प्रदर्शन करें');
+swap('Show your AI to the people who come to buy it. We will publish the floor plan later.', 'अपना एआई उन लोगों को दिखाएँ जो उसे ख़रीदने आते हैं। फ़्लोर प्लान बाद में प्रकाशित होगा।');
+swap('Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.',
+  'बताइए आप क्या दिखाएँगे। हम हर आवेदन की समीक्षा करते हैं, ताकि प्रदर्शनी उन लोगों के काम की रहे जो ख़रीदने आते हैं। हम 2 कार्यदिवसों में जवाब देते हैं। स्वीकृति मिलने पर हमारी टीम आपकी जगह और बूथ बुकिंग का अगला कदम बताएगी।');
+swap('A booth at Bharat AI Innovation in Mumbai, November 2026.', 'भारत एआई इनोवेशन मुंबई (नवंबर 2026) का एक बूथ।');
+for (const [a, b] of [
+  ['<li>Startup Pod</li>', '<li>स्टार्टअप पॉड</li>'],
+  ['<li>Explorer Booth</li>', '<li>एक्सप्लोरर बूथ</li>'],
+  ['<li>Innovator Booth</li>', '<li>इनोवेटर बूथ</li>'],
+  ['<li>Enterprise Booth</li>', '<li>एंटरप्राइज़ बूथ</li>'],
+  ['<li>Accelerator Booth</li>', '<li>एक्सेलरेटर बूथ</li>'],
+  ['<li>Flagship Pavilion</li>', '<li>फ़्लैगशिप पवेलियन</li>'],
+  ['<li>Mega Pavilion</li>', '<li>मेगा पवेलियन</li>'],
+  ['Apply for a booth <i', 'बूथ के लिए आवेदन करें <i'],
+  ['>See all booths</a>', '>सभी बूथ देखें</a>'],
+]) swap(a, b);
+
+// ---- passes: no prices on the page (they are on /delhi-register) ----
+swap('Passes for <span class="accent">New Delhi</span>', '<span class="accent">नई दिल्ली</span> के लिए पास');
+swap('Delegate, Premium Delegate, VIP and Academic passes are on sale now. Pay online, and your receipt comes by email.', 'डेलीगेट, प्रीमियम डेलीगेट, वीआईपी और एकेडमिक पास अभी बिक्री पर हैं। ऑनलाइन भुगतान करें, रसीद ईमेल पर आएगी।');
+swap('>Join the free Visitor Pass waitlist</a>', '>मुफ़्त विज़िटर पास की प्रतीक्षा सूची में जुड़ें</a>');
+swap('The Visitor Pass is free: exhibition only, with entry by time slot. A pass is for Delhi only. Your entry pass and the app for Delhi come by email closer to the event.',
+  'विज़िटर पास मुफ़्त है: केवल प्रदर्शनी, तय समय-स्लॉट में प्रवेश। पास केवल दिल्ली के लिए है। आपका एंट्री पास और दिल्ली का ऐप आयोजन के क़रीब ईमेल से आएगा।');
 
 // ---- the venue ----
 swap('Bharat Mandapam, <span class="accent">New Delhi</span>', 'भारत मंडपम, <span class="accent">नई दिल्ली</span>');
@@ -178,26 +215,6 @@ swap('<li>Hosted the G20 Leaders’ Summit in September 2023</li>', '<li>सि�
 swap('<li>Conference halls and exhibition space in one complex</li>', '<li>एक ही परिसर में सम्मेलन हॉल और प्रदर्शनी स्थल</li>');
 swap('<li>A bronze Nataraja stands at its entrance</li>', '<li>प्रवेश द्वार पर कांस्य की नटराज प्रतिमा</li>');
 swap('Get directions <i', 'रास्ता देखें <i');
-
-// ---- coming from outside India ----
-swap('Coming from <span class="accent">outside India</span>', '<span class="accent">भारत के बाहर</span> से आ रहे हैं?');
-swap('What to know before you book your travel.', 'यात्रा बुक करने से पहले यह जान लें।');
-swap('</i>Visa</dt><dd>Check which visa you need on the official site, <a href="https://indianvisaonline.gov.in/" target="_blank" rel="noopener noreferrer">indianvisaonline.gov.in</a>. If your application asks for a letter from the organisers, <a href="/delhi-visa">ask us for one</a>. Please wait for your visa before booking travel you cannot cancel.</dd>',
-  '</i>वीज़ा</dt><dd>आपको कौन-सा वीज़ा चाहिए, यह आधिकारिक साइट <a href="https://indianvisaonline.gov.in/" target="_blank" rel="noopener noreferrer">indianvisaonline.gov.in</a> पर देखें। अगर आवेदन में आयोजकों का पत्र माँगा जाए, तो <a href="/delhi-visa">हमसे अनुरोध करें</a>। ऐसी यात्रा बुक करने से पहले, जिसे रद्द न किया जा सके, वीज़ा मिलने का इंतज़ार करें।</dd>');
-swap('</i>From the airport</dt><dd>Indira Gandhi International Airport (DEL) is about 18 km from Bharat Mandapam. Allow an hour by road at busy times.</dd>',
-  '</i>हवाई अड्डे से</dt><dd>इंदिरा गांधी अंतरराष्ट्रीय हवाई अड्डा (DEL) भारत मंडपम से लगभग 18 किमी दूर है। व्यस्त समय में सड़क से एक घंटा मानकर चलें।</dd>');
-swap('</i>By metro</dt><dd>The nearest station is Supreme Court, once called Pragati Maidan, on the Blue Line. The venue is a short walk away.</dd>',
-  '</i>मेट्रो से</dt><dd>सबसे नज़दीकी स्टेशन ब्लू लाइन पर सुप्रीम कोर्ट है, जिसका पुराना नाम प्रगति मैदान था। आयोजन स्थल वहाँ से पैदल दूरी पर है।</dd>');
-swap('</i>Time and money</dt><dd>India Standard Time is UTC+5:30. Passes are priced in Indian rupees, plus 18% GST.</dd>',
-  '</i>समय और भुगतान</dt><dd>भारतीय मानक समय UTC+5:30 है। पास की क़ीमतें भारतीय रुपये में हैं, साथ में 18% जीएसटी।</dd>');
-swap('Ask for a visa letter <i', 'वीज़ा पत्र के लिए अनुरोध करें <i');
-
-// ---- who it is for ----
-swap('Built for business, <span class="accent">in the capital</span>', 'व्यापार के लिए, <span class="accent">राजधानी में</span>');
-swap('India’s ministries and public sector companies are based in Delhi. This edition is for the people who buy AI, build it and write its rules.', 'भारत के मंत्रालय और सार्वजनिक क्षेत्र की कंपनियाँ दिल्ली में हैं। यह संस्करण उन लोगों के लिए है जो एआई ख़रीदते हैं, बनाते हैं और उसके नियम तय करते हैं।');
-swap('<b>Buyers</b><span>CIOs, CTOs and procurement heads from enterprises, public sector companies and government departments.</span>', '<b>ख़रीदार</b><span>उद्यमों, सार्वजनिक क्षेत्र की कंपनियों और सरकारी विभागों के सीआईओ, सीटीओ और ख़रीद प्रमुख।</span>');
-swap('<b>Builders</b><span>AI product companies, service firms and funded startups.</span>', '<b>निर्माता</b><span>एआई प्रोडक्ट कंपनियाँ, सर्विस फ़र्म और फ़ंडिंग पाए स्टार्टअप्स।</span>');
-swap('<b>Policymakers</b><span>The people shaping India’s AI rules, at the centre and in the states.</span>', '<b>नीति-निर्माता</b><span>केंद्र और राज्यों में भारत के एआई नियम तय करने वाले लोग।</span>');
 
 // ---- the free pass and enquiry form ----
 swap('<h2 id="dl-form-title">Get your <span class="accent">free pass</span></h2>', '<h2 id="dl-form-title">अपना <span class="accent">मुफ़्त पास</span> लें</h2>');
@@ -256,8 +273,8 @@ for (const [a, b] of [
   ['<p>Yes. Delegate, Premium Delegate, VIP and Academic passes are <a href="/delhi-register">on sale now</a>. The free Visitor Pass is exhibition only, with entry by time slot: <a href="#updates" data-interest="attend">register here</a> to join the waitlist.</p>',
     '<p>हाँ। डेलीगेट, प्रीमियम डेलीगेट, वीआईपी और एकेडमिक पास <a href="/delhi-register">अभी बिक्री पर हैं</a>। मुफ़्त विज़िटर पास केवल प्रदर्शनी के लिए है, तय समय-स्लॉट में प्रवेश के साथ: प्रतीक्षा सूची में शामिल होने के लिए <a href="#updates" data-interest="attend">यहाँ रजिस्टर करें</a>।</p>'],
   ['How do I book a booth, sponsor or speak? <i', 'बूथ, स्पॉन्सरशिप या वक्ता बनने के लिए क्या करें? <i'],
-  ['<p>For a booth, <a href="/delhi-exhibit">apply here</a> and tell us what you will show. We review every application and reply within 2 working days; if approved, our team confirms your place and the next step for booking. We will publish the floor plan later. For a <a href="#partner">partnership</a>, choose one and leave your details. To speak, choose Speak in the <a href="#updates" data-interest="speak">form</a>.</p>',
-    '<p>बूथ के लिए <a href="/delhi-exhibit">यहाँ आवेदन करें</a> और बताइए आप क्या दिखाएँगे। हम हर आवेदन की समीक्षा करते हैं और 2 कार्यदिवसों में जवाब देते हैं; स्वीकृति मिलने पर हमारी टीम आपकी जगह और बुकिंग का अगला कदम बताएगी। फ़्लोर प्लान बाद में प्रकाशित होगा। <a href="#partner">पार्टनरशिप</a> के लिए एक विकल्प चुनें और अपनी जानकारी दें। वक्ता बनने के लिए <a href="#updates" data-interest="speak">फ़ॉर्म</a> में ‘वक्ता’ चुनें।</p>'],
+  ['<p>For a booth, <a href="/delhi-exhibit">apply here</a> and tell us what you will show. We review every application and reply within 2 working days; if approved, our team confirms your place and the next step for booking. We will publish the floor plan later. For a partnership, <a href="/partner#delhi">see what you can sponsor</a> and leave your details. To speak, choose Speak in the <a href="#updates" data-interest="speak">form</a>.</p>',
+    '<p>बूथ के लिए <a href="/delhi-exhibit">यहाँ आवेदन करें</a> और बताइए आप क्या दिखाएँगे। हम हर आवेदन की समीक्षा करते हैं और 2 कार्यदिवसों में जवाब देते हैं; स्वीकृति मिलने पर हमारी टीम आपकी जगह और बुकिंग का अगला कदम बताएगी। फ़्लोर प्लान बाद में प्रकाशित होगा। पार्टनरशिप के लिए <a href="/partner#delhi">विकल्प देखें</a> और अपनी जानकारी दें। वक्ता बनने के लिए <a href="#updates" data-interest="speak">फ़ॉर्म</a> में ‘वक्ता’ चुनें।</p>'],
   ['What happens after I pay for a pass? <i', 'पास का भुगतान करने के बाद क्या होगा? <i'],
   ['<p>Your receipt comes by email straight away, and your GST invoice follows from the accounts team. Closer to the event we will email you your entry pass and open the app for Delhi.</p>',
     '<p>रसीद तुरंत ईमेल पर आ जाएगी, और जीएसटी इनवॉइस अकाउंट्स टीम से बाद में आएगा। आयोजन के क़रीब हम आपको प्रवेश पास ईमेल करेंगे और दिल्ली के लिए ऐप खोलेंगे।</p>'],

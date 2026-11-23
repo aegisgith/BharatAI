@@ -29,7 +29,14 @@ check('static site carries _headers', r.h['x-content-type-options'] === 'nosniff
 r = await hit('/delhi?from=app');
 check('/delhi sends people home, keeping ?from', r.status === 301 && r.h.location === '/?from=app', r.status + ' ' + r.h.location);
 r = await hit('/');
-check('the home page is Delhi: the venue, the dates and the Delegate Pass price', r.text.includes('Bharat Mandapam') && r.text.includes('28–29 July 2027') && r.text.includes('₹4,999'), r.status);
+check('the home page is Delhi: the venue, the dates, and no price (the organiser, 24 Nov 2026)', r.text.includes('Bharat Mandapam') && r.text.includes('28–29 July 2027') && !/₹|&#8377;|Lakhs/.test(r.text.replace(/<script[\s\S]*?<\/script>/g, '')) && r.text.includes('id="government"') && r.text.includes('id="international"'), r.status);
+r = await hit('/partner');
+check('/partner carries the Delhi partnerships with their prices', r.text.includes('id="delhi"') && r.text.includes('₹1.2 Cr') && r.text.includes('Delhi 2027 · Sponsorship · '), r.status);
+r = await hit('/exhibition');
+check('/exhibition carries the Delhi booths with their prices', r.text.includes('id="delhi"') && r.text.includes('Book a booth in') && r.text.includes('/delhi-exhibit?booth=Mega%20Pavilion'), r.status);
+r = await hit('/delhi-accommodation');
+check('/delhi-accommodation: hotels near Bharat Mandapam, the metro and the visa letter', r.status === 200 && r.text.includes('The Oberoi, New Delhi') && r.text.includes('Supreme Court') && r.text.includes('href="/delhi-visa"'), r.status);
+r = await hit('/');
 r = await hit('/delhi-2027.ics');
 check('the Delhi calendar file is a calendar file', r.status === 200 && r.text.includes('DTSTART;VALUE=DATE:20270728') && !String(r.h['content-type'] || '').includes('html'), r.status + ' ' + r.h['content-type']);
 r = await hit('/');

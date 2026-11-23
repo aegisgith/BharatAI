@@ -166,14 +166,14 @@ check('the earlier Mumbai prices are the ones charged', JSON.stringify(table) ==
 const inr = (n) => n.toLocaleString('en-IN');
 const money = (n) => n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const delhi = read('public/index.html');
+check('the home page sends people to the pass form', delhi.includes('href="/delhi-register?source=home-hero"') && delhi.includes('/delhi-register?source=home-academia#academic'));
 for (const p of PASSES) {
   const base = table[p.value];
   const total = base + Math.round(base * 18) / 100;
   check(`${p.value}: the total printed is the price plus 18% GST (₹${money(total)})`, p.total === money(total), p.total);
   check(`${p.value}: the price on this page matches the server (₹${inr(base)})`, html.includes(`value="${p.value}"`) && new RegExp(`${p.value}</b><i>₹${inr(base)} \\+ GST`).test(html));
-  const card = delhi.match(new RegExp(`<h3>${p.value}</h3>\\s*<p class="dl-price">₹([\\d,]+)`));
-  check(`${p.value}: the price on /delhi matches too`, card && card[1] === inr(base), card && card[1]);
-  check(`${p.value}: the /delhi button opens this pass`, delhi.includes(`/delhi-register#${p.key}`));
+  // 24 Nov 2026: the home page (Delhi) shows no price; the pass form is where it is.
+  check(`${p.value}: the home page names no price for it`, !delhi.includes('₹' + inr(base)));
 }
 const industries = [...src.match(/const INDUSTRIES = \[([\s\S]*?)\]/)[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 const offered = [...html.matchAll(/<option>([^<]+)<\/option>/g)].map((m) => m[1].replace(/&amp;/g, '&'));

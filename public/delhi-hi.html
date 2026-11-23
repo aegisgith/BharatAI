@@ -200,7 +200,39 @@
         .dl-sale-row p { text-align: right; }
     }
 
-    /* --- Who it is for --- */
+    /* --- Take part, the plan, the call rows (24 Nov 2026) --- */
+    .dl-take { background: #fff; }
+    .dl-role-icon { font-size: 1.5rem; color: var(--saffron); margin-bottom: 0.65rem; }
+    .dl-plan-head { margin: 0 0 0.35rem; font-size: 0.8rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: rgba(255,255,255,0.62); }
+    .dl-cta-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 1.5rem; }
+    .dl-partners .dl-chips li { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.18); color: #fff; }
+    @media (min-width: 640px) and (max-width: 899px) { .dl-pass-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .dl-kicker { display: inline-block; margin: 0 0 0.9rem; padding: 0.4rem 0.95rem; border: 1px solid rgba(255,255,255,0.3); border-radius: 999px; background: rgba(10,12,28,0.35); font-size: 0.74rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #FFD2AE; backdrop-filter: blur(6px); }
+    /* Government showcase and India and the world: a photo beside the words */
+    .dl-gov { background: var(--off-white); }
+    .dl-intl { position: relative; overflow: hidden; isolation: isolate; background: var(--deep); color: #fff; }
+    .dl-intl::before { content: ""; position: absolute; left: -12%; bottom: -35%; width: 58%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, rgba(19,136,8,0.22), transparent 68%); pointer-events: none; z-index: -1; }
+    .dl-split { display: grid; gap: 1.75rem; align-items: center; }
+    .dl-split .section-title { text-align: left; margin-bottom: 0.75rem; text-wrap: balance; }
+    .dl-intl .section-title { color: #fff; }
+    .dl-split-media { overflow: hidden; border-radius: 18px; aspect-ratio: 4 / 3; background: var(--charcoal); box-shadow: 0 18px 44px rgba(10,12,28,0.18); }
+    .dl-split-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .dl-split-lead { margin: 0 0 1.25rem; max-width: 52ch; font-size: 1.08rem; line-height: 1.65; color: var(--dark-grey); text-wrap: pretty; }
+    .dl-intl .dl-split-lead { color: rgba(255,255,255,0.82); }
+    .dl-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.7rem; }
+    .dl-checks li { position: relative; padding-left: 1.6rem; line-height: 1.55; color: var(--dark-grey); }
+    .dl-checks li::before { content: ""; position: absolute; left: 0.1rem; top: 0.45em; width: 0.6rem; height: 0.32rem; border-left: 2px solid #138808; border-bottom: 2px solid #138808; transform: rotate(-45deg); }
+    .dl-checks b { color: var(--charcoal); }
+    .dl-intl .dl-checks li { color: rgba(255,255,255,0.84); }
+    .dl-intl .dl-checks li::before { border-color: #FFB27A; }
+    .dl-intl .dl-checks b { color: #fff; }
+    .dl-cta-row.dl-cta-left { justify-content: flex-start; }
+    @media (min-width: 900px) {
+        .dl-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4rem; }
+        .dl-split-rev .dl-split-media { order: 2; }
+    }
+
+    /* --- Who it is for (now the vision and the plan) --- */
     .dl-who { position: relative; overflow: hidden; background: var(--deep); color: #fff; }
     .dl-who::before { content: ""; position: absolute; right: -14%; top: -30%; width: 62%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, rgba(255,107,0,0.2), transparent 68%); pointer-events: none; }
     .dl-who .container { position: relative; display: grid; gap: 2rem; }
@@ -501,6 +533,7 @@
                 <a href="/exhibition" class="nav-link">प्रदर्शनी</a>
                 <a href="/networking" class="nav-link">नेटवर्किंग</a>
                 <a href="/passes" class="nav-link">पास</a>
+                <a href="/delhi-accommodation" class="nav-link">होटल</a>
                 <a href="/partner" class="nav-link">पार्टनर</a>
                 <a href="/government" class="nav-link">सरकार</a>
                 <a href="/training-workshop" class="nav-link">वर्कशॉप</a>
@@ -511,7 +544,7 @@
                 <a href="/ai-readiness" class="nav-link">एआई रेडीनेस</a>
                 <a href="https://bellaward.com" target="_blank" rel="noopener noreferrer" class="nav-link">AGBA</a>
                 <a href="/contact" class="nav-link">संपर्क</a>
-                <a href="#passes" class="nav-cta">अपना पास लें <i class="fas fa-arrow-right"></i></a>
+                <a href="/delhi-register?source=home-nav" class="nav-cta">अपना पास लें <i class="fas fa-arrow-right"></i></a>
             </div>
             <div class="nav-toggle" id="nav-toggle">
                 <span class="bar"></span><span class="bar"></span><span class="bar"></span>
@@ -527,6 +560,7 @@
         </picture>
         <span class="dl-rays" aria-hidden="true"></span>
         <div class="dl-hero-copy">
+            <p class="dl-kicker">अंतरराष्ट्रीय एआई कॉन्फ्रेंस और प्रदर्शनी</p>
             <div class="hero-dateline">
                 <span>28–29 जुलाई 2027</span>
                 <span class="hero-dateline-sep">·</span>
@@ -534,9 +568,9 @@
             </div>
             <h1 class="dl-title"><span class="dl-l"><span class="grad">Bharat AI</span></span> <br><span class="dl-l"><span>Innovation</span></span> <span class="ed dl-l"><span>Delhi 2027</span></span></h1>
             <span class="hero-title-hi" lang="hi"><span class="hi-saffron">भारत</span> <span class="hi-white">एआई</span> <span class="hi-green">इनोवेशन</span> <span class="dl-hi-place">· नई दिल्ली</span></span>
-            <p class="dl-hero-desc">भारत का B2B एआई प्लेटफ़ॉर्म अब राजधानी में। भारत मंडपम में दो दिन, उन सरकारी विभागों, उद्यमों और स्टार्टअप्स के साथ जो एआई का उपयोग कर रहे हैं, और उन कंपनियों के साथ जो इसे बना रही हैं।</p>
+            <p class="dl-hero-desc">भारत का B2B एआई प्लेटफ़ॉर्म अब राजधानी में। भारत मंडपम में दो दिन, सरकार, उद्यमों, स्टार्टअप्स, शिक्षा जगत और अंतरराष्ट्रीय प्रतिनिधिमंडलों के लिए: जो एआई का उपयोग कर रहे हैं, और जो कंपनियाँ इसे बना रही हैं।</p>
             <div class="dl-hero-actions">
-                <a href="#passes" class="btn btn-primary btn-lg dl-shine">अपना पास लें <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="/delhi-register?source=home-hero" class="btn btn-primary btn-lg dl-shine">अपना पास लें <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                 <a href="/delhi-2027.ics" id="dl-save-date" class="btn btn-ghost btn-lg" download="bharat-ai-innovation-delhi-2027.ics"><i class="fas fa-calendar-plus" aria-hidden="true"></i> कैलेंडर में जोड़ें</a>
             </div>
             <p class="dl-hero-alt"><a href="#booths">बूथ के लिए आवेदन करें</a> या <a href="#partner">पार्टनर बनें</a> · <a href="/" hreflang="en" lang="en">Read in English</a></p>
@@ -571,6 +605,25 @@
         </div>
     </section>
 
+    <!-- ===== THE VISION AND THE PLAN (24 Nov 2026: the home page sells the idea; no prices) ===== -->
+    <section class="dl-who dl-sec" id="vision">
+        <div class="container">
+            <div class="reveal">
+                <h2 class="section-title">हमारा विज़न: <span class="accent">विकसित भारत</span> के लिए एआई</h2>
+                <p class="dl-who-lead">भारत के मंत्रालय, सार्वजनिक क्षेत्र की कंपनियाँ और प्रमुख उद्यम अपने एआई फ़ैसले दिल्ली में लेते हैं। भारत एआई इनोवेशन एआई ख़रीदने वालों, उसे बनाने वालों और उसके नियम लिखने वालों को एक साथ लाता है, ताकि अच्छे विचार पूरे भारत में असली परियोजनाएँ बनें।</p>
+            </div>
+            <div class="reveal reveal-delay-1">
+                <p class="dl-plan-head">दो दिनों की हमारी योजना</p>
+                <ul class="dl-rows">
+                    <li><img loading="lazy" decoding="async" alt="" src="images/gallery/577B0622.webp" style="object-position:30% 40%"><b>जो काम करता है, वह दिखाएँ</b><span>स्टार्टअप्स, कंपनियाँ और सरकारी टीमें मंच पर और प्रदर्शनी में वह एआई दिखाती हैं जो पहले से उपयोग में है।</span></li>
+                    <li><img loading="lazy" decoding="async" alt="" src="img/mumbai-2026/panel-telecom.webp"><b>मिलकर तय करें</b><span>सरकार और उद्योग के लीडर पैनल और बंद कमरे की गोलमेज़ बैठकों में आगे की दिशा तय करते हैं।</span></li>
+                    <li><img loading="lazy" decoding="async" alt="" src="img/mumbai-2026/networking.webp"><b>व्यापार करें</b><span>ख़रीदार एआई बनाने वाली कंपनियों से मिलते हैं, पहले से तय मीटिंग में और प्रदर्शनी में।</span></li>
+                    <li><img loading="lazy" decoding="async" alt="" src="images/gallery/7C2A2566.webp"><b>कौशल बढ़ाएँ</b><span>कामकाजी टीमों, शिक्षकों और छात्रों के लिए व्यावहारिक वर्कशॉप और हैकथॉन।</span></li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
     <!-- ===== THE PROGRAMME ===== -->
     <section class="dl-what dl-sec" id="programme">
         <div class="container">
@@ -584,7 +637,7 @@
                     <div><b>इनोवेशन टॉक्स और शोकेस</b><i class="by">स्टार्टअप्स और कॉर्पोरेट्स द्वारा</i><span>मंच पर छोटी वार्ताएँ और उनके बनाए समाधानों की लाइव झलक।</span></div>
                 </li>
                 <li class="dl-tile reveal reveal-delay-1">
-                    <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/panel-viksit-bharat.webp" alt="A panel on AI for Viksit Bharat and governance in Mumbai, seen over a packed audience">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/panel-eye-screen.webp" alt="Five panellists on stage at Bharat AI Innovation in Mumbai, in front of a giant close-up of an eye on the screen">
                     <div><b>इनोवेशन टॉक्स और शोकेस</b><i class="by">सरकारी विभागों, मंत्रालयों और राज्य सरकारों द्वारा</i><span>सरकारी टीमें एआई का उपयोग कैसे कर रही हैं, मंच पर।</span></div>
                 </li>
             </ul>
@@ -635,125 +688,186 @@
         </div>
     </section>
 
-    <!-- ===== PASSES: Mumbai's passes, at Mumbai's earlier prices. The price charged is
-         DELHI_PASS_PRICES_INR on the server; these are printed copies of it. ===== -->
-    <section class="dl-passes dl-sec" id="passes">
+
+
+
+    <!-- ===== GOVERNMENT AI SHOWCASE (the organiser, 24 Nov 2026: "showcase by state, central govt
+         and departments for demonstrating the work they have done in AI for improving governance and
+         enhancing life of citizens, streamlining their services"). An invitation: no government is
+         named as taking part or as backing the event. ===== -->
+    <section class="dl-gov dl-sec" id="government">
+        <div class="container dl-split">
+            <div class="dl-split-media reveal">
+                <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/panel-viksit-bharat.webp" alt="A panel at Bharat AI Innovation in Mumbai, AI for Viksit Bharat: Igniting 1.4 Billion Dreams and Transforming Governance, seen over a packed audience" style="object-position:62% center">
+            </div>
+            <div class="reveal reveal-delay-1">
+                <h2 class="section-title">सरकारी <span class="accent">एआई शोकेस</span></h2>
+                <p class="dl-split-lead">केंद्रीय मंत्रालय, राज्य सरकारें और उनके विभाग वह एआई काम दिखाते हैं जो वे कर चुके हैं: शासन बेहतर बनाने, नागरिकों का जीवन आसान बनाने और सार्वजनिक सेवाएँ तेज़ और सरल बनाने के लिए।</p>
+                <ul class="dl-checks">
+                    <li><b>मंच पर।</b> मंत्रालयों, विभागों और राज्य सरकारों के इनोवेशन टॉक्स और शोकेस।</li>
+                    <li><b>प्रदर्शनी में।</b> केंद्र और राज्य सरकारों के पवेलियन, लाइव प्रदर्शन के साथ।</li>
+                    <li><b>बैठकों में।</b> बंद कमरे की गोलमेज़ बैठकें, जहाँ अधिकारी और उद्योग तय करते हैं कि आगे क्या बनाना है।</li>
+                    <li><b>राज्यों के बीच।</b> देखें कि एक राज्य में क्या सफल रहा, और उसे दूसरे राज्य तक ले जाएँ।</li>
+                </ul>
+                <div class="dl-cta-row dl-cta-left">
+                    <a href="#updates" class="btn btn-primary btn-lg" data-interest="speak" data-item="Government AI Showcase">अपनी पहल दिखाएँ <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== INTERNATIONAL: embassies and delegations from other countries (the organiser,
+         24 Nov 2026). An invitation: no country is named as taking part. ===== -->
+    <section class="dl-intl dl-sec" id="international">
+        <div class="container dl-split dl-split-rev">
+            <div class="dl-split-media reveal">
+                <img width="1000" height="667" loading="lazy" decoding="async" src="images/delhi/mandapam-day.webp" alt="Bharat Mandapam by day, flags flying in front of the round hall, with the bronze Nataraja and water gardens">
+            </div>
+            <div class="reveal reveal-delay-1">
+                <h2 class="section-title">भारत और <span class="accent">दुनिया</span></h2>
+                <p class="dl-split-lead">दूतावासों, उच्चायोगों, व्यापार कार्यालयों और दूसरे देशों के प्रतिनिधिमंडलों को भाग लेने का निमंत्रण है: भारत के एआई ख़रीदारों और निर्माताओं से मिलने, और सरकार से बात करने के लिए।</p>
+                <ul class="dl-checks">
+                    <li><b>देश के पवेलियन।</b> प्रदर्शनी में अपने देश की एआई कंपनियाँ दिखाएँ।</li>
+                    <li><b>प्रतिनिधिमंडल।</b> व्यापार या सरकारी प्रतिनिधिमंडल लाएँ, आने से पहले तय मीटिंग के साथ।</li>
+                    <li><b>अंतरराष्ट्रीय संवाद।</b> भारत के साथ एआई सहयोग पर मंच से बोलें।</li>
+                    <li><b>गोलमेज़ बैठकें।</b> बंद कमरे में, दो या कई देशों के बीच, आपके तय किए विषय पर।</li>
+                </ul>
+                <div class="dl-cta-row dl-cta-left">
+                    <a href="#updates" class="btn btn-primary btn-lg" data-interest="exhibit" data-item="Country pavilion or delegation">प्रतिनिधिमंडल लाएँ <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                    <a href="/delhi-visa" class="btn btn-ghost btn-lg">वीज़ा पत्र</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== TAKE PART: who comes, and how. No prices on the home page (the organiser,
+         24 Nov 2026): pass prices are on /delhi-register, booths on /exhibition#delhi,
+         partnerships on /partner#delhi. ===== -->
+    <section class="dl-take dl-sec" id="take-part">
         <div class="container">
             <div class="section-header reveal">
-                <h2 class="section-title"><span class="accent">नई दिल्ली</span> के लिए पास</h2>
-                <p class="section-subtitle">मुंबई जैसे ही पास। अभी ऑनलाइन भुगतान करें, रसीद ईमेल पर आ जाएगी।</p>
+                <h2 class="section-title"><span class="accent">नई दिल्ली</span> में भाग लें</h2>
+                <p class="section-subtitle">कंपनियों, स्टार्टअप्स, छोटे व्यवसायों और शिक्षण संस्थानों के लिए।</p>
             </div>
             <ul class="dl-pass-grid">
-                <li class="dl-pass reveal">
-                    <h3>एकेडमिक पास</h3>
-                    <p class="dl-price">₹999 <span>+ 18% जीएसटी</span></p>
-                    <p class="dl-pass-for">मान्य पहचान पत्र वाले छात्रों और शिक्षकों के लिए।</p>
-                    <ul>
-                        <li>दोनों दिन पक्का प्रवेश</li>
-                        <li>कॉन्फ्रेंस सत्र और प्रदर्शनी</li>
-                        <li>छात्र नेटवर्किंग ज़ोन</li>
-                        <li>भागीदारी प्रमाणपत्र</li>
-                    </ul>
-                    <a href="/delhi-register#academic" class="btn btn-outline">यह पास लें</a>
-                </li>
-                <li class="dl-pass is-lead reveal reveal-delay-1">
+                <li class="dl-pass dl-role is-lead reveal">
                     <span class="dl-beam" aria-hidden="true"></span>
-                    <h3>डेलीगेट पास</h3>
-                    <p class="dl-price">₹4,999 <span>+ 18% जीएसटी</span></p>
-                    <p class="dl-pass-for">कॉन्फ्रेंस में आने के लिए।</p>
+                    <i class="fas fa-building dl-role-icon" aria-hidden="true"></i>
+                    <h3>कॉर्पोरेट</h3>
+                    <p class="dl-pass-for">उद्यम, और वे कंपनियाँ जो उन तक एआई पहुँचाती हैं।</p>
                     <ul>
-                        <li>दोनों दिन पक्का प्रवेश</li>
-                        <li>कॉन्फ्रेंस सत्र और प्रदर्शनी</li>
-                        <li>नेटवर्किंग लंच और कॉन्फ्रेंस किट</li>
-                        <li>पूरी डायरेक्टरी, बातचीत और मीटिंग</li>
-                        <li>भागीदारी प्रमाणपत्र</li>
+                        <li>सीएक्सओ पैनल में बोलें या गोलमेज़ बैठक की मेज़बानी करें</li>
+                        <li>ख़रीदारों को अपने एआई उत्पाद दिखाएँ</li>
+                        <li>आयोजन के पार्टनर बनें</li>
                     </ul>
-                    <a href="/delhi-register#delegate" class="btn btn-primary dl-shine">यह पास लें</a>
+                    <a href="/partner#delhi" class="btn btn-outline">हमारे पार्टनर बनें</a>
                 </li>
-                <li class="dl-pass reveal">
-                    <h3>प्रीमियम डेलीगेट पास</h3>
-                    <p class="dl-price">₹9,999 <span>+ 18% जीएसटी</span></p>
-                    <p class="dl-pass-for">वर्कशॉप सीट के साथ डेलीगेट पास।</p>
+                <li class="dl-pass dl-role reveal">
+                    <i class="fas fa-rocket dl-role-icon" aria-hidden="true"></i>
+                    <h3>स्टार्टअप्स</h3>
+                    <p class="dl-pass-for">एआई उत्पाद बनाने वाले स्टार्टअप्स।</p>
                     <ul>
-                        <li>डेलीगेट पास की सभी सुविधाएँ</li>
-                        <li>एक व्यावहारिक वर्कशॉप; सीटें पहले आओ, पहले पाओ</li>
+                        <li>इनोवेशन टॉक के साथ एक स्टार्टअप पॉड</li>
+                        <li>मंच पर स्टार्टअप पिच</li>
+                        <li>उद्यमों और सरकार के ख़रीदारों से मिलें</li>
                     </ul>
-                    <a href="/delhi-register#premium" class="btn btn-outline">यह पास लें</a>
+                    <a href="/delhi-exhibit?booth=Startup%20Pod" class="btn btn-outline">स्टार्टअप पॉड के लिए आवेदन करें</a>
                 </li>
-                <li class="dl-pass reveal reveal-delay-1">
-                    <h3>वीआईपी पास</h3>
-                    <p class="dl-price">₹19,999 <span>+ 18% जीएसटी</span></p>
-                    <p class="dl-pass-for">पूरा आयोजन, लीडर्स इवनिंग के साथ।</p>
+                <li class="dl-pass dl-role reveal reveal-delay-1">
+                    <i class="fas fa-store dl-role-icon" aria-hidden="true"></i>
+                    <h3>एमएसएमई</h3>
+                    <p class="dl-pass-for">एआई अपनाने को तैयार छोटे और मध्यम व्यवसाय।</p>
                     <ul>
-                        <li>प्रीमियम डेलीगेट पास की सभी सुविधाएँ</li>
-                        <li>भारत एआई लीडर्स इवनिंग, पहला दिन</li>
-                        <li>वीआईपी लाउंज और आगे की सीटें</li>
-                        <li>वक्ताओं से मुलाक़ात</li>
+                        <li>ऐसे एआई टूल देखें जिन्हें आप अभी उपयोग कर सकते हैं</li>
+                        <li>आपकी टीम के लिए व्यावहारिक वर्कशॉप</li>
+                        <li>तय मीटिंग में वेंडरों से मिलें</li>
                     </ul>
-                    <a href="/delhi-register#vip" class="btn btn-outline">यह पास लें</a>
+                    <a href="/delhi-register?source=home-msme" class="btn btn-outline">अपना पास लें</a>
+                </li>
+                <li class="dl-pass dl-role reveal">
+                    <i class="fas fa-graduation-cap dl-role-icon" aria-hidden="true"></i>
+                    <h3>शिक्षा जगत</h3>
+                    <p class="dl-pass-for">विश्वविद्यालय, कॉलेज, शिक्षक और छात्र।</p>
+                    <ul>
+                        <li>छात्रों और शिक्षकों के लिए एकेडमिक पास</li>
+                        <li>हैकथॉन और वर्कशॉप</li>
+                        <li>एआई का उपयोग करने और उसे बनाने वाली कंपनियों से मिलें</li>
+                    </ul>
+                    <a href="/delhi-register?source=home-academia#academic" class="btn btn-outline">एकेडमिक पास लें</a>
                 </li>
             </ul>
-            <p class="dl-free-row reveal"><b>विज़िटर पास, मुफ़्त।</b> केवल प्रदर्शनी, तय समय-स्लॉट में प्रवेश। <a href="#updates" data-interest="attend">प्रतीक्षा सूची में शामिल होने के लिए रजिस्टर करें</a></p>
-            <p class="dl-small">पाँच या अधिक लोगों की टीम: चार की क़ीमत में पाँच पास (डेलीगेट या प्रीमियम डेलीगेट), अनुरोध पर। पास केवल दिल्ली के लिए है। प्रवेश पास और दिल्ली का ऐप आयोजन के क़रीब ईमेल से आएगा।</p>
         </div>
     </section>
 
-    <!-- ===== BOOTHS: Mumbai's sizes and prices (public/exhibition.html). Booked as in
-         Mumbai: an enquiry, then the team calls and invoices. The floor plan comes later. ===== -->
-    <section class="dl-booths dl-sec" id="booths">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title"><span class="accent">नई दिल्ली</span> में बूथ बुक करें</h2>
-                <p class="section-subtitle">मुंबई जैसे ही आकार और दाम। फ़्लोर प्लान बाद में प्रकाशित होगा।</p>
-                <p class="dl-apply-words">बताइए आप क्या दिखाएँगे। हम हर आवेदन की समीक्षा करते हैं, ताकि प्रदर्शनी उन लोगों के काम की रहे जो ख़रीदने आते हैं। हम 2 कार्यदिवसों में जवाब देते हैं। स्वीकृति मिलने पर हमारी टीम आपकी जगह और बूथ बुक करने का अगला कदम बताएगी।</p>
-            </div>
-            <div class="dl-sale-photo reveal">
-                <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/booth-crowd.webp" alt="Visitors gathered at a lit exhibition booth in Mumbai">
-            </div>            <p class="dl-photo-note">भारत एआई इनोवेशन मुंबई (नवंबर 2026) का एक बूथ।</p>
-
-            <ul class="dl-sale">
-                <li class="dl-sale-row reveal"><div><b>Startup Pod</b><span>1.5 × 1.5 m (24 वर्ग फ़ुट) · 1 एग्ज़िबिटर पास · 8 मिनट इनोवेशन टॉक</span></div><p>₹48,000 <small>+ जीएसटी</small></p><a href="/delhi-exhibit?booth=Startup%20Pod" class="btn btn-outline btn-sm">इस बूथ के लिए आवेदन करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Explorer Booth</b><span>2 × 2 m (43 वर्ग फ़ुट) · 1 एग्ज़िबिटर पास · 10 मिनट इनोवेशन टॉक</span></div><p>₹1,29,000 <small>+ जीएसटी</small></p><a href="/delhi-exhibit?booth=Explorer%20Booth" class="btn btn-outline btn-sm">इस बूथ के लिए आवेदन करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Innovator Booth</b><span>3 × 2 m (65 वर्ग फ़ुट) · 2 एग्ज़िबिटर पास · 12 मिनट इनोवेशन टॉक</span></div><p>₹1,95,000 <small>+ जीएसटी</small></p><a href="/delhi-exhibit?booth=Innovator%20Booth" class="btn btn-outline btn-sm">इस बूथ के लिए आवेदन करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Enterprise Booth</b><span>4 × 2 m (86 वर्ग फ़ुट) · 3 एग्ज़िबिटर पास · 15 मिनट इनोवेशन टॉक</span></div><p>₹2,58,000 <small>+ जीएसटी</small></p><a href="/delhi-exhibit?booth=Enterprise%20Booth" class="btn btn-outline btn-sm">इस बूथ के लिए आवेदन करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Accelerator Booth</b><span>3 × 3 m (97 वर्ग फ़ुट) · 5 एग्ज़िबिटर पास · 20 मिनट इनोवेशन टॉक</span></div><p>₹2,91,000 <small>+ जीएसटी</small></p><a href="/delhi-exhibit?booth=Accelerator%20Booth" class="btn btn-outline btn-sm">इस बूथ के लिए आवेदन करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Flagship Pavilion</b><span>6 × 2 m (129 वर्ग फ़ुट) · 8 एग्ज़िबिटर पास · 30 मिनट इनोवेशन टॉक</span></div><p>₹3,87,000 <small>+ जीएसटी</small></p><a href="/delhi-exhibit?booth=Flagship%20Pavilion" class="btn btn-outline btn-sm">इस बूथ के लिए आवेदन करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Mega Pavilion</b><span>7 × 7.7 m (580 वर्ग फ़ुट) · 15 एग्ज़िबिटर पास · 40 मिनट इनोवेशन टॉक</span></div><p>₹17,40,000 <small>+ जीएसटी</small></p><a href="/delhi-exhibit?booth=Mega%20Pavilion" class="btn btn-outline btn-sm">इस बूथ के लिए आवेदन करें</a></li>
-            </ul>
-            <p class="dl-small"><a href="/exhibition">देखें हर बूथ में क्या शामिल है</a></p>
-        </div>
-    </section>
-
-    <!-- ===== PARTNERS: Mumbai's titles and prices (public/partner.html). ===== -->
+    <!-- ===== PARTNERS: what can be sponsored. The tiers and their prices are on /partner#delhi. ===== -->
     <section class="dl-partners dl-sec" id="partner">
         <span class="dl-aurora" aria-hidden="true"></span>
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title"><span class="accent">नई दिल्ली</span> में हमारे पार्टनर बनें</h2>
-                <p class="section-subtitle">मुंबई जैसी ही पार्टनरशिप और स्पॉन्सरशिप, उन्हीं दामों पर।</p>
+                <p class="section-subtitle">अपने ब्रांड को राजधानी में उन लोगों के सामने रखें जो एआई ख़रीदते हैं, बनाते हैं और उसके नियम लिखते हैं।</p>
             </div>
-            <h3 class="dl-sale-head">पार्टनरशिप स्तर</h3>
-            <ul class="dl-sale">
-                <li class="dl-sale-row reveal"><div><b>Title Partner</b><span>1 स्लॉट, एक्सक्लूसिव। “[आपकी कंपनी] प्रस्तुत करती है भारत एआई इनोवेशन दिल्ली 2027”</span></div><p>₹1.2 करोड़</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Title Partner, ₹1.2 Cr">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Powered Partner</b><span>1 स्लॉट, एक्सक्लूसिव। टेक्नोलॉजी और इंफ्रास्ट्रक्चर ब्रांडिंग</span></div><p>₹50 लाख</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Powered Partner, ₹50 Lakhs">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Knowledge Partner</b><span>1 स्लॉट, एक्सक्लूसिव। कॉन्फ्रेंस के विषय और ट्रैक साथ मिलकर तय करें</span></div><p>₹30 लाख</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Knowledge Partner, ₹30 Lakhs">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Associate Partner</b><span>4 स्लॉट। फ़िनटेक, हेल्थटेक, एग्रीटेक या मैन्युफ़ैक्चरिंग टेक में श्रेणी की एक्सक्लूसिविटी</span></div><p>₹25 लाख</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Associate Partner, ₹25 Lakhs">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Innovation Partner</b><span>नई तकनीकों और स्टार्टअप्स को आगे बढ़ाने वालों के लिए</span></div><p>कस्टम</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Innovation Partner, Custom">पूछताछ करें</a></li>
+            <ul class="dl-also dl-chips reveal">
+                <li>टाइटल पार्टनर</li>
+                <li>पावर्ड पार्टनर</li>
+                <li>नॉलेज पार्टनर</li>
+                <li>एसोसिएट पार्टनर</li>
+                <li>इनोवेशन पार्टनर</li>
+                <li>एआई लीडरशिप पैनल</li>
+                <li>लीडर्स राउंड टेबल</li>
+                <li>भारत एआई लीडर्स इवनिंग पार्टनर</li>
+                <li>नेटवर्किंग लंच</li>
+                <li>लैन्यार्ड और बैग</li>
+                <li>कस्टम एक्टिवेशन</li>
             </ul>
-            <h3 class="dl-sale-head">ब्रांडिंग और एक्टिवेशन</h3>
-            <ul class="dl-sale">
-                <li class="dl-sale-row reveal"><div><b>AI Leadership Panel</b><span>आपका तैयार किया पैनल, जिसका संचालन आपके अपने लीडर करें</span></div><p>₹10 लाख <small>+ जीएसटी</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="AI Leadership Panel, ₹10 Lakhs + GST">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Leaders Round Table</b><span>एआई नीति पर को-ब्रांडेड गोलमेज़ बैठक</span></div><p>₹10 लाख <small>+ जीएसटी</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Leaders Round Table, ₹10 Lakhs + GST">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Bharat AI Leaders’ Evening Partner</b><span>पूरी शाम की मेज़बानी करें</span></div><p>₹15 लाख <small>+ जीएसटी</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Bharat AI Leaders’ Evening Partner, ₹15 Lakhs + GST">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Lanyard</b><span>हर प्रतिभागी के लैन्यार्ड पर केवल आपका ब्रांड</span></div><p>₹10 लाख <small>+ जीएसटी</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Lanyard, ₹10 Lakhs + GST">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Conference Bag</b><span>डेलीगेट्स जो बैग घर ले जाते हैं, उस पर केवल आपका ब्रांड</span></div><p>₹3 लाख <small>+ जीएसटी</small></p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Conference Bag, ₹3 Lakhs + GST">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Networking Lunch Partner</b><span>दोनों दिन नेटवर्किंग लंच, आपकी ओर से</span></div><p>अनुरोध पर</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Networking Lunch Partner, on request">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>AI Partner</b><span>एआई कंपनियों के लिए: आयोजन का घोषित एआई पार्टनर</span></div><p>अनुरोध पर</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="AI Partner, on request">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Trophy Partner</b><span>ट्रॉफ़ियों और पुरस्कार के पल पर आपका ब्रांड</span></div><p>अनुरोध पर</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Trophy Partner, on request">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Innovators’ Round Table</b><span>केवल आमंत्रण पर, आपके तय किए विषय पर</span></div><p>अनुरोध पर</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Innovators’ Round Table, on request">पूछताछ करें</a></li>
-                <li class="dl-sale-row reveal"><div><b>Custom Activation</b><span>लॉन्च, समझौता ज्ञापन (MoU) पर हस्ताक्षर, या आपका अपना अभियान</span></div><p>अनुरोध पर</p><a href="#updates" class="btn btn-outline btn-sm" data-interest="sponsor" data-item="Custom Activation, on request">पूछताछ करें</a></li>
+            <div class="dl-cta-row reveal">
+                <a href="/partner#delhi" class="btn btn-primary btn-lg">सभी पार्टनरशिप देखें <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="#updates" class="btn btn-ghost btn-lg" data-interest="sponsor">हमारी टीम से बात करें</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== BOOTHS: the kinds of booth. Their sizes and prices are on /exhibition#delhi. Booked
+         as in Mumbai: an application, reviewed, then the team calls. The floor plan comes later. ===== -->
+    <section class="dl-booths dl-sec" id="booths">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title"><span class="accent">नई दिल्ली</span> में प्रदर्शन करें</h2>
+                <p class="section-subtitle">अपना एआई उन लोगों को दिखाएँ जो उसे ख़रीदने आते हैं। फ़्लोर प्लान बाद में प्रकाशित होगा।</p>
+                <p class="dl-apply-words">बताइए आप क्या दिखाएँगे। हम हर आवेदन की समीक्षा करते हैं, ताकि प्रदर्शनी उन लोगों के काम की रहे जो ख़रीदने आते हैं। हम 2 कार्यदिवसों में जवाब देते हैं। स्वीकृति मिलने पर हमारी टीम आपकी जगह और बूथ बुकिंग का अगला कदम बताएगी।</p>
+            </div>
+            <div class="dl-sale-photo reveal">
+                <img width="1600" height="1066" loading="lazy" decoding="async" src="img/mumbai-2026/booth-crowd.webp" alt="Visitors gathered at a lit exhibition booth in Mumbai">
+            </div>
+            <p class="dl-photo-note">भारत एआई इनोवेशन मुंबई (नवंबर 2026) का एक बूथ।</p>
+            <ul class="dl-also reveal">
+                <li>स्टार्टअप पॉड</li>
+                <li>एक्सप्लोरर बूथ</li>
+                <li>इनोवेटर बूथ</li>
+                <li>एंटरप्राइज़ बूथ</li>
+                <li>एक्सेलरेटर बूथ</li>
+                <li>फ़्लैगशिप पवेलियन</li>
+                <li>मेगा पवेलियन</li>
             </ul>
-            <p class="dl-small">एक विकल्प चुनें और अपनी जानकारी दें, हमारी टीम आपको कॉल करेगी। <a href="/partner">देखें हर एक में क्या शामिल है</a></p>
+            <div class="dl-cta-row reveal">
+                <a href="/delhi-exhibit" class="btn btn-primary btn-lg">बूथ के लिए आवेदन करें <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="/exhibition#delhi" class="btn btn-outline btn-lg">सभी बूथ देखें</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== PASSES: no prices here; they are on /delhi-register ===== -->
+    <section class="dl-passes dl-sec" id="passes">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title"><span class="accent">नई दिल्ली</span> के लिए पास</h2>
+                <p class="section-subtitle">डेलीगेट, प्रीमियम डेलीगेट, वीआईपी और एकेडमिक पास अभी बिक्री पर हैं। ऑनलाइन भुगतान करें, रसीद ईमेल पर आएगी।</p>
+            </div>
+            <div class="dl-cta-row reveal">
+                <a href="/delhi-register?source=home-passes" class="btn btn-primary btn-lg dl-shine">अपना पास लें <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="#updates" class="btn btn-outline btn-lg" data-interest="attend">मुफ़्त विज़िटर पास की प्रतीक्षा सूची में जुड़ें</a>
+            </div>
+            <p class="dl-small">विज़िटर पास मुफ़्त है: केवल प्रदर्शनी, तय समय-स्लॉट में प्रवेश। पास केवल दिल्ली के लिए है। आपका एंट्री पास और दिल्ली का ऐप आयोजन के क़रीब ईमेल से आएगा।</p>
         </div>
     </section>
 
@@ -777,37 +891,7 @@
         </div>
     </section>
 
-    <!-- ===== FROM OUTSIDE INDIA ===== -->
-    <section class="dl-abroad dl-sec" id="travel">
-        <div class="container">
-            <div class="reveal">
-                <h2 class="section-title"><span class="accent">भारत के बाहर</span> से आ रहे हैं?</h2>
-                <p class="dl-abroad-lead">यात्रा बुक करने से पहले यह जान लें।</p>
-            </div>
-            <dl class="dl-abroad-list reveal reveal-delay-1">
-                <div><dt><i class="fas fa-file-signature" aria-hidden="true"></i>वीज़ा</dt><dd>आपको कौन-सा वीज़ा चाहिए, यह आधिकारिक साइट <a href="https://indianvisaonline.gov.in/" target="_blank" rel="noopener noreferrer">indianvisaonline.gov.in</a> पर देखें। अगर आवेदन में आयोजकों का पत्र माँगा जाए, तो <a href="/delhi-visa">हमसे अनुरोध करें</a>। ऐसी यात्रा बुक करने से पहले, जिसे रद्द न किया जा सके, वीज़ा मिलने का इंतज़ार करें।</dd></div>
-                <div><dt><i class="fas fa-route" aria-hidden="true"></i>हवाई अड्डे से</dt><dd>इंदिरा गांधी अंतरराष्ट्रीय हवाई अड्डा (DEL) भारत मंडपम से लगभग 18 किमी दूर है। व्यस्त समय में सड़क से एक घंटा मानकर चलें।</dd></div>
-                <div><dt><i class="fas fa-train" aria-hidden="true"></i>मेट्रो से</dt><dd>सबसे नज़दीकी स्टेशन ब्लू लाइन पर सुप्रीम कोर्ट है, जिसका पुराना नाम प्रगति मैदान था। आयोजन स्थल वहाँ से पैदल दूरी पर है।</dd></div>
-                <div><dt><i class="fas fa-clock" aria-hidden="true"></i>समय और भुगतान</dt><dd>भारतीय मानक समय UTC+5:30 है। पास की क़ीमतें भारतीय रुपये में हैं, साथ में 18% जीएसटी।</dd></div>
-            </dl>
-            <div class="dl-abroad-cta"><a href="/delhi-visa" class="btn btn-primary btn-sm">वीज़ा पत्र के लिए अनुरोध करें <i class="fas fa-arrow-right" aria-hidden="true"></i></a></div>
-        </div>
-    </section>
 
-    <!-- ===== WHO IT IS FOR ===== -->
-    <section class="dl-who dl-sec" id="who">
-        <div class="container">
-            <div class="reveal">
-                <h2 class="section-title">व्यापार के लिए, <span class="accent">राजधानी में</span></h2>
-                <p class="dl-who-lead">भारत के मंत्रालय और सार्वजनिक क्षेत्र की कंपनियाँ दिल्ली में हैं। यह संस्करण उन लोगों के लिए है जो एआई ख़रीदते हैं, बनाते हैं और उसके नियम तय करते हैं।</p>
-            </div>
-            <ul class="dl-rows reveal reveal-delay-1">
-                <li><img loading="lazy" decoding="async" alt="" src="images/gallery/577B0622.webp" style="object-position:30% 40%"><b>ख़रीदार</b><span>उद्यमों, सार्वजनिक क्षेत्र की कंपनियों और सरकारी विभागों के सीआईओ, सीटीओ और ख़रीद प्रमुख।</span></li>
-                <li><img loading="lazy" decoding="async" alt="" src="images/gallery/7C2A2566.webp"><b>निर्माता</b><span>एआई प्रोडक्ट कंपनियाँ, सर्विस फ़र्म और फ़ंडिंग पाए स्टार्टअप्स।</span></li>
-                <li><img loading="lazy" decoding="async" alt="" src="images/delhi/mandapam-day.webp" style="object-position:center 42%"><b>नीति-निर्माता</b><span>केंद्र और राज्यों में भारत के एआई नियम तय करने वाले लोग।</span></li>
-            </ul>
-        </div>
-    </section>
 
     <!-- ===== REGISTER FREE ===== -->
     <section class="dl-updates-sec dl-sec">
@@ -894,7 +978,7 @@
                 </details>
                 <details>
                     <summary>बूथ, स्पॉन्सरशिप या वक्ता बनने के लिए क्या करें? <i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
-                    <p>बूथ के लिए <a href="/delhi-exhibit">यहाँ आवेदन करें</a> और बताइए आप क्या दिखाएँगे। हम हर आवेदन की समीक्षा करते हैं और 2 कार्यदिवसों में जवाब देते हैं; स्वीकृति मिलने पर हमारी टीम आपकी जगह और बुकिंग का अगला कदम बताएगी। फ़्लोर प्लान बाद में प्रकाशित होगा। <a href="#partner">पार्टनरशिप</a> के लिए एक विकल्प चुनें और अपनी जानकारी दें। वक्ता बनने के लिए <a href="#updates" data-interest="speak">फ़ॉर्म</a> में ‘वक्ता’ चुनें।</p>
+                    <p>बूथ के लिए <a href="/delhi-exhibit">यहाँ आवेदन करें</a> और बताइए आप क्या दिखाएँगे। हम हर आवेदन की समीक्षा करते हैं और 2 कार्यदिवसों में जवाब देते हैं; स्वीकृति मिलने पर हमारी टीम आपकी जगह और बुकिंग का अगला कदम बताएगी। फ़्लोर प्लान बाद में प्रकाशित होगा। पार्टनरशिप के लिए <a href="/partner#delhi">विकल्प देखें</a> और अपनी जानकारी दें। वक्ता बनने के लिए <a href="#updates" data-interest="speak">फ़ॉर्म</a> में ‘वक्ता’ चुनें।</p>
                 </details>
                 <details>
                     <summary>पास का भुगतान करने के बाद क्या होगा? <i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
@@ -963,7 +1047,8 @@
                         <li><a href="/conference#schedule">Schedule</a></li>
                         <li><a href="/conference">Programme</a></li>
                         <li><a href="/exhibition">Exhibition Zones</a></li>
-                        <li><a href="/accommodation">Hotels</a></li>
+                        <li><a href="/delhi-accommodation">Hotels near Bharat Mandapam</a></li>
+                        <li><a href="/delhi-visa">Visa letter for Delhi</a></li>
                     </ul>
                 </div>
                 <div class="footer-section">
@@ -990,7 +1075,7 @@
 
     <aside class="sticky-cta" id="stickyCta" aria-label="दिल्ली 2027 के लिए रजिस्टर करें" aria-hidden="true">
         <div class="sticky-cta-text"><b>28–29 जुलाई 2027</b><span>भारत मंडपम, नई दिल्ली</span></div>
-        <a href="#passes" class="btn btn-primary" tabindex="-1">अपना पास लें</a>
+        <a href="/delhi-register?source=home-bar" class="btn btn-primary" tabindex="-1">अपना पास लें</a>
     </aside>
 
     <script>

@@ -50,9 +50,11 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await page.waitForTimeout(500);
     check('past the hero the offer bar follows the reader', await page.locator('#stickyCta.is-on').count() === 1);
     check('and its button can be reached by keyboard', await page.getAttribute('#stickyCta a', 'tabindex') === '0');
-    await page.click('#stickyCta a');
+    // 24 Nov 2026: the bar's button goes straight to the pass form, where the prices are.
+    check('the bar\'s button goes to the pass form', await page.getAttribute('#stickyCta a', 'href') === '/delhi-register?source=home-bar');
+    await page.locator('#passes').scrollIntoViewIfNeeded();
     await page.waitForTimeout(900);
-    check('the bar\'s button goes to the passes, and it steps aside there', await page.locator('#stickyCta.is-on').count() === 0 && await page.locator('#passes').isVisible());
+    check('and it steps aside at the passes', await page.locator('#stickyCta.is-on').count() === 0 && await page.locator('#passes').isVisible());
 
     // Everything appears, every picture loads
     for (const sel of ['.dl-collage', '.dl-tiles', '.dl-rows', '.dl-faq']) {
@@ -61,7 +63,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     }
     await page.waitForFunction(() => [...document.images].every((i) => i.complete), null, { timeout: 20000 }).catch(() => {});
     check('sections show with animations off', await page.evaluate(() => ['.dl-collage', '.dl-tiles', '.dl-rows'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
-    check('every picture loads', await page.evaluate(() => [...document.images].every((i) => i.naturalWidth > 0)), await page.evaluate(() => [...document.images].filter((i) => !i.naturalWidth).map((i) => i.src).join(', ')));
+    check('every picture that shows loads', await page.evaluate(() => [...document.images].filter((i) => i.getClientRects().length).every((i) => i.naturalWidth > 0)), await page.evaluate(() => [...document.images].filter((i) => i.getClientRects().length && !i.naturalWidth).map((i) => i.src).join(', ')));
     check('all ten programme boxes show a picture', await page.evaluate(() => { const t = [...document.querySelectorAll('.dl-tile')]; return t.length === 10 && t.every((x) => { const i = x.querySelector('img'); return i && i.naturalWidth > 0 && i.getBoundingClientRect().height > 80; }); }));
     check('the form is a small strip on a phone (under 580px tall)', await page.evaluate(() => document.getElementById('updates').getBoundingClientRect().height) < 580, await page.evaluate(() => document.getElementById('updates').getBoundingClientRect().height));
     check('tap targets on the form are big enough', await page.evaluate(() => [...document.querySelectorAll('.dl-field input, .dl-submit, .dl-way > span')].every((e) => e.getBoundingClientRect().height >= 44)));
@@ -71,10 +73,11 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await page.click('.dl-hero-alt a');
     await page.waitForTimeout(900);
     check('"Apply for a booth" goes to the booths', await page.evaluate(() => { const r = document.getElementById('booths').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }));
-    check('each booth goes to the application, on that booth', (await page.locator('.dl-sale-row', { hasText: 'Explorer Booth' }).locator('a').getAttribute('href')) === '/delhi-exhibit?booth=Explorer%20Booth' && (await page.locator('#booths a', { hasText: 'Apply for this booth' }).count()) === 7);
-    await page.locator('.dl-sale-row', { hasText: 'Lanyard' }).locator('a').click();
+    check('the booths go to the application, and to the sizes and prices on /exhibition', (await page.locator('#booths a', { hasText: 'Apply for a booth' }).getAttribute('href')) === '/delhi-exhibit' && (await page.locator('#booths a', { hasText: 'See all booths' }).getAttribute('href')) === '/exhibition#delhi');
+    check('no price anywhere on the home page', await page.evaluate(() => !/₹|Lakhs/.test(document.body.innerText)));
+    await page.locator('#international a', { hasText: 'Bring a delegation' }).click();
     await page.waitForTimeout(900);
-    check('a partnership\'s Enquire chooses Sponsor and says which', await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'sponsor' && (await page.textContent('#dl-chosen')).includes('Lanyard') && await page.locator('#dl-chosen').isVisible());
+    check('Bring a delegation chooses Exhibit and says which', await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'exhibit' && (await page.textContent('#dl-chosen')).includes('Country pavilion or delegation'));
     await page.click('#dl-submit');
     check('empty: asks for the name, on screen', (await page.textContent('#dl-error')).includes('name') && await page.locator('#dl-error').isVisible());
     await page.fill('#dl-name', 'Priya Sharma');
@@ -83,7 +86,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     check('bad email: says so', (await page.textContent('#dl-error')).includes('email'));
     await page.fill('#dl-email', 'priya@example.com');
     await page.click('#dl-submit');
-    check('Sponsor with no mobile: asks for it', (await page.textContent('#dl-error')).includes('mobile'));
+    check('a delegation with no mobile: asks for it', (await page.textContent('#dl-error')).includes('mobile'));
     await page.fill('#dl-phone', '98765 43210');
     await page.fill('#dl-org', 'Example Ltd');
     // Tapping the label of another choice works, then back
@@ -91,18 +94,18 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await page.waitForSelector('#dl-done:not([hidden])');
     check('the thank-you names their email', (await page.textContent('#dl-done-text')).includes('priya@example.com'));
     const saved = await (await ctx.request.get(BASE + '/__inquiries')).json();
-    check('it really landed in the database', saved.length === 1 && saved[0].inquiry_type === 'sponsorship' && saved[0].subject === 'Delhi 2027 · Sponsor · Lanyard, ₹10 Lakhs + GST' && saved[0].email === 'priya@example.com', JSON.stringify(saved));
+    check('it really landed in the database', saved.length === 1 && saved[0].inquiry_type === 'exhibition' && saved[0].subject === 'Delhi 2027 · Exhibit · Country pavilion or delegation' && saved[0].email === 'priya@example.com', JSON.stringify(saved));
     const mail = await (await ctx.request.get(BASE + '/__mail')).json();
     check('and the team was emailed once', mail.length === 1 && mail[0].Content.ReplyTo.includes('priya@example.com'), mail.length);
 
     // The free pass, as a person on a phone does it: the hero's button, the form, done.
     await page.goto(BASE + '/', { waitUntil: 'load' });
     await settled(page);
-    await page.click('.dl-hero-actions .btn-primary');
-    await page.waitForTimeout(900);
-    check('Get your pass goes to the passes', await page.evaluate(() => { const r = document.getElementById('passes').getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }));
-    check('four paid passes and the free one are on the page, each with its price', await page.evaluate(() => document.querySelectorAll('.dl-pass').length === 4 && ['₹999', '₹4,999', '₹9,999', '₹19,999'].every((p) => document.getElementById('passes').textContent.includes(p))) && (await page.textContent('.dl-free-row')).includes('free'));
-    await page.click('.dl-free-row a');
+    check('Get your pass goes to the pass form', (await page.getAttribute('.dl-hero-actions .btn-primary', 'href')) === '/delhi-register?source=home-hero');
+    await page.locator('#passes').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(600);
+    check('the passes are named, with no price, and the button goes to the form', await page.evaluate(() => { const t = document.getElementById('passes').innerText; return t.includes('Premium Delegate') && t.includes('Academic') && !/₹/.test(t); }) && (await page.getAttribute('#passes .btn-primary', 'href')) === '/delhi-register?source=home-passes');
+    await page.click('#passes a[data-interest="attend"]');
     await page.waitForTimeout(900);
     check('the free pass link scrolls to the form, on the pass', await page.locator('#dl-form').isVisible() && await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'attend' && (await page.textContent('#dl-form-title')).includes('free pass'));
     await page.locator('label.dl-way', { hasText: 'Exhibit' }).click();
@@ -198,7 +201,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       }));
       check(`motion ${label}: the rays are decoration only`, await p.evaluate(() => { const r = document.querySelector('.dl-rays'); return r.getAttribute('aria-hidden') === 'true' && getComputedStyle(r).pointerEvents === 'none' && !r.textContent; }));
       check(`motion ${label}: the hero buttons can be pressed, nothing lies over them`, await p.evaluate(() => { const b = document.querySelector('.dl-hero-actions .btn').getBoundingClientRect(); const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!e && !!e.closest('.dl-hero-actions'); }));
-      check(`motion ${label}: the sentence keeps every word, split into 25`, await p.evaluate(() => { const l = document.querySelector('.dl-who-lead'); return l.classList.contains('dl-lit') && l.querySelectorAll('span').length === 25 && l.textContent === 'India’s ministries and public sector companies are based in Delhi. This edition is for the people who buy AI, build it and write its rules.'; }));
+      check(`motion ${label}: the sentence keeps every word, split into 45`, await p.evaluate(() => { const l = document.querySelector('.dl-who-lead'); return l.classList.contains('dl-lit') && l.querySelectorAll('span').length === 45 && l.textContent === 'India’s ministries, public sector companies and leading enterprises make their AI decisions in Delhi. Bharat AI Innovation brings together the people who buy AI, the people who build it and the people who write its rules, so that good ideas become real projects across India.'; }));
       // Stop each thing in the middle of the screen: by then it must be fully there.
       const middle = (sel) => p.evaluate((s) => { const e = document.querySelector(s); const r = e.getBoundingClientRect(); window.scrollTo({ top: r.top + scrollY - (innerHeight - r.height) / 2, behavior: 'instant' }); }, sel);
       await middle('.dl-tiles .dl-tile:nth-child(2)');
@@ -286,7 +289,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       let wide = 0;
       for (let i = 0; i < 10; i++) { wide = Math.max(wide, await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)); await p.waitForTimeout(400); }
       check('effects: the aurora never widens the page', wide <= 0, wide);
-      check('effects: the partner rows stay light on dark', await p.evaluate(() => { const row = document.querySelector('#partner .dl-sale-row'); return getComputedStyle(row.querySelector('b')).color === 'rgb(255, 255, 255)' && getComputedStyle(row.querySelector('.btn')).color === 'rgb(255, 255, 255)' && getComputedStyle(document.querySelector('#partner .section-title')).color === 'rgb(255, 255, 255)'; }));
+      check('effects: the partner names stay light on dark', await p.evaluate(() => getComputedStyle(document.querySelector('#partner .dl-chips li')).color === 'rgb(255, 255, 255)' && getComputedStyle(document.querySelector('#partner .section-title')).color === 'rgb(255, 255, 255)'));
       const shiny = await p.evaluate(() => { const s = getComputedStyle(document.querySelector('.dl-title .ed > span')); return { fill: s.webkitTextFillColor, names: s.animationName, text: document.querySelector('.dl-title').textContent.replace(/\s+/g, ' ').trim() }; });
       check('effects: "Delhi 2027" carries its sheen after rising, and the title reads in full', /dlShiny/.test(shiny.names) && /dlLineUp/.test(shiny.names) && shiny.text === 'Bharat AI Innovation Delhi 2027', JSON.stringify(shiny));
       check('effects: no errors', errs.length === 0, errs.join(' | '));
@@ -314,7 +317,7 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
       const p = await c.newPage();
       await p.goto(BASE + '/', { waitUntil: 'load' });
       await p.waitForTimeout(600);
-      const off = await p.evaluate(() => ({ aurora: getComputedStyle(document.querySelector('.dl-aurora'), '::before').animationName, shine: getComputedStyle(document.querySelector('.dl-hero-actions .dl-shine'), '::after').content, ed: getComputedStyle(document.querySelector('.dl-title .ed > span')).webkitTextFillColor, beam: getComputedStyle(document.querySelector('.dl-pass .dl-beam')).display, row: getComputedStyle(document.querySelector('#partner .dl-sale-row b')).color }));
+      const off = await p.evaluate(() => ({ aurora: getComputedStyle(document.querySelector('.dl-aurora'), '::before').animationName, shine: getComputedStyle(document.querySelector('.dl-hero-actions .dl-shine'), '::after').content, ed: getComputedStyle(document.querySelector('.dl-title .ed > span')).webkitTextFillColor, beam: getComputedStyle(document.querySelector('.dl-pass .dl-beam')).display, row: getComputedStyle(document.querySelector('#partner .dl-chips li')).color }));
       check('animations off: no aurora movement, no shine, no star, "Delhi 2027" in plain colour, the dark section still reads', off.aurora === 'none' && off.shine === 'none' && !/rgba\(0, 0, 0, 0\)|transparent/.test(off.ed) && off.beam === 'none' && off.row === 'rgb(255, 255, 255)', JSON.stringify(off));
       await p.locator('label.dl-way', { hasText: 'Speak' }).tap();
       await p.waitForTimeout(150);

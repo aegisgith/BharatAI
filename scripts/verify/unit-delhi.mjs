@@ -136,10 +136,13 @@ for (const [what, re] of [['no "RSVP"', /RSVP/i], ['no "largest"', /largest/i], 
 const graph = JSON.parse(html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1])['@graph'];
 const ev = graph.find((g) => g['@type'] === 'Event');
 check('search-engine event data: dates and venue', ev.startDate === '2027-07-28' && ev.endDate === '2027-07-29' && ev.location.name === 'Bharat Mandapam' && ev.location.address.addressLocality === 'New Delhi');
-check('search-engine event data offers the paid passes, cheapest to dearest', ev.offers.priceCurrency === 'INR' && ev.offers.lowPrice === '999' && ev.offers.highPrice === '19999' && ev.offers.url.endsWith('/delhi-register'), JSON.stringify(ev.offers));
+// 24 Nov 2026, the organiser: no price on the home page; it is about the vision, the plan and the ways to take part.
+check('search-engine event data offers the passes, with no price, at /delhi-register', ev.offers['@type'] === 'Offer' && !('lowPrice' in ev.offers) && !('highPrice' in ev.offers) && ev.offers.url.endsWith('/delhi-register'), JSON.stringify(ev.offers));
+check('no price anywhere on the home page', !/₹|&#8377;|Lakhs?\b|\bCr\b|\+ 18% GST/.test(html.replace(/<script[\s\S]*?<\/script>/g, '')), (html.match(/₹[^<]{0,20}|Lakhs?/) || [])[0]);
+check('the vision, the Government AI Showcase, India and the world and the ways to take part are on it', ['id="vision"', 'id="government"', 'id="international"', 'id="take-part"'].every((x) => html.includes(x)) && body.includes('Embassies, high commissions') && body.includes('improve governance'));
 check('"Tell me first" and "first to know" are gone from the page', !/tell me first|first to know/i.test(html));
-check('every Get your pass button goes to the passes', [...html.matchAll(/<a ([^>]*)>Get your pass/g)].length === 3 && [...html.matchAll(/<a ([^>]*)>Get your pass/g)].every((m) => m[1].includes('href="#passes"')));
-check('the free pass is still offered, and still goes to the form on Attend', /<a href="#updates" data-interest="attend">Register to join the waitlist<\/a>/.test(html));
+check('every Get your pass button goes to the pass form, where the prices are', [...html.matchAll(/<a ([^>]*)>Get your pass/g)].length === 5 && [...html.matchAll(/<a ([^>]*)>Get your pass/g)].every((m) => m[1].includes('href="/delhi-register')));
+check('the free pass is still offered, and still goes to the form on Attend', /<a href="#updates" class="btn btn-outline btn-lg" data-interest="attend">Join the free Visitor Pass waitlist<\/a>/.test(html));
 check('the page gives Mumbai\'s rule for the free pass, says waitlist, and that the two events are separate', body.includes('Exhibition only, entry by time slot') && body.includes('join the waitlist') && body.includes('A pass for one does not cover the other'));
 check('the form asks for all six: name, email, mobile, organisation, designation, city', ['dl-name', 'dl-email', 'dl-phone', 'dl-org', 'dl-job', 'dl-city'].every((id) => html.includes('id="' + id + '"')));
 check('search data no longer says passes are closed', !JSON.stringify(graph).includes('Not yet.') && JSON.stringify(graph).includes('free Visitor Pass'));
@@ -157,7 +160,7 @@ check('Innovation Talks & Showcase twice: by startups and corporates, by governm
 check('all ten boxes, and every one has a picture with words for screen readers', tiles.length === 10 && tiles.every((t) => /<img [^>]*src="[^"]+"/.test(t) && /alt="[^"]{10,}"/.test(t)), tiles.length);
 check('no two boxes share a picture', new Set(tiles.map((t) => t.match(/src="([^"]+)"/)[1])).size === 10);
 check('the programme comes straight after the hero', html.indexOf('id="programme"') > html.indexOf('class="dl-hero"') && html.indexOf('id="programme"') < html.indexOf('id="venue"'));
-check('the form comes after the programme, the venue and who it is for', html.indexOf('id="updates"') > html.indexOf('id="who"'));
+check('the form comes after the vision, the programme and the venue', html.indexOf('id="updates"') > html.indexOf('id="vision"') && html.indexOf('id="updates"') > html.indexOf('id="venue"'));
 check('the rest of the format is named, the Startup Pitch included (Delhi keeps it; Mumbai cancelled its own, 13 Nov 2026)', !body.includes('as in Mumbai') && ['CXO AI Leadership Panels', 'Startup Pitch', 'Bharat AI Leaders’ Evening', 'Private boardrooms', 'AI Marketplace', 'Bharat AI Connect app'].every((x) => body.includes(x)));
 check('llms.txt says the paid passes are on sale, with their prices', /\[Delhi 2027\].*Rs 4,999.*delhi-register/.test(read('public/llms.txt')) && !read('public/llms.txt').includes('paid passes and booths open later'));
 check('the passes page is in the sitemap', read('public/sitemap.xml').includes('<loc>https://bharataiinnovation.com/delhi-register</loc>'));
@@ -169,10 +172,15 @@ const local = [...html.matchAll(/(?:src|href)="((?:\/|images\/|css\/|js\/)[^"#?]
 const missing = [...new Set(local)].filter((u) => !existsSync(new URL('../../public/' + u.replace(/^\//, ''), import.meta.url)));
 check('every local file the page names exists', missing.length === 0, missing.join(', '));
 
-// ---- on sale: the same names, sizes and prices as Mumbai's own pages ----
+// ---- on sale: the same names, sizes and prices as Mumbai's own pages. Since 24 Nov 2026 Delhi's
+// booth prices are on /exhibition#delhi and its partnership prices on /partner#delhi. ----
 const expo = read('public/exhibition.html');
 const expoBody = expo.slice(expo.indexOf('<body>'));
-const saleRows = [...html.matchAll(/<li class="dl-sale-row[^"]*"><div><b>(.*?)<\/b><span>(.*?)<\/span><\/div><p>(.*?)<\/p>/g)].map((m) => ({ name: m[1], line: m[2], price: m[3].replace(/<[^>]+>/g, '').trim() }));
+const delhiPart = (s) => { const a = s.indexOf('<section class="dx-sec" id="delhi">'); return a < 0 ? '' : s.slice(a, s.indexOf('</section>', a)); };
+const partner = read('public/partner.html');
+const delhiRows = delhiPart(expo) + delhiPart(partner);
+check('/exhibition and /partner each carry the Delhi list', delhiPart(expo).includes('Book a booth in') && delhiPart(partner).includes('Partner with us in'));
+const saleRows = [...delhiRows.matchAll(/<li class="dx-sale-row"><div><b>(.*?)<\/b><span>(.*?)<\/span><\/div><p>(.*?)<\/p>/g)].map((m) => ({ name: m[1], line: m[2], price: m[3].replace(/<[^>]+>/g, '').trim() }));
 const packages = [...expoBody.matchAll(/<div class="package-name">(.*?)<\/div>\s*<div class="package-size">(.*?)<\/div>\s*<div class="package-price"[^>]*>(.*?)<span>/g)].map((m) => ({ name: m[1], size: m[2], price: m[3].replace(/<s[ >].*?<\/s>/, '').trim() }));
 check('Mumbai lists seven booths', packages.length === 7, packages.length);
 for (const b of packages) {
@@ -180,7 +188,6 @@ for (const b of packages) {
   check(`${b.name}: same price as Mumbai (${b.price})`, d && d.price === b.price + ' + GST', JSON.stringify(d));
   check(`${b.name}: same size as Mumbai (${b.size.split(' (')[0]})`, d && d.line.startsWith(b.size.split(' (')[0]), JSON.stringify(d));
 }
-const partner = read('public/partner.html');
 const tiers = [...partner.matchAll(/<h3>([^<]+)<\/h3>[\s\S]{0,700}?<div class="tier-price">(.*?)<\/div>/g)].map((m) => ({ name: m[1], price: m[2] }));
 check('Mumbai lists five partnership tiers', tiers.length === 5, JSON.stringify(tiers));
 for (const t of tiers) check(`${t.name}: same title and price as Mumbai (${t.price})`, saleRows.some((r) => r.name === t.name && r.price === t.price), JSON.stringify(saleRows.find((r) => r.name === t.name)));
@@ -189,7 +196,7 @@ const options = [...partner.matchAll(/<h3>([^<]+)<\/h3>\s*<div class="option-pri
 check('Mumbai lists ten sponsorship options', options.length === 10, options.length);
 for (const o of options) check(`${o.name}: same title and price as Mumbai (${o.price})`, saleRows.some((r) => r.name === o.name && r.price === o.price), JSON.stringify(saleRows.find((r) => r.name === o.name)));
 check('nothing on Delhi\'s list is missing from Mumbai\'s', saleRows.length === packages.length + tiers.length + options.length, saleRows.length);
-check('every row\'s button names the same thing and price', [...html.matchAll(/<li class="dl-sale-row[^"]*"><div><b>(.*?)<\/b>.*?<p>(.*?)<\/p><a [^>]*data-item="([^"]+)"/g)].every((m) => m[3].startsWith(m[1] + ', ')));
+check('every booth row applies for that booth, every partnership row opens the form on it', [...delhiPart(expo).matchAll(/<li class="dx-sale-row"><div><b>(.*?)<\/b>.*?<a href="([^"]+)"/g)].every((m) => m[2] === '/delhi-exhibit?booth=' + encodeURIComponent(m[1]).replace(/%20/g, '%20')) && [...delhiPart(partner).matchAll(/<li class="dx-sale-row"><div><b>(.*?)<\/b>.*?data-enquire="([^"]+)"/g)].every((m) => m[2].replace(/&amp;/g, '&') === m[1].replace(/&amp;/g, '&')));
 {
   const p = openPage({ links: ['exhibit|Explorer Booth, ₹1,29,000 + GST'] });
   p.links[0].listeners.click();

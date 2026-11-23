@@ -27,12 +27,14 @@ const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, 
     p.on('pageerror', (e) => errors.push(e.message));
 
     // ---- /delhi ----
-    await p.goto(BASE + '/#travel', { waitUntil: 'domcontentloaded' });
-    await p.waitForSelector('#travel', { timeout: 20000 });
-    const sec = await p.evaluate(() => { const s = document.getElementById('travel'); return { text: s.innerText, items: s.querySelectorAll('dl > div').length, visa: !!s.querySelector('a[href="/delhi-visa"]'), official: !!s.querySelector('a[href="https://indianvisaonline.gov.in/"]') }; });
-    check('/delhi: "Coming from outside India" with visa, airport, metro, time and money', /Coming from\s*outside India/.test(sec.text) && sec.items === 4 && /Supreme Court/.test(sec.text) && /UTC\+5:30/.test(sec.text) && sec.visa && sec.official, JSON.stringify(sec));
-    check('/delhi: no sideways scroll at 390 px', (await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0);
-    if (SHOTS) { await p.evaluate(() => document.getElementById('travel').scrollIntoView()); await p.waitForTimeout(400); await p.screenshot({ path: path.join(SHOTS, 'delhi-travel.png') }); }
+    // 24 Nov 2026: the visa, airport and metro words left the home page for /delhi-accommodation;
+    // the home page's footer and its India and the world section link the visa letter.
+    await p.goto(BASE + '/delhi-accommodation#visa', { waitUntil: 'domcontentloaded' });
+    await p.waitForSelector('#visa', { timeout: 20000 });
+    const sec = await p.evaluate(() => { const v = document.getElementById('visa'), g = document.getElementById('getting-here'); return { text: v.innerText + ' ' + g.innerText, items: g.querySelectorAll('.ha-facts li').length, visa: !!v.querySelector('a[href="/delhi-visa"]'), official: !!v.querySelector('a[href="https://indianvisaonline.gov.in/"]') }; });
+    check('/delhi-accommodation: coming from outside India, the visa letter, the metro and the airport', /Coming from outside India/.test(sec.text) && sec.items === 3 && /Supreme Court/.test(sec.text) && /UTC\+5:30/.test(sec.text) && /Terminal 1/.test(sec.text) && sec.visa && sec.official, JSON.stringify(sec));
+    check('/delhi-accommodation: no sideways scroll at 390 px', (await p.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 0);
+    if (SHOTS) { await p.evaluate(() => document.getElementById('visa').scrollIntoView()); await p.waitForTimeout(400); await p.screenshot({ path: path.join(SHOTS, 'delhi-travel.png') }); }
 
     // ---- /delhi-visa ----
     await p.goto(BASE + '/delhi-visa', { waitUntil: 'domcontentloaded' });
