@@ -39,6 +39,7 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | Campus tooling | `scripts/import-muni-panel.py`, `scripts/import-linkedin-panel.py`, `scripts/make-panel-claim-slide.py` |
 | Panel email scheduler | `cron/` (a one-file Worker, `bharatai-mail-cron`, every minute → `POST /api/cron/tick`); the `PANEL MAIL JOBS` block in `src/index.tsx`; jobs are `mail_job:<kind>:<slug>` rows in `app_settings`. See §17 |
 | Campus Series insights reports | PDFs in `public/reports/` (served only by `GET /reports/:file` with a signed link), page `public/insights.html`, the `CAMPUS SERIES INSIGHTS REPORTS` block in `src/index.tsx` (`INSIGHTS_REPORTS`, `sendReportsEmail`, the admin pump), table `report_downloads` (0047). See §16 |
+| WhatsApp from our own number (Meta's Cloud API) | `src/routes/whatsapp.ts`, mounted after find-photos with `configureWhatsapp()`; screen Admin → WhatsApp, `public/js/admin-whatsapp.js` + `public/css/admin-whatsapp.css` (one global, `WaDesk`, `?v=` `WA_DESK_VERSION`); tables `wa_messages`, `wa_batches`, `wa_contacts`, `wa_templates` (0065); Meta calls `/api/whatsapp/webhook`; every button is `/w/<row>-<signature>`. See §18 |
 | Verification | `scripts/verify/` (see §3) |
 
 ---
@@ -87,6 +88,8 @@ Secrets, claim codes and conference registration totals are deliberately **not**
 | 0056_free_pass_waitlist | `attendees.entry_status` ('waitlisted' / 'confirmed' / NULL), `entry_slot`, `entry_decided_at`, an index, and `app_settings.free_pass_waitlist = '1'` (the switch, ON). **Applied 12 Nov 2026** (run by Claude with the organiser's prompt approval; restore bookmark `00004a8b-00000d20-00005121-3aeb84e1821eb6ad9311df0b4d5d7537`): the switch has been ON since then, checked on production with a phone-sized Playwright run (/register says "Join the waiting list", /passes and the home hero say "full for now"). Admin → Settings → Free Visitor Pass turns it off. See §4 and §14 (12 Nov) |
 | 0063_attendee_type | `attendees.attendee_type`: who the person said they are on `/register` ('corporate', 'startup', 'student', 'faculty', 'government', 'media'; NULL for everyone before 13 Nov 2026). The words live in `ATTENDEE_TYPES`. Until it runs, registering works and the answer is simply not kept. Run once with `wrangler d1 execute --remote --file`, then record it in `d1_migrations` (the file's header has both commands) |
 | 0048_report_events | `report_events`: one row per act, a report opened or a recording started, with the person when known. **Not yet applied** (written 8 Oct 2026): until it runs, opens are still counted on `report_downloads` and plays are not recorded; the admin block hides the watch numbers. `IF NOT EXISTS` throughout. See §16 |
+
+| 0065_whatsapp | `wa_messages` (one row per WhatsApp message out or in, with its state and Meta's id), `wa_batches` (one per bulk send), `wa_contacts` (who wrote to us, who said STOP), `wa_templates` (the messages Meta has to approve). Written 23 Nov 2026 for Admin → WhatsApp (§18). `IF NOT EXISTS` throughout, safe to run twice. Until it runs the screen shows the command and nothing can be sent |
 
 **`npx wrangler d1 migrations apply bharatai-production --remote` does not work on production any more** (found 8 Oct 2026). Wrangler's ledger, the `d1_migrations` table, stops at `0043_panel_rsvp.sql`: 0044, 0045 and 0046 were applied with `d1 execute --file` and never recorded, so `migrations apply` tries 0044 again and fails on its first `ADD COLUMN` (`duplicate column name: exhibitor_id`), and nothing after it runs. Apply a new migration directly, `npx wrangler d1 execute bharatai-production --remote --file=./migrations/<file>.sql`, and then record it, `npx wrangler d1 execute bharatai-production --remote --command "INSERT OR IGNORE INTO d1_migrations (name) VALUES ('<file>.sql')"`. Recording 0044 to 0047 the same way makes `migrations apply` usable again.
 
@@ -144,6 +147,8 @@ npm run verify:prod    # production, read-only, no credentials
 | `live-phone-check.cjs` | Production on a phone: new functions present, no JS errors, forged link refused, campus forms (POST intercepted); since 30 Oct the marketplace listing form as a signed-in company with the session check and the listing POST answered in the browser and every other marketplace write refused there, so nothing is saved: the plain link box, the named empty field, "Not submitted yet", `www.example.com` sent as `https://`, the draft after a reload, a sign-in that ran out, the dashboard's Sign in |
 | `unit-waitlist.mjs` (68), `smoke-waitlist.mjs` (42), `system-waitlist.mjs` (21), `browser-waitlist.cjs` (21) | The free-pass waiting list (0056): the switch, the entry rule as a table (the mark counts only on a free pass), the offline roster codes, the sanitiser, the words on /register and /passes, the admin page functions lifted from /admin.js, a database without 0056; the routes together (register with the switch off and on, the two emails, no pass, the desk, the admin decision, the bulk run, the board); the journey end to end with the minute clock; a phone through /register to the waiting-list screen, the email, and the app pass card |
 | `smoke-register-choose.mjs` (24) | The form-first `/register` on real SQLite (13 Nov 2026): the answer to "I am a..." kept from the fixed list only (and from a Student or Academic pass bought directly), the person saved on the waiting list before any pass is chosen, before 0063; the "just registered" lines: real self-registrations and paid orders only, no name, company, job title or total, a city only when it is letters, nobody added by hand, nothing older than twelve hours, newest first, cached a minute. The phone walk is in `browser-booking-redesign.cjs` |
+
+| `smoke-whatsapp.mjs` (72) | WhatsApp on real SQLite with Meta played (23 Nov 2026): before 0065; the five values never coming back out of any route, Settings or the audit log; the webhook handshake and signature; each message as Meta gets it for approval (blanks with samples, the picture uploaded first, the button); who a photos, pass or announcement send reaches and each reason for leaving someone out; the queue (hours, a minute's number, the day's number, never twice, switched off); delivered, read, failed in plain words, another number's report ignored; replies once, the 24 hours, STOP, START, a sentence that only contains "stop"; the button link (the tap noted, a link checker not, a guessed link to the home page); a test never signing the tester in as someone; a send pausing itself on an expired key and after five refusals in a row |
 
 Any session may register a suite in `run-all.mjs`, so the total moves on its own: 153 on 17 Sep, then 193 and 192 within one morning on 24 Sep. The per-suite counts above are a rough guide, not a contract. Run the command and read what it prints rather than trusting a number written anywhere, including here.
 
@@ -408,6 +413,7 @@ A read-only review in four parts (sign-in, networking, profile and pass, securit
 - **The page:** `public/gallery.html`. A big photo header, filter buttons that stay under the menu, one section per event (Data Science Congress labelled as the predecessor, never mixed in), a full-screen viewer (arrows, swipe, Esc, Back closes it), and a Delhi 2027 call (`/delhi`, `/delhi-register?source=gallery`). The menu button on this page is "Get a Delhi pass" (`source=gallery-nav`). Partners strip: `gallery` is in `gen-partners-strip.mjs`'s list. Sitemap entry, share card `images/og/gallery.jpg`.
 - **Files:** plain WebP on Pages, as for the home page: `img/gallery/<mumbai-2026|dsc-2017>/<slug>.webp` (inside 1600px) and `-720.webp`; the home page's 17 are reused from `img/mumbai-2026/`. **Rebuild:** `node scripts/gen-gallery.mjs --images C:/Users/Bhupesh/Downloads/bharatai-site-photos/gallery "C:/Users/Bhupesh/Downloads/Bharat AI/Pics"`; after changing only words in the JSON, `node scripts/gen-gallery.mjs`; `--check` fails if the page is out of date. The Mumbai sources are the 1600px copies from the photo store (`npx wrangler r2 object get bharatai-uploads/event-photos/1/<pid>/m.jpg --remote --file <folder>/<pid>.jpg`).
 - **The tab:** "Gallery" after Delhi 2027 on all 22 menus (21 pages plus /delhi-hi, "गैलरी" via `gen-delhi-hi.mjs`) and in `siteHeaderHTML()` (/passes, /register, /inquiry). 15 links did not fit at 1280px (6 to 13px over; /exhibition and /delhi wrapped), so at 1280px and up the links are 0.78rem with 0.25rem side padding, the button 0.8rem padding, the bar 1.25rem: 91px to spare on /delhi, the tightest. A later toggle breakpoint was ruled out: the organiser's laptop is 1280 css px. **A 16th link means removing one.** `style.css?v=20261123` on 26 pages, `sw.js` `bhai-v43`. `prod-sweep.mjs` checks the tab, the page and one photo file.
+- **The changing header (same day, "world class design header photo should change dynamically"):** nine photos (seven Mumbai, then two Data Science Congress, each captioned with its event) change every 7 seconds: a slow zoom on each, a crossfade, story-style bars that fill and can be tapped, a "View" card that opens the photo, a pause button, a sideways swipe on phones. They stop when the header is scrolled away, the tab is hidden, the viewer is open or keyboard focus is on the controls. Under reduced motion the zoom is off and the fade stays (as on the home page; the `!important` overrides the global reset). Only the first photo loads with the page; each next one is fetched just before its turn. On a phone the photo takes the top of the header and the words sit under it on dark, with the bars along the top of the photo. The list is `hero` in `gallery.json` (`ref` = a photo already in the gallery, `pos` = where a phone centres it); the generator writes the slides and the first photo's preload line. Also: numbered section heads with a photo count, tiles that rise in on scroll (script-only, not under reduced motion), filter changes that glide (view transitions, where the browser has them), a blurred copy of the open photo behind the viewer, and a photo behind the Delhi call.
 
 **23 Nov 2026 (the home page stops selling Mumbai):** the organiser: "The home page still sells Mumbai ... remove that and tell what we should show".
 - **Removed:** the hero's "20–21 Nov 2026 · WTC Mumbai" and its Delegate box, the "No on-spot registration" note, "What your Delegate Pass gets you" (`#compare`, with its tracks list), the sticky offer bar (`#stickyCta` and its script), the two pass prices left on the page (the networking line and the FAQ structured data), and the closing call's Mumbai line.
@@ -1030,3 +1036,56 @@ Pipe the value in (a `wrangler secret put` that is answered at the prompt can sa
 
 ### Verify
 `scripts/verify/smoke-mail-jobs.mjs` (in `npm run verify`): the doors, start, the tick, the wait inside a window, two tickers at once, Stop, Resume, pace, done, five failures, a started panel, a missing migration, the old routes, the page markers, the Worker's config. `pace-test.cjs` drives the admin page on `pace-harness.mjs`, whose job endpoints mirror the worker's. `prod-sweep.mjs` checks the doors on production.
+
+---
+
+## 18. WhatsApp from our own number (built 23 Nov 2026)
+
+The organiser: "build utility so we can send msg using whatsapp, photos, pass, social media creative". Until then the only WhatsApp in the platform was a `wa.me` link opened on a team member's own phone, one guest at a time (§14, 16 Nov). This sends from the event's own WhatsApp Business number through **Meta's WhatsApp Cloud API**. Server `src/routes/whatsapp.ts`; screen Admin → WhatsApp (`public/js/admin-whatsapp.js`, `public/css/admin-whatsapp.css`, one global `WaDesk`, loaded at `?v=` `WA_DESK_VERSION` in `adminPageScript()`: bump it when either file changes); tables in migration **0065** (`wa_messages`, `wa_batches`, `wa_contacts`, `wa_templates`).
+
+### What can be sent
+
+| Kind | Who gets it | The message |
+|---|---|---|
+| `photos` | Everyone in `src/data/attendee-photos.json` with a mobile number on their registration (speakers and named guests are in `speaker-photos.json` and got theirs by email) | Built in, `bhai_event_photos_v1`: one photo of the person (the signed `m` size, never `o`) and a button to their own `/photos/a<id>` page |
+| `pass` | Attendees of the chosen event with `payment_status` paid or waived, not panel-only, not on the waiting list | Built in, `bhai_event_pass_v1`. The button opens the app on their pass, signed in; a guest with only a mobile number (`team:` / `exhibitor:` rows) gets `/pass/<token>` |
+| `custom` | Everyone registered, who came, who did not, holders of one pass, a pasted list, or one number | A picture or announcement the team writes in Admin → WhatsApp → Messages (a social creative, a date). One row in `wa_templates`, name `bhai_c_<slug>_<4 hex>` |
+| `reply` | Someone who wrote to us | Free text from the Replies tab |
+
+### The four rules of WhatsApp the code is built around
+
+1. **A business may only start a conversation with words Meta has approved** (a "template"). Each message is sent for approval from the Messages tab (`POST /<WABA>/message_templates`; a message with a picture first uploads a sample through Meta's Resumable Upload API, which needs the App ID). Nothing can be sent, not even a test, until its row in `wa_templates` says `APPROVED`. A new wording is a new name (`_v2`): do not edit the text of a built-in in place.
+2. **Free text is allowed only for 24 hours after the person last wrote** (`wa_contacts.last_in_at`). After that the Replies tab says so instead of sending.
+3. **A new number may reach 250 people in 24 hours** (2000 once the business is verified). `whatsapp_daily_limit` holds the number; "Check the connection" reads it from Meta. Past it, a bulk send waits for tomorrow by itself.
+4. **STOP is final.** A reply of STOP (the whole message, not a sentence containing the word) sets `wa_contacts.opted_out_at`, drops their waiting messages and tells them once. START brings them back. Every audience leaves a stopped number out. The team can stop a number by hand in Setup.
+
+### How a send moves
+
+A bulk send writes one `queued` row per person and a `wa_batches` row. `whatsappTick()` sends them: from the minute clock (`POST /api/cron/tick`, key `whatsapp` in its answer) and from the Admin page while it is open (`POST /api/admin/whatsapp/tick`). A row is claimed (`queued` → `sending`) before the call to Meta, so two clocks cannot send one twice. Bulk rows go only between `whatsapp_hours` (9 to 21 in India), at most `whatsapp_per_minute` (20) a minute whoever calls; one person's message (a test, a reply, a single pass) goes at once. Meta's webhook (`POST /api/whatsapp/webhook`, signed with the App secret, `X-Hub-Signature-256`) then moves a row to `delivered`, `read` or `failed`, records what it was billed as, and brings replies in.
+
+A send **pauses itself** with the reason in plain words when the fault is ours or the account's (an expired key, no payment method, a message Meta paused; `ERRORS` in the route file maps Meta's numbers to words and says which stop a send), and after five refusals in a row. The person stays in the queue. A row left at `sending` for ten minutes (no answer came back) is marked failed, never sent again by itself.
+
+Every button is `https://bharataiinnovation.com/w/<row id>-<12 hex>`: the tap is noted (`clicked_at`) and the person is sent on to `target_url`. A pass button mints a sign-in link there, for seven days after the send, as the links in our emails do. A link checker (`facebookexternalhit`, `WhatsApp/`) is sent on with nothing noted and nobody signed in. A test to the organiser's own phone never carries a sign-in.
+
+### Who is left out, always
+
+No mobile number; a number that is not complete; a number twice; anyone who said STOP; for photos and announcements, anyone who unsubscribed from email or said no to updates (`unsubscribed_at`, `marketing_consent = 0`), and for photos anyone with a `photos.opt_out` row, with `photos.not_me` and hidden photos dropped. A pass is a service message and goes to someone off the mailing list. The screen shows each count before anything is sent, and the send is refused if the list changed since the screen counted it.
+
+### The values from Meta
+
+Five: `WHATSAPP_TOKEN` (a system user's permanent token), `WHATSAPP_PHONE_ID`, `WHATSAPP_WABA_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_APP_ID`. Read from Worker secrets first, then from `app_settings` (`whatsapp_token` ...), where Admin → WhatsApp → Setup saves them. **No route sends a value back**, only whether each is there; the Settings GET masks them (`SECRET_SETTING`); the audit log records names, never values. The webhook's verify token is ours to choose, so it is derived from `ADMIN_SECRET` and shown in Setup with the callback URL. Without the App secret the webhook answers 503: messages still go but stay at "Sent" and replies do not arrive.
+
+The Meta account itself (a Facebook sign-in, a phone number that receives a code, a card) can only be made by the organiser. The nine steps are on the Setup tab. Until then the screen works as far as **"One by one from my own WhatsApp"**: the photos list with a ready `wa.me` link each, which needs nothing from Meta.
+
+Graph API version: `DEFAULT_GRAPH_VERSION` (`v27.0`, the one in Meta's examples on 23 Nov 2026), or `app_settings.whatsapp_graph_version`. Meta retires a version about two years after it appears.
+
+### Not built
+
+- A pass message for **Delhi 2027**: the pass kind reads `attendees` for any event id, but the button opens `/app`, which is Mumbai's. Wire Delhi's own pass page before sending Delhi passes.
+- Speakers' and guests' photos on WhatsApp (they are in `speaker-photos.json`, most without a mobile on file).
+- The attendee's own "I'm attending" card as a picture: `social-card.js` draws it in the browser, so the server has no image to send.
+- Pictures or files people send us are noted as `[image]` in Replies, not downloaded.
+
+### Verify
+
+`node scripts/verify/smoke-whatsapp.mjs` after a build: Meta is played, so every request we would make is read back.

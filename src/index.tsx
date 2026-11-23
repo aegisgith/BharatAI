@@ -18,6 +18,7 @@ import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, not
 import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import exhibitorMedia, { configureExhibitorMedia } from './routes/exhibitor-media'
+import whatsapp, { configureWhatsapp, whatsappTick } from './routes/whatsapp'
 import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, SUMMIT_EVENT_NAME, SUMMIT_WHEN } from './routes/agent-summit'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
@@ -650,6 +651,22 @@ configureFindPhotos({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader,
     return href
   } })
 app.route('/', findPhotos)
+// WhatsApp (23 Nov 2026): photos, passes and announcements sent from the event's own
+// WhatsApp Business number through Meta's Cloud API, with delivery ticks and replies;
+// Admin -> WhatsApp (public/js/admin-whatsapp.js), routes/whatsapp.ts, migration 0065.
+// The button on a pass message signs the person in, as the links in our emails do.
+configureWhatsapp({ audit, actor: (c: any) => adminActor(c).actor, columns: (c: any) => attendeeColumns(c),
+  passToken: (c: any, id: number) => signPassToken(c, id),
+  appUrl: async (c: any) => (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app',
+  signIn: async (c: any, eventId: number, email: string, action: string) => {
+    const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+    let href = appUrl + '?email=' + encodeURIComponent(email) + '&action=' + encodeURIComponent(action)
+    try {
+      if (await verifiedLoginEnabled(c)) href += '&token=' + (await createLoginToken(c, eventId, email, PROFILE_LINK_TTL_MINUTES, 4)).token
+    } catch { /* the plain link opens the sign-in box on their address */ }
+    return href
+  } })
+app.route('/', whatsapp)
 // The event-week email (16 Nov 2026): "Get ready for 20 and 21 Nov" to delegates,
 // exhibitors and everyone else, a checklist of photo, pass, LinkedIn badge, the app and
 // meetings, each step a sign-in button; a campaign of kind event_week (BULK EMAIL
@@ -17237,8 +17254,10 @@ app.post('/api/cron/tick', async (c) => {
         workshops: await saturdayWorkshopReminders(c, 10).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })),
         workshop_open: await saturdayWorkshopOpenInvites(c, 20).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) })) }
     : null
+  // WhatsApp messages waiting to go (routes/whatsapp.ts): a few a minute, 9 am to 9 pm in India.
+  const whatsappSends = await whatsappTick(c, { budgetMs: 12000 }).catch((e: any) => ({ error: String(e?.message || e).slice(0, 200) }))
   const out = await tickMailJobs(c, Number(body.max_seconds) || 0, true)
-  return c.json({ ...out, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, meeting_nudges: meetingNudges, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests, talk_sessions: talkSessions, workshop_mail: workshopMail, sat_reminders: satReminders })
+  return c.json({ ...out, whatsapp: whatsappSends, campaigns: await tickCampaigns(c), meeting_reminders: meetingReminders, meeting_nudges: meetingNudges, pay_reminders: payReminders, help_mail: helpMail, notify_mail: notifyMail, networking_mail: netMail, inquiry_digest: inquiryDigestRun, talk_requests: talkRequests, talk_sessions: talkSessions, workshop_mail: workshopMail, sat_reminders: satReminders })
 })
 
 // The admin page's view and its own ticking while it is open.
@@ -41790,6 +41809,9 @@ function adminPageHTML(): string {
       <button onclick="switchSection('after')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="after" title="After the Event: feedback survey and exhibitor results">
         <i class="fas fa-flag-checkered w-5 text-center shrink-0"></i><span class="sidebar-label">After the Event</span>
       </button>
+      <button onclick="switchSection('whatsapp')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="whatsapp" title="WhatsApp: photos, passes and announcements from our own number, and the replies">
+        <i class="fas fa-comment-dots w-5 text-center shrink-0"></i><span class="sidebar-label">WhatsApp</span>
+      </button>
       <button onclick="switchSection('liveqa')" class="sidebar-btn w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all" data-section="liveqa" title="Live Q&amp;A: questions from the room and the moderator links">
         <i class="fas fa-comments w-5 text-center shrink-0"></i><span class="sidebar-label">Live Q&amp;A</span>
       </button>
@@ -41872,6 +41894,7 @@ function adminPageHTML(): string {
       <!-- Boardrooms Section -->
       <div id="section-rooms" class="section-content hidden"></div>
       <div id="section-after" class="section-content hidden"></div>
+      <div id="section-whatsapp" class="section-content hidden"></div>
       <div id="section-boothleads" class="section-content hidden"></div>
       <div id="section-liveqa" class="section-content hidden"></div>
       <div id="section-delhi2027" class="section-content hidden"></div>
@@ -42315,8 +42338,8 @@ function adminPageScript(): string {
       document.querySelectorAll('.section-content').forEach(s => s.classList.add('hidden'));
       document.getElementById('section-'+sec).classList.remove('hidden');
 
-      const titles = { agentsummit:'AI Agent Summit 2027', overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', media:'Media & Influencer Pass', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', liveqa:'Live Q&A', delhi2027:'Delhi 2027', settings:'Settings' };
-      const subtitles = { agentsummit:'Event 3, Saturday 17 April 2027: passes, payments, showcase applications and partners', overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', media:'Requests from journalists and creators: read the answers, then approve and issue the pass, or decline', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', delhi2027:'Partner and discount codes for Delhi passes, and what each has sold', settings:'Configure email, API keys and app settings' };
+      const titles = { agentsummit:'AI Agent Summit 2027', overview:'Overview', workshops:'Workshop Seats', attendees:'Attendee Management', sessions:'Conference', exhibitors:'Exhibitor Management', 'booth-requests':'Booth Requests', 'floor-plan':'Floor Plan', sponsorship:'Sponsorship & Branding', awards:'Awards Management', announcements:'Announcement Management', innovation:'Innovation Talk & Showcase', 'startup-pitch':'Startup Pitch Management', inquiries:'Inquiry Management', submissions:'Submissions', media:'Media & Influencer Pass', payments:'Payments & Invoices', 'badge-desk':'Badge Desk', analytics:'Analytics & Reports', rooms:'Boardrooms', after:'After the Event', whatsapp:'WhatsApp', liveqa:'Live Q&A', delhi2027:'Delhi 2027', settings:'Settings' };
+      const subtitles = { agentsummit:'Event 3, Saturday 17 April 2027: passes, payments, showcase applications and partners', overview:'Real-time event management dashboard', workshops:'Who sits where, who has not chosen yet, and each workshop slot and seat limit', attendees:'Manage all registered attendees', sessions:'The programme by day and hall, the speakers, the halls, and announcing who speaks when', exhibitors:'Manage exhibition booths', 'booth-requests':'Review and manage booth booking requests', 'floor-plan':'Which of the 93 stands are sold, held and still on the market', sponsorship:'Everything the show sells that is not floor space — and the combined revenue picture', awards:'Manage award categories and nominees', announcements:'Create and manage live feed announcements', innovation:'Manage innovation talk and showcase schedule', 'startup-pitch':'Manage startup pitches and investor panel', inquiries:'View and manage all incoming inquiries', submissions:'Logos, photos and team lists that clients sent by email', media:'Requests from journalists and creators: read the answers, then approve and issue the pass, or decline', payments:'Payments taken online, payments to confirm, and GST invoices', 'badge-desk':'Event-day check-in and the staff accounts that scan passes', analytics:'Deep dive into event engagement metrics', rooms:'Who has which WTC boardroom, hour by hour, across both event days', after:'The feedback survey for everyone who came, and each exhibitor’s results', whatsapp:'Photos, passes and announcements sent from our own WhatsApp number, and the replies', liveqa:'Questions from the room in every session, and the links for moderators and the hall screen', delhi2027:'Partner and discount codes for Delhi passes, and what each has sold', settings:'Configure email, API keys and app settings' };
       document.getElementById('page-title').textContent = titles[sec] || sec;
       document.getElementById('page-subtitle').textContent = subtitles[sec] || '';
 
@@ -42436,6 +42459,7 @@ function adminPageScript(): string {
         case 'workshops': loadAdminWorkshops(); break;
         case 'rooms': loadAdminRooms(); break;
         case 'after': loadAdminAfter(); break;
+        case 'whatsapp': loadAdminWhatsapp(); break;
         case 'boothleads': loadAdminBoothLeads(); break;
         case 'liveqa': loadAdminLiveQa(); break;
         case 'delhi2027': loadAdminDelhi(); break;
@@ -42481,6 +42505,43 @@ function adminPageScript(): string {
         catch (err) { sectionError(host, 'after', { message: err.message }, 'loadAdminAfter()'); return; }
       }
       await window.AfterDesk.mount(host, { api: api, toast: toast, startCampaign: startCampaign, authHeaders: authHeaders });
+    }
+    // WhatsApp: sending from our own number and the replies live in /js/admin-whatsapp.js
+    // (one global, WaDesk) with their own stylesheet, loaded the first time the section
+    // opens. Bump WA_DESK_VERSION on any change to either.
+    var WA_DESK_VERSION = '20261123a';
+    var waDeskAssets = null;
+    function waDeskLoadAssets() {
+      if (window.WaDesk) return Promise.resolve();
+      if (waDeskAssets) return waDeskAssets;
+      var css = new Promise(function (resolve) {
+        if (document.querySelector('link[data-wa-desk]')) { resolve(); return; }
+        var l = document.createElement('link');
+        l.rel = 'stylesheet';
+        l.href = '/css/admin-whatsapp.css?v=' + WA_DESK_VERSION;
+        l.setAttribute('data-wa-desk', '1');
+        l.onload = function () { resolve(); };
+        l.onerror = function () { resolve(); };
+        document.head.appendChild(l);
+      });
+      var js = new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/js/admin-whatsapp.js?v=' + WA_DESK_VERSION;
+        s.onload = function () { if (window.WaDesk) resolve(); else reject(new Error('The WhatsApp screen did not start.')); };
+        s.onerror = function () { s.remove(); reject(new Error('The WhatsApp screen could not be downloaded. Check the connection and press Try again.')); };
+        document.head.appendChild(s);
+      });
+      waDeskAssets = Promise.all([css, js]).catch(function (err) { waDeskAssets = null; throw err; });
+      return waDeskAssets;
+    }
+    async function loadAdminWhatsapp() {
+      var host = document.getElementById('section-whatsapp');
+      if (!window.WaDesk) {
+        if (!host.firstChild) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading...</div>';
+        try { await waDeskLoadAssets(); }
+        catch (err) { sectionError(host, 'whatsapp', { message: err.message }, 'loadAdminWhatsapp()'); return; }
+      }
+      await window.WaDesk.mount(host, { api: api, toast: toast, authHeaders: authHeaders });
     }
     // Booth Leads: who can scan at each booth, its leads, and the lead-scanning guide, in
     // /js/admin-leads.js (one global, LeadsDesk) with its own stylesheet, loaded the first
