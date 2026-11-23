@@ -126,14 +126,14 @@ const appTag = /<script src="(\/app\.js\?v=[0-9a-f]{8})"><\/script>/.exec(r.text
 r = appTag ? await hit(appTag[1]) : { status: 0, text: '' };
 check('app code carries the Visitor fixes', ['function inboxEmpty', 'function downloadAgendaIcs', 'function renderVisitorChecklist', 'function inviteColleague', "reason === 'passcard'"].every(m => r.text.includes(m)), (appTag ? appTag[1] : 'no versioned /app.js tag') + ' ' + r.status);
 r = await hit('/');
-// The home buttons carry ?source=home-... (4 Nov 2026) so admin can tell which one
-// brought a registration; the offer bar shows no price.
-const delegateAt = r.text.search(/\/register(\?source=[a-z0-9-]+)?#delegate/);
-check('home hero sells the Delegate Pass first', r.status === 200 && r.text.includes('hero-passline') && delegateAt >= 0 && delegateAt < r.text.indexOf('Free Visitor Pass') && !r.text.includes('5,000+'), r.status);
+// Mumbai is over (23 Nov 2026): the home page sells no Mumbai pass. It thanks
+// Mumbai and points to Delhi; its Delhi buttons carry ?source=home-... so the
+// Delhi form records which one brought a buyer (delhi-home-hero, delhi-home-cta).
+check('home hero thanks Mumbai and leads to Delhi, and sells no Mumbai pass', r.status === 200 && r.text.includes('Thank you, Mumbai') && r.text.includes('href="/delhi"') && !/\/register(\?source=[a-z0-9-]+)?#delegate/.test(r.text) && !r.text.includes('Get my Delegate Pass') && !r.text.includes('id="stickyCta"') && !r.text.includes('5,000+'), r.status);
 // No pass price anywhere on the home page (the organiser, 4 Nov 2026): prices
-// live on /passes, which switches by itself on 6 Nov. Booth prices may stay.
+// live on /passes and /delhi. Booth prices may stay.
 const passPrices = ['4,999', '8,999', '9,999', '14,999', '19,999', '24,999', '3,999', 'INR 999', '&#8377;999', '₹999'].filter(p => r.text.includes(p));
-check('home buttons are tagged and no pass price is on the page', ['source=home-hero#delegate', 'source=home-table#delegate', 'source=home-bar#delegate', 'source=home-cta#delegate'].every(m => r.text.includes(m)) && passPrices.length === 0, 'tags, or prices: ' + passPrices.join(' '));
+check('home Delhi buttons are tagged and no pass price is on the page', ['/delhi-register?source=home-hero', '/delhi-register?source=home-cta'].every(m => r.text.includes(m)) && passPrices.length === 0, 'tags, or prices: ' + passPrices.join(' '));
 
 // ---- what a phone downloads, second pass (28 Oct 2026) ----
 r = await hit('/admin');
