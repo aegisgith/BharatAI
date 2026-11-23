@@ -104,6 +104,7 @@ const SUITES = [
   { name: 'unit: the Delhi 2027 page (form rules, calendar file, facts, the tab on every page, one stylesheet version), each alone', args: ['unit-delhi.mjs'] },
   { name: 'unit + server: Share your Bharat AI moment (/share): the words for every card and platform, the photos and logos, the step counter, the app card and link', args: ['unit-share-moment.mjs'] },
   { name: 'browser: /share on a phone (signed out and as a VIP, who I met, a talk, a panel in Story size, the steps counted)', args: ['browser-share.cjs'] },
+  { name: 'unit: the app after Mumbai (thank you and Delhi 2027 on the front screen, Delhi passes, Register points to Delhi, Delhi booths; the old screen while MUMBAI_SALES_OPEN=1)', args: ['unit-app-after-mumbai.mjs'] },
   { name: 'system: Delhi 2027 from an advert to Admin Enquiries (the page\'s own script, real worker, real SQLite, team email, the build)', args: ['smoke-delhi.mjs'] },
   { name: 'unit: the Delhi 2027 passes form (its rules, its figures against the server), each alone', args: ['unit-delhi-pay.mjs'] },
   { name: 'booth applications, Mumbai and Delhi: the Delhi page\'s rules, the route on real SQLite (every answer, both emails, refusals, limits), the saved replies', args: ['smoke-booth-apply.mjs'] },

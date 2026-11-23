@@ -29855,6 +29855,10 @@ app.get('/app.js', (c) => c.body(pageScript('app').text, 200, pageScriptHeaders(
 app.get('/admin.js', (c) => c.body(pageScript('admin').text, 200, pageScriptHeaders(c, 'admin')))
 
 function mainPageHTML(): string {
+  // After Mumbai (organiser, 23 Nov 2026: "change app to Delhi 2027 and say Mumbai is over"):
+  // the front screen thanks Mumbai and sells Delhi, Register points to Delhi. Off while
+  // MUMBAI_SALES_OPEN=1 (the pre-event suites), see mumbaiIsOver().
+  const after = mumbaiIsOver()
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30194,9 +30198,17 @@ function mainPageHTML(): string {
           <p class="text-center text-xs text-gray-500 mt-3">Don't have an account? <button type="button" onclick="switchAuthMode('register')" class="text-primary-400 hover:underline font-medium">Register here</button></p>
         </form>
 
-        <!-- Register Form -->
-        <form id="register-form" class="space-y-4 hidden">
-          <div class="text-center mb-2 p-3 rounded-xl bg-primary-500/10 border border-primary-500/20">
+        <!-- Register Form. After Mumbai only its Delhi note shows: new sign-ups are for Delhi. -->
+        ${after ? `<style>#register-form.reg-over > :not(.reg-over-note) { display: none !important; }</style>` : ''}
+        <form id="register-form" class="space-y-4 hidden${after ? ' reg-over' : ''}">
+${after ? `          <div class="reg-over-note rounded-xl p-4 text-sm leading-relaxed" style="background:#FFF6EF;border:1px solid rgba(255,107,0,0.25);color:#1E2140;">
+            <p style="margin:0 0 6px;font-weight:800;font-size:15px;">Mumbai 2026 is over. Thank you!</p>
+            <p style="margin:0 0 14px;">New registrations are now for the next edition: <strong>Bharat Mandapam, New Delhi, 28 and 29 July 2027</strong>.</p>
+            <a href="/delhi-register?source=app-register" class="block w-full text-center py-3 rounded-xl font-bold no-underline" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);color:#fff;">Get your Delhi pass</a>
+            <a href="/delhi?from=app-register" class="block w-full text-center py-2.5 mt-2 rounded-xl font-semibold no-underline" style="color:#C84F00;">See Delhi 2027</a>
+            <p style="margin:12px 0 0;font-size:13px;color:#5B6078;">Came to Mumbai? Tap <strong>Sign In</strong> above and use the email you registered with.</p>
+          </div>
+` : ''}          <div class="text-center mb-2 p-3 rounded-xl bg-primary-500/10 border border-primary-500/20">
             <span class="text-primary-400 text-xs font-semibold"><i class="fas fa-ticket-alt mr-1"></i>You will receive a FREE Visitor Pass</span>
           </div>
           <div><input type="text" id="reg-name" autocomplete="name" autocapitalize="words" placeholder="Full Name *" required class="w-full px-4 py-3 rounded-xl text-sm"></div>
@@ -30454,7 +30466,7 @@ function mainPageHTML(): string {
             <button class="nav-btn auth-gated hidden px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="networking" onclick="switchTab('networking')">Network</button>
             <button class="nav-btn px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all" data-tab="workshops" onclick="switchTab('workshops')">Workshops</button>
             <a href="/marketplace" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">AI Market</a>
-            <a href="/inquiry" class="ap-nav-more px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Book Booth</a>
+            <a href="${after ? '/delhi-exhibit' : '/inquiry'}" class="ap-nav-more px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Book Booth</a>
             <a href="/contact" class="ap-nav-more px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Contact</a>
             <a href="https://bharataiinnovation.com" target="_blank" class="ap-nav-extra px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline">Main Site</a>
           </div>
@@ -30520,13 +30532,13 @@ function mainPageHTML(): string {
       <!-- Dashboard Tab -->
       <div id="tab-dashboard" class="tab-content">
         <!-- Hero -->
-        <div class="hero-gradient relative overflow-hidden" id="hero-band" style="min-height:360px;">
+        <div class="hero-gradient relative overflow-hidden" id="hero-band" style="min-height:360px;"${after ? ' data-after="mumbai"' : ''}>
           <div class="ap-hero-grid" aria-hidden="true"></div>
           <div class="ap-aurora" aria-hidden="true"><i></i></div>
 
           <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-10 md:pt-16 md:pb-16" id="hero-inner">
             <div class="min-w-0">
-              <p class="ap-when text-gray-300">20&ndash;21 November 2026, World Trade Center Mumbai</p>
+              <p class="ap-when text-gray-300">${after ? 'Thank you, Mumbai &middot; Next: Delhi, 28&ndash;29 July 2027' : '20&ndash;21 November 2026, World Trade Center Mumbai'}</p>
               <!-- The billboard is for someone signed out. A signed-in person gets the short wordmark, so their pass stays on the first screen. -->
               <h1 class="ap-h1 font-black signed-out-only" style="font-size:clamp(2.75rem,6.2vw,5.25rem);line-height:1.04;">
                 <span class="ap-w"><span class="ap-grad" style="--i:0;">Bharat</span></span> <span class="ap-w"><span class="ap-grad" style="--i:1;">AI</span></span><br>
@@ -30536,13 +30548,17 @@ function mainPageHTML(): string {
                 <span style="color:#FF7A00;">&#2349;&#2366;&#2352;&#2340;</span> <span style="color:#e8edf5;">&#2319;&#2310;&#2312;</span> <span style="color:#00b57f;">&#2311;&#2344;&#2379;&#2357;&#2375;&#2358;&#2344;</span>
               </div>
               <!-- The same text as events.description (Admin, Edit Event), which loadDashboard() writes here once the event has loaded. Keep the two alike, or the page jumps. -->
-              <p class="text-gray-300 signed-out-only" id="event-desc">India&rsquo;s B2B platform for AI: the organisations running AI in production, the companies providing it and the policymakers shaping it. Two days at WTC Mumbai with 40+ speakers, 48 exhibitors, 12 tracks and 23 Innovation Talks.</p>
+              <p class="text-gray-300 signed-out-only" id="event-desc">${after ? `Mumbai 2026 is over. Thank you to everyone who came to WTC Mumbai on 20 and 21 November. Next, we meet at Bharat Mandapam, New Delhi, on 28 and 29 July 2027. Passes, booths and partnerships are open now.` : `India&rsquo;s B2B platform for AI: the organisations running AI in production, the companies providing it and the policymakers shaping it. Two days at WTC Mumbai with 40+ speakers, 48 exhibitors, 12 tracks and 23 Innovation Talks.`}</p>
               <!-- Gated: see applySignedInChrome(). -->
               <div class="ap-hero-cta flex items-center gap-3 flex-wrap signed-out-only">
-                <button onclick="location.href=&quot;/register?source=app-hero&quot;" class="ap-btn ap-btn-primary flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Get your pass <i class="fas fa-arrow-right text-xs"></i></button>
+${after ? `                <a href="/delhi-register?source=app-hero" class="ap-btn ap-btn-primary flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Get your Delhi pass <i class="fas fa-arrow-right text-xs"></i></a>
+                <a href="/delhi?from=app-hero" class="ap-btn ap-btn-ghost flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-300 transition no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.35);">See Delhi 2027</a>
+              </div>
+              <p class="text-gray-300 signed-out-only" style="margin-top:16px;font-size:14px;">Were you in Mumbai? <button type="button" onclick="showRegistration()" class="underline font-semibold" style="color:#FFB066;background:none;border:0;padding:0;cursor:pointer;">Log in</button> for your photos and your picture to share.</p>
+` : `                <button onclick="location.href=&quot;/register?source=app-hero&quot;" class="ap-btn ap-btn-primary flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold text-white transition hover:opacity-90" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 6px 20px rgba(245,98,10,0.35);">Get your pass <i class="fas fa-arrow-right text-xs"></i></button>
                 <a href="https://bharataiinnovation.com" target="_blank" class="ap-btn ap-btn-ghost flex items-center gap-2 px-6 py-3 rounded-full text-sm font-semibold text-gray-300 transition no-underline" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.35);">Learn More</a>
               </div>
-              <!-- Same tricolour, and the same Devanagari line, as the pass and the shareable card, so all three agree. -->
+`}              <!-- Same tricolour, and the same Devanagari line, as the pass and the shareable card, so all three agree. -->
               <div class="hidden signed-in-only" id="hero-wordmark">
                 <div class="ap-wordmark font-black tracking-tight">
                   <span class="ap-w"><span style="color:#FF7A00;--i:0;">Bharat</span></span> <span class="ap-w"><span style="color:#ffffff;--i:1;">AI</span></span> <span class="ap-w"><span style="color:#00b57f;--i:2;">Innovation</span></span>
@@ -30554,9 +30570,11 @@ function mainPageHTML(): string {
             </div>
             <!-- Larger screens only: the picture is set in app-design.css, so a phone never downloads it. -->
             <div class="ap-hero-photo">
-              <div class="ap-hero-img" role="img" aria-label="The stage at an earlier Data Science Congress"></div>
+${after ? `              <div class="ap-hero-img" role="img" aria-label="Bharat Mandapam, New Delhi" style="background-image:url(/images/delhi/mandapam-day.webp);"></div>
+              <p>Bharat Mandapam, New Delhi: where we meet on 28 and 29 July 2027</p>
+` : `              <div class="ap-hero-img" role="img" aria-label="The stage at an earlier Data Science Congress"></div>
               <p>The stage at an earlier Data Science Congress</p>
-            </div>
+`}            </div>
 
             <!-- Hidden fields for JS -->
             <div class="hidden" id="hero-venue-dates">
@@ -30841,7 +30859,23 @@ function mainPageHTML(): string {
           </div>
         </div>
 
-        <!-- Pass Comparison & Registration CTA -->
+${after ? `        <!-- After Mumbai: the passes for Delhi 2027, at DELHI_PASS_PRICES_INR (the one list /api/delhi/pay charges). -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 signed-out-only" id="pass-comparison-section">
+          <div class="glass rounded-2xl p-6 md:p-8 glow-accent">
+            <div class="text-center mb-6">
+              <h2 class="text-2xl font-bold mb-2"><i class="fas fa-ticket-alt text-amber-400 mr-2"></i>Passes for Delhi 2027</h2>
+              <p class="text-gray-400 text-sm">Bharat Mandapam, New Delhi &middot; 28 and 29 July 2027. Prices before 18% GST.</p>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px;margin-bottom:24px;">
+${['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].map(p => '              <a href="/delhi-register?source=app-passes" class="glass rounded-2xl no-underline" style="display:block;padding:18px 14px;text-align:center;border:1px solid rgba(255,122,0,0.25);">' + '<span style="display:block;font-weight:700;font-size:15px;">' + p + '</span>' + '<span style="display:block;font-size:24px;font-weight:900;color:#FF7A00;margin-top:4px;">Rs ' + DELHI_PASS_PRICES_INR[p].toLocaleString('en-IN') + '</span>' + '<span class="text-xs text-gray-400" style="display:block;margin-top:2px;">+ 18% GST' + (p === 'Academic Pass' ? ' &middot; students and faculty' : '') + '</span></a>').join('')}
+            </div>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <a href="/delhi-register?source=app-passes" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.3);"><i class="fas fa-ticket-alt mr-2"></i>Get your Delhi pass</a>
+              <a href="/delhi?from=app-passes#passes" class="px-6 py-3 rounded-xl font-semibold transition-all text-sm no-underline" style="border:1px solid rgba(255,122,0,0.45);color:#C84F00;">What each pass includes</a>
+            </div>
+          </div>
+        </div>
+` : `        <!-- Pass Comparison & Registration CTA -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 signed-out-only" id="pass-comparison-section">
           <div class="glass rounded-2xl p-6 md:p-8 glow-accent">
             <div class="text-center mb-6">
@@ -31005,6 +31039,7 @@ function mainPageHTML(): string {
             </div>
           </div>
         </div>
+`}
 
         <!-- Exhibition & Inquiry Section -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -31017,7 +31052,7 @@ function mainPageHTML(): string {
                 </div>
                 <div>
                   <h3 class="font-bold text-lg text-amber-300">Exhibit With Us</h3>
-                  <p class="text-xs text-gray-400">Showcase your AI solutions on the exhibition floor at WTC Mumbai</p>
+                  <p class="text-xs text-gray-400">${after ? 'Show your AI on the floor at Bharat Mandapam, New Delhi, 28 and 29 July 2027' : 'Showcase your AI solutions on the exhibition floor at WTC Mumbai'}</p>
                 </div>
               </div>
               <ul class="space-y-1.5 text-xs text-gray-300 mb-4">
@@ -31026,10 +31061,11 @@ function mainPageHTML(): string {
                 <li><i class="fas fa-check text-amber-400 mr-1.5 text-[10px]"></i>Live demo area, networking lounge, branding</li>
               </ul>
               <div class="flex gap-2">
-                <button onclick="switchTab('exhibition'); setTimeout(()=>switchExhibitionSubtab('booth-catalog'),100)" class="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition border border-amber-500/30">
+${after ? `                <a href="/delhi-exhibit?from=app" class="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition no-underline"><i class="fas fa-th-large mr-1"></i>See Delhi booths</a>
+` : `                <button onclick="switchTab('exhibition'); setTimeout(()=>switchExhibitionSubtab('booth-catalog'),100)" class="px-4 py-2 rounded-lg text-xs font-semibold bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition border border-amber-500/30">
                   <i class="fas fa-th-large mr-1"></i>View Booth Packages
                 </button>
-                <button onclick="openInquiryForm('exhibition')" class="px-4 py-2 rounded-lg text-xs font-semibold bg-white/5 text-gray-300 hover:bg-white/10 transition border border-white/10">
+`}                <button onclick="openInquiryForm('exhibition')" class="px-4 py-2 rounded-lg text-xs font-semibold bg-white/5 text-gray-300 hover:bg-white/10 transition border border-white/10">
                   <i class="fas fa-envelope mr-1"></i>Send Inquiry
                 </button>
               </div>
@@ -32502,7 +32538,7 @@ function mainPageHTML(): string {
               <p>20&ndash;21 November 2026, World Trade Center Mumbai</p>
             </div>
             <nav class="ap-foot-links" aria-label="The website">
-              <a href="/">Home</a><a href="/conference">Conference</a><a href="/exhibition">Exhibition</a><a href="/networking">Networking</a><a href="/passes">Passes</a><a href="/training-workshop">Workshops</a><a href="/marketplace">AI Marketplace</a><a href="/inquiry">Book Booth</a><a href="/contact">Contact</a>
+              <a href="/">Home</a><a href="/conference">Conference</a><a href="/exhibition">Exhibition</a><a href="/networking">Networking</a><a href="/passes">Passes</a><a href="/training-workshop">Workshops</a><a href="/marketplace">AI Marketplace</a><a href="${after ? '/delhi-exhibit' : '/inquiry'}">Book Booth</a><a href="/contact">Contact</a>
             </nav>
           </div>
           <div class="ap-foot-bottom">
@@ -34234,7 +34270,8 @@ function mainPageScript(): string {
         document.getElementById('event-title').textContent = event.title;
         // The seed description ("India's largest…") is still in the database; the
         // authored line on the page stays until Admin, Edit Event says something else.
-        if (event.description && !/largest AI conference/i.test(event.description)) document.getElementById('event-desc').textContent = event.description;
+        // After Mumbai the words on the front screen are the Delhi ones (mainPageHTML), not the event's.
+        if (event.description && !/largest AI conference/i.test(event.description) && !document.getElementById('hero-band').hasAttribute('data-after')) document.getElementById('event-desc').textContent = event.description;
         document.getElementById('event-venue').textContent = event.venue;
         document.getElementById('event-dates').textContent = \`\${event.start_date} to \${event.end_date}\`;
 
