@@ -10,6 +10,7 @@ import siteLive, { configureSiteLive } from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief, saturdaySpeakerReminders } from './routes/speaker-brief'
 import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/talk-brief'
 import speakerPhotos, { configurePhotos } from './routes/photos'
+import photoTracking, { photoPageBeacon, withOpenPixel } from './routes/photo-tracking'
 import findPhotos, { configureFindPhotos, findPhotosWhereSql } from './routes/find-photos'
 import exhibitorPhotos, { configureExhibitorPhotos } from './routes/exhibitor-photos'
 import photoStore, { configurePhotoStore } from './routes/photo-store'
@@ -630,8 +631,14 @@ app.route('/', talkBrief)
 // photos, matched by face on the organiser's computer (scripts/photos/), on their own
 // signed page /photos/<key> and in one email each from Admin -> After the Event.
 // routes/photos.ts, data src/data/speaker-photos.json.
-configurePhotos({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader,
+// Opened, visited and saved for each photos email (23 Nov 2026): a small picture in the
+// email, the page reporting a visit, the photo store's saves; shown in After the Event.
+// routes/photo-tracking.ts. The page middleware goes in before the page itself.
+app.use('/photos/:key', photoPageBeacon)
+configurePhotos({ sendEmail: async (c: any, to: string, subject: string, html: string, o?: any) => sendAdminEmail(c, to, subject, await withOpenPixel(c, html), o),
+  audit, emailHeader: emailBrandHeader,
   talkContacts: (c: any, eventId: number) => italkContactsAll(c, eventId) })
+app.route('/', photoTracking)
 app.route('/', speakerPhotos)
 // Event photos in R2 (23 Nov 2026): the photographers' photos, copied once from Drive by
 // scripts/photo-store/ (migration 0064). Every image link is signed for one person, one
@@ -42518,7 +42525,7 @@ function adminPageScript(): string {
     // After the Event: the feedback survey and each exhibitor's results live in
     // /js/admin-after.js (one global, AfterDesk) with their own stylesheet, loaded the
     // first time the section opens. Bump AFTER_DESK_VERSION on any change to either.
-    var AFTER_DESK_VERSION = '20261123f';
+    var AFTER_DESK_VERSION = '20261123trk';
     var afterDeskAssets = null;
     function afterDeskLoadAssets() {
       if (window.AfterDesk) return Promise.resolve();

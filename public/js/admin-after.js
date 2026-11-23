@@ -25,7 +25,41 @@
   var attendees = null;
   var findInfo = null;
   var booths = null;
+  var marks = null;
   var busy = false;
+
+  // Opened, visited, saved for each photos email (23 Nov 2026, routes/photo-tracking.ts).
+  function when(s) {
+    if (!s) return '';
+    var d = new Date(String(s).replace(' ', 'T') + 'Z');
+    if (isNaN(d.getTime())) return String(s);
+    return d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  }
+  function markOf(key) { return (marks && marks.people && marks.people[key]) || null; }
+  function times(n) { return n > 1 ? ', ' + num(n) + ' times' : ''; }
+  function marksHtml(key) {
+    if (!marks || marks.error) return '';
+    var m = markOf(key) || { opened: 0, visits: 0, saved: 0, open_tracked: false };
+    var line = function (yes, text) { return '<div class="' + (yes ? 'afd-ok' : 'afd-sub') + '">' + esc(text) + '</div>'; };
+    var opened = m.opened ? line(true, 'Opened the email ' + when(m.opened_last) + times(m.opened))
+      : m.open_tracked ? line(false, 'Not opened yet') : line(false, 'Opened: not known (sent before opens were counted)');
+    var visited = m.visits ? line(true, 'Looked at their photos ' + when(m.visited_last) + times(m.visits)) : line(false, 'Not looked at their photos yet');
+    var saved = m.saved ? line(true, 'Downloaded ' + num(m.saved) + ' photo' + (m.saved === 1 ? '' : 's')) : line(false, 'Downloaded none yet');
+    return opened + visited + saved;
+  }
+  function marksSummary(rows) {
+    if (!marks || marks.error) return marks && marks.error ? '<p class="afd-warn">Opened, looked and downloaded did not load: ' + esc(marks.error) + '</p>' : '';
+    var sent = rows.filter(function (r) { return r.status === 'sent' || r.sent_count; });
+    if (!sent.length) return '';
+    var o = 0, ot = 0, v = 0, d = 0;
+    sent.forEach(function (r) { var m = markOf(r.key); if (!m) return; if (m.open_tracked) { ot++; if (m.opened) o++; } if (m.visits) v++; if (m.saved) d++; });
+    return '<p class="afd-note"><b>Of ' + num(sent.length) + ' sent:</b> '
+      + num(v) + ' looked at their photos, ' + num(d) + ' downloaded at least one'
+      + (ot ? ', ' + num(o) + ' of ' + num(ot) + ' opened the email' : '') + '.'
+      + ' Opens are counted only for emails sent from ' + esc(when(marks.open_from) || 'now') + ' and are a rough guide (some mail apps hide them).'
+      + ' Looks are counted from ' + esc(when(marks.visit_from) || 'now') + '. Downloads are counted from the start.</p>';
+  }
+  function adminPage(href) { return href ? href + (href.indexOf('?') >= 0 ? '&' : '?') + 'by=admin' : ''; }
 
   function esc(v) {
     return String(v == null ? '' : v).replace(/[&<>"']/g, function (ch) {
@@ -168,10 +202,11 @@
     var body = rows.map(function (r) {
       var thumbs = (r.thumbs || []).map(function (u) { return '<img src="' + esc(u) + '" alt="" loading="lazy" width="40" height="40">'; }).join('');
       var pics = r.count ? '<b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div>'
-        + (r.page ? '<a class="afd-sub" href="' + esc(r.page) + '" target="_blank" rel="noopener">Open their page</a>' : '') : '<span class="afd-sub">None found</span>';
+        + (r.page ? '<a class="afd-sub" href="' + esc(adminPage(r.page)) + '" target="_blank" rel="noopener">Open their page</a>' : '') : '<span class="afd-sub">None found</span>';
       var mail = r.email ? esc(r.email) + '<div class="afd-sub">' + esc(r.email_note || '') + '</div>' : '<span class="afd-bad">No email</span>';
-      var st = r.status === 'sent' ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '')
-        : r.status === 'ready' ? 'Not yet' : '<span class="afd-sub">' + esc(PH_STATUS[r.status] || r.status) + '</span>';
+      var st = r.status === 'sent' ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '') + marksHtml(r.key)
+        : r.status === 'ready' ? 'Not yet' : '<span class="afd-sub">' + esc(PH_STATUS[r.status] || r.status) + '</span>'
+          + (r.sent_count ? '<div class="afd-ok">Sent ' + esc(r.sent_at) + '</div>' + marksHtml(r.key) : '');
       var canSend = r.count > 0 && !!r.email;
       var word = r.sent_count ? 'Send again' : (r.protocol ? 'Send anyway' : 'Send');
       return '<tr><td><b>' + esc(r.name) + '</b><div class="afd-sub">' + esc([r.org].concat(r.kinds || []).filter(Boolean).join(' · ')) + '</div></td>'
@@ -179,7 +214,7 @@
         + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small" data-act="preview-ph" data-id="' + esc(r.key) + '"' + (r.count ? '' : ' disabled') + '>Preview</button>'
         + '<button type="button" class="afd-btn afd-small" data-act="send-ph" data-id="' + esc(r.key) + '"' + (canSend ? '' : ' disabled') + '>' + word + '</button></td></tr>';
     }).join('');
-    return '<section class="afd-card">' + head + stats + panelsHtml() + actions
+    return '<section class="afd-card">' + head + stats + marksSummary(rows) + panelsHtml() + actions
       + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Person</th><th>Photos</th><th>Email</th><th>Photos email</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>'
       + body + '</tbody></table></div></section>';
   }
@@ -230,16 +265,18 @@
     }).join('');
     var rows = (attendees.rows || []).map(function (r) {
       var thumbs = (r.thumbs || []).map(function (u) { return '<img src="' + esc(u) + '" alt="" loading="lazy" width="40" height="40">'; }).join('');
-      var st = r.status === 'sent' ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' : r.status === 'ready' ? 'Not yet' : '<span class="afd-sub">' + esc(ATT_STATUS[r.status] || r.status) + '</span>';
+      var st = r.status === 'sent' ? '<span class="afd-ok">Sent ' + esc(r.sent_at) + '</span>' + marksHtml(r.key) : r.status === 'ready' ? 'Not yet' : '<span class="afd-sub">' + esc(ATT_STATUS[r.status] || r.status) + '</span>'
+        + (r.sent_count ? '<div class="afd-ok">Sent ' + esc(r.sent_at) + '</div>' + marksHtml(r.key) : '');
       var can = r.count > 0 && ['ready', 'check', 'sent'].indexOf(r.status) >= 0;
       return '<tr><td><b>' + esc(r.name) + '</b><div class="afd-sub">' + esc([r.pass, r.company].filter(Boolean).join(' · ')) + (r.came ? '' : ' · not scanned at the desk') + '</div></td>'
-        + '<td>' + esc(r.group_name) + '</td><td><b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div><a class="afd-sub" href="' + esc(r.page) + '" target="_blank" rel="noopener">Open their page</a></td>'
+        + '<td>' + esc(r.group_name) + '</td><td><b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div><a class="afd-sub" href="' + esc(adminPage(r.page)) + '" target="_blank" rel="noopener">Open their page</a></td>'
         + '<td>' + (r.email ? esc(r.email) : '<span class="afd-bad">No email</span>') + '</td><td>' + st + '</td>'
         + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small" data-act="preview-att" data-id="' + esc(r.key) + '">Preview</button>'
         + '<button type="button" class="afd-btn afd-small" data-act="send-att" data-id="' + esc(r.key) + '"' + (can ? '' : ' disabled') + '>' + (r.sent_count ? 'Send again' : 'Send') + '</button></td></tr>';
     }).join('');
     return '<section class="afd-card">' + head
       + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Group</th><th class="afd-n">Found</th><th class="afd-n">Ready</th><th class="afd-n">Look first</th><th class="afd-n">Sent</th><th class="afd-n">No email or opted out</th><th><span class="afd-sr">Send</span></th></tr></thead><tbody>' + groups + '</tbody></table></div>'
+      + marksSummary(attendees.rows || [])
       + '<p class="afd-note">"Send to N ready" leaves out the weaker matches: open their preview and page first, then send them one by one. <span id="afd-att-progress" aria-live="polite"></span></p>'
       + findHtml()
       + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Person</th><th>Group</th><th>Photos</th><th>Email</th><th>Photos email</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
@@ -494,9 +531,11 @@
       opts.api.get('/api/admin/speaker-photos').catch(function (e) { return { error: e.message, rows: [] }; }),
       opts.api.get('/api/admin/attendee-photos').catch(function (e) { return { error: e.message, rows: [], groups: [] }; }),
       opts.api.get('/api/admin/find-photos').catch(function (e) { return { error: e.message }; }),
-      opts.api.get('/api/admin/booth-photos').catch(function (e) { return { error: e.message, rows: [] }; })
+      opts.api.get('/api/admin/booth-photos').catch(function (e) { return { error: e.message, rows: [] }; }),
+      opts.api.get('/api/admin/photo-tracking').catch(function (e) { return { error: e.message }; })
     ]);
     booths = out[5] || { rows: [] };
+    marks = out[6] && !out[6].error && out[6].people ? out[6] : { error: (out[6] && out[6].error) || 'no answer' };
     survey = out[0] || {};
     exhibitors = (out[1] && out[1].results) || [];
     photos = out[2] || { rows: [] };
