@@ -13,6 +13,7 @@ import speakerPhotos, { configurePhotos } from './routes/photos'
 import photoTracking, { photoPageBeacon, withOpenPixel } from './routes/photo-tracking'
 import findPhotos, { configureFindPhotos, findPhotosWhereSql } from './routes/find-photos'
 import exhibitorPhotos, { configureExhibitorPhotos } from './routes/exhibitor-photos'
+import myPhotos, { configureMyPhotos } from './routes/my-photos'
 import photoStore, { configurePhotoStore } from './routes/photo-store'
 import eventWeek, { configureEventWeek, eventWeekAudienceRows } from './routes/event-week'
 import entrySlots, { configureEntrySlots, entrySlotAudienceRows, entryReofferAudienceRows, satOpenAudienceRows, inSlot as entryInSlot, satWindow } from './routes/entry-slots'
@@ -659,6 +660,11 @@ configureFindPhotos({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader,
     return href
   } })
 app.route('/', findPhotos)
+// My photos in the app (23 Nov 2026): the home screen shows the signed-in person a few of
+// their event photos and a button to their own photos page, or asks for a clear photo
+// when the face match has not found them yet. routes/my-photos.ts.
+configureMyPhotos({ me: (c: any) => sessionAttendee(c), talkContacts: (c: any, eventId: number) => italkContactsAll(c, eventId) })
+app.route('/', myPhotos)
 // Booth photos for exhibitors (23 Nov 2026): the event photos each company's name or logo
 // is in, read from the text in every photo on the organiser's computer (scripts/photos/
 // exh_match.py), shown on the exhibitor dashboard under Booth photos and sent in one email
@@ -30577,6 +30583,11 @@ function mainPageHTML(): string {
           </div>
         </div>
 
+        <!-- My photos (23 Nov 2026): a few of their event photos and the button to their own
+             photos page, or the ask for a clear photo when the face match has not found them
+             yet. Drawn by renderMyPhotosCard(); GET /api/my-photos (routes/my-photos.ts). -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 hidden" id="my-photos-card"></div>
+
         <!-- After Mumbai (23 Nov 2026): "Share your Bharat AI moment" at /share, the
              pictures for LinkedIn, Instagram, Facebook and X (I attended, who I met, a
              talk, a panel). For everyone registered for Mumbai. renderShareMomentCard(). -->
@@ -34331,6 +34342,8 @@ function mainPageScript(): string {
         if (profileCard) profileCard.classList.add('hidden');
         var passCta = document.getElementById('pass-card-cta');
         if (passCta) passCta.classList.add('hidden');
+        var myPhotosCard = document.getElementById('my-photos-card');
+        if (myPhotosCard) myPhotosCard.classList.add('hidden');
         var dashRail = document.getElementById('dash-match-rail');
         if (dashRail) dashRail.classList.add('hidden');
         var planCard = document.getElementById('event-plan-card');
@@ -34363,9 +34376,63 @@ function mainPageScript(): string {
       if (!el) return;
       el.classList.toggle('hidden', !(currentUser && Number(currentUser.event_id || 1) === 1 && mumbaiOverInApp()));
     }
+    // My photos (23 Nov 2026): GET /api/my-photos (routes/my-photos.ts) answers found (a
+    // few photos and their own photos page), notfound (ask for a clear photo, so the next
+    // face match finds them), or nothing to show. Asked once per person per visit.
+    var myPhotosFor = null, myPhotosData = null;
+    function renderMyPhotosCard() {
+      var el = document.getElementById('my-photos-card');
+      if (!el) return;
+      if (!(currentUser && Number(currentUser.event_id || 1) === 1 && mumbaiOverInApp())) { el.classList.add('hidden'); return; }
+      if (myPhotosFor === currentUser.id) { if (myPhotosData) drawMyPhotosCard(myPhotosData); return; }
+      var asked = currentUser.id;
+      myPhotosFor = asked; myPhotosData = null;
+      fetch('/api/my-photos', { credentials: 'same-origin', cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!currentUser || currentUser.id !== asked) return;
+          myPhotosData = d || { state: 'none' };
+          drawMyPhotosCard(myPhotosData);
+        })
+        .catch(function () { if (myPhotosFor === asked) myPhotosFor = null; });
+    }
+    function drawMyPhotosCard(d) {
+      var el = document.getElementById('my-photos-card');
+      if (!el) return;
+      if (!d || (d.state !== 'found' && d.state !== 'notfound')) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+      var icon = '<div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-orange-500/20 flex items-center justify-center shrink-0"><i class="fas fa-camera text-xl text-primary-400"></i></div>';
+      var btn = 'inline-flex items-center justify-center px-4 rounded-xl text-xs font-semibold';
+      var btnStyle = 'min-height:48px;background:#C84F00;color:#fff;text-decoration:none;border:0;';
+      var html;
+      if (d.state === 'found') {
+        var n = Number(d.count) || 0;
+        var href = safeUrl(d.url);
+        var pics = (d.thumbs || []).map(function (t) {
+          var src = safeUrl(t && t.s);
+          return src ? '<img src="' + src + '" alt="" loading="lazy" style="width:100%;aspect-ratio:1/1;object-fit:cover;object-position:' + (Number(t.x) || 50) + '% ' + (Number(t.y) || 40) + '%;border-radius:10px;display:block;background:#E5E7EB;">' : '';
+        }).join('');
+        // The same build as every home card (app-design.css .ap-card): on a phone the icon and
+        // the heading share a row and everything after them takes the whole width.
+        html = '<div class="glass ap-card rounded-2xl p-5 border border-primary-500/25 flex items-start gap-4">' + icon + '<div class="ap-card-body flex-1 min-w-0">'
+          + '<h3 class="font-bold text-sm mb-0.5">Your photos from Mumbai</h3>'
+          + '<p class="text-xs text-gray-400">' + n + (n === 1 ? ' photo' : ' photos') + ' of you from 20 and 21 November. Save them, or share them on LinkedIn, Instagram or WhatsApp.</p>'
+          + (pics && href ? '<a href="' + href + '" target="_blank" rel="noopener" aria-label="See all my photos" style="grid-column:1 / -1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:0.8rem;">' + pics + '</a>' : '')
+          + (href ? '<a href="' + href + '" target="_blank" rel="noopener" class="' + btn + '" style="' + btnStyle + 'grid-column:1 / -1;margin-top:0.8rem;"><i class="fas fa-images mr-1.5"></i>See all my photos</a>' : '')
+          + '</div></div>';
+      } else {
+        var act = d.photo ? 'changeMyPhoto()' : 'addProfilePhotoFromCard()';
+        html = '<div class="glass ap-card rounded-2xl p-5 border border-primary-500/25 flex items-start gap-4">' + icon + '<div class="ap-card-body flex-1 min-w-0"><h3 class="font-bold text-sm mb-0.5">Are you in the event photos?</h3>'
+          + '<p class="text-xs text-gray-400 mb-3">Our photographers took over 5,000 photos on 20 and 21 November. We find people in them by matching faces with the photo in this app, and we have not found you yet. Add a clear photo of your face and we will look again.</p>'
+          + '<button type="button" onclick="' + act + '" class="' + btn + '" style="' + btnStyle + '"><i class="fas fa-camera mr-1.5"></i>' + (d.photo ? 'Change my photo' : 'Add my photo') + '</button>'
+          + '</div></div>';
+      }
+      el.innerHTML = html;
+      el.classList.remove('hidden');
+    }
     function renderPassAndCardCta(early) {
       renderAppOnPhoneCard();
       renderShareMomentCard();
+      renderMyPhotosCard();
       const el = document.getElementById('pass-card-cta');
       if (!el) return;
       if (!currentUser) { el.classList.add('hidden'); return; }
