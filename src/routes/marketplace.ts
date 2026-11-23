@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { organiserTeam, cleanOwnerName, teamMemberNamed } from '../lib/team'
 import { titledName } from '../lib/greet'
+import { defaultAppPartners, poweredByForApp } from '../lib/partners'
 
 type Bindings = {
   DB: D1Database
@@ -2731,8 +2732,14 @@ const cleanPartners = (raw: any): { list: { name: string; label: string; logo: s
   }
   return { list }
 }
+// 23 Nov 2026: an empty list now means the site's partners (src/data/partners.json, the
+// home page strip). The organiser: sponsors must be seen "inside the dashboard of each
+// user, each delegate"; the list stayed empty, so nobody in the app saw a sponsor. The
+// admin form opens with these seven, so links can be added and the list changed there.
 const readPartners = async (c: any) => {
-  try { return cleanPartners(JSON.parse((await setting(c, PARTNERS_KEY)) || '[]')).list } catch { return [] }
+  let list: { name: string; label: string; logo: string; url: string }[] = []
+  try { list = cleanPartners(JSON.parse((await setting(c, PARTNERS_KEY)) || '[]')).list } catch { list = [] }
+  return list.length ? list : defaultAppPartners()
 }
 
 // ══════════════════════════════════════════
@@ -2797,7 +2804,7 @@ const delhiPromoOpenedBy = async (c: any) => {
 mp.get('/api/app-partners', async (c) => {
   c.header('Cache-Control', 'public, max-age=300')
   const delhi = await readDelhiPromo(c)
-  return c.json({ partners: await readPartners(c), delhi: delhi.on ? delhiPromoShown(delhi.typed) : null })
+  return c.json({ partners: await readPartners(c), powered_by: poweredByForApp(), delhi: delhi.on ? delhiPromoShown(delhi.typed) : null })
 })
 
 mp.get('/api/mp/admin/delhi-promo', async (c) => {

@@ -734,6 +734,7 @@ export function marketplaceDashboardPageHTML(): string {
       <div id="dash-todo" class="dash-card hidden"></div>
       <!-- Every account: the next edition, while the organisers keep it on. -->
       <div id="dash-delhi" class="dash-card hidden"></div>
+      <div id="dash-partners" class="dash-card hidden"></div>
       <div class="dash-stats-grid">
         <div class="dash-stat-card"><div class="dash-stat-icon"><i class="fas fa-boxes"></i></div><div><p class="dash-stat-label">Total Listings</p><p class="dash-stat-value" id="stat-total">0</p></div></div>
         <div class="dash-stat-card"><div class="dash-stat-icon text-emerald-400"><i class="fas fa-check-circle"></i></div><div><p class="dash-stat-label">Approved</p><p class="dash-stat-value" id="stat-approved">0</p></div></div>
@@ -982,7 +983,7 @@ export function marketplaceDashboardPageHTML(): string {
   </div>
 
   <script src="/static/team-guest.js?v=20261119"></script>
-  <script src="/static/marketplace-dashboard.js?v=12"></script>
+  <script src="/static/marketplace-dashboard.js?v=13"></script>
 </body>
 </html>`
 }

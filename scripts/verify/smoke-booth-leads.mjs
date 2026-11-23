@@ -262,7 +262,8 @@ check('off again: empty again', r.json.length === 0, r.text);
 
 // ---- partners and sponsors in the app ----
 r = await hit('GET', '/api/app-partners');
-check('partners: nothing is shown until the organisers add someone', r.status === 200 && Array.isArray(r.json.partners) && r.json.partners.length === 0, r.text);
+// 23 Nov 2026 (the organiser: sponsors seen inside every dashboard): an empty list means the site's seven partners, with Powered by IDFC FIRST Bank.
+check('partners: with no list typed, the app shows the site’s seven partners and Powered by IDFC FIRST Bank', r.status === 200 && r.json.partners.map(p => p.name).join('|') === ['Aegis Superintelligence Lab', 'Assessfy', 'Aegis School of Data Science & AI', 'Jade Global', 'Pramaana Labs', 'Decimal Point Analytics', 'EXENI'].join('|') && r.json.powered_by?.name === 'IDFC FIRST Bank', r.text);
 const JADE = { name: 'Jade Global', label: 'Panel Host Partner', logo: '/images/exhibitors/jade-global.webp', url: 'jadeglobal.com' };
 r = await hit('PUT', '/api/mp/admin/partners', { partners: [JADE] });
 check('partners: signed out cannot change the list', r.status === 403, r.status);
@@ -274,13 +275,13 @@ await badPartner('a logo from another site', { ...JADE, logo: 'https://evil.exam
 await badPartner('a logo path that climbs out of /images', { ...JADE, logo: '/images/../api/x.png' }, /logo must be a picture on this site/);
 await badPartner('a script link as the website', { ...JADE, url: 'javascript:alert(1)' }, /website must be a web address/);
 r = await hit('GET', '/api/app-partners');
-check('partners: no refusal saved anything', r.json.partners.length === 0, r.text);
+check('partners: no refusal saved anything (still the site’s seven)', r.json.partners.map(p => p.name).join('|') === ['Aegis Superintelligence Lab', 'Assessfy', 'Aegis School of Data Science & AI', 'Jade Global', 'Pramaana Labs', 'Decimal Point Analytics', 'EXENI'].join('|'), r.text);
 r = await hit('PUT', '/api/mp/admin/partners', { partners: [JADE, { name: 'Dun & Bradstreet', label: 'Data Partner', logo: '', url: '' }] }, admin);
 check('partners: admin saves the list, a plain domain becomes https, in the audit log', r.status === 200 && r.json.partners.length === 2 && r.json.partners[0].url === 'https://jadeglobal.com' && !!one("SELECT id FROM admin_audit WHERE action = 'marketplace.app-partners'"), r.text);
 r = await hit('GET', '/api/app-partners');
 check('partners: the app gets them in order, name, label and logo', r.json.partners.map(p => p.name).join('|') === 'Jade Global|Dun & Bradstreet' && r.json.partners[0].label === 'Panel Host Partner' && r.json.partners[0].logo === '/images/exhibitors/jade-global.webp' && r.json.partners[1].logo === '', r.text);
 r = await hit('PUT', '/api/mp/admin/partners', { partners: [] }, admin);
-check('partners: the list can be emptied again', r.status === 200 && (await hit('GET', '/api/app-partners')).json.partners.length === 0, r.text);
+check('partners: the list can be emptied again, and the app goes back to the site’s seven', r.status === 200 && (await hit('GET', '/api/app-partners')).json.partners.length === 7, r.text);
 
 // ---- the Delhi edition, shown in the app and on the exhibitor dashboard ----
 const DELHI_AUDIT = "SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'delhi_promo.open'";
@@ -346,7 +347,7 @@ check('the app has the workshop certificate button and loads the partners', /loa
 
 // ---- the pages ----
 r = await hit('GET', '/marketplace/dashboard');
-check('the dashboard has the Leads screen', ['data-section="leads"', 'id="leads-list"', 'id="leads-csv"', 'href="/exhibitor/scan"', 'marketplace-dashboard.js?v=11', 'id="dash-delhi"', 'id="leads-filters"', 'id="leads-q"'].every(m => r.text.includes(m)), '');
+check('the dashboard has the Leads screen', ['data-section="leads"', 'id="leads-list"', 'id="leads-csv"', 'href="/exhibitor/scan"', 'marketplace-dashboard.js?v=', 'id="dash-delhi"', 'id="leads-filters"', 'id="leads-q"'].every(m => r.text.includes(m)), '');
 r = await hit('GET', '/marketplace/admin');
 check('the admin page has the exhibitor-list switch', ['id="directory-card"', 'marketplace-admin.js?v=14', 'data-section="partners"', 'id="partners-rows"', 'id="delhi-on"', 'id="delhi-ex-cta"', 'id="delhi-save"', 'Shown in the app'].every(m => r.text.includes(m)), '');
 r = await hit('GET', '/app.js');

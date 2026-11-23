@@ -488,10 +488,32 @@ const dayRange = (a, b) => {
 // Every dashboard account sees it on the first screen while the organisers keep it on
 // (Marketplace admin, Shown in the app). The words come from the server; the link is
 // one of ours and is checked again here.
+// ── Our partners and Powered by IDFC FIRST Bank (23 Nov 2026) ──
+// The organiser: sponsors must be seen "inside the dashboard of each user". The same
+// list as the app's Home tab, on white tiles because logos are drawn for a white ground.
+const renderDashPartners = (all) => {
+  const box = document.getElementById('dash-partners'); if (!box) return
+  const ps = (all && all.partners) || []
+  if (!ps.length) { box.classList.add('hidden'); box.innerHTML = ''; return }
+  const pb = all.powered_by
+  const tile = 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:84px;padding:10px 12px;border-radius:12px;background:#fff;border:1px solid rgba(20,25,80,0.12);text-align:center'
+  box.innerHTML = `${pb && pb.logo ? `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 14px">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#C84F00">${esc((pb.edition ? 'Bharat AI Innovation ' + pb.edition + ' · ' : '') + 'Powered by')}</span>
+        <img src="${esc(pb.logo)}" alt="${esc(pb.name || '')}" loading="lazy" style="height:44px;width:auto;border-radius:8px;display:block">
+      </div>` : ''}
+      <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase" class="text-slate-400">Our partners</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">${ps.map(p => `<div style="${tile}">${p.logo
+        ? `<img src="${esc(p.logo)}" alt="${esc(p.name)}" loading="lazy" style="max-height:40px;max-width:100%;width:auto;height:auto;object-fit:contain">`
+        : `<strong style="color:#1E2140;font-size:14px">${esc(p.name)}</strong>`}${p.label ? `<span style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#3B3F8F">${esc(p.label)}</span>` : ''}</div>`).join('')}</div>`
+  box.classList.remove('hidden')
+}
+
 const loadDelhi = async () => {
   const box = document.getElementById('dash-delhi'); if (!box) return
-  let d = null
-  try { d = (await api('/api/app-partners')).delhi } catch { d = null }
+  let all = null
+  try { all = await api('/api/app-partners') } catch { all = null }
+  renderDashPartners(all)
+  const d = all && all.delhi
   if (!d || !d.ex_title) { box.classList.add('hidden'); box.innerHTML = ''; return }
   const href = /^\/delhi([?#]|$)/.test(d.ex_url || '') ? d.ex_url : '/delhi'
   box.innerHTML = `<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">

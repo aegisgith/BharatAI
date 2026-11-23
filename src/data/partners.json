@@ -1,0 +1,18 @@
+{
+  "note": "Bharat AI Innovation Mumbai 2026: the sponsor and the partners shown on every email, every site page, the app's Home tab and the exhibitor dashboard (the organiser, 23 Nov 2026: 'sponsors need to see the post event visibility on all emails and all landing pages, inside the dashboard as well'). Same names, labels and order as the home page strip (public/index.html #partners). After a change: node scripts/gen-email-partner-logos.mjs, then node scripts/gen-partners-strip.mjs.",
+  "edition": "Mumbai 2026",
+  "powered_by": {
+    "name": "IDFC FIRST Bank",
+    "logo": "/images/logo-idfc-first-bank.webp",
+    "email_logo": "/images/email/partners/idfc-first-bank.png"
+  },
+  "partners": [
+    { "name": "Aegis Superintelligence Lab", "label": "AI Partner", "logo": "/images/org-logos/aegis-superintelligence-lab.webp", "email_logo": "/images/email/partners/aegis-superintelligence-lab.png", "dark": true },
+    { "name": "Assessfy", "label": "Assessment OS Partner & Panel Host", "logo": "/images/exhibitors/assessfy.webp", "email_logo": "/images/email/partners/assessfy.png" },
+    { "name": "Aegis School of Data Science & AI", "label": "AI COE", "logo": "/images/logo-aegis.webp", "email_logo": "/images/email/partners/aegis-school.png" },
+    { "name": "Jade Global", "label": "Panel Host Partner", "logo": "/images/exhibitors/jade-global.webp", "email_logo": "/images/email/partners/jade-global.png" },
+    { "name": "Pramaana Labs", "label": "Partner", "logo": "/images/org-logos/pramaana-labs.webp", "email_logo": "/images/email/partners/pramaana-labs.png" },
+    { "name": "Decimal Point Analytics", "label": "Analytics Partner", "logo": "/images/org-logos/decimal-point-analytics.webp", "email_logo": "/images/email/partners/decimal-point-analytics.png" },
+    { "name": "EXENI", "label": "Partner", "logo": "/images/org-logos/exeni.webp", "email_logo": "/images/email/partners/exeni.png" }
+  ]
+}

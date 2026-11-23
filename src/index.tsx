@@ -24,6 +24,14 @@ import { SENDER_DOMAIN, sendAs, sendersFor, pickSender } from './lib/senders'
 import { ccavEncrypt, ccavDecrypt, ccavRequestBody, ccavParseResponse } from './lib/ccavenue'
 import { invoicePdf } from './lib/invoice-pdf'
 import { titledName } from './lib/greet'
+import { withPartners, elasticBodyWithPartners, partnersStripHTML, PARTNERS_MARK } from './lib/partners'
+
+// Every email handed to Elastic Email goes through here, so each one carries "Powered by
+// IDFC FIRST Bank" and the partners' logos once (the organiser, 23 Nov 2026;
+// src/lib/partners.ts). A new sender must call elasticFetch, never fetch.
+function elasticFetch(url: string, init: any): Promise<Response> {
+  return fetch(url, init && typeof init.body === 'string' ? { ...init, body: elasticBodyWithPartners(init.body) } : init)
+}
 import { signInLink as mpSignInLink } from './routes/marketplace'
 import { marketplacePageHTML, marketplaceListingPageHTML, marketplaceDashboardPageHTML, marketplaceAdminPageHTML, marketplaceFaqPageHTML } from './routes/marketplace-pages'
 
@@ -189,10 +197,11 @@ async function sendAdminEmail(c: any, to: string, subject: string, html: string,
   // footer and header; a reply to somebody's own request may pass false.
   const unsub = opts.unsubscribe === false ? '' : await unsubscribeUrl(c, to)
   html = await withAppOnPhoneFor(c, html, to) // THE APP ON THE PHONE, below emailBrandHeader
+  html = withPartners(html) // the partners, above the unsubscribe line (elasticFetch then leaves it)
   const body = unsub ? html.replace(/<\/body>\s*<\/html>\s*$/i, UNSUB_FOOTER(unsub) + '</body></html>') : html
   const finalHtml = unsub && body === html ? html + UNSUB_FOOTER(unsub) : body
   try {
-    const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    const res = await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': key },
       body: JSON.stringify({
@@ -230,6 +239,25 @@ app.use('*', async (c, next) => {
 app.use('*', async (c, next) => {
   try { await readOffersSwitch(c) } catch { /* off, as if unset */ }
   await next()
+})
+
+// EMAIL PREVIEWS SHOW THE PARTNERS (23 Nov 2026). Every email gets "Powered by IDFC FIRST
+// Bank" and the partners' logos as it is sent (elasticFetch). An admin preview answers
+// { html } built before that, so the same block goes on here: what the organisers read is
+// what goes out. Only an answer with a top-level "html" that is an email is touched.
+app.use('/api/*', async (c, next) => {
+  await next()
+  if (!c.req.path.includes('/admin/') || c.res.status !== 200) return
+  if (!(c.res.headers.get('content-type') || '').includes('application/json')) return
+  try {
+    const txt = await c.res.clone().text()
+    if (!txt.includes('"html":"') || txt.includes(PARTNERS_MARK)) return
+    const d: any = JSON.parse(txt)
+    if (!d || typeof d.html !== 'string' || !/<table|<body|Bharat%20AI%20Innovation%20Logo/i.test(d.html)) return
+    d.html = withPartners(d.html)
+    const h = new Headers(c.res.headers); h.delete('content-length')
+    c.res = new Response(JSON.stringify(d), { status: c.res.status, headers: h })
+  } catch { /* the answer goes out as it was */ }
 })
 
 app.use('/api/admin/*', async (c, next) => {
@@ -1382,7 +1410,7 @@ async function notifyTeamOfInquiry(c: any, row: { id: any; inquiry_type: string;
       </div>
     </div></body></html>`
   try {
-    await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
@@ -1566,7 +1594,7 @@ async function sendRegistrationEmail(c: any, attendee: any, opts: { receipt?: st
     </div></body></html>`
 
   try {
-    await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
@@ -1658,7 +1686,7 @@ async function sendWaitlistEmail(c: any, attendee: any) {
   const fromName = (await settingValue(c, 'sender_name')) || 'Bharat AI Innovation'
   const mail = await waitlistEmail(c, attendee)
   try {
-    const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    const res = await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
@@ -2075,7 +2103,7 @@ async function sendPanelConfirmationEmail(c: any, attendee: any, panel: CampusPa
   if (opts.preview) return { ok: true, html: outHtml }
 
   try {
-    const resp = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    const resp = await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
@@ -5806,7 +5834,7 @@ async function sendInvoiceEmail(c: any, v: any, token: string, set: Record<strin
     </div></body></html>`
 
   try {
-    await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
@@ -10125,7 +10153,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
       },
       Options: { TrackClicks: false, TrackOpens: false }
     }
-    const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    const res = await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -17730,7 +17758,7 @@ app.post('/api/admin/attendees/:id/notify', async (c) => {
           TrackOpens: false
         }
       }
-      const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+      const res = await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -18597,7 +18625,7 @@ async function sendProfileReminder(c: any, attendee: any): Promise<SendOutcome> 
 
   let res: Response
   try {
-    res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    res = await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
@@ -19951,7 +19979,7 @@ app.post('/api/admin/settings/test-email', async (c) => {
         Subject: 'Test Email from Bharat AI Innovation Conference & Exhibition 2026 Admin'
       }
     }
-    const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    const res = await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -19984,7 +20012,7 @@ app.post('/api/admin/settings/verify-key', async (c) => {
 
     if (secData.Error === 'Access Denied.') {
       // Key might still work for sending only - try a different endpoint
-      const emailsRes = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+      const emailsRes = await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -24738,7 +24766,7 @@ async function sendDelhiPassEmail(c: any, p: { name: string; email: string; comp
       </div>
     </div></body></html>`
   try {
-    const res = await fetch('https://api.elasticemail.com/v4/emails/transactional', {
+    const res = await elasticFetch('https://api.elasticemail.com/v4/emails/transactional', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-ElasticEmail-ApiKey': apiKey },
       body: JSON.stringify({
@@ -27330,8 +27358,10 @@ function sharedNavHTML(activePage: string): string {
 </nav>`
 }
 
+// The partners and Powered by IDFC FIRST Bank first (23 Nov 2026, src/lib/partners.ts):
+// every page drawn here is a Mumbai 2026 page.
 function sharedFooterHTML(): string {
-  return `<footer class="glass border-t border-white/10 mt-12">
+  return `${partnersStripHTML('/')}<footer class="glass border-t border-white/10 mt-12">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
       <div>
@@ -30977,8 +31007,9 @@ function mainPageHTML(): string {
           </div>
         </div>
 
-        <!-- Partners and sponsors (Marketplace admin, Partners in the app); hidden until there are any -->
+        <!-- Partners and sponsors (Marketplace admin, Partners in the app; the site's partners when that list is empty) and Powered by IDFC FIRST Bank -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 hidden" id="app-partners">
+          <div id="app-powered" style="display:none;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 16px;"></div>
           <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Our partners</p>
           <div id="app-partners-list" class="flex flex-wrap gap-3"></div>
         </div>
@@ -33139,6 +33170,13 @@ function mainPageScript(): string {
         showDelhiPromo(d && d.delhi);
         var ps = (d && d.partners) || [];
         if (!ps.length) { box.classList.add('hidden'); return; }
+        // Powered by IDFC FIRST Bank, above the partners (23 Nov 2026).
+        var pb = d && d.powered_by, pbox = document.getElementById('app-powered');
+        if (pbox && pb && pb.logo) {
+          pbox.innerHTML = '<span style="font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#6B7080;">' + esc((pb.edition ? 'Bharat AI Innovation ' + pb.edition + ' · ' : '') + 'Powered by') + '</span>'
+            + '<img src="' + esc(pb.logo) + '" alt="' + esc(pb.name || 'Powered by') + '" loading="lazy" style="height:44px;width:auto;border-radius:8px;display:block;">';
+          pbox.style.display = 'flex';
+        }
         var tile = 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:84px;min-width:148px;max-width:100%;padding:10px 16px;border-radius:14px;background:#fff;border:1px solid rgba(20,25,80,0.12);text-decoration:none;text-align:center;';
         list.innerHTML = ps.map(function (p) {
           var inner = (p.logo

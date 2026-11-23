@@ -29,6 +29,7 @@
     .fb-q { border: 0; margin: 0 0 1.4rem; padding: 0; min-width: 0; }
     .fb-q legend { font-family: var(--font-display); font-size: 1.06rem; font-weight: 800; line-height: 1.35; color: var(--charcoal); margin: 0 0 0.6rem; padding: 0; }
     .fb-q legend small { display: block; font-family: var(--font-body); font-size: 0.85rem; font-weight: 500; color: var(--dark-grey); margin-top: 0.15rem; }
+    .fb-q .fb-sub { display: block; font-size: 0.92rem; font-weight: 600; color: var(--charcoal); margin: 0.7rem 0 0.35rem; }
     .fb-q[aria-invalid="true"] legend { color: #A0281D; }
     .fb-scale { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 4px; }
     .fb-ends { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--dark-grey); margin-top: 0.35rem; }
@@ -133,8 +134,11 @@
                     </fieldset>
 
                     <fieldset class="fb-q">
-                        <legend><label for="fb-fix">6. One thing we should fix</label><small>Optional. A sentence is plenty.</small></legend>
-                        <textarea id="fb-fix" name="fix" maxlength="1000" autocomplete="off"></textarea>
+                        <legend>6. Help us make the Delhi edition and next year&rsquo;s Mumbai edition better<small>Optional. A sentence is plenty.</small></legend>
+                        <label class="fb-sub" for="fb-fix">What should we do better?</label>
+                        <textarea id="fb-fix" name="fix" maxlength="500" autocomplete="off"></textarea>
+                        <label class="fb-sub" for="fb-more">What would you like more of? Topics, speakers, workshops, formats.</label>
+                        <textarea id="fb-more" name="more" maxlength="450" autocomplete="off"></textarea>
                     </fieldset>
 
                     <p class="fb-error" id="fb-error" role="alert" hidden></p>
@@ -156,6 +160,29 @@
             </div>
         </div>
     </main>
+<!-- partners-strip:start -->
+<section class="pstrip" data-partners-block="1" aria-label="Partners of Bharat AI Innovation Mumbai 2026">
+<style>.pstrip{background:#F6F7FB;border-top:1px solid #E6E8F0;padding:44px 16px 48px;font-family:inherit}
+.pstrip-in{max-width:1200px;margin:0 auto;text-align:center}
+.pstrip-cap{margin:0;font-size:12px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#5B6078}
+.pstrip-powered{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin:0 0 30px}
+.pstrip-powered img{height:56px;width:auto;border-radius:8px;display:block}
+.pstrip-list{list-style:none;margin:16px 0 0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pstrip-list li{background:#fff;border:1px solid #E3E6EF;border-radius:14px;padding:14px 10px 12px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:10px;min-height:118px}
+.pstrip-list li.pstrip-dark{background:#05060a;border-color:#05060a}
+.pstrip-list li.pstrip-dark .pstrip-role{color:#C9CCE0}
+.pstrip-list img{max-height:52px;max-width:100%;width:auto;height:auto;object-fit:contain;display:block;margin:auto 0}
+.pstrip-role{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#3B3F8F;line-height:1.3}
+.pstrip-list li:last-child:nth-child(odd){grid-column:1/-1;max-width:calc(50% - 6px);width:100%;justify-self:center}
+@media (min-width:640px){.pstrip-list{grid-template-columns:repeat(4,minmax(0,1fr))}.pstrip-list li:last-child:nth-child(odd){grid-column:auto;max-width:none}}
+@media (min-width:1024px){.pstrip-list{grid-template-columns:repeat(7,minmax(0,1fr))}}</style>
+<div class="pstrip-in">
+<div class="pstrip-powered"><span class="pstrip-cap">Bharat AI Innovation Mumbai 2026 &middot; Powered by</span><img src="/images/logo-idfc-first-bank.webp" alt="IDFC FIRST Bank" width="169" height="56" loading="lazy" decoding="async"></div>
+<p class="pstrip-cap">Our partners</p>
+<ul class="pstrip-list"><li class="pstrip-dark"><img src="/images/org-logos/aegis-superintelligence-lab.webp" alt="Aegis Superintelligence Lab" loading="lazy" decoding="async"><span class="pstrip-role">AI Partner</span></li><li><img src="/images/exhibitors/assessfy.webp" alt="Assessfy" loading="lazy" decoding="async"><span class="pstrip-role">Assessment OS Partner &amp; Panel Host</span></li><li><img src="/images/logo-aegis.webp" alt="Aegis School of Data Science &amp; AI" loading="lazy" decoding="async"><span class="pstrip-role">AI COE</span></li><li><img src="/images/exhibitors/jade-global.webp" alt="Jade Global" loading="lazy" decoding="async"><span class="pstrip-role">Panel Host Partner</span></li><li><img src="/images/org-logos/pramaana-labs.webp" alt="Pramaana Labs" loading="lazy" decoding="async"><span class="pstrip-role">Partner</span></li><li><img src="/images/org-logos/decimal-point-analytics.webp" alt="Decimal Point Analytics" loading="lazy" decoding="async"><span class="pstrip-role">Analytics Partner</span></li><li><img src="/images/org-logos/exeni.webp" alt="EXENI" loading="lazy" decoding="async"><span class="pstrip-role">Partner</span></li></ul>
+</div>
+</section>
+<!-- partners-strip:end -->
     <script>
     (function () {
         var q = new URLSearchParams(location.search);
@@ -202,7 +229,10 @@
                 radio('recommend', ans.recommend);
                 (ans.useful || []).forEach(function (v) { var el = form.querySelector('input[name="useful"][value="' + v + '"]'); if (el) el.checked = true; });
                 radio('met', ans.met); radio('entry', ans.entry); radio('delhi', ans.delhi);
-                document.getElementById('fb-fix').value = ans.fix || '';
+                // Both boxes of question 6 are kept in one answer: "better" then "More of: ...".
+                var parts = /^([\s\S]*?)(?:(?:^|\n\n)More of: ([\s\S]*))?$/.exec(String(ans.fix || '')) || ['', '', ''];
+                document.getElementById('fb-fix').value = parts[1] || '';
+                document.getElementById('fb-more').value = parts[2] || '';
                 if (R !== null && /^(10|[0-9])$/.test(R)) radio('recommend', R);
                 var b = document.getElementById('fb-before');
                 b.textContent = 'You have answered already. Change anything you like and send again.';
@@ -241,7 +271,10 @@
                 a: A, k: K, recommend: Number(rec),
                 useful: Array.prototype.map.call(form.querySelectorAll('input[name="useful"]:checked'), function (el) { return el.value; }),
                 met: checked('met'), entry: checked('entry'), delhi: checked('delhi'),
-                fix: document.getElementById('fb-fix').value
+                fix: (function () {
+                    var better = document.getElementById('fb-fix').value.trim(), more = document.getElementById('fb-more').value.trim();
+                    return (better ? better + (more ? '\n\nMore of: ' + more : '') : (more ? 'More of: ' + more : '')).slice(0, 1000);
+                })()
             };
             if (PREVIEW) { showDone(body.delhi); return; }
             send.disabled = true;

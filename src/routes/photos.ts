@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { isProtocol } from './speaker-brief'
 import { dearName } from './talk-brief'
+import { partnersStripHTML } from '../lib/partners'
 import { MUMBAI_WORDS, normName, adminReady, sessionsWithSpeakers, ROLE_WORD } from './conference'
 import { linksForDrive, downloadLimit, downloadsUsed } from './photo-store'
 import ALBUMS from '../data/speaker-photos.json'
@@ -364,7 +365,7 @@ ${me ? '<button type="button" class="optout" data-go="optout">Don&rsquo;t match 
   lb.addEventListener('touchstart', function(e){ x0 = e.touches[0].clientX; }, { passive: true });
   lb.addEventListener('touchend', function(e){ if (x0 === null) return; var dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 50) show(at + (dx < 0 ? 1 : -1)); });
 })();
-</script></body></html>`
+</script>${partnersStripHTML('/')}</body></html>`
 }
 
 // ---------- the live programme: line-ups, drop-outs, who else is in a photo ----------
