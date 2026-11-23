@@ -714,11 +714,15 @@ wa.post('/api/whatsapp/webhook', async (c) => {
 
 // ---------- the button on every message ----------
 
-wa.get('/w/:code', async (c) => {
+wa.get('/w/:code', async (c, next) => {
+  // /w/ is shared with the campus recording links (/w/jnu, /w/djsce in index.tsx, sent in
+  // the reports email). Only our own shape is ours; anything else goes on to that route,
+  // which before 23 Nov 2026 never ran: every recording link landed on the home page.
+  const m = /^(\d{1,12})-([0-9a-f]{12})$/.exec(String(c.req.param('code') || ''))
+  if (!m) return next()
   c.header('Cache-Control', 'no-store')
   c.header('X-Robots-Tag', 'noindex, nofollow')
-  const m = /^(\d{1,12})-([0-9a-f]{12})$/.exec(String(c.req.param('code') || ''))
-  if (!m || !sameText(m[2], (await codeFor(c, m[1])).split('-')[1] || '')) return c.redirect(SITE + '/', 302)
+  if (!sameText(m[2], (await codeFor(c, m[1])).split('-')[1] || '')) return c.redirect(SITE + '/', 302)
   const row = await one(c, 'SELECT id, event_id, payload, target_url, sent_at, created_at FROM wa_messages WHERE id = ?', Number(m[1])).catch(() => null)
   let target = String(row?.target_url || '')
   if (!row || !/^https:\/\//.test(target)) return c.redirect(SITE + '/', 302)

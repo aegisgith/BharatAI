@@ -118,7 +118,13 @@ check('service worker is bhai-v20 or later and precaches the home page\'s style.
 
 // ---- the 29 Oct 2026 audit: a passes page, and the app's Visitor fixes ----
 r = await hit('/passes');
-check('/passes is served with the comparison and the VIP gala row', r.status === 200 && ['Passes for Bharat AI Innovation 2026', 'Bharat AI Leaders’ Evening, Day 1', 'class="pcmp"'].every(m => r.text.includes(m)), r.status);
+// From 21 Nov 2026 6 pm IST (MUMBAI_OVER_AT in index.tsx) /passes is the "Thank you, Mumbai"
+// page that sends people to Delhi 2027 and sells nothing for Mumbai.
+if (Date.now() >= Date.parse('2026-11-21T18:00:00+05:30')) {
+  check('/passes after Mumbai: "Thank you, Mumbai", Delhi 2027 at Bharat Mandapam, no Mumbai passes on sale', r.status === 200 && ['Thank you, Mumbai', 'href="/delhi-register"', 'Bharat Mandapam'].every(m => r.text.includes(m)) && !r.text.includes('class="pcmp"'), r.status);
+} else {
+  check('/passes is served with the comparison and the VIP gala row', r.status === 200 && ['Passes for Bharat AI Innovation 2026', 'Bharat AI Leaders’ Evening, Day 1', 'class="pcmp"'].every(m => r.text.includes(m)), r.status);
+}
 // The hashed URL the page loads, not the bare /app.js: that one is the offline
 // fallback and the edge may hold an older copy of it.
 r = await hit('/app');
@@ -270,7 +276,10 @@ check('the /networking glimpse: at most 12 named and 12 locked, each with only i
   gPeople.every(p => Object.keys(p).sort().join(',') === 'city,company,goals,industry,name,photo,title' && p.photo.startsWith('/api/uploads/')) &&
   gLocked.every(p => Object.keys(p).sort().join(',') === 'city,goals,industry,title') && !/"id"|"email"|\S@\S/.test(r.text), r.status + ' ' + r.text.slice(0, 160));
 r = await hit('/networking');
-check('/networking carries the headline and plays the app: glimpse, Schedule Meeting, Tell your network', r.text.includes("fetch('/api/events/1/glimpse'") && r.text.includes('Business meetings before you arrive at Bharat AI Innovation') &&
+// Since 14 Nov 2026 the glimpse is fetched by /js/nw-glimpse.js, not by a script in the page.
+const nwGlimpseSrc = (/src="(\/js\/nw-glimpse\.js[^"]*)"/.exec(r.text) || [])[1];
+const nwGlimpseJs = nwGlimpseSrc ? (await hit(nwGlimpseSrc)).text : '';
+check('/networking carries the headline and plays the app: glimpse, Schedule Meeting, Tell your network', (r.text.includes("fetch('/api/events/1/glimpse'") || nwGlimpseJs.includes("fetch('/api/events/1/glimpse'")) && r.text.includes('Business meetings before you arrive at Bharat AI Innovation') &&
   r.text.includes('Schedule Meeting') && r.text.includes('Tell your network'), 'markers');
 
 // The networking app email (3 Nov 2026): its preview and numbers are the admin's;

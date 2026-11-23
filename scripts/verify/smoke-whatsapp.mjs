@@ -261,6 +261,10 @@ check('the button opens their own album and the tap is noted', g.status === 302 
 g = await get('/w/' + row1.id + '-000000000000');
 const g2 = await get('/w/' + (row1.id + 1) + '-' + code1.split('-')[1]);
 check('a guessed or altered link goes to the home page, never to someone’s album', g.headers.get('location') === SITE + '/' && g2.headers.get('location') === SITE + '/', g.headers.get('location'));
+// /w/ is shared with the campus recording links: those must still reach their own route.
+g = await get('/w/jnu');
+const g3 = await get('/w/not-a-report');
+check('a campus recording link (/w/jnu) still plays its video, and an unknown one goes to /insights', g.status === 302 && /youtube\.com\/watch\?v=6tlYBxAPw3g$/.test(g.headers.get('location') || '') && /\/insights#watch$/.test(g3.headers.get('location') || ''), g.headers.get('location') + ' | ' + g3.headers.get('location'));
 
 // ---------- replies, the 24 hours, STOP ----------
 const inMsg = (from, text, id, name = 'Ravi K') => envelope({ contacts: [{ profile: { name }, wa_id: from }], messages: [{ from, id, timestamp: now(), type: 'text', text: { body: text } }] });
