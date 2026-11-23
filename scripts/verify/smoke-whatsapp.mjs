@@ -185,7 +185,7 @@ check('ask WhatsApp: both approved, and the kind Meta chose is shown (it made ph
 
 // A picture or announcement the team writes.
 const store = new Map();
-env.UPLOADS = { async put(key, bytes, o) { store.set(key, { bytes, type: o?.httpMetadata?.contentType }); },
+env.UPLOADS = { async put(key, bytes, o) { store.set(key, { bytes: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), type: o?.httpMetadata?.contentType }); },
   async get(key) { const b = store.get(key); return b ? { arrayBuffer: async () => b.bytes.buffer, httpMetadata: { contentType: b.type }, body: new Response(b.bytes).body, httpEtag: '"e"', writeHttpMetadata() {} } : null; } };
 const JPG = 'data:image/jpeg;base64,' + Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]).toString('base64');
 const good = { title: 'Delhi 2027 dates', body: 'Thank you for being part of Bharat AI Innovation 2026.\n\n\n\nThe next edition is in Delhi on 28 and 29 July 2027.', image: JPG, button_text: 'See Delhi 2027', button_url: SITE + '/delhi' };
@@ -429,6 +429,69 @@ check('MCP: a new key stops the old one', (await mcp(mkey, { jsonrpc: '2.0', id:
 r = await as('POST', '/api/admin/whatsapp/mcp-key', { off: true });
 check('MCP: switched off, nothing gets in', r.json?.mcp?.on === false && (await mcp(mkey, { jsonrpc: '2.0', id: 1, method: 'tools/list' })).status === 401, '');
 check('MCP: making a key is for the team only', (await hit('POST', '/api/admin/whatsapp/mcp-key', {})).status === 401, '');
+
+// ---------- the message builder: video, PDF, words on top, buttons, Hindi, blanks (migration 0066) ----------
+const rawPost = async (path, bytes, type, name) => W.fetchRaw(new Request(SITE + path, { method: 'POST', headers: { ...W.admin, 'Content-Type': type, ...(name ? { 'X-File-Name': encodeURIComponent(name) } : {}) }, body: bytes }));
+const MP4 = new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, ...Array(120).fill(1)]);
+const PDF = new Uint8Array([...Buffer.from('%PDF-1.7\n'), ...Array(120).fill(32)]);
+let up = await rawPost('/api/admin/whatsapp/media', MP4, 'video/mp4', 'Delhi teaser.mp4');
+let upj = await up.json();
+const videoUrl = upj.url;
+check('builder: a video for the top of a message is kept, checked to be a video', up.status === 200 && /^\/api\/uploads\/whatsapp\/[a-f0-9]{20}\.mp4$/.test(upj.url || '') && upj.header === 'video', JSON.stringify(upj));
+up = await rawPost('/api/admin/whatsapp/media', PDF, 'application/pdf', 'Sponsorship deck.pdf');
+upj = await up.json();
+const pdfUrl = upj.url;
+check('builder: a PDF is kept with its name', up.status === 200 && /\.pdf$/.test(upj.url || '') && upj.filename === 'Sponsorship deck.pdf', JSON.stringify(upj));
+check('builder: a file that is not what it says, or another kind, is refused; only the team may add one', (await rawPost('/api/admin/whatsapp/media', PDF, 'video/mp4')).status === 400
+  && (await rawPost('/api/admin/whatsapp/media', PDF, 'text/html')).status === 400 && (await hit('POST', '/api/admin/whatsapp/media', {})).status === 401, '');
+const delhi = { title: 'Delhi invite Hindi', lang: 'hi', greet: true, category: 'MARKETING', body: 'आपका [Pass] [Event] के लिए तैयार है। दिल्ली 2027 में मिलते हैं।', header: { type: 'video', url: videoUrl },
+  buttons: [{ type: 'url', text: 'दिल्ली 2027 देखें', url: SITE + '/delhi' }, { type: 'reply', text: 'हाँ, आऊँगा' }, { type: 'phone', text: 'कॉल करें', phone: '91373 69984' }, { type: 'url', text: 'Brochure', url: SITE + '/brochure.pdf' }] };
+r = await as('POST', '/api/admin/whatsapp/templates', delhi);
+check('builder: before migration 0066, video, Hindi, more buttons and blanks are refused with the command to run', r.status === 409 && /0066_whatsapp_template_spec\.sql/.test(r.json?.command || ''), r.text.slice(0, 200));
+db.exec(read('migrations/0066_whatsapp_template_spec.sql'));
+r = await as('POST', '/api/admin/whatsapp/templates', delhi);
+const hindi = r.json?.name;
+const ht = (r.json?.templates || []).find(x => x.name === hindi);
+check('builder: a Hindi message with a video, blanks and four kinds of button is saved, quick replies first', r.status === 200 && ht?.lang === 'hi' && ht.header.type === 'video' && ht.buttons.map(x => x.type).join() === 'reply,url,url,phone'
+  && ht.preview.startsWith('नमस्ते Asha,\n\nआपका Delegate Pass Bharat AI Innovation 2026 के लिए') && ht.footer === 'ये संदेश बंद करने के लिए STOP लिखें', JSON.stringify(ht).slice(0, 300));
+const badB = [[{ ...delhi, buttons: [0, 1, 2].map(i => ({ type: 'url', text: 'L' + i, url: SITE + '/x' + i })) }, /two link/], [{ ...delhi, buttons: [{ type: 'phone', text: 'A', phone: '9137369984' }, { type: 'phone', text: 'B', phone: '9137369985' }] }, /one call/],
+  [{ ...delhi, buttons: Array.from({ length: 11 }, (_, i) => ({ type: 'reply', text: 'R' + i })) }, /10 buttons/], [{ ...delhi, buttons: [{ type: 'reply', text: 'Yes' }, { type: 'reply', text: 'yes' }] }, /same words/],
+  [{ ...delhi, body: 'We will see you at [Event]' }, /End the message/], [{ ...delhi, header: { type: 'video', url: pdfUrl } }, /video again/], [{ ...delhi, header: { type: 'text', text: '' } }, /top of the message/]];
+let bOk = 0;
+for (const [b, re] of badB) { const x = await as('POST', '/api/admin/whatsapp/templates', b); if (x.status === 400 && re.test(x.json?.error || '')) bOk++; }
+check('builder: refused as Meta would: three links, two calls, eleven buttons, twins, a blank at the end, the wrong file, empty words on top', bOk === badB.length, bOk + ' of ' + badB.length);
+r = await as('POST', `/api/admin/whatsapp/templates/${hindi}/submit`, {});
+const madeH = calls.filter(x => x.path === `${WABA}/message_templates` && x.method === 'POST').pop()?.body;
+const upCall = calls.filter(x => x.path.startsWith(`${APP}/uploads?`)).pop();
+check('builder: Meta gets it in Hindi: the video sample uploaded first, the blanks with samples, the Hindi STOP line, the buttons in order, each link tracked',
+  r.status === 200 && madeH.language === 'hi' && comp(madeH, 'HEADER').format === 'VIDEO' && comp(madeH, 'HEADER').example.header_handle[0] === '4::HANDLE' && /file_type=video%2Fmp4/.test(upCall?.path || '')
+  && comp(madeH, 'BODY').text === 'नमस्ते {{1}},\n\nआपका {{2}} {{3}} के लिए तैयार है। दिल्ली 2027 में मिलते हैं।' && JSON.stringify(comp(madeH, 'BODY').example.body_text[0]) === JSON.stringify(['Asha', 'Delegate Pass', 'Bharat AI Innovation 2026'])
+  && comp(madeH, 'FOOTER').text === 'ये संदेश बंद करने के लिए STOP लिखें' && comp(madeH, 'BUTTONS').buttons.map(x => x.type).join() === 'QUICK_REPLY,URL,URL,PHONE_NUMBER'
+  && comp(madeH, 'BUTTONS').buttons[1].url === SITE + '/w/{{1}}' && comp(madeH, 'BUTTONS').buttons[3].phone_number === '+919137369984', JSON.stringify(madeH).slice(0, 500));
+db.run("UPDATE wa_templates SET status = 'APPROVED' WHERE name = ?", [hindi]);
+let sb = sends().length;
+r = await as('POST', '/api/admin/whatsapp/send', { kind: 'custom', template: hindi, audience: 'one', number: '90000 44444', name: 'Kiran' });
+const hm = sends()[sb]?.body;
+const hbtn = (hm?.template?.components || []).filter(x => x.type === 'button');
+const hrow = msgs("wa_number = '919000044444'").pop();
+check('builder: it goes in Hindi: the video on top, the blanks filled for the person, each link button with its own code', r.status === 200 && hm.template.language.code === 'hi'
+  && hm.template.components[0].parameters[0].video.link === SITE + videoUrl && JSON.stringify(hm.template.components.find(x => x.type === 'body').parameters.map(x => x.text)) === JSON.stringify(['Kiran', 'pass', 'Bharat AI Innovation 2026'])
+  && hbtn.length === 2 && hbtn[0].index === '1' && hbtn[1].index === '2' && new RegExp('^' + hrow.id + '-[0-9a-f]{12}$').test(hbtn[0].parameters[0].text) && hbtn[1].parameters[0].text === hbtn[0].parameters[0].text + 'b1', JSON.stringify(hm?.template).slice(0, 500));
+g = await get('/w/' + hbtn[1].parameters[0].text, { 'User-Agent': 'Mozilla/5.0 (iPhone)' });
+check('builder: the second link button leads to its own page, and the tap is noted', g.status === 302 && g.headers.get('location') === SITE + '/brochure.pdf' && !!msgs('id = ?', [hrow.id])[0].clicked_at, g.headers.get('location'));
+g = await get('/w/' + hbtn[0].parameters[0].text + 'b7');
+check('builder: a made-up button number goes to the home page', g.headers.get('location') === SITE + '/', g.headers.get('location'));
+r = await as('POST', '/api/admin/whatsapp/templates', { title: 'Sponsor deck', greet: true, body: 'Here is our sponsorship deck for Delhi 2027. Reply here with any question.', header: { type: 'document', url: pdfUrl, filename: 'Sponsorship deck' }, buttons: [] });
+const deck = r.json?.name;
+db.run("UPDATE wa_templates SET status = 'APPROVED' WHERE name = ?", [deck]);
+sb = sends().length;
+await as('POST', '/api/admin/whatsapp/send', { kind: 'custom', template: deck, audience: 'one', number: '90000 55555', name: 'Ritu' });
+const dm = sends()[sb]?.body;
+check('builder: a PDF on top goes as a document with its file name', dm?.template?.components?.[0]?.parameters?.[0]?.document?.link === SITE + pdfUrl && dm.template.components[0].parameters[0].document.filename === 'Sponsorship deck.pdf' && dm.template.language.code === 'en', JSON.stringify(dm?.template?.components?.[0]));
+r = await as('POST', '/api/admin/whatsapp/templates', { title: 'Words on top', greet: false, body: 'Delhi 2027 passes open in January. Watch this space for the dates.', header: { type: 'text', text: 'Delhi 2027 *is coming*' } });
+await as('POST', `/api/admin/whatsapp/templates/${r.json?.name}/submit`, {});
+const tmade = calls.filter(x => x.path === `${WABA}/message_templates` && x.method === 'POST').pop()?.body;
+check('builder: words on top go as a text header (formatting marks taken out); no greeting means no blanks', comp(tmade, 'HEADER')?.format === 'TEXT' && comp(tmade, 'HEADER').text === 'Delhi 2027 is coming' && !comp(tmade, 'BODY').example && !/\{\{/.test(comp(tmade, 'BODY').text), JSON.stringify(tmade).slice(0, 300));
 await as('POST', '/api/admin/whatsapp/settings', { sending: 'off' });
 await as('POST', '/api/admin/whatsapp/send', { kind: 'custom', template: custom, audience: 'one', number: '90000 33333', name: 'Kiran' });
 const off = (await as('POST', '/api/admin/whatsapp/send', { kind: 'custom', template: custom, audience: 'list', list: 'Z, 9444400001', expect: 1 })).json?.batch;

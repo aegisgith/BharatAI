@@ -94,6 +94,25 @@
 .wad-bubble p { margin: 6px 6px 4px; font-size: 14px; line-height: 1.4; color: #111b21; overflow-wrap: anywhere; }
 .wad-bubble small { margin: 0 6px 6px; color: #667781; font-size: 12px; }
 .wad-bubble-btn { display: block; margin-top: 4px; padding: 10px 6px; border-top: 1px solid #e9edef; text-align: center; color: #027eb5; font-weight: 600; font-size: 14px; }
+.wad-bubble-btn + .wad-bubble-btn { margin-top: 0; }
+.wad-bubble-top { display: block; margin: 6px 6px 0; font-size: 15px; color: #111b21; }
+/* A video or a PDF on top, as WhatsApp shows them before they load. */
+.wad-media { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 150px; border-radius: 8px; background: #1f2c34; color: #fff; text-align: center; padding: 10px; }
+.wad-media i { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 50%; background: rgba(255, 255, 255, 0.18); font-size: 18px; }
+.wad-media span { font-size: 12px; overflow-wrap: anywhere; opacity: 0.9; }
+.wad-media-doc { min-height: 0; flex-direction: row; justify-content: flex-start; background: #f0f2f5; color: #111b21; }
+.wad-media-doc i { width: 40px; height: 40px; border-radius: 8px; background: #e74c3c; color: #fff; }
+/* The builder: what goes on top, the blanks, the buttons. */
+.wad-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.wad-seg-btn { min-height: 40px; padding: 0 14px; border: 1px solid var(--wa-line); border-radius: 999px; background: #fff; color: var(--wa-ink); font-weight: 600; cursor: pointer; }
+.wad-seg-on { background: var(--wa-ink); border-color: var(--wa-ink); color: #fff; }
+.wad-seg-btn:focus-visible { outline: 3px solid rgba(200, 79, 0, 0.35); outline-offset: 2px; }
+.wad-added { display: flex; align-items: center; gap: 8px; }
+.wad-insert { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: -4px 0 14px; }
+.wad-btn-row { display: grid; grid-template-columns: minmax(110px, 140px) minmax(0, 1fr) minmax(0, 1.4fr) 40px; gap: 6px; align-items: center; margin-bottom: 8px; }
+.wad-btn-row select, .wad-btn-row input { min-height: 40px; padding: 6px 10px; border: 1px solid #c9cede; border-radius: 10px; background: #fff; font-size: 15px; min-width: 0; }
+.wad-btn-row .wad-sub { font-size: 12px; }
+.wad-btn-row .wad-quick-del { border: 1px solid var(--wa-line); border-radius: 10px; min-height: 40px; }
 
 .wad-batch { padding: 12px 0; border-top: 1px solid var(--wa-line); }
 .wad-batch:first-of-type { border-top: 0; }
@@ -175,6 +194,10 @@
   .wad-tab { padding: 0 13px; }
   .wad-review, .wad-split, .wad-tpl { grid-template-columns: minmax(0, 1fr); }
   .wad-bubble { max-width: 100%; }
+  .wad-btn-row { grid-template-columns: minmax(0, 1fr) 40px; }
+  .wad-btn-row select { grid-column: 1; }
+  .wad-btn-row input, .wad-btn-row .wad-sub { grid-column: 1 / -1; }
+  .wad-btn-row .wad-quick-del { grid-column: 2; grid-row: 1; }
   .wad-msg { max-width: 92%; }
   .wad-thread-head .wad-btn { margin-left: 0; }
 }

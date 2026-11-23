@@ -74,15 +74,26 @@
     return ['Finished', 'good'];
   }
 
-  // The message as it looks on a phone.
+  // The message as it looks on a phone: what is on top, the words, the STOP line, the buttons.
+  var BTN_ICON = { url: 'fa-arrow-up-right-from-square', phone: 'fa-phone', reply: 'fa-reply' };
   function bubble(p) {
     if (!p) return '';
-    return '<div class="wad-phone"><div class="wad-bubble">'
-      + (p.image ? '<img src="' + esc(p.image) + '" alt="" loading="lazy">' : '')
+    var h = p.header || {};
+    var top = p.image || (h.type === 'image' && h.url) ? '<img src="' + esc(p.image || h.url) + '" alt="" loading="lazy">'
+      : h.type === 'video' ? '<div class="wad-media"><i class="fas fa-play" aria-hidden="true"></i><span>' + esc(h.filename || 'Video') + '</span></div>'
+      : h.type === 'document' ? '<div class="wad-media wad-media-doc"><i class="fas fa-file" aria-hidden="true"></i><span>' + esc(h.filename || 'Document.pdf') + '</span></div>'
+      : h.type === 'text' && h.text ? '<b class="wad-bubble-top">' + esc(h.text) + '</b>' : '';
+    var btns = p.buttons && p.buttons.length ? p.buttons : (p.button ? [{ type: 'url', text: p.button }] : []);
+    return '<div class="wad-phone"><div class="wad-bubble">' + top
       + '<p>' + esc(p.text).replace(/\n/g, '<br>') + '</p>'
       + (p.footer ? '<small>' + esc(p.footer) + '</small>' : '')
-      + (p.button ? '<span class="wad-bubble-btn"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i> ' + esc(p.button) + '</span>' : '')
+      + btns.map(function (b) { return '<span class="wad-bubble-btn"><i class="fas ' + (BTN_ICON[b.type] || BTN_ICON.url) + '" aria-hidden="true"></i> ' + esc(b.text || '...') + '</span>'; }).join('')
       + '</div></div>';
+  }
+  var FIELD_SAMPLE = { name: 'Asha', pass: 'Delegate Pass', event: 'Bharat AI Innovation 2026' };
+  var FOOTER_FOR = { en: 'Reply STOP to stop these messages', hi: 'ये संदेश बंद करने के लिए STOP लिखें' };
+  function sortButtons(list) {
+    return list.filter(function (b) { return b.type === 'reply'; }).concat(list.filter(function (b) { return b.type === 'url'; }), list.filter(function (b) { return b.type === 'phone'; }));
   }
 
   // ---------- top ----------
@@ -343,35 +354,67 @@
         + '<p class="wad-sub">' + esc(categoryWords(t.meta_category || t.category)) + '</p>'
         + (t.rejected_reason ? '<p class="wad-bad">WhatsApp&rsquo;s reason: ' + esc(t.rejected_reason) + '</p>' : '')
         + '<div class="wad-actions">' + act + '</div></div>'
-        + '<div>' + bubble({ text: t.preview, image: t.image_url, footer: t.footer, button: t.button }) + '</div></div>';
+        + (t.lang === 'hi' ? '<p class="wad-sub">हिन्दी</p>' : '')
+        + '<div>' + bubble({ text: t.preview, header: t.header, image: t.image_url, footer: t.footer, buttons: t.buttons, button: t.button }) + '</div></div>';
     }).join('');
     return '<div class="wad-card"><div class="wad-card-head"><h2>Messages WhatsApp must approve</h2>'
       + '<p>WhatsApp only lets a business start a conversation with words it has approved. Send each one for approval once; it usually takes a few minutes, sometimes a few hours. After that it can be sent as often as you like.</p></div>'
-      + '<div class="wad-actions"><button class="wad-btn wad-primary" data-act="tpl-new">Write a picture or announcement</button><button class="wad-btn" data-act="tpl-refresh">Ask WhatsApp for the latest</button></div>'
+      + '<div class="wad-actions"><button class="wad-btn wad-primary" data-act="tpl-new">Write a new message</button><button class="wad-btn" data-act="tpl-refresh">Ask WhatsApp for the latest</button></div>'
       + (form ? formHtml() : '') + cards + '</div>';
   }
 
+  // The message builder. form.header: { type, url, filename, text }; form.buttons: [{ type, text, url, phone }].
+  var TOPS = [['none', 'Nothing'], ['image', 'Picture'], ['video', 'Video'], ['document', 'PDF'], ['text', 'Words']];
+  var TOP_FILE = { image: ['image/jpeg,image/png', 'A JPG or PNG picture, 5 MB at most'], video: ['video/mp4', 'An MP4 video, 16 MB at most. Short and vertical works best for reels.'], document: ['application/pdf', 'A PDF, 15 MB at most: a deck, a brochure, an agenda'] };
   function formHtml() {
-    var f = form;
-    return '<form class="wad-form" data-form="tpl"><h3>' + (f.replace ? 'Change this message' : 'A new picture or announcement') + '</h3>'
+    var f = form, h = f.header || { type: 'none' }, hi = f.lang === 'hi';
+    var top = '<div class="wad-field"><span>On top of the message</span><div class="wad-seg" role="radiogroup" aria-label="On top of the message">' + TOPS.map(function (x) {
+      return '<button type="button" role="radio" aria-checked="' + (h.type === x[0]) + '" class="wad-seg-btn' + (h.type === x[0] ? ' wad-seg-on' : '') + '" data-act="form-top" data-top="' + x[0] + '">' + x[1] + '</button>';
+    }).join('') + '</div></div>';
+    if (TOP_FILE[h.type]) {
+      top += h.url
+        ? '<p class="wad-sub wad-added"><i class="fas ' + (h.type === 'image' ? 'fa-image' : h.type === 'video' ? 'fa-play' : 'fa-file') + '" aria-hidden="true"></i> ' + esc(h.filename || 'Added') + ' <button type="button" class="wad-link" data-act="form-nofile">Remove</button></p>'
+          + (h.type === 'document' ? '<label class="wad-field"><span>The file name people see</span><input type="text" maxlength="60" data-form-field="header.filename" value="' + esc(h.filename || '') + '" placeholder="Bharat AI Innovation sponsorship deck.pdf"></label>' : '')
+        : '<label class="wad-field"><span>' + esc(TOP_FILE[h.type][1]) + '</span><input type="file" accept="' + TOP_FILE[h.type][0] + '" data-form-field="headerFile"' + (f.uploading ? ' disabled' : '') + '></label>'
+          + (f.uploading ? '<p class="wad-sub">Adding the file...</p>' : '');
+    } else if (h.type === 'text') {
+      top += '<label class="wad-field"><span>Words on top, in bold (60 letters at most)</span><input type="text" maxlength="60" data-form-field="header.text" value="' + esc(h.text || '') + '" placeholder="Delhi 2027 is coming"></label>';
+    }
+    var btns = f.buttons || [];
+    var nUrl = btns.filter(function (b) { return b.type === 'url'; }).length, nPhone = btns.filter(function (b) { return b.type === 'phone'; }).length;
+    var rows = btns.map(function (b, i) {
+      return '<div class="wad-btn-row"><select data-form-field="btn.' + i + '.type" aria-label="Kind of button ' + (i + 1) + '">'
+        + [['reply', 'Quick reply'], ['url', 'Link'], ['phone', 'Call']].map(function (o) { return '<option value="' + o[0] + '"' + (b.type === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>'
+        + '<input type="text" maxlength="25" data-form-field="btn.' + i + '.text" value="' + esc(b.text || '') + '" placeholder="' + (b.type === 'reply' ? (hi ? 'हाँ, मैं आऊँगा' : 'Yes, I am coming') : b.type === 'phone' ? 'Call us' : 'See Delhi 2027') + '" aria-label="Button ' + (i + 1) + ' words">'
+        + (b.type === 'url' ? '<input type="url" data-form-field="btn.' + i + '.url" value="' + esc(b.url || '') + '" placeholder="https://bharataiinnovation.com/delhi" aria-label="Button ' + (i + 1) + ' link">'
+          : b.type === 'phone' ? '<input type="tel" data-form-field="btn.' + i + '.phone" value="' + esc(b.phone || '') + '" placeholder="+91 91373 69984" aria-label="Button ' + (i + 1) + ' number">' : '<span class="wad-sub">Their tap comes back to Replies as their answer.</span>')
+        + '<button type="button" class="wad-quick-del" data-act="form-btn-del" data-i="' + i + '" aria-label="Remove button ' + (i + 1) + '">&times;</button></div>';
+    }).join('');
+    return '<form class="wad-form" data-form="tpl"><h3>' + (f.replace ? 'Change this message' : 'A new message') + '</h3>'
       + '<div class="wad-review"><div>'
       + '<label class="wad-field"><span>A short name for it (only you see this)</span><input type="text" data-form-field="title" maxlength="60" value="' + esc(f.title) + '" placeholder="Delhi 2027 dates"></label>'
-      + '<label class="wad-field"><span>Picture (JPG or PNG). Leave empty for words only</span><input type="file" accept="image/jpeg,image/png" data-form-field="file"></label>'
-      + (f.image || f.image_url ? '<p class="wad-sub">Picture added. <button type="button" class="wad-link" data-act="form-nopic">Remove it</button></p>' : '')
-      + '<label class="wad-check"><input type="checkbox" data-form-field="greet"' + (f.greet ? ' checked' : '') + '> Start with &ldquo;Hello&rdquo; and their name</label>'
-      + '<label class="wad-field"><span>The message (' + (900 - f.body.length) + ' letters left)</span><textarea rows="6" maxlength="900" data-form-field="body" placeholder="Thank you for being part of Bharat AI Innovation 2026 in Mumbai. The next edition is in Delhi on 28 and 29 July 2027.">' + esc(f.body) + '</textarea></label>'
-      + '<div class="wad-two"><label class="wad-field"><span>Button words (optional)</span><input type="text" maxlength="25" data-form-field="button_text" value="' + esc(f.button_text) + '" placeholder="See Delhi 2027"></label>'
-      + '<label class="wad-field"><span>Button link</span><input type="url" data-form-field="button_url" value="' + esc(f.button_url) + '" placeholder="https://bharataiinnovation.com/delhi"></label></div>'
+      + '<div class="wad-two"><label class="wad-field"><span>Language</span><select data-form-field="lang"><option value="en"' + (hi ? '' : ' selected') + '>English</option><option value="hi"' + (hi ? ' selected' : '') + '>हिन्दी (Hindi)</option></select></label>'
       + '<label class="wad-field"><span>What kind of message is it?</span><select data-form-field="category">'
-      + '<option value="MARKETING"' + (f.category === 'MARKETING' ? ' selected' : '') + '>News, an invitation or an offer (marketing)</option>'
-      + '<option value="UTILITY"' + (f.category === 'UTILITY' ? ' selected' : '') + '>About their own registration, pass or booking (service)</option></select></label>'
-      + '<p class="wad-sub">WhatsApp decides the kind in the end. Calling an invitation a service message gets it refused.</p>'
-      + '<div class="wad-actions"><button type="submit" class="wad-btn wad-primary"' + (busy ? ' disabled' : '') + '>Save</button><button type="button" class="wad-btn" data-act="form-cancel">Cancel</button></div>'
+      + '<option value="MARKETING"' + (f.category === 'MARKETING' ? ' selected' : '') + '>News, an invitation or an offer</option>'
+      + '<option value="UTILITY"' + (f.category === 'UTILITY' ? ' selected' : '') + '>About their own registration, pass or booking</option></select></label></div>'
+      + top
+      + '<label class="wad-check"><input type="checkbox" data-form-field="greet"' + (f.greet ? ' checked' : '') + '> Start with &ldquo;' + (hi ? 'नमस्ते' : 'Hello') + '&rdquo; and their name</label>'
+      + '<label class="wad-field"><span>The message (' + (900 - f.body.length) + ' letters left)</span><textarea rows="6" maxlength="900" data-form-field="body" placeholder="' + (hi ? 'मुंबई में भारत AI इनोवेशन 2026 का हिस्सा बनने के लिए धन्यवाद।' : 'Thank you for being part of Bharat AI Innovation 2026 in Mumbai. The next edition is in Delhi.') + '">' + esc(f.body) + '</textarea></label>'
+      + '<div class="wad-insert"><span class="wad-sub">Put in, for each person:</span>' + [['[Name]', 'Their name'], ['[Pass]', 'Their pass'], ['[Event]', 'The event']].map(function (x) {
+        return '<button type="button" class="wad-filter" data-act="form-insert" data-token="' + x[0] + '"><i class="fas fa-plus" aria-hidden="true"></i> ' + x[1] + '</button>';
+      }).join('') + '</div>'
+      + '<div class="wad-field"><span>Buttons (optional): quick replies, up to two links and one call; ten in all</span>' + rows
+      + '<div class="wad-actions">' + [['reply', 'Quick reply', btns.length < 10], ['url', 'Link', btns.length < 10 && nUrl < 2], ['phone', 'Call', btns.length < 10 && nPhone < 1]].map(function (x) {
+        return '<button type="button" class="wad-btn wad-small" data-act="form-btn-add" data-type="' + x[0] + '"' + (x[2] ? '' : ' disabled') + '><i class="fas fa-plus" aria-hidden="true"></i> ' + x[1] + '</button>';
+      }).join('') + '</div></div>'
+      + '<p class="wad-sub">WhatsApp decides the kind in the end. Calling an invitation a service message gets it refused. Every message ends with &ldquo;' + esc(FOOTER_FOR[f.lang] || FOOTER_FOR.en) + '&rdquo;.</p>'
+      + '<div class="wad-actions"><button type="submit" class="wad-btn wad-primary"' + (busy || f.uploading ? ' disabled' : '') + '>Save</button><button type="button" class="wad-btn" data-act="form-cancel">Cancel</button></div>'
       + '</div><div><p class="wad-sub">How it will read:</p><div data-form-preview>' + formPreview() + '</div></div></div></form>';
   }
   function formPreview() {
-    var f = form || {};
-    return bubble({ image: f.image || f.image_url || '', text: (f.greet ? 'Hello Asha,\n\n' : '') + (f.body || 'Your message shows here.'), footer: (D && D.footer) || '', button: f.button_text });
+    var f = form || {}, hi = f.lang === 'hi';
+    var words = (f.body || (hi ? 'आपका संदेश यहाँ दिखेगा।' : 'Your message shows here.')).replace(/\[(name|pass|event)\]/gi, function (_m, k) { return FIELD_SAMPLE[k.toLowerCase()]; });
+    return bubble({ header: f.header, text: (f.greet ? (hi ? 'नमस्ते Asha,\n\n' : 'Hello Asha,\n\n') : '') + words, footer: FOOTER_FOR[f.lang] || FOOTER_FOR.en, buttons: sortButtons(f.buttons || []) });
   }
 
   // ---------- Setup ----------
@@ -660,16 +703,33 @@
       });
       return;
     }
-    if (act === 'tpl-new') { form = { title: '', body: '', greet: true, image: '', image_url: '', button_text: '', button_url: '', category: 'MARKETING', replace: '' }; draw(); return; }
+    if (act === 'tpl-new') { form = { title: '', lang: 'en', body: '', greet: true, header: { type: 'none' }, buttons: [], category: 'MARKETING', replace: '', uploading: false }; draw(); return; }
     if (act === 'tpl-edit' || act === 'tpl-copy') {
       var src = ((D && D.templates) || []).filter(function (x) { return x.name === t.getAttribute('data-name'); })[0];
       if (!src) return;
-      var greets = /^Hello \{\{1\}\},\n\n/.test(src.text);
-      form = { title: src.title, body: src.text.replace(/^Hello \{\{1\}\},\n\n/, ''), greet: greets, image: '', image_url: src.image_url || '', button_text: src.button || '', button_url: src.button_url || '', category: src.category, replace: act === 'tpl-edit' ? src.name : '' };
+      var hd = src.header || (src.image_url ? { type: 'image', url: src.image_url } : { type: 'none' });
+      form = { title: src.title, lang: src.lang || 'en', body: src.body != null ? src.body : src.text.replace(/^(Hello|नमस्ते) \{\{1\}\},\n\n/, ''), greet: src.greet !== false,
+        header: { type: hd.type || 'none', url: hd.url || '', filename: hd.filename || (hd.type === 'image' ? 'Picture' : ''), text: hd.text || '' },
+        buttons: (src.buttons || (src.button ? [{ type: 'url', text: src.button, url: src.button_url }] : [])).map(function (b) { return { type: b.type, text: b.text || '', url: b.url || '', phone: b.phone || '' }; }),
+        category: src.category, replace: act === 'tpl-edit' ? src.name : '', uploading: false };
       draw(); return;
     }
     if (act === 'form-cancel') { form = null; draw(); return; }
-    if (act === 'form-nopic') { form.image = ''; form.image_url = ''; draw(); return; }
+    if (act === 'form-top') { form.header = { type: t.getAttribute('data-top'), url: '', filename: '', text: form.header && form.header.type === 'text' ? form.header.text : '' }; draw(); return; }
+    if (act === 'form-nofile') { form.header.url = ''; form.header.filename = ''; draw(); return; }
+    if (act === 'form-insert') {
+      var ta = host.querySelector('[data-form-field="body"]'), tok = t.getAttribute('data-token');
+      if (!ta) return;
+      var at = typeof ta.selectionStart === 'number' ? ta.selectionStart : ta.value.length, endAt = typeof ta.selectionEnd === 'number' ? ta.selectionEnd : at;
+      var before = ta.value.slice(0, at), pad = before && !/\s$/.test(before) ? ' ' : '';
+      ta.value = before + pad + tok + ' ' + ta.value.slice(endAt);
+      form.body = ta.value;
+      ta.focus(); var caret = (before + pad + tok + ' ').length; try { ta.setSelectionRange(caret, caret); } catch (err) { /* old browser */ }
+      var pv = host.querySelector('[data-form-preview]'); if (pv) pv.innerHTML = formPreview();
+      return;
+    }
+    if (act === 'form-btn-add') { form.buttons = (form.buttons || []).concat([{ type: t.getAttribute('data-type'), text: '', url: '', phone: '' }]); draw(); return; }
+    if (act === 'form-btn-del') { form.buttons.splice(Number(t.getAttribute('data-i')), 1); draw(); return; }
     if (act === 'tpl-submit') {
       await work(async function () { var r = await opts.api.post('/api/admin/whatsapp/templates/' + encodeURIComponent(t.getAttribute('data-name')) + '/submit', {}); D.templates = r.templates; toast(r.status === 'APPROVED' ? 'Approved. It can be sent now.' : 'Sent to WhatsApp. It usually answers within minutes; press "Ask WhatsApp for the latest" to see.'); });
       return;
@@ -731,17 +791,55 @@
     if (f === 'pickTpl') { pickTpl = el.value; return; }
     var ff = el.getAttribute && el.getAttribute('data-form-field');
     if (ff && form) {
-      if (ff === 'file') { readPicture(el.files && el.files[0]).then(function (data) { form.image = data; form.image_url = ''; draw(); }).catch(fail); return; }
-      form[ff] = el.type === 'checkbox' ? el.checked : el.value;
+      if (ff === 'headerFile') { if (e.type === 'change') addHeaderFile(el.files && el.files[0]); return; }
+      var val1 = el.type === 'checkbox' ? el.checked : el.value;
+      var bm = /^btn\.(\d+)\.(type|text|url|phone)$/.exec(ff), hm = /^header\.(text|filename)$/.exec(ff);
+      if (bm) {
+        var bb = form.buttons[Number(bm[1])];
+        if (!bb) return;
+        bb[bm[2]] = val1;
+        // A new kind of button shows other boxes; typing only changes the preview.
+        if (bm[2] === 'type') { if (e.type === 'change') draw(); return; }
+      } else if (hm) form.header[hm[1]] = val1;
+      else {
+        form[ff] = val1;
+        if ((ff === 'lang' || ff === 'greet') && e.type === 'change') { draw(); return; }
+      }
       var p = host.querySelector('[data-form-preview]');
       if (p) p.innerHTML = formPreview();
     }
   }
+  // A picture, video or PDF goes to the server as the file itself; a picture is made a
+  // sensible size first. The form keeps only where it is stored.
+  var MAX_BYTES = { video: 16 * 1024 * 1024, document: 15 * 1024 * 1024 };
+  async function addHeaderFile(file) {
+    if (!file || !form) return;
+    var kind = form.header.type;
+    try {
+      var body = file, type = file.type;
+      if (kind === 'image') { var data = await readPicture(file); body = await (await w.fetch(data)).blob(); type = 'image/jpeg'; }
+      else if (kind === 'video' && type !== 'video/mp4') throw new Error('The video must be an MP4.');
+      else if (kind === 'document' && type !== 'application/pdf') throw new Error('Choose a PDF.');
+      if (MAX_BYTES[kind] && file.size > MAX_BYTES[kind]) throw new Error(kind === 'video' ? 'The video is over 16 MB, WhatsApp’s limit. Make it shorter or smaller.' : 'The PDF is over 15 MB. Use a smaller one.');
+      form.uploading = true; draw();
+      var res = await w.fetch('/api/admin/whatsapp/media', { method: 'POST', headers: Object.assign({}, opts.authHeaders ? opts.authHeaders() : {}, { 'Content-Type': type, 'X-File-Name': encodeURIComponent(file.name || '') }), body: body });
+      var j = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(j.error || 'The file could not be added.');
+      if (form && form.header.type === kind) { form.header.url = j.url; form.header.filename = kind === 'document' ? (j.filename || 'Document.pdf') : (j.filename || (kind === 'video' ? 'Video' : 'Picture')); }
+      toast('Added.');
+    } catch (err) { fail(err); }
+    if (form) form.uploading = false;
+    draw();
+  }
   async function onSubmit(e) {
     if (!e.target.getAttribute || e.target.getAttribute('data-form') !== 'tpl') return;
     e.preventDefault();
+    var h = form.header || { type: 'none' };
+    if ((h.type === 'image' || h.type === 'video' || h.type === 'document') && !h.url) { toast('Add the ' + (h.type === 'image' ? 'picture' : h.type === 'video' ? 'video' : 'PDF') + ', or choose Nothing on top.', 'error'); return; }
     await work(async function () {
-      var r = await opts.api.post('/api/admin/whatsapp/templates', { title: form.title, body: form.body, greet: !!form.greet, image: form.image, image_url: form.image_url, button_text: form.button_text, button_url: form.button_url, category: form.category, replace: form.replace });
+      var r = await opts.api.post('/api/admin/whatsapp/templates', { title: form.title, lang: form.lang, body: form.body, greet: !!form.greet, category: form.category, replace: form.replace,
+        header: { type: h.type, url: h.url || '', filename: h.filename || '', text: h.text || '' },
+        buttons: (form.buttons || []).map(function (b) { return { type: b.type, text: b.text, url: b.url, phone: b.phone }; }) });
       D.templates = r.templates; form = null;
       toast('Saved. Press "Send to WhatsApp for approval" on it when you are happy with it.');
     });

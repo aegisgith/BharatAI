@@ -81,28 +81,57 @@ const note = async (c: any, action: string, id: any, detail: any) => { if (hooks
 
 // The built-in messages. The name carries a version: Meta does not let an approved
 // message's words change freely, so a new wording is a new name (_v2).
+// A message's top part: a picture, a video, a PDF, a line of words, or nothing.
+export type Header = { type: 'none' | 'image' | 'video' | 'document' | 'text'; url?: string; filename?: string; text?: string }
+// A button: a link (each one's tap is noted), a call, or a quick reply that comes back as their answer.
+export type Btn = { type: 'url' | 'phone' | 'reply'; text: string; url?: string; phone?: string }
 export type Tpl = { name: string; builtin: boolean; kind: 'photos' | 'pass' | 'custom'; title: string; category: 'MARKETING' | 'UTILITY'; text: string;
-  image: boolean; imageUrl: string; button: string; buttonUrl: string; samples: string[]; what: string }
+  image: boolean; imageUrl: string; button: string; buttonUrl: string; samples: string[]; what: string
+  lang: 'en' | 'hi'; header: Header; buttons: Btn[]; fields: string[]; greet: boolean; body: string }
 export const BUILT_IN: Record<string, Tpl> = {
   bhai_event_photos_v1: { name: 'bhai_event_photos_v1', builtin: true, kind: 'photos', title: 'Your photos from the event', category: 'UTILITY',
     text: 'Hello {{1}}, we found {{2}} of you at Bharat AI Innovation 2026 in Mumbai. Tap the button to see them and save the ones you like.',
     image: true, imageUrl: '/images/og/gallery.jpg', button: 'See my photos', buttonUrl: '', samples: ['Asha', '12 photos'],
-    what: 'One photo of the person, and a button to their own album.' },
+    what: 'One photo of the person, and a button to their own album.',
+    lang: 'en', header: { type: 'image', url: '/images/og/gallery.jpg' }, buttons: [{ type: 'url', text: 'See my photos', url: '' }], fields: [], greet: true, body: '' },
   bhai_event_pass_v1: { name: 'bhai_event_pass_v1', builtin: true, kind: 'pass', title: 'Your pass is ready', category: 'UTILITY',
     text: 'Hello {{1}}, your {{2}} for {{3}} is ready. Tap the button to open it on your phone, and show the QR code at the entry desk.',
     image: false, imageUrl: '', button: 'Open my pass', buttonUrl: '', samples: ['Asha', 'Delegate Pass', 'Bharat AI Innovation 2026'],
-    what: 'Tells them their pass is ready, with a button that opens it.' },
+    what: 'Tells them their pass is ready, with a button that opens it.',
+    lang: 'en', header: { type: 'none' }, buttons: [{ type: 'url', text: 'Open my pass', url: '' }], fields: [], greet: true, body: '' },
 }
 export const TEMPLATE_FOR: Record<string, string> = { photos: 'bhai_event_photos_v1', pass: 'bhai_event_pass_v1' }
 
+// The blanks a team member can put in a message besides the greeting, and how they read
+// in Meta's sample. In the words they are written [Name], [Pass], [Event].
+export const FIELDS: Record<string, string> = { name: 'Asha', pass: 'Delegate Pass', event: 'Bharat AI Innovation 2026' }
+const TOKEN_RE = /\[(name|pass|event)\]/gi
+export const GREETING: Record<string, string> = { en: 'Hello {{1}},\n\n', hi: 'नमस्ते {{1}},\n\n' }
+export const FOOTERS: Record<string, string> = { en: 'Reply STOP to stop these messages', hi: 'ये संदेश बंद करने के लिए STOP लिखें' }
+// Meta's rule: quick replies stay together; links and a call follow. The order Meta gets is
+// the order of the button indexes when we send.
+export function orderedButtons(list: Btn[]): Btn[] { return [...list.filter(b => b.type === 'reply'), ...list.filter(b => b.type === 'url'), ...list.filter(b => b.type === 'phone')] }
+
 // A picture or announcement the team wrote, as a template. With greet, the words Meta
-// approves start "Hello {{1}}," and the person's name is the only blank.
+// approves start "Hello {{1}}," and [Name] / [Pass] / [Event] become the next blanks.
+// `spec` (migration 0066) holds the language, a video, PDF or words on top, and the buttons.
 export function customTpl(r: any): Tpl {
+  let spec: any = {}
+  try { spec = r.spec ? JSON.parse(r.spec) || {} : {} } catch { spec = {} }
+  const lang: 'en' | 'hi' = spec.lang === 'hi' ? 'hi' : 'en'
   const greet = Number(r.greet ?? 1) === 1
   const body = String(r.body || '').trim()
+  const fields: string[] = []
+  let n = greet ? 1 : 0
+  const numbered = body.replace(TOKEN_RE, (_m, f) => { fields.push(String(f).toLowerCase()); return '{{' + (++n) + '}}' })
+  const header: Header = spec.header && ['image', 'video', 'document', 'text'].includes(spec.header.type) ? spec.header
+    : r.image_url ? { type: 'image', url: String(r.image_url) } : { type: 'none' }
+  const buttons: Btn[] = Array.isArray(spec.buttons) ? spec.buttons : r.button_text ? [{ type: 'url', text: String(r.button_text), url: String(r.button_url || '') }] : []
+  const firstUrl = orderedButtons(buttons).find(b => b.type === 'url')
   return { name: String(r.name), builtin: false, kind: 'custom', title: String(r.title || r.name), category: String(r.category) === 'UTILITY' ? 'UTILITY' : 'MARKETING',
-    text: (greet ? 'Hello {{1}},\n\n' : '') + body, image: !!r.image_url, imageUrl: String(r.image_url || ''), button: String(r.button_text || ''), buttonUrl: String(r.button_url || ''),
-    samples: greet ? ['Asha'] : [], what: '' }
+    text: (greet ? GREETING[lang] : '') + numbered, image: header.type === 'image', imageUrl: header.type === 'image' ? String(header.url || '') : '',
+    button: firstUrl ? firstUrl.text : '', buttonUrl: firstUrl ? String(firstUrl.url || '') : '',
+    samples: [...(greet ? [FIELDS.name] : []), ...fields.map(f => FIELDS[f])], what: '', lang, header, buttons, fields, greet, body }
 }
 
 // The words with the blanks filled, as the person reads them.
@@ -115,12 +144,24 @@ export const photoWords = (n: number) => (n === 1 ? '1 photo' : n + ' photos')
 // What we send Meta to have a message approved.
 export function metaTemplate(t: Tpl, handle: string) {
   const comps: any[] = []
-  if (t.image) comps.push({ type: 'HEADER', format: 'IMAGE', example: { header_handle: [handle] } })
+  const h = t.header?.type || (t.image ? 'image' : 'none')
+  if (h === 'image' || h === 'video' || h === 'document') comps.push({ type: 'HEADER', format: h.toUpperCase(), example: { header_handle: [handle] } })
+  else if (h === 'text' && t.header.text) comps.push({ type: 'HEADER', format: 'TEXT', text: String(t.header.text) })
   const body: any = { type: 'BODY', text: t.text }
   if (t.samples.length) body.example = { body_text: [t.samples] }
-  comps.push(body, { type: 'FOOTER', text: FOOTER })
-  if (t.button) comps.push({ type: 'BUTTONS', buttons: [{ type: 'URL', text: t.button, url: SITE + '/w/{{1}}', example: ['1-abc123def456'] }] })
-  return { name: t.name, language: 'en', category: t.category, components: comps }
+  comps.push(body, { type: 'FOOTER', text: FOOTERS[t.lang] || FOOTER })
+  const list = orderedButtons(t.buttons || [])
+  if (list.length) comps.push({ type: 'BUTTONS', buttons: list.map(b => b.type === 'reply' ? { type: 'QUICK_REPLY', text: b.text }
+    : b.type === 'phone' ? { type: 'PHONE_NUMBER', text: b.text, phone_number: String(b.phone || '') }
+    : { type: 'URL', text: b.text, url: SITE + '/w/{{1}}', example: ['1-abc123def456'] }) })
+  return { name: t.name, language: t.lang || 'en', category: t.category, components: comps }
+}
+// Where each link button sits among the buttons, and where it leads: the first link's
+// tap is /w/<code>, the second's /w/<code>b1.
+export function urlButtons(t: Tpl): { index: number; n: number; target: string }[] {
+  const out: { index: number; n: number; target: string }[] = []
+  orderedButtons(t.buttons || []).forEach((b, i) => { if (b.type === 'url') out.push({ index: i, n: out.length, target: String(b.url || '') }) })
+  return out
 }
 
 // What we send Meta to send one message.
@@ -130,10 +171,14 @@ export function metaMessage(row: any, code: string) {
   const base = { messaging_product: 'whatsapp', recipient_type: 'individual', to: String(row.wa_number) }
   if (row.template) {
     const comps: any[] = []
-    if (p.image) comps.push({ type: 'header', parameters: [{ type: 'image', image: { link: p.image } }] })
+    if (p.header?.type === 'video') comps.push({ type: 'header', parameters: [{ type: 'video', video: { link: p.header.link } }] })
+    else if (p.header?.type === 'document') comps.push({ type: 'header', parameters: [{ type: 'document', document: { link: p.header.link, filename: String(p.header.filename || 'document.pdf') } }] })
+    else if (p.image) comps.push({ type: 'header', parameters: [{ type: 'image', image: { link: p.image } }] })
     if (Array.isArray(p.params) && p.params.length) comps.push({ type: 'body', parameters: p.params.map((t: string) => ({ type: 'text', text: String(t) })) })
-    if (p.button) comps.push({ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: code }] })
-    return { ...base, type: 'template', template: { name: row.template, language: { code: 'en' }, components: comps } }
+    if (Array.isArray(p.urls) && p.urls.length) {
+      for (const u of p.urls) comps.push({ type: 'button', sub_type: 'url', index: String(u.index), parameters: [{ type: 'text', text: code + (u.n ? 'b' + u.n : '') }] })
+    } else if (p.button) comps.push({ type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: code }] })
+    return { ...base, type: 'template', template: { name: row.template, language: { code: String(p.lang || 'en') }, components: comps } }
   }
   if (p.image) return { ...base, type: 'image', image: { link: p.image, caption: String(p.text || '').slice(0, 1024) } }
   return { ...base, type: 'text', text: { preview_url: false, body: String(p.text || '').slice(0, 4096) } }
@@ -307,8 +352,9 @@ async function templateRows(c: any): Promise<any[]> { return all(c, 'SELECT * FR
 function shapeTemplates(rows: any[]): any[] {
   const by = new Map(rows.map(r => [String(r.name), r]))
   const out: any[] = []
-  const shape = (t: Tpl, r: any) => ({ name: t.name, builtin: t.builtin, kind: t.kind, title: t.title, what: t.what, category: t.category, text: t.text, footer: FOOTER,
+  const shape = (t: Tpl, r: any) => ({ name: t.name, builtin: t.builtin, kind: t.kind, title: t.title, what: t.what, category: t.category, text: t.text, footer: FOOTERS[t.lang] || FOOTER,
     image: t.image, image_url: t.imageUrl, button: t.button, button_url: t.buttonUrl, samples: t.samples, preview: fill(t.text, t.samples),
+    lang: t.lang, header: t.header, buttons: orderedButtons(t.buttons || []), greet: t.greet, body: t.body,
     status: String(r?.status || 'draft'), meta_category: r?.meta_category || '', rejected_reason: r?.rejected_reason || '', submitted_at: r?.submitted_at || '', created_at: r?.created_at || '' })
   for (const t of Object.values(BUILT_IN)) out.push(shape(t, by.get(t.name)))
   for (const r of rows) if (!Number(r.builtin) && !BUILT_IN[String(r.name)]) out.push(shape(customTpl(r), r))
@@ -327,7 +373,7 @@ async function refreshTemplates(c: any, cfg: Cfg): Promise<string> {
   const mine = new Set((await templateRows(c)).map(x => String(x.name)))
   for (const t of (r.json?.data || []) as any[]) {
     const name = String(t.name || '')
-    if (!/^en/i.test(String(t.language || 'en'))) continue
+    if (!/^(en|hi)/i.test(String(t.language || 'en'))) continue
     if (BUILT_IN[name] && !mine.has(name)) { await run(c, "INSERT OR IGNORE INTO wa_templates (name, builtin, title, category, status) VALUES (?, 1, ?, ?, 'draft')", name, BUILT_IN[name].title, BUILT_IN[name].category); mine.add(name) }
     if (!mine.has(name)) continue
     const why = String(t.rejected_reason || '')
@@ -342,7 +388,7 @@ async function pictureBytes(c: any, url: string): Promise<{ bytes: ArrayBuffer; 
     if (url.startsWith('/api/uploads/')) {
       const obj = c.env.UPLOADS ? await c.env.UPLOADS.get(url.slice('/api/uploads/'.length)) : null
       if (!obj) return null
-      return { bytes: await obj.arrayBuffer(), type: obj.httpMetadata?.contentType || (/\.png$/i.test(url) ? 'image/png' : 'image/jpeg') }
+      return { bytes: await obj.arrayBuffer(), type: obj.httpMetadata?.contentType || MEDIA_TYPE[(/\.([a-z0-9]+)$/i.exec(url)?.[1] || 'jpg').toLowerCase()] || 'image/jpeg' }
     }
     const req = new Request(SITE + url)
     const res = c.env.ASSETS ? await c.env.ASSETS.fetch(req) : await fetch(req)
@@ -350,18 +396,27 @@ async function pictureBytes(c: any, url: string): Promise<{ bytes: ArrayBuffer; 
     return { bytes: await res.arrayBuffer(), type: /\.png$/i.test(url) ? 'image/png' : 'image/jpeg' }
   } catch { return null }
 }
-// Meta wants a sample picture uploaded to it before it reviews a message that has one.
+// The files a message may carry on top: WhatsApp's own limits, and what the file is.
+const MEDIA_TYPE: Record<string, string> = { jpg: 'image/jpeg', png: 'image/png', mp4: 'video/mp4', pdf: 'application/pdf' }
+const MEDIA_RULE: Record<string, { ext: string; header: Header['type']; max: number; words: string }> = {
+  'image/jpeg': { ext: 'jpg', header: 'image', max: 5 * 1024 * 1024, words: 'a picture (5 MB at most)' },
+  'image/png': { ext: 'png', header: 'image', max: 5 * 1024 * 1024, words: 'a picture (5 MB at most)' },
+  'video/mp4': { ext: 'mp4', header: 'video', max: 16 * 1024 * 1024, words: 'a video (MP4, 16 MB at most)' },
+  'application/pdf': { ext: 'pdf', header: 'document', max: 15 * 1024 * 1024, words: 'a PDF (15 MB at most)' },
+}
+const MEDIA_URL_RE = /^\/api\/uploads\/whatsapp\/[a-f0-9]{20}\.(jpg|png|mp4|pdf)$/
+// Meta wants a sample of the picture, video or PDF uploaded to it before it reviews a message that has one.
 async function uploadSample(c: any, cfg: Cfg, url: string): Promise<{ handle?: string; error?: string }> {
   const pic = await pictureBytes(c, url)
-  if (!pic) return { error: 'The picture could not be read. Add it again.' }
+  if (!pic) return { error: 'The file on top of the message could not be read. Add it again.' }
   let appId = cfg.appId
   if (!appId) { const d = await graph(cfg, 'GET', `debug_token?input_token=${encodeURIComponent(cfg.token)}`); appId = String(d.json?.data?.app_id || '') }
   if (!appId) { const a = await graph(cfg, 'GET', 'app?fields=id'); appId = String(a.json?.id || '') }
   if (!appId) return { error: 'Meta needs the App ID for a message with a picture. Paste it in Setup (Meta: App settings, Basic).' }
-  const start = await graph(cfg, 'POST', `${appId}/uploads?file_name=sample.${pic.type === 'image/png' ? 'png' : 'jpg'}&file_length=${pic.bytes.byteLength}&file_type=${encodeURIComponent(pic.type)}`, undefined, { scheme: 'OAuth' })
+  const start = await graph(cfg, 'POST', `${appId}/uploads?file_name=sample.${MEDIA_RULE[pic.type]?.ext || 'jpg'}&file_length=${pic.bytes.byteLength}&file_type=${encodeURIComponent(pic.type)}`, undefined, { scheme: 'OAuth', timeoutMs: 30000 })
   const session = String(start.json?.id || '')
   if (!start.ok || !session) return { error: 'Meta did not take the picture: ' + errorWords(start.code, start.message) }
-  const up = await graph(cfg, 'POST', `${session}`, undefined, { raw: pic.bytes, scheme: 'OAuth', headers: { file_offset: '0', 'Content-Type': 'application/octet-stream' } })
+  const up = await graph(cfg, 'POST', `${session}`, undefined, { raw: pic.bytes, scheme: 'OAuth', headers: { file_offset: '0', 'Content-Type': 'application/octet-stream' }, timeoutMs: 60000 })
   const handle = String(up.json?.h || '')
   return up.ok && handle ? { handle } : { error: 'Meta did not take the picture: ' + errorWords(up.code, up.message) }
 }
@@ -488,9 +543,12 @@ async function build(c: any, spec: Spec, tpl: Tpl, links = true): Promise<Built>
     return { people, skipped }
   }
 
-  // A picture or an announcement.
-  const mk = (id: number | null, name: string, n: string): Person => {
-    const params = tpl.samples.length ? [greet(name)] : []
+  // A picture or an announcement. Its blanks: the greeting, then [Name] [Pass] [Event] in order.
+  const evRow = (tpl.fields || []).includes('event') ? await one(c, 'SELECT title FROM events WHERE id = ?', eventId).catch(() => null) : null
+  const evTitle = blank(evRow?.title || 'Bharat AI Innovation', 60)
+  const mk = (id: number | null, name: string, n: string, pass = ''): Person => {
+    const params = [...(tpl.greet ? [greet(name)] : []),
+      ...(tpl.fields || []).map(f => f === 'pass' ? blank(pass || 'pass', 40) : f === 'event' ? evTitle : greet(name))]
     return { attendee_id: id, person: '', name, number: n, params, image: tpl.imageUrl ? SITE + tpl.imageUrl : '', target: tpl.buttonUrl, text: fill(tpl.text, params) }
   }
   const aud = String(spec.audience || 'everyone')
@@ -519,20 +577,25 @@ async function build(c: any, spec: Spec, tpl: Tpl, links = true): Promise<Built>
     else if (aud === 'not_came') w += ` AND NOT (${cameSql(withTable)})`
     else if (aud.startsWith('pass:')) { w += ' AND a.badge_type = ?' + (/^visitor/i.test(aud.slice(5)) ? '' : paidOnly); if (args.length === 1) args.push(aud.slice(5)) }
     else if (aud !== 'everyone' && aud !== 'one') throw new Error('audience')
-    return all(c, `SELECT a.id, a.name, a.mobile${consent.replace(/, /g, ', a.')} FROM attendees a WHERE a.event_id = ? AND ${w}${one1.replace('AND id', 'AND a.id')} ORDER BY a.id`, ...args)
+    return all(c, `SELECT a.id, a.name, a.mobile, a.badge_type${consent.replace(/, /g, ', a.')} FROM attendees a WHERE a.event_id = ? AND ${w}${one1.replace('AND id', 'AND a.id')} ORDER BY a.id`, ...args)
   }
   let rows: any[]
   try { rows = await run1(true) } catch (e: any) {
     if (e?.message === 'audience') return { people, skipped, error: 'Choose who gets it.' }
     rows = await run1(false) // a database without the daily check-in table (migration 0051)
   }
-  for (const a of rows) { const n = numberFor(a, true); if (n) people.push(mk(Number(a.id), String(a.name || ''), n)) }
+  for (const a of rows) { const n = numberFor(a, true); if (n) people.push(mk(Number(a.id), String(a.name || ''), n, String(a.badge_type || ''))) }
   return { people, skipped }
 }
 const skippedWords = (s: Record<string, number>) => Object.keys(s).filter(k => s[k] > 0).map(k => ({ why: k, n: s[k], words: SKIP_WORDS[k] || k }))
 const rowFor = (p: Person, spec: Spec, tpl: Tpl, by: string, extra: Record<string, any> = {}) => ({
   event_id: Number(spec.event || 1), direction: 'out', kind: spec.kind, wa_number: p.number, attendee_id: p.attendee_id, person: p.person, name: p.name.slice(0, 120), template: tpl.name,
-  payload: JSON.stringify({ params: p.params, image: p.image, button: tpl.button ? 1 : 0, text: p.text, ...(p.signin ? { signin: p.signin } : {}) }), target_url: p.target, created_by: by, ...extra })
+  payload: JSON.stringify({ params: p.params, image: p.image, button: tpl.button ? 1 : 0, text: p.text, ...(p.signin ? { signin: p.signin } : {}),
+    ...(tpl.lang && tpl.lang !== 'en' ? { lang: tpl.lang } : {}),
+    // A video or a PDF on top is the same for everyone: it is the team's own file.
+    ...(tpl.header && (tpl.header.type === 'video' || tpl.header.type === 'document') && tpl.header.url ? { header: { type: tpl.header.type, link: SITE + tpl.header.url, filename: tpl.header.filename || '' } } : {}),
+    ...(!tpl.builtin && urlButtons(tpl).length ? { urls: urlButtons(tpl).map(u => ({ index: u.index, n: u.n, target: u.target })) } : {}) }),
+  target_url: p.target, created_by: by, ...extra })
 
 // ---------- the queue ----------
 
@@ -718,13 +781,19 @@ wa.get('/w/:code', async (c, next) => {
   // /w/ is shared with the campus recording links (/w/jnu, /w/djsce in index.tsx, sent in
   // the reports email). Only our own shape is ours; anything else goes on to that route,
   // which before 23 Nov 2026 never ran: every recording link landed on the home page.
-  const m = /^(\d{1,12})-([0-9a-f]{12})$/.exec(String(c.req.param('code') || ''))
+  // <row>-<signature>, and b1 for a message's second link button.
+  const m = /^(\d{1,12})-([0-9a-f]{12})(?:b([1-9]))?$/.exec(String(c.req.param('code') || ''))
   if (!m) return next()
   c.header('Cache-Control', 'no-store')
   c.header('X-Robots-Tag', 'noindex, nofollow')
   if (!sameText(m[2], (await codeFor(c, m[1])).split('-')[1] || '')) return c.redirect(SITE + '/', 302)
   const row = await one(c, 'SELECT id, event_id, payload, target_url, sent_at, created_at FROM wa_messages WHERE id = ?', Number(m[1])).catch(() => null)
   let target = String(row?.target_url || '')
+  if (row && m[3]) {
+    let q: any = {}
+    try { q = JSON.parse(row.payload || '{}') } catch { q = {} }
+    target = String((Array.isArray(q.urls) ? q.urls.find((u: any) => Number(u.n) === Number(m[3])) : null)?.target || '')
+  }
   if (!row || !/^https:\/\//.test(target)) return c.redirect(SITE + '/', 302)
   // A link checker is not the person: it is sent on, and nothing is noted or signed in.
   const robot = /facebookexternalhit|^WhatsApp\/|bot\b|crawler|spider|preview/i.test(c.req.header('User-Agent') || '')
@@ -733,7 +802,7 @@ wa.get('/w/:code', async (c, next) => {
     let p: any = {}
     try { p = JSON.parse(row.payload || '{}') } catch { p = {} }
     const sent = Date.parse(String(row.sent_at || row.created_at || '').replace(' ', 'T') + 'Z')
-    if (p.signin?.email && hooks.signIn && Number.isFinite(sent) && Date.now() - sent < SIGN_IN_DAYS * 86400000) {
+    if (!m[3] && p.signin?.email && hooks.signIn && Number.isFinite(sent) && Date.now() - sent < SIGN_IN_DAYS * 86400000) {
       try { const href = await hooks.signIn(c, Number(row.event_id || 1), String(p.signin.email), String(p.signin.action || 'download-pass')); if (/^https:\/\//.test(href)) target = href } catch { /* the plain link asks them to sign in */ }
     }
   }
@@ -915,20 +984,92 @@ wa.get('/api/admin/whatsapp/templates', async (c) => {
   return c.json({ templates: shapeTemplates(await templateRows(c)), error })
 })
 
+// Migration 0066 added wa_templates.spec (the language, a video, PDF or words on top, the
+// buttons). Until it runs, a message can still be words, a picture and one link.
+let specThere = false
+async function hasSpec(c: any): Promise<boolean> {
+  if (specThere) return true
+  try { specThere = (await all(c, 'PRAGMA table_info(wa_templates)')).some((x: any) => String(x.name) === 'spec') } catch { specThere = false }
+  return specThere
+}
+export const MIGRATION_0066 = 'npx wrangler d1 execute bharatai-production --remote --file=./migrations/0066_whatsapp_template_spec.sql'
+
+// A picture, video or PDF for the top of a message, sent as the file itself (not JSON).
+wa.post('/api/admin/whatsapp/media', async (c) => {
+  if (!c.env.UPLOADS) return c.json({ error: 'Files cannot be stored on this server.' }, 503)
+  const type = String(c.req.header('Content-Type') || '').split(';')[0].trim().toLowerCase()
+  const rule = MEDIA_RULE[type]
+  if (!rule) return c.json({ error: 'Add a JPG or PNG picture, an MP4 video or a PDF.' }, 400)
+  if (Number(c.req.header('content-length') || 0) > rule.max) return c.json({ error: 'That file is too big. WhatsApp takes ' + rule.words + '.' }, 400)
+  const buf = await c.req.arrayBuffer()
+  if (buf.byteLength > rule.max) return c.json({ error: 'That file is too big. WhatsApp takes ' + rule.words + '.' }, 400)
+  if (buf.byteLength < 64) return c.json({ error: 'That file is empty.' }, 400)
+  // The file must be what it says it is.
+  const h = new Uint8Array(buf.slice(0, 12))
+  const isIt = type === 'image/jpeg' ? h[0] === 0xff && h[1] === 0xd8 : type === 'image/png' ? h[0] === 0x89 && h[1] === 0x50 && h[2] === 0x4e && h[3] === 0x47
+    : type === 'application/pdf' ? String.fromCharCode(...h.slice(0, 4)) === '%PDF' : String.fromCharCode(...h.slice(4, 8)) === 'ftyp'
+  if (!isIt) return c.json({ error: 'That file is not ' + rule.words.replace(/ \(.*$/, '') + '. Choose the file again.' }, 400)
+  const rand = Array.from(crypto.getRandomValues(new Uint8Array(10))).map(x => x.toString(16).padStart(2, '0')).join('')
+  const key = `whatsapp/${rand}.${rule.ext}`
+  await c.env.UPLOADS.put(key, buf, { httpMetadata: { contentType: type, cacheControl: 'public, max-age=31536000' } })
+  let filename = ''
+  try { filename = oneLine(decodeURIComponent(String(c.req.header('X-File-Name') || '')), 80) } catch { filename = '' }
+  await note(c, 'whatsapp.media', key, { type, bytes: buf.byteLength })
+  return c.json({ success: true, url: '/api/uploads/' + key, header: rule.header, filename, bytes: buf.byteLength })
+})
+
 // A picture or an announcement the team writes. Saved as a draft; Meta sees it on Submit.
 wa.post('/api/admin/whatsapp/templates', async (c) => {
   if (!(await ready(c))) return notReady(c)
   const b = await c.req.json().catch(() => ({})) as any
   const title = oneLine(b.title, 60)
   const body = String(b.body ?? '').replace(/\r/g, '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
-  const btnText = oneLine(b.button_text, 25), btnUrl = String(b.button_url ?? '').trim()
+  const lang: 'en' | 'hi' = b.lang === 'hi' ? 'hi' : 'en'
+  const greet = !(b.greet === false || b.greet === 0)
   if (title.length < 3) return c.json({ error: 'Give it a short name, so you can find it later.', field: 'title' }, 400)
   if (body.length < 10) return c.json({ error: 'Write the message: at least a sentence.', field: 'body' }, 400)
   if (body.length > 900) return c.json({ error: 'The message is too long for WhatsApp. Keep it under 900 letters.', field: 'body' }, 400)
   if (/\{\{|\}\}/.test(body)) return c.json({ error: 'Take the curly brackets out of the message.', field: 'body' }, 400)
-  if (!!btnText !== !!btnUrl) return c.json({ error: 'A button needs both its words and its link, or leave both empty.', field: 'button_url' }, 400)
-  if (btnUrl && !/^https:\/\/[^\s]{4,400}$/.test(btnUrl)) return c.json({ error: 'The link must start with https://', field: 'button_url' }, 400)
-  let imageUrl = ''
+  const bare = body.replace(TOKEN_RE, '').trim()
+  // Meta refuses a message that starts or ends with a blank, or is mostly blanks.
+  if (/\[(name|pass|event)\]\s*[.!?]?$/i.test(body)) return c.json({ error: 'End the message with words, not a blank: add a sentence after the last [Name], [Pass] or [Event].', field: 'body' }, 400)
+  if (!greet && /^\[(name|pass|event)\]/i.test(body)) return c.json({ error: 'Start the message with words, not a blank.', field: 'body' }, 400)
+  if (bare.length < 10) return c.json({ error: 'Write the message: at least a sentence besides the blanks.', field: 'body' }, 400)
+
+  // The buttons: the new list, or the old single link.
+  const given: any[] = Array.isArray(b.buttons) ? b.buttons : (b.button_text || b.button_url) ? [{ type: 'url', text: b.button_text, url: b.button_url }] : []
+  const bf = Array.isArray(b.buttons) ? 'buttons' : 'button_url' // the box the old form names
+  if (given.length > 10) return c.json({ error: 'WhatsApp allows 10 buttons at most.', field: bf }, 400)
+  const buttons: Btn[] = []
+  for (const x of given) {
+    const type = x?.type === 'phone' ? 'phone' : x?.type === 'reply' ? 'reply' : 'url'
+    const text = oneLine(x?.text, 25)
+    const url = String(x?.url ?? '').trim(), phone = String(x?.phone ?? '').replace(/[\s()-]/g, '')
+    if (!text && !url && !phone) continue
+    if (!text) return c.json({ error: 'Each button needs its words (25 letters at most).', field: bf }, 400)
+    if (bf === 'button_url' && type === 'url' && !url) return c.json({ error: 'A button needs both its words and its link, or leave both empty.', field: bf }, 400)
+    if (type === 'url' && !/^https:\/\/[^\s]{4,400}$/.test(url)) return c.json({ error: 'The link for "' + text + '" must start with https://', field: bf }, 400)
+    if (type === 'phone' && !/^\+\d{10,15}$/.test(phone.startsWith('+') ? phone : /^\d{10}$/.test(phone) ? '+91' + phone : '+' + phone)) return c.json({ error: 'The number for "' + text + '" must be a full mobile or landline number, for example +91 91373 69984.', field: bf }, 400)
+    buttons.push(type === 'url' ? { type, text, url } : type === 'phone' ? { type, text, phone: phone.startsWith('+') ? phone : /^\d{10}$/.test(phone) ? '+91' + phone : '+' + phone } : { type, text })
+  }
+  if (buttons.filter(x => x.type === 'url').length > 2) return c.json({ error: 'WhatsApp allows two link buttons at most.', field: bf }, 400)
+  if (buttons.filter(x => x.type === 'phone').length > 1) return c.json({ error: 'WhatsApp allows one call button.', field: bf }, 400)
+  if (new Set(buttons.map(x => x.text.toLowerCase())).size !== buttons.length) return c.json({ error: 'Two buttons have the same words. Make each one different.', field: bf }, 400)
+
+  // The top of the message.
+  const hb = b.header && typeof b.header === 'object' ? b.header : null
+  let header: Header = { type: 'none' }
+  if (hb && ['image', 'video', 'document'].includes(hb.type)) {
+    const url = String(hb.url || '')
+    const want = hb.type === 'image' ? /\.(jpg|png)$/ : hb.type === 'video' ? /\.mp4$/ : /\.pdf$/
+    if (!MEDIA_URL_RE.test(url) || !want.test(url)) return c.json({ error: 'Add the ' + (hb.type === 'image' ? 'picture' : hb.type === 'video' ? 'video' : 'PDF') + ' again.', field: 'header' }, 400)
+    header = { type: hb.type, url, ...(hb.type === 'document' ? { filename: oneLine(hb.filename || 'Bharat AI Innovation.pdf', 60).replace(/(\.pdf)?$/i, '.pdf') } : {}) }
+  } else if (hb && hb.type === 'text') {
+    const text = oneLine(String(hb.text || '').replace(/[[\]{}*_~]/g, ''), 60)
+    if (text.length < 2) return c.json({ error: 'Write the words for the top of the message (60 letters at most), or choose None.', field: 'header' }, 400)
+    header = { type: 'text', text }
+  }
+  let imageUrl = header.type === 'image' ? String(header.url) : ''
   const img = String(b.image ?? '')
   if (img) {
     const m = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/=]+)$/.exec(img)
@@ -942,16 +1083,24 @@ wa.post('/api/admin/whatsapp/templates', async (c) => {
     const key = `whatsapp/${rand}.${m[1] === 'image/png' ? 'png' : 'jpg'}`
     await c.env.UPLOADS.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: 'public, max-age=31536000' } })
     imageUrl = '/api/uploads/' + key
-  } else if (/^\/api\/uploads\/whatsapp\/[a-f0-9]{20}\.(jpg|png)$/.test(String(b.image_url ?? ''))) imageUrl = String(b.image_url)
+  } else if (!imageUrl && /^\/api\/uploads\/whatsapp\/[a-f0-9]{20}\.(jpg|png)$/.test(String(b.image_url ?? ''))) imageUrl = String(b.image_url)
+  if (imageUrl) header = { type: 'image', url: imageUrl }
+  // Anything beyond words, a picture and one link needs migration 0066's column.
+  const firstUrl = buttons.find(x => x.type === 'url')
+  const needsSpec = lang !== 'en' || (header.type !== 'none' && header.type !== 'image') || buttons.length > 1 || buttons.some(x => x.type !== 'url') || TOKEN_RE.test(body)
+  TOKEN_RE.lastIndex = 0
+  const withSpec = await hasSpec(c)
+  if (needsSpec && !withSpec) return c.json({ error: 'Video, PDF, words on top, more buttons, Hindi and blanks need one database step first (migration 0066). Run this once in the project folder: ' + MIGRATION_0066, command: MIGRATION_0066 }, 409)
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 28) || 'message'
   const name = `bhai_c_${slug}_${Array.from(crypto.getRandomValues(new Uint8Array(2))).map(x => x.toString(16).padStart(2, '0')).join('')}`
   // "Change" on a draft: the new one takes its place.
   const old = String(b.replace ?? '')
   if (old && !BUILT_IN[old]) await run(c, "DELETE FROM wa_templates WHERE name = ? AND builtin = 0 AND status = 'draft'", old)
-  await run(c, `INSERT INTO wa_templates (name, builtin, title, category, body, greet, image_url, button_text, button_url, status, created_by, updated_at)
-     VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, datetime('now'))`,
-    name, title, b.category === 'UTILITY' ? 'UTILITY' : 'MARKETING', body, b.greet === false || b.greet === 0 ? 0 : 1, imageUrl, btnText, btnUrl, actorOf(c))
-  await note(c, 'whatsapp.template.create', name, { title, image: !!imageUrl, button: !!btnText })
+  const cols = ['name', 'builtin', 'title', 'category', 'body', 'greet', 'image_url', 'button_text', 'button_url', 'status', 'created_by', ...(withSpec ? ['spec'] : [])]
+  const vals: any[] = [name, 0, title, b.category === 'UTILITY' ? 'UTILITY' : 'MARKETING', body, greet ? 1 : 0, imageUrl, firstUrl?.text || '', firstUrl?.url || '', 'draft', actorOf(c),
+    ...(withSpec ? [JSON.stringify({ v: 1, lang, header, buttons })] : [])]
+  await run(c, `INSERT INTO wa_templates (${cols.join(', ')}, updated_at) VALUES (${cols.map(() => '?').join(', ')}, datetime('now'))`, ...vals)
+  await note(c, 'whatsapp.template.create', name, { title, lang, header: header.type, buttons: buttons.length })
   return c.json({ success: true, name, templates: shapeTemplates(await templateRows(c)) })
 })
 
@@ -965,8 +1114,10 @@ wa.post('/api/admin/whatsapp/templates/:name/submit', async (c) => {
   const st = String(got.row?.status || 'draft')
   if (st !== 'draft') return c.json({ error: st === 'APPROVED' ? 'Meta has already approved this message.' : 'This message is already with Meta (' + st.toLowerCase() + ').' }, 409)
   let handle = ''
-  if (got.tpl.image) {
-    const up = await uploadSample(c, cfg, got.tpl.imageUrl)
+  const h = got.tpl.header
+  const sampleUrl = got.tpl.image ? got.tpl.imageUrl : h && (h.type === 'video' || h.type === 'document') ? String(h.url || '') : ''
+  if (sampleUrl) {
+    const up = await uploadSample(c, cfg, sampleUrl)
     if (!up.handle) return c.json({ error: up.error }, 502)
     handle = up.handle
   }

@@ -1,0 +1,14 @@
+-- 0066: what a WhatsApp message is made of beyond words, one picture and one link
+-- (24 Nov 2026, Admin -> WhatsApp -> Messages, the message builder).
+--
+-- wa_templates.spec is one JSON value: { v, lang, header, buttons }
+--   lang     'en' | 'hi'
+--   header   { type: 'none' | 'image' | 'video' | 'document' | 'text', url?, filename?, text? }
+--   buttons  [{ type: 'url' | 'phone' | 'reply', text, url?, phone? }]   (10 at most, 2 links, 1 call)
+-- The words keep their blanks as [Name], [Pass], [Event] in wa_templates.body.
+--
+-- Additive only. Run it ONCE: SQLite has no "ADD COLUMN IF NOT EXISTS", so a second run
+-- stops with "duplicate column name: spec", which is harmless.
+-- Until it runs, messages with words, a picture and one link keep working; the builder
+-- refuses the rest with this command.
+ALTER TABLE wa_templates ADD COLUMN spec TEXT;
