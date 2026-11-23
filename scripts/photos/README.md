@@ -144,20 +144,41 @@ no face was matched. No faces are used here, only printed text.
    Slow (3 to 7 seconds a photo on this computer) and it can be stopped and run again. Run
    it ALONE: with a build or the face passes beside it this computer (8 GB) runs out of
    memory. `order.json` is an optional list of photo ids to read first (the booth cameras).
-2. `venv/python exh_match.py WORK/exh/ocr.json exhibitor-names.json WORK/exh/folder.json WORK/img WORK/exh/booth.json --report`
+2. `venv/python exh_match.py WORK/exh/ocr.json exhibitor-names.json WORK/exh/folder.json WORK/img WORK/exh/booth.json --speakers REPO/src/data/speaker-photos.json --checked booth-checked.json --hits WORK/exh/hits.json --report`
    - `exhibitor-names.json`: one row a company: every `exhibitors` id of it (a company
      can have several rows), and the words that mean it. Add a row when an exhibitor is
      added; `"exact"` for short names (CGI, Seem, Aria, FTA) that must stand as a word.
    - A name counts at **6% of the photo's long side** (a booth fascia, standee or screen).
      A stage shot needs **20%** (their own talk slide): the stage's side walls and the
-     screen's partner strip carry every exhibitor's logo. A photo is a stage shot when 3 or
+     screen's partner strip carry every exhibitor's logo. A photo is a stage shot when 4 or
      more companies are read in it, or it shows the stage's own words (IDFC FIRST Bank,
      Graham Bell, World Trade Center, "specialised tracks").
+   - **3 companies:** on the cameras that walked the booths (`booth`, `d1c4`, `d1c6`, `d2c5`,
+     `d2c6`) that is a row of booths, three fascia boards side by side (Harrier, Cosmica,
+     SEEM), so 6% holds. On the hall cameras it is the logo wall, so 20%.
+   - **A speaker in a hall-camera photo** (`--speakers`) makes it a stage shot (20%). A
+     close-up of a speaker at the podium reads only the one logo behind them (OMY_6860:
+     "CGI" at 8.5%), and the session backdrops carry the hall's partners (Jade Global,
+     Assessfy) beside seated panels. The organiser's face rule holds here too: **a logo on
+     the wall behind a speaker is not that company's photo.** On the booth cameras a speaker
+     in the photo is a speaker visiting a booth, so the test is not used there.
+   - `booth-checked.json`, by eye: `not_booth` (stage or backdrop shots no rule caught),
+     `booth` (real booths the speaker test would drop), `add` (a company's own booth whose
+     name reads just under 6%, shot from further back; about a third of those near-misses
+     are the next stand, so they are added by eye only, never by a lower line), `not_for`
+     (one photo off one company: the next stand, an empty aisle).
    - `"backdrop"` companies (IDFC FIRST Bank, Aegis, Gupshup) are printed on the backdrops,
      so only the "Cam 3 - Exhibition Booth" folder counts for them (`folder.json`: photo id
      to camera folder).
    - Look at the contact sheets (one row a company) before exporting.
-3. `venv/python exh_export.py WORK/exh/booth.json exhibitor-names.json WORK/index.json WORK/img REPO/src/data/exhibitor-photos.json`,
+2b. `venv-ort/python exh_burst.py WORK/exh/booth.json WORK/exh/hits.json WORK/index.json WORK/img WORK/exh/booth_burst.json --folder WORK/exh/folder.json --speakers REPO/src/data/speaker-photos.json --checked booth-checked.json`:
+   burst shots. The same camera within 60 seconds of a booth photo, showing the same scene
+   (80+ ORB matches on one homography), is that booth too, even when the name is cut off.
+   About 10 minutes; run it alone. Look at every photo in `booth_burst.json.added.json`
+   beside the photo it came from; a wrong one goes in `not_for`, then run 2 and 2b again.
+   Seeds matter: on 23 Nov one stage close-up kept by mistake (OMY_6860) pulled 8 more
+   stage shots into CGI and 15 into Cosmica. Clean step 2 before running this.
+3. `venv/python exh_export.py WORK/exh/booth_burst.json exhibitor-names.json WORK/index.json WORK/img REPO/src/data/exhibitor-photos.json`,
    then `npm run build` and `node scripts/verify/smoke-booth-photos.mjs`.
 4. They see them on the exhibitor dashboard, **Booth photos** (src/routes/exhibitor-photos.ts,
    public/static/booth-photos.js), and the organiser sends one email per company from

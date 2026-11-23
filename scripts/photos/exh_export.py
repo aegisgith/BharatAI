@@ -43,6 +43,7 @@ for key, rows in m.items():
     rest = sorted((r[0] for r in rows if r[0] not in best), key=lambda p: (meta(p)[0], when(p) or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)))
     companies[key] = {'name': names[key]['name'], 'ids': names[key]['ids'], 'photos': best + rest, 'best': best}
     for p in best + rest: photos[p] = meta(p)
-json.dump({'rule': 'company name read in the photo (OCR): 6%+ of the photo for a booth, 20%+ where the stage logo wall shows', 'companies': companies, 'photos': photos},
+json.dump({'rule': 'company name read in the photo (OCR): 6%+ of the photo for a booth or a row of booths, 20%+ where the stage logo wall or a session backdrop shows; '
+                   'plus burst shots of the same booth seconds apart, and booths checked by eye (scripts/photos/booth-checked.json)', 'companies': companies, 'photos': photos},
           open(OUT, 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
 print('companies', len(companies), '| photos', len(photos), '| album photos', sum(len(v['photos']) for v in companies.values()), '| bytes', os.path.getsize(OUT))

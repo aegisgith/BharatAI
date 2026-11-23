@@ -1,0 +1,593 @@
+{
+ "why": "Booth photos checked by eye (23 Nov 2026). not_booth: never a booth photo for any company. booth: a real booth that the hall-camera speaker test would otherwise drop. add: a company's booth photo whose name reads under the 6% line. not_for: a photo that is not this company's booth (rejected burst shots).",
+ "not_booth": [
+  {
+   "id": "14ef18nxJeq-rlZOIcW425uy3fnvycusP",
+   "title": "OMY_6860.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "12ynm3_quKswFqm3aGs4tRCUVdjkOgQAC",
+   "title": "OMY_6867.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1vA1q2RWfgB3kdVD71YhrbG28vTrZwy_P",
+   "title": "MNP12570.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "14EpHWSb3zTgjJ_DRtWOggaen2AR-kWl5",
+   "title": "OMY_7771.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "102KPlVcw9-W9QYnO5c_88FqJ4hnvyBbl",
+   "title": "OMY_7010.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "14dVf9TIdN8Q2Q_Sli5Z41ptcBHQqG4_L",
+   "title": "OMY_7824.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "10sX0rHD__ZKAmPVTK5DRFoVrk9D6Vkd6",
+   "title": "OMY_7812.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "11DB7oSGncrfArydSj6L7485QhjqNx9Te",
+   "title": "OMY_7825.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "12JR_y9AbdDNXZpVbFdZZQ0IE3vJkmvxY",
+   "title": "OMY_7330.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "111nY6A-RmBqNY7BRkwkGlKeCoDCSXckk",
+   "title": "885A5011.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "15L6v9KwQNy-0QH-bJNHAYCemoX8jgOcX",
+   "title": "885A5012.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1rPdrIzZ_Qle3WOBsaIyn1FUTHJan3JTh",
+   "title": "885A5010.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1k-unfH2HNuXF1Iw_q5EguwlGbuzvxfX7",
+   "title": "885A5009.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1-Sc0WCsSXbU8u3mRKba6RvCnLj5XFkmk",
+   "title": "OMY_7462.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "10aysS6F7481fhS5AHgUEo8ftG7p2jDQZ",
+   "title": "OMY_7832.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1pEqHogc_7LJQufS8YDsZRK_AyX2aOAus",
+   "title": "1Y1A8682.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1azEkCR749BTv4LANKebUNW_h0Hndv219",
+   "title": "885A4943.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1Y3sQeNfZmRuzzC_SuSr5xQNN_Ce0qscn",
+   "title": "885A4899.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1lG1T_axqdvUOmjascjMUb1a1WVSgNcBp",
+   "title": "1Y1A8720.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "19gQlOUCdc5TtxbQeOL_lt7rwDWTOA_4P",
+   "title": "1Y1A8722.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1_Sesc8X285qV-f-WOFkHa8-BH9vDkTEO",
+   "title": "MNP12707.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1B2Ytrv9IEASYjWMgY6Nt6MYQh5PSccaI",
+   "title": "MNP12710.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1tSr7Wlj2rFKRI4dwS-Hb7qYjg-nVtFfc",
+   "title": "MNP12709.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1Y_lfvSllZGdeZfdXoAHX2AGx0MEZnK8d",
+   "title": "1Y1A8721.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1QRnFlK_Oa4NJMGjxep7OClaU5QwAMTpf",
+   "title": "1Y1A8724.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "14ekV42ReASqG0WuRCjseCwW5eljKtCrL",
+   "title": "OMY_7282.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "12z8it8JqQq6k2kLIm8tDqQLF-Lt6ECam",
+   "title": "OMY_7251.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "159cJfI_yhq-6xw_hgbPh6zcjEKwy_C3q",
+   "title": "OMY_7347.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "10b_Bqg5SoW0IVRMPbQ6XduKyWnh1Z_fg",
+   "title": "OMY_7163.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1KAYjsL0tHa3y0k7Uj9v34387mLsqWB5n",
+   "title": "126A2297.JPG",
+   "why": "stage or session backdrop: the logo is on the wall behind the speakers, not their booth"
+  },
+  {
+   "id": "1Jlal6VdQcrtZQcpmnH8YDlPmp4KfLcZo",
+   "title": "126A2079.JPG",
+   "why": "the event standee (Knowledge Partner), not the Assessfy booth"
+  },
+  {
+   "id": "1GFzXq_76ihns6Uj-xtEk6gtrbNWq81Lf",
+   "title": "126A2057.JPG",
+   "why": "the event standee (Knowledge Partner), not the Assessfy booth"
+  },
+  {
+   "id": "1KwUO3pv_8PCFX6EsBLaisqueJ8l6N_xU",
+   "title": "MNP12775.JPG",
+   "why": "panel backdrop (Partners), not a booth"
+  },
+  {
+   "id": "1cyXQVPrpxx23CkjsFOM-lJB6EY2H4coY",
+   "title": "MNP12778.JPG",
+   "why": "panel backdrop (Partners), not a booth"
+  },
+  {
+   "id": "1GekLpkMEovlKLd1J3t0Ii6STovELORLs",
+   "title": "MNP12777.JPG",
+   "why": "panel backdrop (Partners), not a booth"
+  }
+ ],
+ "booth": [
+  {
+   "id": "1HwQRhc5rwW936H78e270YjxDezscnHda",
+   "title": "MNP12646.JPG",
+   "why": "a real booth with a speaker visiting, from a hall camera"
+  },
+  {
+   "id": "1wsJ2X2MyIgyRT_NKHkFh3VZLPeg-eKU_",
+   "title": "1Y1A8801.JPG",
+   "why": "a real booth with a speaker visiting, from a hall camera"
+  },
+  {
+   "id": "1L3a8vqmbWF1YxFzaTvvo0h-xJve_CoFE",
+   "title": "1Y1A8802.JPG",
+   "why": "a real booth with a speaker visiting, from a hall camera"
+  },
+  {
+   "id": "1-JbyWLfPbhU22uh99_VVr99PXF_xeazu",
+   "title": "126A5128.JPG",
+   "why": "a real booth with a speaker visiting, from a hall camera"
+  },
+  {
+   "id": "10wm5Lg8-WrT5agJEpjgy4pAbcwUVgaug",
+   "title": "885A5790.JPG",
+   "why": "a real booth with a speaker visiting, from a hall camera"
+  },
+  {
+   "id": "1032x5nHzgCnY-P_-ePdmqpEDs7Rp4w8b",
+   "title": "885A5783.JPG",
+   "why": "a real booth with a speaker visiting, from a hall camera"
+  },
+  {
+   "id": "1AuwwTFrteSGjJp66BRUVIb9Lrc0Yioty",
+   "title": "1Y1A8794.JPG",
+   "why": "a real booth with a speaker visiting, from a hall camera"
+  }
+ ],
+ "add": [
+  {
+   "id": "1h-oGacxD6uKeGxxjLAEesbWiUC2G0bVU",
+   "title": "MNP_5340.JPG",
+   "company": "eurys",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1vtTtN6cOXe29iSY_87DThfh0QAvMDn31",
+   "title": "MNP_5413.JPG",
+   "company": "tih-iit-bombay",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1Pb_jDnzQ_H4FJtuEiGrSb5rSrvoJqk-p",
+   "title": "MNP_5466.JPG",
+   "company": "cgi",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1RP5q2Jy5_Vry7mYf2vMrRk3nCVcCY6n1",
+   "title": "MNP_5561.JPG",
+   "company": "evoke",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1chBZ28bLc5coAxN0oOq7gby-FTrSBbbM",
+   "title": "MNP_5362.JPG",
+   "company": "cgi",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1xuC6Gx-4P2ZcvkymrbsRh6wIiC1fkx1z",
+   "title": "MNP_5649.JPG",
+   "company": "cgi",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1QEUGuxcP3Ct3WTcKNavT3Cn_YKErG0oL",
+   "title": "MNP_5358.JPG",
+   "company": "tih-iit-bombay",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1Ql81QNtaHJGkthBazrHnAp50OZAc51x4",
+   "title": "MNP_5360.JPG",
+   "company": "tih-iit-bombay",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "19QrBp1N8nh_87JuxK7lFOuTUS_XKDjQZ",
+   "title": "MNP_5522.JPG",
+   "company": "paisani",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "12VuHNnTSKEMySYdhpBmLC60E2wkRFqT0",
+   "title": "MNP_5455.JPG",
+   "company": "evoke",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1vmxC9Q_ZHaHze5kwayHQM5EW0zyynvg7",
+   "title": "MNP_5379.JPG",
+   "company": "oranje",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1-TSRiI73HQo5bYmc0sMGicp5QYg-aKwN",
+   "title": "MNP_5469.JPG",
+   "company": "aria-telecom",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1g3YwXCQLh9EbvlyCF13IpA831DaWGsKA",
+   "title": "MNP_5464.JPG",
+   "company": "cgi",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1yL6bqs_mkaug3d2txbbkS-hlO_RkI0ZM",
+   "title": "MNP_5418.JPG",
+   "company": "jade-global",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1KW71WhFxjpYTfo1pvta2bt-veU5WTGPN",
+   "title": "MNP_5294.JPG",
+   "company": "jade-global",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1SGqEcue22Vs-ZcEC3J3VgpkFqO4gyz-F",
+   "title": "MNP_5295.JPG",
+   "company": "jade-global",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1wfVprxk9NFclHYWbJ8pNCP-j1Ko-R_ed",
+   "title": "MNP_5386.JPG",
+   "company": "kavion",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1W1EysT6vjmTELLVVuC8xWn8V6lbUE__r",
+   "title": "MNP_5524.JPG",
+   "company": "kavion",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1wpeAoJqfGrk-lpbYlXvQ1MjVzCrsFUai",
+   "title": "MNP_5523.JPG",
+   "company": "kavion",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1Jr-EwGwyfWXTf67nE-aFavVR6zDNePOa",
+   "title": "MNP_5537.JPG",
+   "company": "onevio",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1hkmziHnN651D8KivN3ip03t2PxswZWLq",
+   "title": "MNP_5749.JPG",
+   "company": "jade-global",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1o0ger3jGah7f3apMb9n2FvoRXm9H5v7y",
+   "title": "MNP_5748.JPG",
+   "company": "jade-global",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1bnt30ZmDlbhzE9RHR1Wlc23HyxJpKDtf",
+   "title": "MNP_5657.JPG",
+   "company": "jade-global",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1GICJFC1V03AsB0oQxjCKK8Cr0mk3Ggk4",
+   "title": "126A1460.CR3",
+   "company": "asmadiya",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1wSjaLqPZoOJ83-YGpY_O995-sYUrBCZN",
+   "title": "126A1899.JPG",
+   "company": "asmadiya",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1Eodahq7BiQt-xlyuWuaYKgjgdZnk4Oif",
+   "title": "126A1759.JPG",
+   "company": "asmadiya",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1O7rJid3XXIScReUKvvS5aRFPWxBEQnZB",
+   "title": "126A1898.JPG",
+   "company": "asmadiya",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1Cg2we1_BArh5TW-lypwAhA0edlBQXD5P",
+   "title": "126A1658.JPG",
+   "company": "asmadiya",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1lkTu-aHJIiJCYHxDchzh_K5cxjtgy6gA",
+   "title": "126A1979.JPG",
+   "company": "cgi",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1zlOPnFUEbEtAB0xHEcmVJRyRhIX_5mph",
+   "title": "126A1786.JPG",
+   "company": "evoke",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1fybSSg4O1KtUqtHB7V-Gcqo8uDOnlapM",
+   "title": "126A1984.JPG",
+   "company": "evoke",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1DQXn56ozKr5nCAVRiSfMYqLOR5zzQng6",
+   "title": "126A1980.JPG",
+   "company": "evoke",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "16umzOalrEwT5wlxjZ7ruL34loCvW0-X6",
+   "title": "MNP13064.JPG",
+   "company": "indi4",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "14AExAMFSZe7l7Ib_nC5YSf2VdeAg_ZYH",
+   "title": "MNP12688.JPG",
+   "company": "intugle",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1LvLWGUvA6r7Um218y0CpzAfXHzAILkxO",
+   "title": "MNP13088.JPG",
+   "company": "kadeep",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1OMLvkjwSRStYVDR18P8TI9-IDgVtZdp2",
+   "title": "MNP13099.JPG",
+   "company": "kadeep",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "11DjL358xwHmpkI2YrKA0Xv7MoWDPfnsQ",
+   "title": "1Y1A8447.JPG",
+   "company": "onevio",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1N_296S9cdiq1nUcSfB0kOX323nkBOdR0",
+   "title": "MNP12878.JPG",
+   "company": "tih-iit-bombay",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1tB1lO013wp9oEVbVUCst9wCxW1nQOgGP",
+   "title": "126A1696.JPG",
+   "company": "tih-iit-bombay",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "14mByZrUomEkn_BuuqfV8XrSrcNirQzn6",
+   "title": "126A1823.JPG",
+   "company": "tih-iit-bombay",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1whx5SWPo1zkonvSR_Rjmi4tTKX8kMfrC",
+   "title": "1Y1A8366.JPG",
+   "company": "tribal-affairs",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1GM0lfuy2fNDS2-bPAdNo6G9W_tYHupeA",
+   "title": "1Y1A8365.JPG",
+   "company": "tribal-affairs",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1qq4qLxieIfp9TfW3IP_aRTyIAZSseB3g",
+   "title": "126A1777.JPG",
+   "company": "tudip",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "178rBBE1dXhStIIzFwFdYTBheheB4FB4P",
+   "title": "MNP12876.JPG",
+   "company": "tudip",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1mQ4JX-LVpJQAocHiqimfQY_hWHbDPXoM",
+   "title": "126A1723.JPG",
+   "company": "vassar",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1uBur6hXhuBiSfJbQl68rXJiViNnmLhhT",
+   "title": "126A1993.JPG",
+   "company": "vassar",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1aoSDZZp6zDojaA5P467gdvfKyeVbOxmT",
+   "title": "126A1992.JPG",
+   "company": "vassar",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1XBaahYIA-xIAE2BTbBVLiuUE0TvzLeOb",
+   "title": "126A1862.JPG",
+   "company": "zanopy",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  },
+  {
+   "id": "1lcx3VQUNEN1fCgCZvKgAd07G8NlXYbPW",
+   "title": "MNP12972.JPG",
+   "company": "zanopy",
+   "why": "their booth: the name reads just under 6% (photo from further back)"
+  }
+ ],
+ "not_for": [
+  {
+   "id": "16_FRPBYY41AsqEf7R1mY9ufJbW5yG8dO",
+   "title": "126A1470.CR3",
+   "company": "cgi",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "1sb6XVYdT8GJF8SnCHkjGpkDpBjuP5mTa",
+   "title": "126A1485.CR3",
+   "company": "paisani",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "1sb6XVYdT8GJF8SnCHkjGpkDpBjuP5mTa",
+   "title": "126A1485.CR3",
+   "company": "envista",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "12a2UDkd7gcuKBvtC5PQVcrsCKpxmrTnc",
+   "title": "126A2377.JPG",
+   "company": "jade-global",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "1FwMOKAi_UtraAD9p0Kdxz81y-9fRQu_w",
+   "title": "126A2376.JPG",
+   "company": "jade-global",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "1DoUWJ-EomzlPaJEUYbb2E5A3Vy8r7d5v",
+   "title": "126A2375.JPG",
+   "company": "jade-global",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "1TTfqXEEZchXjW715luzf4ECh-3DhO-Oh",
+   "title": "885A4969.JPG",
+   "company": "assessfy",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "10OCL-xBmUVkeoTMMeh7aXEUSOxEnDihX",
+   "title": "885A4968.JPG",
+   "company": "assessfy",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "16fQ8rKL52QSq-L0ccayjSj38yrZHWwGI",
+   "title": "126A2408.JPG",
+   "company": "joyvibe",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "1AbwShBbZHuYlkd98BAVeyGL7JPODsgk9",
+   "title": "885A4960.JPG",
+   "company": "tudip",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "1SZIqJxPGwQxjKGDyMqLch7kU6m6FTP0r",
+   "title": "885A4961.JPG",
+   "company": "tudip",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "128o8fAcLbgemFLX_Q_bq_VXcNCxJoUJa",
+   "title": "126A1685.JPG",
+   "company": "intugle",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  },
+  {
+   "id": "1Tp4TvwxequDIfUe-AZPoGOsUr2lsxNYv",
+   "title": "126A1684.JPG",
+   "company": "intugle",
+   "why": "a burst shot of the next stand or an empty aisle, not this company's booth"
+  }
+ ]
+}
