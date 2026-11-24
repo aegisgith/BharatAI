@@ -66,6 +66,11 @@ type AttAlbum = { group: number; came: boolean; check: boolean; photos: string[]
 const ATT = ATTENDEES as unknown as { generated: string; groups: string[]; photos: Record<string, [string, string, number, number?]>; albums: Record<string, AttAlbum> }
 // Every photo's day, time, upright and RAW flags, speakers' and attendees' alike.
 const META: Record<string, [string, string, number, number?]> = { ...(ATT.photos || {}), ...(DATA.photos || {}) }
+// Booth photos (routes/exhibitor-photos.ts) are in neither album file: their day and time are
+// added here so a company's photo page can group them by day. A photo already known is kept.
+export function addPhotoDays(more: Record<string, [string, string, number?, number?]>): void {
+  for (const [id, m] of Object.entries(more || {})) if (!META[id]) META[id] = [String(m[0] || ''), String(m[1] || ''), Number(m[2]) || 0, Number(m[3]) || 0]
+}
 
 const ph = new Hono<{ Bindings: any }>()
 const SITE = 'https://bharataiinnovation.com'

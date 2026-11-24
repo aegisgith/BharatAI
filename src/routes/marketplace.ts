@@ -2876,6 +2876,15 @@ export const exhibitorOfCompanySession = async (c: any): Promise<{ id: number; c
   return ex ? { ...ex, by: String(company.email || '') } : null
 }
 
+// The signed-in dashboard account itself (never the marketplace admin), for Booth photos
+// (routes/exhibitor-photos.ts): someone on an exhibitor's team list whose own account is not
+// the booth's still sees their company's photos.
+export const dashboardAccountOf = async (c: any): Promise<{ id: number; email: string; attendee_id: number | null } | null> => {
+  const company = await getCompanyFromSession(c) as any
+  if (!company || company.role === 'admin') return null
+  return { id: Number(company.id), email: String(company.email || ''), attendee_id: company.attendee_id == null ? null : Number(company.attendee_id) }
+}
+
 // The exhibitor behind the signed-in dashboard account, for "Visitor passes" (19 Nov
 // 2026, routes/team-guests.ts): whether anyone is signed in at all (so an expired
 // sign-in is told to sign in again), and the booth as the dashboard shows it.
