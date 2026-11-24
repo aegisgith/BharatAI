@@ -134,6 +134,10 @@ if (pair) {
   const at = (t) => `${pair.day} ${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
   db.run("INSERT INTO sessions (id, event_id, title, session_type, room, start_time, end_time) VALUES (9001, 1, 'Test panel on AI', 'panel', 'Homi J. Bhabha Hall', ?, ?)", [at(t0 - 20), at(t0 + 20)]);
   db.run("INSERT INTO session_speakers (session_id, speaker_id, role, sort_order) VALUES (9001, ?, 'moderator', 1), (9001, ?, 'panellist', 2), (9001, 99001, 'panellist', 3)", [X.speakers[0], Y.speakers[0]]);
+  // Earlier that day, a session naming people typed by hand only (no speaker row): their names
+  // reach the line-up code as text. Read as a list, that threw and lost every line-up after
+  // it, so all speaker emails went without one (23-24 Nov 2026).
+  db.run("INSERT INTO sessions (id, event_id, title, session_type, room, start_time, end_time, speaker_name) VALUES (9000, 1, 'Typed-only talk', 'talk', 'Kalam Theatre', ?, ?, 'Typed Person (Org T), Another Typed')", [at(t0 - 200), at(t0 - 180)]);
   const xp = await (await page(X.key, sig(X.key))).text();
   check("their page shows the session's line-up as the programme has it now", xp.includes('Test panel on AI') && xp.includes(Y.name) && xp.includes('Chief Executive, Org Y') && xp.includes('<em>Moderator</em>')
     && xp.includes('https://www.linkedin.com/in/y-test') && xp.includes('Dropped Out Person'), (xp.match(/<section class="lu">[\s\S]*?<\/section>/) || [''])[0].slice(0, 300));
@@ -144,6 +148,8 @@ if (pair) {
   l = await as('GET', '/api/admin/speaker-photos');
   const panel = (l.json?.panels || []).find(k => k.id === 's9001');
   check('a listed panellist in none of its photos flags the session for a look', !!panel && panel.flagged && panel.reasons.some(r => r.includes('Dropped Out Person')) && row(X.key)?.status === 'panel', { panel: panel && panel.reasons, status: row(X.key)?.status });
+  const typedS = (l.json?.panels || []).find(k => k.id === 's9000');
+  check('a session with names typed by hand only keeps them, as typed, and the line-ups after it are not lost', !!typedS && typedS.typed.join('|') === 'Typed Person (Org T)|Another Typed' && !!panel, typedS && typedS.typed);
   const firstSection = (xp.match(/<section><h2>([\s\S]*?)<\/section>/) || ['', ''])[0];
   const pinned = [...firstSection.matchAll(/\/d\/([A-Za-z0-9_-]+)=w700/g)].map(m => m[1]);
   const both = (id) => { const ks = new Set((DATA.who[id] || []).filter(w => w[2] < 80).map(w => w[0])); return ks.has(X.key) && ks.has(Y.key); };
@@ -169,7 +175,7 @@ if (pair) {
   const xp2 = await (await page(X.key, sig(X.key))).text();
   const ids3 = JSON.parse((xp2.match(/<script type="application\/json" id="ids">([\s\S]*?)<\/script>/) || [])[1] || '[]');
   check('an official not on a session at that time is not named', !ids3.some(x => (x[2] || []).some(e => e[0] === Y.name)), '');
-  db.run('DELETE FROM session_speakers WHERE session_id = 9001'); db.run('DELETE FROM sessions WHERE id = 9001');
+  db.run('DELETE FROM session_speakers WHERE session_id = 9001'); db.run('DELETE FROM sessions WHERE id IN (9000, 9001)');
 }
 
 // ---- attendees (src/data/attendee-photos.json): only their own photos, never named ----

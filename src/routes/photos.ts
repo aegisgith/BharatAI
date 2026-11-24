@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { isProtocol } from './speaker-brief'
 import { dearName } from './talk-brief'
 import { partnersStripHTML } from '../lib/partners'
-import { MUMBAI_WORDS, normName, adminReady, sessionsWithSpeakers, ROLE_WORD } from './conference'
+import { MUMBAI_WORDS, normName, adminReady, sessionsWithSpeakers, splitSpeakerLine, ROLE_WORD } from './conference'
 import { linksForDrive, photosByPid, photosZip, recordSaves, refuse, ZIP_MAX_PHOTOS, ZIP_MAX_BYTES } from './photo-store'
 import ALBUMS from '../data/speaker-photos.json'
 import ATTENDEES from '../data/attendee-photos.json'
@@ -649,7 +649,10 @@ export async function liveProgramme(c: any): Promise<Live> {
     const list = (await sessionsWithSpeakers(c, 1, speakers, r)).filter((s: any) => s.status !== 'draft' && s.start_time)
     for (const s of list) {
       const people = (s.links || []).map((l: any) => byId.get(Number(l.speaker_id)) ? asPerson(byId.get(Number(l.speaker_id)), ROLE_WORD[l.role] || '') : null).filter(Boolean) as LivePerson[]
-      const typed = (s.others || []).map((o: any) => String((o && (o.name || o)) || '').trim()).filter(Boolean)
+      // `others` is the typed line's leftover TEXT ("Name (Org), Name"), not a list: treating
+      // it as one threw at the first session with a name typed by hand, and every line-up
+      // was lost from 23 to 24 Nov 2026.
+      const typed = splitSpeakerLine(s.others || '').map(p => p.info ? p.name + ' (' + p.info + ')' : p.name).filter(Boolean)
       if (!people.length && !typed.length) continue
       sessions.push({ id: 's' + s.id, title: String(s.title || ''), day: String(s.start_time).slice(0, 10), start: String(s.start_time).slice(11, 16),
         end: String(s.end_time || s.start_time).slice(11, 16), room: String(s.room || ''), people, typed, talk: false })
