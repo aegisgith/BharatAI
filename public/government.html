@@ -727,6 +727,7 @@
                             <div class="gv-field">
                                 <label for="gv-phone">Contact number</label>
                                 <input id="gv-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20">
+                                <label class="wa-yes" for="gv-whatsapp" style="display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px;font-weight:500;line-height:1.4;cursor:pointer;text-transform:none;letter-spacing:normal"><input id="gv-whatsapp" type="checkbox" style="width:20px;height:20px;min-width:20px;min-height:0;margin:0;padding:0;flex:none;accent-color:#C84F00;cursor:pointer"><span>Send me updates on WhatsApp (reply STOP any time)</span></label>
                             </div>
                         </div>
                         <div class="gv-hp" aria-hidden="true">
@@ -949,6 +950,7 @@
             name: name,
             email: email,
             phone: val('gv-phone'),
+            whatsapp_yes: !!document.getElementById('gv-whatsapp').checked,
             organization: val('gv-org'),
             subject: 'Delhi 2027 · Govt AI · ' + initiative,
             message: 'Initiative: ' + initiative + '\n\nAbout it: ' + val('gv-about') + '\n\nNodal officer: ' + name + ', ' + designation + '\n\nPreferred format: ' + (formats || 'Not chosen'),

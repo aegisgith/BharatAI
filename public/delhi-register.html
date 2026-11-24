@@ -103,6 +103,7 @@
                         <div class="dr-field wide">
                             <label class="dr-label" for="dr-phone">Mobile</label>
                             <input id="dr-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20">
+                            <label class="wa-yes" for="dr-wa" style="display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px;font-weight:500;line-height:1.4;cursor:pointer;text-transform:none;letter-spacing:normal"><input id="dr-wa" type="checkbox" style="width:20px;height:20px;min-width:20px;min-height:0;margin:0;padding:0;flex:none;accent-color:#C84F00;cursor:pointer"><span>Send me updates on WhatsApp (reply STOP any time)</span></label>
                         </div>
                         <div class="dr-field wide">
                             <label class="dr-label" for="dr-org" id="dr-org-label">Organisation</label>
@@ -298,6 +299,7 @@
             name: value('dr-name'),
             email: value('dr-email'),
             mobile: value('dr-phone'),
+            whatsapp_yes: !!byId('dr-wa').checked,
             company: value('dr-org'),
             job_title: academic ? '' : value('dr-job'),
             city: value('dr-city'),

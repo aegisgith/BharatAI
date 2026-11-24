@@ -22,7 +22,7 @@ import workshopReminder, { configureWorkshopReminder, autoWorkshopReminders, not
 import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERROR } from './routes/team-guests'
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import exhibitorMedia, { configureExhibitorMedia } from './routes/exhibitor-media'
-import whatsapp, { configureWhatsapp, whatsappTick } from './routes/whatsapp'
+import whatsapp, { configureWhatsapp, whatsappTick, whatsappYes } from './routes/whatsapp'
 import adminAssist from './routes/admin-assist'
 import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, SUMMIT_EVENT_NAME, SUMMIT_WHEN } from './routes/agent-summit'
 import { signinPayIntent } from './lib/signin-pay'
@@ -23561,6 +23561,8 @@ app.post('/api/inquiries', async (c) => {
     phone || '', organization || '', subject || '', message || '',
     JSON.stringify(metadata || {})
   ).run()
+  // "Send me updates on WhatsApp" ticked: kept once per number (routes/whatsapp.ts whatsappYes).
+  if (body.whatsapp_yes === true && phone) await whatsappYes(c, phone, 'enquiry:' + inquiry_type, name).catch(() => false)
 
   // The owner for this type, when the organisers have set one (Automation tab). A
   // routing rule that cannot be written must never fail the enquiry.
@@ -23750,6 +23752,7 @@ app.post('/api/booth-application', async (c) => {
   try { c.executionCtx.waitUntil(mails); scheduled = true } catch { /* no ctx */ }
   if (!scheduled) await mails
 
+  if (b.whatsapp_yes === true) await whatsappYes(c, f.mobile, 'booth-application:' + eventKey, f.name).catch(() => false)
   return c.json({ success: true, id, ref }, 201)
 })
 
@@ -24018,6 +24021,7 @@ app.post('/api/delhi/pay', async (c) => {
   if (missing.length) return c.json({ error: 'Please add your ' + humanList(missing) + '.', missing }, 400)
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ error: 'Please check your email. It should look like name@example.com.' }, 400)
   if (mobile.replace(/\D/g, '').length < 10) return c.json({ error: 'Please check your mobile number. It needs at least 10 digits.' }, 400)
+  if (b.whatsapp_yes === true) await whatsappYes(c, mobile, 'delhi-pay:' + passType, name).catch(() => false)
   const typo = emailTypo(email)
   if (typo) return c.json({ error: typo.reason, message: typo.reason, code: 'email_typo', suggestion: typo.fixed || '' }, 400)
   // A GSTIN that is not one is refused before anyone leaves for the gateway, as in Mumbai.
@@ -24948,6 +24952,7 @@ app.post('/api/delhi/register', async (c) => {
 
   // Asked again with the same email: said so, and no second email or row.
   const known = await c.env.DB.prepare('SELECT id FROM inquiries WHERE inquiry_type = ? AND email = ?').bind(DELHI_PASS_TYPE, email).first()
+  if (b.whatsapp_yes === true) await whatsappYes(c, mobile, 'delhi-register', name).catch(() => false)
   if (known) return c.json({ success: true, already: true })
 
   // One mobile, one person, as for Mumbai.
@@ -42758,7 +42763,7 @@ function adminPageScript(): string {
     // WhatsApp: sending from our own number and the replies live in /js/admin-whatsapp.js
     // (one global, WaDesk) with their own stylesheet, loaded the first time the section
     // opens. Bump WA_DESK_VERSION on any change to either.
-    var WA_DESK_VERSION = '20261124d';
+    var WA_DESK_VERSION = '20261124e';
     var waDeskAssets = null;
     function waDeskLoadAssets() {
       if (window.WaDesk) return Promise.resolve();

@@ -598,6 +598,15 @@ async function build(c: any, spec: Spec, tpl: Tpl, links = true): Promise<Built>
     return { attendee_id: id, person: '', name, number: n, params, image: tpl.imageUrl ? SITE + tpl.imageUrl : '', target: tpl.buttonUrl, text: fill(tpl.text, params) }
   }
   const aud = String(spec.audience || 'everyone')
+  // Everyone who ticked "Send me updates on WhatsApp" on one of our forms: that tick is
+  // their yes, so an email unsubscribe does not leave them out (STOP still does).
+  if (aud === 'said_yes') {
+    for (const [n, y] of await yesNumbers(c)) {
+      const num = numberFor({ mobile: '+' + n }, false)
+      if (num) people.push(mk(null, oneLine(y.name, 80), num))
+    }
+    return { people, skipped }
+  }
   if (aud === 'list') {
     for (const line of String(spec.list || '').split(/\r?\n/).slice(0, BATCH_MAX)) {
       if (!line.trim()) continue
@@ -962,6 +971,37 @@ wa.get('/api/admin/whatsapp/photo-status', async (c) => {
   return c.json({ ready: true, connected: connected(cfg), approved: String(t?.status || '') === 'APPROVED', people })
 })
 
+// ---------- "Send me updates on WhatsApp" (24 Nov 2026) ----------
+//
+// The tick box on the Delhi forms (registration, pass, exhibit, home, partner, government,
+// the Hindi page). A yes is kept once per number in admin_audit (action whatsapp.yes,
+// entity_id = the number, detail = where and the name), so no migration is needed and no
+// yes is lost while one waits to be run. Unticked records nothing; STOP still wins, as it
+// does for every send. It is what a promotional message needs: Admin -> WhatsApp ->
+// "Everyone who said yes to WhatsApp", and AImailPilot's sends count it as their yes.
+export const WA_YES = 'whatsapp.yes'
+export async function whatsappYes(c: any, raw: unknown, source: string, name = ''): Promise<boolean> {
+  const n = ampNumber(raw)
+  if (!n) return false
+  try {
+    const r = await run(c, `INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail)
+       SELECT 'visitor', 'public', ?, 'whatsapp', ?, ? WHERE NOT EXISTS (SELECT 1 FROM admin_audit WHERE action = ? AND entity_id = ?)`,
+      WA_YES, n, JSON.stringify({ source: oneLine(source, 60), name: oneLine(name, 80) }), WA_YES, n)
+    return changed(r) > 0
+  } catch { return false }
+}
+async function yesNumbers(c: any): Promise<Map<string, { at: string; source: string; name: string }>> {
+  const out = new Map<string, { at: string; source: string; name: string }>()
+  try {
+    for (const r of await all(c, 'SELECT entity_id, detail, created_at FROM admin_audit WHERE action = ? ORDER BY id', WA_YES)) {
+      let d: any = {}
+      try { d = JSON.parse(r.detail || '{}') } catch { d = {} }
+      out.set(String(r.entity_id), { at: String(r.created_at || ''), source: String(d.source || ''), name: String(d.name || '') })
+    }
+  } catch { /* no audit table */ }
+  return out
+}
+
 // ---------- AImailPilot sends through our number (24 Nov 2026) ----------
 //
 // The organiser: "let's integrate and give them the option to send through AImailPilot".
@@ -995,7 +1035,7 @@ function ampTemplate(r: any) {
   const t = customTpl(r)
   const category = String(r.meta_category || r.category) === 'UTILITY' ? 'UTILITY' : 'MARKETING'
   const h = t.header || { type: 'none' }
-  return { name: t.name, title: t.title, category, lang: t.lang, preview: fill(t.text, t.samples), blanks: [...(t.greet ? ['name'] : []), ...t.fields],
+  return { name: t.name, title: t.title, category, lang: t.lang, text: t.text, preview: fill(t.text, t.samples), blanks: [...(t.greet ? ['name'] : []), ...t.fields],
     header: { type: h.type, ...(h.url ? { url: SITE + h.url } : {}), ...(h.text ? { text: h.text } : {}) }, buttons: orderedButtons(t.buttons || []).map(b => ({ type: b.type, text: b.text })),
     footer: FOOTERS[t.lang] || FOOTER, needs_consent: category === 'MARKETING' }
 }
@@ -1034,11 +1074,13 @@ wa.post('/api/external/whatsapp/send', async (c) => {
   if (!list.length) return c.json({ error: 'Choose who gets it.' }, 400)
   if (list.length > BATCH_MAX) return c.json({ error: 'That is more than ' + BATCH_MAX + ' in one send. Choose a smaller group.' }, 409)
   const stopped = await stoppedNumbers(c)
+  // A yes given on one of our forms counts as their yes too.
+  const yes = info.needs_consent ? await yesNumbers(c) : new Map()
   const greet = (nm: unknown) => blank(titledName(nm) || 'there', 60)
   const seen = new Set<string>(), skipped: { ref: string; why: string; words: string }[] = [], people: Person[] = []
   for (const x of list) {
     const ref = oneLine(x?.ref, 64), raw = String(x?.number ?? '').trim(), n = raw ? ampNumber(raw) : ''
-    const why = !raw ? 'no_number' : !n ? 'bad_number' : stopped.has(n) ? 'stopped' : info.needs_consent && x?.consent !== true ? 'no_consent' : seen.has(n) ? 'twice' : ''
+    const why = !raw ? 'no_number' : !n ? 'bad_number' : stopped.has(n) ? 'stopped' : info.needs_consent && x?.consent !== true && !yes.has(n) ? 'no_consent' : seen.has(n) ? 'twice' : ''
     if (why) { skipped.push({ ref, why, words: AMP_SKIP[why] }); continue }
     seen.add(n)
     const nm = oneLine(x?.name, 80), v = (x?.values && typeof x.values === 'object') ? x.values : {}
@@ -1310,7 +1352,8 @@ async function overview(c: any) {
   const sum: Record<string, number> = {}
   let taps = 0
   for (const t of totals) { sum[String(t.status)] = Number(t.n); taps += Number(t.taps || 0) }
-  return { ...base, templates: shapeTemplates(tpls), used_today: await usedToday(c), unread: Number(unread?.n || 0), events, quick: quickReplies(cfg),
+  const saidYes = await one(c, 'SELECT COUNT(*) AS n FROM admin_audit WHERE action = ?', WA_YES).catch(() => null)
+  return { ...base, templates: shapeTemplates(tpls), used_today: await usedToday(c), unread: Number(unread?.n || 0), events, quick: quickReplies(cfg), said_yes: Number(saidYes?.n || 0),
     totals: { ...sum, taps },
     batches: batches.map(b => {
       const counts: Record<string, number> = {}

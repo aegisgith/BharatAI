@@ -172,7 +172,7 @@
       var options = all.map(function (t) {
         return '<option value="' + esc(t.name) + '"' + (t.name === draft.template ? ' selected' : '') + (t.status === 'APPROVED' ? '' : ' disabled') + '>' + esc(t.title) + (t.status === 'APPROVED' ? '' : ' (' + esc((TPL_STATUS[t.status] || [t.status])[0].toLowerCase()) + ')') + '</option>';
       }).join('');
-      var auds = [['everyone', 'Everyone registered'], ['came', 'Everyone who came'], ['not_came', 'Registered but did not come'], ['pass', 'Holders of one pass'], ['list', 'A list of numbers I paste'], ['one', 'One number']];
+      var auds = [['everyone', 'Everyone registered'], ['came', 'Everyone who came'], ['not_came', 'Registered but did not come'], ['pass', 'Holders of one pass'], ['said_yes', 'Everyone who ticked “Send me updates on WhatsApp”' + (D && D.said_yes ? ' (' + num(D.said_yes) + ')' : '')], ['list', 'A list of numbers I paste'], ['one', 'One number']];
       who = (all.length ? '<label class="wad-field"><span>Which message</span><select data-field="template"><option value="">Choose...</option>' + options + '</select></label>'
           : '<p class="wad-warn">Nothing is written yet. <button class="wad-link" data-act="tab" data-tab="messages">Open Messages</button> and write your picture or announcement first.</p>')
         + eventPick

@@ -1008,6 +1008,9 @@
                             <label for="dl-org">Organisation <span class="opt" id="dl-org-hint"></span></label>
                             <input id="dl-org" name="organization" type="text" autocomplete="organization" maxlength="160">
                         </div>
+                        <div class="dl-field wide">
+                            <label class="wa-yes" for="dl-whatsapp" style="display:flex;align-items:center;gap:10px;margin-top:10px;font-size:14px;font-weight:500;line-height:1.4;cursor:pointer;text-transform:none;letter-spacing:normal"><input id="dl-whatsapp" type="checkbox" style="width:20px;height:20px;min-width:20px;min-height:0;margin:0;padding:0;flex:none;accent-color:#C84F00;cursor:pointer"><span>Send me updates on WhatsApp (reply STOP any time)</span></label>
+                        </div>
                         <div class="dl-field" id="dl-job-box">
                             <label for="dl-job">Designation</label>
                             <input id="dl-job" name="job_title" type="text" autocomplete="organization-title" maxlength="120">
@@ -1257,6 +1260,7 @@
             name: name.value.trim(),
             email: email.value.trim(),
             mobile: phone.value.trim(),
+            whatsapp_yes: !!document.getElementById('dl-whatsapp').checked,
             company: org.value.trim(),
             job_title: job.value.trim(),
             city: city.value.trim(),
@@ -1266,6 +1270,7 @@
             name: name.value.trim(),
             email: email.value.trim(),
             phone: phone.value.trim(),
+            whatsapp_yes: !!document.getElementById('dl-whatsapp').checked,
             organization: org.value.trim(),
             subject: 'Delhi 2027 · ' + LABELS[i] + (chosen ? ' · ' + chosen : ''),
             message: 'Interested in Bharat AI Innovation Delhi (28–29 July 2027, Bharat Mandapam, New Delhi): ' + (chosen || LABELS[i]) + '.',

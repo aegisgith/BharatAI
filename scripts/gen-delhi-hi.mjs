@@ -227,6 +227,7 @@ swap('value="speak"><span>Speak</span>', 'value="speak"><span>वक्ता</s
 swap('<label for="dl-name">Your name</label>', '<label for="dl-name">आपका नाम</label>');
 swap('<label for="dl-email">Email</label>', '<label for="dl-email">ईमेल</label>');
 swap('<label for="dl-phone">Mobile <span', '<label for="dl-phone">मोबाइल <span');
+swap('<span>Send me updates on WhatsApp (reply STOP any time)</span>', '<span>मुझे WhatsApp पर अपडेट भेजें (कभी भी STOP लिखकर बंद करें)</span>');
 swap('<label for="dl-org">Organisation <span', '<label for="dl-org">संस्था <span');
 swap('<label for="dl-job">Designation</label>', '<label for="dl-job">पद</label>');
 swap('<label for="dl-city">City</label>', '<label for="dl-city">शहर</label>');

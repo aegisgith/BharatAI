@@ -719,6 +719,24 @@ r = await amp('POST', '/api/external/whatsapp/reply', { number: '98200 70001', t
 check('AImailPilot: a reply inside the 24 hours goes, signed for AImailPilot', r.status === 200 && sends().slice(sb).some(x => x.body.to === '919820070001' && x.body.text?.body === 'Passes open in January. I will send you the link.'), r.text.slice(0, 200));
 r = await amp('POST', '/api/external/whatsapp/reply', { number: '447700900123', text: 'Hello', by: 'Anita' });
 check('AImailPilot: no free reply to someone who has not written in 24 hours', r.status === 409 && r.json?.closed === true, r.text.slice(0, 200));
+// ---------- "Send me updates on WhatsApp" on the Delhi forms (24 Nov 2026) ----------
+const yesRows = () => rows("SELECT entity_id, detail FROM admin_audit WHERE action = 'whatsapp.yes'");
+r = await hit('POST', '/api/inquiries', { inquiry_type: 'sponsorship', name: 'Tick Yes', email: 'tick.yes@example.com', phone: '98200 81001', subject: 'Delhi 2027', message: 'Hello', whatsapp_yes: true });
+await hit('POST', '/api/inquiries', { inquiry_type: 'sponsorship', name: 'No Tick', email: 'no.tick@example.com', phone: '98200 81002', subject: 'Delhi 2027', message: 'Hello' });
+await hit('POST', '/api/inquiries', { inquiry_type: 'general', name: 'Tick Yes', email: 'tick.yes@example.com', phone: '+91 98200 81001', subject: 'Again', message: 'Again', whatsapp_yes: true });
+check('the tick: a ticked enquiry keeps their yes once per number, with where and their name; an unticked one keeps nothing', (r.status === 200 || r.status === 201)
+  && yesRows().filter(x => x.entity_id === '919820081001').length === 1 && JSON.parse(yesRows().find(x => x.entity_id === '919820081001').detail).source === 'enquiry:sponsorship'
+  && JSON.parse(yesRows().find(x => x.entity_id === '919820081001').detail).name === 'Tick Yes' && !yesRows().some(x => x.entity_id === '919820081002'), JSON.stringify(yesRows()));
+r = await hit('POST', '/api/delhi/register', { name: 'Delhi Yes', email: 'delhi.yes@example.com', mobile: '98200 81003', company: 'Acme', job_title: 'CTO', city: 'Pune', whatsapp_yes: true });
+check('the tick on the Delhi registration keeps their yes', yesRows().some(x => x.entity_id === '919820081003' && JSON.parse(x.detail).source === 'delhi-register'), r.status + ' ' + r.text.slice(0, 160));
+r = await hit('POST', '/api/inquiries', { inquiry_type: 'sponsorship', name: 'Bad Yes', email: 'bad.yes@example.com', phone: '12345', subject: 'x', message: 'x', whatsapp_yes: 'yes' });
+check('only a real tick counts (true), and an incomplete number keeps nothing', !yesRows().some(x => /12345$/.test(x.entity_id)), JSON.stringify(yesRows().map(x => x.entity_id)));
+r = await as('POST', '/api/admin/whatsapp/audience', { kind: 'custom', template: custom, audience: 'said_yes' });
+check('Admin: "Everyone who ticked" reaches the people who said yes, with their name', r.status === 200 && r.json.count >= 2 && /Tick|Delhi/.test(r.json.preview?.text || ''), r.text.slice(0, 300));
+check('Admin: the screen counts who said yes', ((await as('GET', '/api/admin/whatsapp')).json?.said_yes || 0) >= 2, '');
+r = await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, by: 'Anita', dry: true, people: [{ ref: 'y1', number: '98200 81001', name: 'Tick Yes' }, { ref: 'y2', number: '98200 81002', name: 'No Tick' }] });
+check('AImailPilot: a yes given on our form counts as their yes; no yes, no promotional message', r.status === 200 && r.json.count === 1 && r.json.sample[0].ref === 'y1' && r.json.skipped.some(s => s.ref === 'y2' && s.why === 'no_consent'), JSON.stringify(r.json));
+
 await as('POST', '/api/admin/whatsapp/aimailpilot', { on: false });
 check('AImailPilot: switched off, it can do nothing', (await amp('GET', '/api/external/whatsapp/status')).status === 403 && (await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, people: ppl, dry: true })).status === 403, '');
 
