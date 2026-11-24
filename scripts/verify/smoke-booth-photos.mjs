@@ -351,4 +351,14 @@ r = await as('POST', '/api/admin/booth-contact-gaps/send', { to: ['anita.r@team.
 const gMail = sent.slice(n0)[0];
 check('...to them: by name, every company with what is missing and where to fill it in', r.status === 200 && r.json?.sent.length === 1 && /Dear Anita/.test(gMail?.Content?.Body[0].Content || '')
   && (gMail?.Content?.Body[0].Content || '').includes('Plain Sponsor') && /Contact Phone/.test(gMail?.Content?.Body[0].Content || ''), r.text.slice(0, 200));
+// A speaker also registered as an attendee, spelt another way: one heading, not two.
+{
+  const [twinKey, twinAl] = Object.entries(ATTD.albums).find(([k, a]) => !a.check && a.photos.length >= 1 && ![teamKey, checkKey, outKey].includes(k) && a.photos.every(id => !ids.includes(id)));
+  putAtt(Number(twinKey.slice(1)), 'Dr. Saam Speaker', 'saam@excorp.test', 'Somewhere');
+  stored(twinAl.photos[0]);
+  const rr = await hit('GET', API, undefined, mpAs(7001));
+  const heads = [...new Set((rr.json?.photos || []).map(p => p.section))];
+  const twin = (rr.json?.photos || []).find(p => p.id === twinAl.photos[0]);
+  check('a speaker registered as an attendee too, spelt another way, has one heading: their own photos join their stage photos', !!twin && twin.section === 'Sam Speaker on stage' && !heads.some(h => /Saam/.test(h)), JSON.stringify(heads));
+}
 done();

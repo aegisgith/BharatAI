@@ -177,11 +177,14 @@ async function albumOf(c: any, co: Company): Promise<Album> {
   const hidden = await hiddenPhotos(c).catch(() => null)
   const used = new Set<string>(); const focus: Record<string, [number, number]> = {}
   const sections: Section[] = []
-  const add = (title: string, kind: Kind, ids: string[], f?: Record<string, [number, number]>) => {
+  // into: a section already there that these photos join (a speaker's own attendee album).
+  const add = (title: string, kind: Kind, ids: string[], f?: Record<string, [number, number]>, into?: Section) => {
     const keep = [...new Set(ids)].filter(id => id && !used.has(id) && !(hidden && hidden.has(id)))
     keep.forEach(id => { used.add(id); if (f && f[id]) focus[id] = f[id] })
-    if (keep.length) sections.push({ title, kind, ids: keep })
+    if (keep.length && into) into.ids.push(...keep)
+    else if (keep.length) sections.push({ title, kind, ids: keep })
   }
+  const speakerOf = new Map<Section, string>()
   // The booth, in the day order its photos were taken (a stable sort keeps the album's order within a day).
   add('Your booth', 'booth', (co.photos || []).slice().sort((a, b) => String(D.photos[a]?.[0] || '').localeCompare(String(D.photos[b]?.[0] || ''))))
   // Its own Innovation Talk: the talk albums (key t<n>) whose talk is this exhibitor's, by the
@@ -211,7 +214,9 @@ async function albumOf(c: any, co: Company): Promise<Album> {
     shown.add(p.key)
     const lv = await liveNow()
     const panel = lv ? panelShotsBy(p.key, lv).flatMap(g => g.ids) : []
+    const before = sections.length
     add(`${String(s.name || p.name).trim()} on stage`, 'speaker', [...panel, ...(p.photos || [])], p.focus)
+    if (sections.length > before) speakerOf.set(sections[sections.length - 1], nameKey(s.name || p.name))
   }
   // A guest the organiser named (key g<n>) whose email is a representative's.
   for (const p of albumPeople()) {
@@ -228,11 +233,29 @@ async function albumOf(c: any, co: Company): Promise<Album> {
     const ch = choices.get(key)
     if (!p || !p.attendee || p.check || shown.has(key) || (ch && ch.out)) continue
     shown.add(key)
-    add(r.name || 'Your team', 'team', (p.photos || []).filter(id => !(ch && ch.notMe.has(id))), p.focus)
+    // A speaker registered as an attendee too, perhaps spelt another way (Shreenivas and
+    // Sreenivas Chetlapalli): their own photos join their section, not a second heading.
+    const me = nameKey(r.name)
+    const theirs = me.length >= 6 ? [...speakerOf].find(([, n]) => near(n, me))?.[0] : undefined
+    add(r.name || 'Your team', 'team', (p.photos || []).filter(id => !(ch && ch.notMe.has(id))), p.focus, theirs)
   }
   return { sections, focus }
 }
 
+// A person's name as letters only, without a title: 'Dr. Shreenivas Chetlapalli' = 'shreenivaschetlapalli'.
+const nameKey = (v: any) => String(v ?? '').toLowerCase().replace(/\b(dr|mr|mrs|ms|shri|smt|prof)\b\.?/g, ' ').replace(/[^a-z]/g, '')
+// Two names at most two letters apart (one spelt with an extra h, a missing letter).
+function near(a: string, b: string): boolean {
+  if (a === b) return true
+  if (Math.abs(a.length - b.length) > 2) return false
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i]
+    for (let j = 1; j <= b.length; j++) row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    prev = row
+  }
+  return prev[b.length] <= 2
+}
 const hhmm = (v: any) => (String(v || '').match(/(\d{2}:\d{2})/) || ['', ''])[1]
 // A company's photos that are in R2 and not hidden, section by section, with the section's
 // name and kind on each. full = false: the booth only (what Admin's list and "More photos
@@ -372,7 +395,7 @@ export function accountPhotosEmailHTML(a: { name: string; company: string; email
         ${step(1, 'Tap <strong>Open my account</strong>.')}
         ${step(2, `Your email address is already filled in: <strong>${escH(a.email)}</strong>. Tap <strong>Email me a code</strong>.`)}
         ${step(3, 'We email you a 6-digit code. Type it in and tap <strong>Sign in</strong>.')}
-        ${step(4, 'Tap <strong>Photos</strong>. Save each photo at full size, or all of them at once.')}
+        ${step(4, 'Your photos open. Save each photo at full size, or all of them at once.')}
       </table>
       <p style="font-size:13px;line-height:1.6;margin:0 0 14px;color:#6b7280">The code works for 30 minutes. If it does not come in 2 minutes, look in your spam folder. You can also <a href="${escH(a.page)}" style="color:#C84F00">open your company's photos without signing in</a>.</p>
       <p style="font-size:14px;line-height:1.65;margin:0 0 12px">Please use them on LinkedIn, your website and your newsletters, and tag <strong>#BharatAIInnovation</strong>.</p>
