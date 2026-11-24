@@ -59,7 +59,7 @@
   {"key": "genext-genomics", "name": "GeNext Genomics", "ids": [118, 119], "say": ["genext"]},
   {"key": "actin", "name": "Actin Technologies", "ids": [137], "say": ["actin technologies", "actin"], "exact": true},
   {"key": "aegis", "name": "Aegis School of Data Science & AI", "ids": [138], "say": ["aegis school"], "backdrop": true, "aka": ["Aegis", "Aegis School of Data Science", "Aegis School of Business, Data Science, Cyber Security and Telecommunication"]},
-  {"key": "aegis-sil", "name": "Aegis Super Intelligence Lab", "ids": [900001], "say": ["super intelligence lab", "superintelligence lab"], "backdrop": true, "aka": ["Aegis Superintelligence Lab"]},
+  {"key": "aegis-sil", "name": "Aegis Super Intelligence Lab", "ids": [900001, 182], "say": ["super intelligence lab", "superintelligence lab"], "backdrop": true, "aka": ["Aegis Superintelligence Lab"]},
   {"key": "ai-products-factory", "name": "AI Products Factory", "ids": [139], "say": ["ai products factory", "products factory"]},
   {"key": "kavion", "name": "Kavion.ai", "ids": [140], "say": ["kavion"]},
   {"key": "yarnit", "name": "Yarnit", "ids": [141, 155, 156, 160, 161], "say": ["yarnit"]},
@@ -68,6 +68,7 @@
   {"key": "wissen", "name": "Wissen Technology", "ids": [144], "say": ["wissen"]},
   {"key": "solsynch", "name": "Solsynch Technologies", "ids": [146, 147], "say": ["solsynch"]},
   {"key": "indi4", "name": "Indi4 Consult", "ids": [158, 159], "say": ["indi4"]},
-  {"key": "sequretek", "name": "Sequretek", "ids": [167], "say": ["sequretek"]},
-  {"key": "idfc-first-bank", "name": "IDFC FIRST Bank", "ids": [168, 169, 170, 171, 172, 173, 174, 175, 176, 177], "say": ["idfc"], "backdrop": true}
+  {"key": "sequretek", "name": "Sequretek", "ids": [167, 179], "say": ["sequretek"]},
+  {"key": "idfc-first-bank", "name": "IDFC FIRST Bank", "ids": [168, 169, 170, 171, 172, 173, 174, 175, 176, 177], "say": ["idfc"], "backdrop": true},
+  {"key": "manotr", "name": "MANOTR Techlabs", "ids": [180], "say": ["manotr"]}
 ]
