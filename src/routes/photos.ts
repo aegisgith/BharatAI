@@ -212,14 +212,18 @@ export const SHARE_TAGS = '#BharatAIInnovation @bharataiinnovation.ai'
 // WhatsApp and its status), the caption copied too; on a computer, the caption and links.
 export function albumPageHTML(a: { name: string; org: string; ids: string[]; focus?: Record<string, [number, number]>; got?: Got;
     lineup?: string; names?: Record<string, [string, string, string, number][]>;
-    me?: { key: string; k: string; order: string[] }; pinned?: string[] }): string {
+    me?: { key: string; k: string; order: string[] }; pinned?: string[]; panels?: { title: string; ids: string[] }[] }): string {
   const got = a.got || {}
   const names = a.names || {}
   const me = a.me || null
   // pinned: their panel's group shots, first, under their own heading (not repeated below).
+  // panels: on more than one panel, one heading per panel with its own group shots.
   const pinned = (a.pinned || []).filter(id => a.ids.includes(id))
-  const groups = [...(pinned.length ? [{ day: '', words: 'Your panel, all together', ids: pinned }] : []),
-    ...byDay(a.ids.filter(id => !pinned.includes(id)))]
+  const perPanel = (a.panels || []).map(g => ({ title: g.title, ids: g.ids.filter(id => pinned.includes(id)) })).filter(g => g.ids.length)
+  const top = perPanel.length > 1
+    ? perPanel.map(g => ({ day: '', words: 'All together: ' + g.title, ids: g.ids }))
+    : pinned.length ? [{ day: '', words: 'Your panel, all together', ids: pinned }] : []
+  const groups = [...top, ...byDay(a.ids.filter(id => !pinned.includes(id)))]
   const total = groups.reduce((n, g) => n + g.ids.length, 0)
   const flat = groups.flatMap(g => g.ids)
   let i = 0
@@ -796,6 +800,20 @@ export function panelShotsFor(key: string, live: Live, max = 3): string[] {
     for (const id of panelShots(s, max, key)) if (!out.includes(id) && out.length < max) out.push(id)
   return out
 }
+// For a person's page: every panel they are on now, each with its own group shots (up to
+// `per`), in programme order; a photo shows under its first panel only. The organiser,
+// 24 Nov 2026, on Bhupesh Daheria's page: "put this panel's combined photo as well" (the
+// three from panelShotsFor were all his first panel's). Emails keep panelShotsFor.
+export function panelShotsBy(key: string, live: Live, per = 3): { id: string; title: string; ids: string[] }[] {
+  const seen = new Set<string>()
+  const out: { id: string; title: string; ids: string[] }[] = []
+  for (const s of (live.byKey.get(key) || []).slice().sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start))) {
+    const ids = panelShots(s, per, key).filter(id => !seen.has(id))
+    ids.forEach(id => seen.add(id))
+    if (ids.length) out.push({ id: s.id, title: s.title, ids })
+  }
+  return out
+}
 
 // The line-ups the organiser has confirmed (admin_audit 'photos.panel_ok', session id -> fp).
 export const PANEL_OK = 'photos.panel_ok'
@@ -1131,7 +1149,7 @@ ph.get('/photos/:key', async (c) => {
   const ids = shown(v.asked, got, v.hidden !== null)
   const names: Record<string, [string, string, string, number][]> = {}
   for (const id of ids) names[id] = namesIn(id, p!.key, v.live)
-  return new Response(albumPageHTML({ name, org, ids, focus: p!.focus, got, lineup: lineupHTML(v.live.byKey.get(p!.key) || [], false), names, pinned: v.panel,
+  return new Response(albumPageHTML({ name, org, ids, focus: p!.focus, got, lineup: lineupHTML(v.live.byKey.get(p!.key) || [], false), names, pinned: v.panel, panels: v.panels,
     me: p!.attendee ? { key: p!.key, k: String(c.req.query('k') || ''), order: p!.photos } : undefined }), { headers: head })
 })
 
@@ -1146,9 +1164,10 @@ async function albumView(c: any, p: Person) {
   // Their session(s) and who else is in each photo, from the live programme. Only speakers
   // and named guests are ever named; an attendee never is.
   const live = await liveProgramme(c)
-  const panel = panelShotsFor(p.key, live)
+  const panels = panelShotsBy(p.key, live)
+  const panel = panels.flatMap(g => g.ids)
   const asked = mine.optedOut ? [] : [...panel, ...p.photos.filter(id => !panel.includes(id))].filter(id => !mine.notMe.has(id) && !(hidden && hidden.has(id)))
-  return { optedOut: mine.optedOut, hidden, live, panel, asked }
+  return { optedOut: mine.optedOut, hidden, live, panel, panels, asked }
 }
 
 // "Save all" / "Save" on a person's page (the organiser, 23 Nov 2026: "select and download

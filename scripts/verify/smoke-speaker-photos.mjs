@@ -194,6 +194,53 @@ if (pair) {
   const xp2 = await (await page(X.key, sig(X.key))).text();
   const ids3 = JSON.parse((xp2.match(/<script type="application\/json" id="ids">([\s\S]*?)<\/script>/) || [])[1] || '[]');
   check('an official not on a session at that time is not named', !ids3.some(x => (x[2] || []).some(e => e[0] === Y.name)), '');
+  // On two panels: a heading and that panel's own group shots for each (the organiser, 24 Nov
+  // 2026, on Bhupesh Daheria's page: his three were all his first panel's). Someone seen with one
+  // speaker, and hours later (or another day) with another: two panels of two.
+  db.run('DELETE FROM session_speakers WHERE session_id = 9001');
+  const hm = (s) => Number(String(s).slice(0, 2)) * 60 + Number(String(s).slice(3, 5));
+  const ok2 = (k) => { const p = P(k); return p && p.speakers.length && !p.check && !p.guest; };
+  const seen = new Map();
+  let two = null;
+  for (const [id, list] of Object.entries(DATA.who || {})) {
+    const m = DATA.photos[id]; if (!m || !m[1]) continue;
+    const ks = [...new Set(list.filter(w => w[2] < 80 && ok2(w[0])).map(w => w[0]))];
+    for (const k of ks) for (const z of ks) {
+      if (k === z) continue;
+      const here = { day: m[0], t: hm(m[1]), z };
+      const prev = (seen.get(k) || []).find(o => o.z !== z && (o.day !== here.day || Math.abs(o.t - here.t) >= 100));
+      if (prev) { two = { k, a: prev, b: here }; break; }
+      seen.set(k, [...(seen.get(k) || []), here]);
+    }
+    if (two) break;
+  }
+  check('the data has someone photographed with two other speakers, hours apart', !!two, '');
+  if (two) {
+    const K = P(two.k), Z1 = P(two.a.z), Z2 = P(two.b.z), added = [];
+    for (const p of [K, Z1, Z2]) if (!rows('SELECT 1 FROM speakers WHERE id = ?', [p.speakers[0]]).length) { addSpeaker(p, ''); added.push(p.speakers[0]); }
+    const hhmm = (d, t) => `${d} ${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+    db.run("INSERT INTO sessions (id, event_id, title, session_type, room, start_time, end_time) VALUES (9002, 1, 'First of two panels', 'panel', 'Kalam Theatre', ?, ?)", [hhmm(two.a.day, two.a.t - 20), hhmm(two.a.day, two.a.t + 20)]);
+    db.run("INSERT INTO sessions (id, event_id, title, session_type, room, start_time, end_time) VALUES (9003, 1, 'Second of two panels', 'panel', 'Raman Theatre', ?, ?)", [hhmm(two.b.day, two.b.t - 20), hhmm(two.b.day, two.b.t + 20)]);
+    db.run("INSERT INTO session_speakers (session_id, speaker_id, role, sort_order) VALUES (9002, ?, 'panellist', 1), (9002, ?, 'panellist', 2), (9003, ?, 'panellist', 1), (9003, ?, 'panellist', 2)",
+      [K.speakers[0], Z1.speakers[0], K.speakers[0], Z2.speakers[0]]);
+    const kp = await (await page(K.key, sig(K.key))).text();
+    const allSecs = [...kp.matchAll(/<section><h2>[\s\S]*?<\/section>/g)].map(m => m[0]).join('');
+    const secs = [...kp.matchAll(/<section><h2>All together: ([^<]*?) <span>\d+<\/span><\/h2>([\s\S]*?)<\/section>/g)].map(m => ({ title: m[1], ids: [...m[2].matchAll(/\/d\/([A-Za-z0-9_-]+)=w700/g)].map(x => x[1]) }));
+    const with2 = (id, x, y) => { const ks = new Set((DATA.who[id] || []).filter(w => w[2] < 80).map(w => w[0])); return ks.has(x) && ks.has(y); };
+    const s1 = secs.find(s => s.title === 'First of two panels'), s2 = secs.find(s => s.title === 'Second of two panels');
+    const order = (two.a.day + hhmm('', two.a.t)) < (two.b.day + hhmm('', two.b.t)) ? 'First of two panels|Second of two panels' : 'Second of two panels|First of two panels';
+    check('on two panels, each has its own heading and group shots, in programme order',
+      !!s1 && !!s2 && s1.ids.length >= 1 && s2.ids.length >= 1 && s1.ids.length <= 3 && s2.ids.length <= 3
+      && s1.ids.every(id => with2(id, K.key, Z1.key)) && s2.ids.every(id => with2(id, K.key, Z2.key)) && secs.map(s => s.title).join('|') === order,
+      secs.map(s => s.title + ':' + s.ids.length));
+    check('...no "Your panel" heading then, and no group shot shown twice', !kp.includes('Your panel, all together') && !!s1 && !!s2
+      && [...s1.ids, ...s2.ids].every(id => (allSecs.match(new RegExp(id + '=w700', 'g')) || []).length === 1), '');
+    const pv4 = await as('GET', `/api/admin/speaker-photos/${K.key}/preview`);
+    check('their email still has at most three group shots in all, and no original-size link', pv4.status === 200 && !!s1 && !!s2
+      && [...s1.ids, ...s2.ids].filter(id => (pv4.json?.html || '').includes(id)).length <= 3 && !/\/o\.jpg/.test(pv4.json?.html || ''), pv4.status);
+    db.run('DELETE FROM session_speakers WHERE session_id IN (9002, 9003)'); db.run('DELETE FROM sessions WHERE id IN (9002, 9003)');
+    for (const id of added) db.run('DELETE FROM speakers WHERE id = ?', [id]);
+  }
   db.run('DELETE FROM session_speakers WHERE session_id = 9001'); db.run('DELETE FROM sessions WHERE id IN (9000, 9001)');
 }
 
