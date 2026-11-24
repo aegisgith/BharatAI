@@ -57,16 +57,15 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
     check('the bar\'s button goes to the form, and it steps aside there', await page.locator('#stickyCta.is-on').count() === 0 && await page.locator('#gv-form').isVisible());
 
     // Everything appears, every picture loads, no face cut off by the phone's row
-    for (const sel of ['.gv-rows', '.gv-mins', '.gv-offs', '.gv-talks', '.gv-tiles', '.gv-more', '.gv-shows', '.gv-secs', '.gv-chips', '.gv-faq']) {
+    for (const sel of ['.gv-rows', '.gv-talks', '.gv-tiles', '.gv-more', '.gv-shows', '.gv-secs', '.gv-chips', '.gv-faq']) {
       await page.locator(sel).scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);
     }
     // The Mumbai 2026 photos are a long grid on a phone: bring each one near, or it never starts loading.
     for (const fig of await page.locator('.gv-ph, .gv-booth').all()) { await fig.scrollIntoViewIfNeeded(); await page.waitForTimeout(150); }
     await page.waitForFunction(() => [...document.images].every((i) => i.complete), null, { timeout: 20000 }).catch(() => {});
-    check('sections show with animations off', await page.evaluate(() => ['.gv-rows', '.gv-mins', '.gv-offs', '.gv-talks', '.gv-tiles', '.gv-secs', '.gv-nom-intro'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
+    check('sections show with animations off', await page.evaluate(() => ['.gv-rows', '.gv-talks', '.gv-tiles', '.gv-secs', '.gv-nom-intro'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
     check('every picture loads', await page.evaluate(() => [...document.images].every((i) => i.naturalWidth > 0)), await page.evaluate(() => [...document.images].filter((i) => !i.naturalWidth).map((i) => i.src).join(', ')));
-    check('phone: the Ministers stand in two rows', await page.evaluate(() => new Set([...document.querySelectorAll('.gv-mins li')].map((c) => Math.round(c.getBoundingClientRect().top))).size === 2));
     check('every icon draws (an icon missing from the font is blank)', await page.evaluate(() => [...document.querySelectorAll('.gv-more i, .gv-secs i')].every((i) => getComputedStyle(i, '::before').content !== 'none')));
     // A tick box is tapped through its whole label, so the label is what must be 44 px tall.
     check('tap targets on the form are big enough', await page.evaluate(() => [...document.querySelectorAll('.gv-field input, .gv-field textarea, .gv-submit, .gv-fmt span')].map((e) => (e.type === 'checkbox' ? e.closest('label') || e : e)).every((e) => e.getBoundingClientRect().height >= 44)), await page.evaluate(() => [...document.querySelectorAll('.gv-field input, .gv-field textarea, .gv-submit, .gv-fmt span')].map((e) => (e.type === 'checkbox' ? e.closest('label') || e : e)).filter((e) => e.getBoundingClientRect().height < 44).map((e) => (e.id || e.htmlFor || e.className) + ' ' + Math.round(e.getBoundingClientRect().height) + 'px').join(', ')));
@@ -127,7 +126,7 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
       await p.goto(BASE + '/government', { waitUntil: 'load' });
       await settled(p);
       const r = await p.evaluate(() => {
-        const bad = [...document.querySelectorAll('h1,h2,h3,p,a.btn,button,.gv-rows li,.gv-tile,.gv-more li,.gv-show,.gv-mins li,.gv-offs li,.gv-talk,.gv-secs li')].filter((e) => { const x = e.getBoundingClientRect(); return x.width && (x.right > innerWidth + 1 || x.left < -1); }).map((e) => e.textContent.trim().slice(0, 30));
+        const bad = [...document.querySelectorAll('h1,h2,h3,p,a.btn,button,.gv-rows li,.gv-tile,.gv-more li,.gv-show,.gv-talk,.gv-secs li')].filter((e) => { const x = e.getBoundingClientRect(); return x.width && (x.right > innerWidth + 1 || x.left < -1); }).map((e) => e.textContent.trim().slice(0, 30));
         return { over: document.documentElement.scrollWidth - innerWidth, bad, btn: document.querySelector('.gv-actions .btn').getBoundingClientRect().bottom, vh: innerHeight };
       });
       check(`${w}px: nothing runs off the screen`, r.over <= 0 && r.bad.length === 0, JSON.stringify(r));
@@ -224,13 +223,10 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
         const copy = document.querySelector('.gv-hero-copy').getBoundingClientRect();
         const fig = document.querySelector('.gv-figure').getBoundingClientRect();
         const clear = [...document.querySelectorAll('.gv-rows li')].every((li) => { const x = document.createRange(); x.selectNodeContents(li.querySelector('b')); return x.getBoundingClientRect().right <= li.querySelector('span').getBoundingClientRect().left; });
-        const rows = (sel) => new Set([...document.querySelectorAll(sel)].map((l) => Math.round(l.getBoundingClientRect().top))).size;
-        return { side: copy.right <= fig.left, clear, mins: rows('.gv-mins li'), offs: rows('.gv-offs li') };
+        return { side: copy.right <= fig.left, clear };
       });
       check('laptop: the words stand beside the photograph', r.side);
       check('laptop: the big words never run into their lines', r.clear);
-      check('laptop: the Ministers stand in two rows', r.mins === 2, r.mins);
-      check('laptop: the government speakers stand in three or four rows', r.offs >= 3 && r.offs <= 4, r.offs);
       await c.close();
     }
   } finally {

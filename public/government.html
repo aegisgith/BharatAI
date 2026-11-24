@@ -170,26 +170,13 @@
         .gv-rows span { margin-top: 0; font-size: 1rem; }
     }
 
-    /* --- Already on the stage: Ministers in two rows, officers below, then the talks.
+    /* --- Already on the stage: the talks by government officers.
        Department logos sit on white because several are dark on clear. --- */
     .gv-stage { background: var(--off-white); }
     .gv-sub { margin: 2.25rem 0 1.1rem; font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; color: var(--charcoal); text-align: center; }
     .gv-sub:first-of-type { margin-top: 0; }
-    .gv-mins { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1.25rem 0.6rem; }
-    .gv-mins li { text-align: center; grid-column: span 2; }
-    .gv-mins li:nth-child(3n+1):nth-last-child(2) { grid-column: 2 / span 2; }
-    .gv-mins li:nth-child(3n+1):last-child { grid-column: 3 / span 2; }
-    .gv-mins img { display: block; width: min(100%, 92px); height: auto; aspect-ratio: 1; margin: 0 auto 0.5rem; border-radius: 50%; object-fit: cover; background: #E3E6F6; box-shadow: 0 0 0 3px #fff, 0 0 0 5px #FF9933; }
-    .gv-mins b { display: block; font-size: 0.82rem; line-height: 1.25; color: var(--charcoal); }
-    .gv-mins span { display: block; margin-top: 0.2rem; font-size: 0.72rem; line-height: 1.32; color: var(--dark-grey); }
-    .gv-offs { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.7rem; }
-    .gv-offs li { flex: 0 0 calc(50% - 0.35rem); min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 1rem 0.65rem; background: #fff; border: 1px solid #E3E6F6; border-radius: 16px; }
     .gv-pic { flex: none; width: 76px; height: 76px; border-radius: 50%; object-fit: cover; background: #E3E6F6; }
-    .gv-offs .gv-pic { margin-bottom: 0.55rem; }
-    .gv-offs b { display: block; font-size: 0.88rem; line-height: 1.25; color: var(--charcoal); }
-    .gv-offs span { display: block; margin-top: 0.2rem; font-size: 0.76rem; line-height: 1.35; color: var(--dark-grey); }
     .gv-logo { display: block; width: auto; height: 42px; max-width: 170px; object-fit: contain; }
-    .gv-offs .gv-logo { margin-top: auto; padding-top: 0.6rem; box-sizing: content-box; }
     .gv-talks { display: grid; gap: 0.85rem; }
     .gv-talk { display: flex; gap: 1rem; align-items: flex-start; background: #fff; border: 1px solid #E3E6F6; border-left: 5px solid #FF9933; border-radius: 16px; padding: 1.1rem; }
     .gv-talk h4 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 1.1rem; line-height: 1.2; color: var(--charcoal); }
@@ -205,15 +192,6 @@
     .gv-see-all a { color: var(--ink-orange); font-weight: 800; }
     @media (min-width: 900px) {
         .gv-sub { font-size: 1.5rem; margin: 3rem 0 1.5rem; }
-        .gv-mins { gap: 2rem 1.5rem; max-width: 980px; margin: 0 auto; }
-        .gv-mins img { width: 136px; margin-bottom: 0.8rem; }
-        .gv-mins b { font-size: 1.05rem; }
-        .gv-mins span { font-size: 0.88rem; }
-        .gv-offs { gap: 1rem; }
-        .gv-offs li { flex-basis: calc(25% - 0.75rem); padding: 1.25rem 0.9rem; }
-        .gv-offs .gv-pic { width: 96px; height: 96px; }
-        .gv-offs b { font-size: 0.98rem; }
-        .gv-offs span { font-size: 0.82rem; }
         .gv-talks { grid-template-columns: 1fr 1fr; gap: 1rem; }
         .gv-talk { padding: 1.35rem; gap: 1.25rem; }
         .gv-talk .gv-pic { width: 104px; height: 104px; }
@@ -509,29 +487,8 @@
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">Government on the stage <span class="accent">at Mumbai 2026</span></h2>
-                <p class="section-subtitle">Bharat AI Innovation Mumbai was held on 20–21 November 2026 at World Trade Center Mumbai. These Ministers, officers and talks were on its programme. Delhi 2027 is the next stage.</p>
+                <p class="section-subtitle">Bharat AI Innovation Mumbai was held on 20–21 November 2026 at World Trade Center Mumbai. These talks by government officers were on its programme. Delhi 2027 is the next stage.</p>
             </div>
-
-            <h3 class="gv-sub reveal">Ministers</h3>
-            <ul class="gv-mins reveal">
-                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/eknath-shinde.webp" alt="" style="object-position:50% 18%"><b>Hon’ble Shri Eknath Shinde</b><span>Deputy Chief Minister of Maharashtra</span></li>
-                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/mangal-prabhat-lodha.webp" alt="" style="object-position:47% 22%"><b>Hon’ble Shri Mangal Prabhat Lodha</b><span>Minister of Skill, Employment, Entrepreneurship and Innovation, Maharashtra</span></li>
-                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/dattatray-bharane.avif" alt="" style="object-position:28% 22%"><b>Hon’ble Shri Dattatray Bharane</b><span>Minister of Agriculture, Maharashtra</span></li>
-                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/aditi-tatkare.jpg" alt="" style="object-position:46% 18%"><b>Hon’ble Smt. Aditi Tatkare</b><span>Minister of Women and Child Development, Maharashtra</span></li>
-                <li><img width="150" height="150" loading="lazy" decoding="async" src="images/sanjay-rathod.jpg" alt="" style="object-position:37% 25%"><b>Hon’ble Shri Sanjay Rathod</b><span>Minister of Soil and Water Conservation, Maharashtra</span></li>            </ul>
-
-            <h3 class="gv-sub reveal">Government speakers</h3>
-            <ul class="gv-offs reveal">
-                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-virendra-singh-sq.webp" alt=""><b>Shri Virendra Singh (IAS)</b><span>Secretary, Electronics, IT and AI Department, Government of Maharashtra</span><img class="gv-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="Government of Maharashtra"></li>
-                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-bhim-singh-sq.webp" alt=""><b>Shri Bhim Singh</b><span>Secretary and CEO, State Rural Development Agency, Government of Chhattisgarh</span><img class="gv-logo" width="159" height="160" loading="lazy" decoding="async" src="images/org-logos/chhattisgarh.webp" alt="Government of Chhattisgarh"></li>
-                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-bhanudas-palwe-sq.webp" alt=""><b>Shri Bhanudas Palwe (IAS)</b><span>Commissioner of Fisheries, Government of Maharashtra</span><img class="gv-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="Government of Maharashtra"></li>
-                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-akshay-yadava-sq.webp" alt=""><b>Akshay Yadava</b><span>Director, UIDAI</span><img class="gv-logo" width="246" height="160" loading="lazy" decoding="async" src="images/org-logos/uidai.webp" alt="UIDAI"></li>
-                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-prakash-kumar-sq.webp" alt=""><b>Shri Prakash Kumar</b><span>Additional Director, MeitY</span><img class="gv-logo" width="292" height="96" loading="lazy" decoding="async" src="images/logo-meity.webp" alt="MeitY"></li>
-                <li><img class="gv-pic" width="96" height="96" loading="lazy" decoding="async" src="images/speaker-parag-dabhade.jpg" alt=""><b>Parag Dabhade</b><span>CTO, AI &amp; Agritech Innovation Center, Government of Maharashtra</span><img class="gv-logo" width="96" height="96" loading="lazy" decoding="async" src="images/logo-maharashtra.webp" alt="Government of Maharashtra"></li>
-                <li><img class="gv-pic" width="400" height="400" loading="lazy" decoding="async" src="images/speaker-ravi-ranjan-singh-sq.webp" alt=""><b>Shri Ravi Ranjan Singh</b><span>Director, Digital, Department of Agriculture &amp; Farmers Welfare, Government of India</span><img class="gv-logo" width="358" height="160" loading="lazy" decoding="async" src="images/logo-agriculture-goi.webp" alt="Department of Agriculture &amp; Farmers Welfare, Government of India"></li>
-                <li><img class="gv-pic" width="400" height="400" loading="lazy" decoding="async" src="images/speaker-vivek-bhoite-sq.webp" alt=""><b>Dr. Vivek Mohanrao Bhoite</b><span>Subject Matter Specialist, KVK Baramati, ICAR-ATARI</span></li>
-                <li><span class="gv-initials" aria-hidden="true" style="margin-bottom:0.55rem">VD</span><b>Dr. Vishal Deo</b><span>Scientist-C, ICMR-National Institute for Research in Digital Health</span></li>
-            </ul>
 
             <h3 class="gv-sub reveal">Innovation Talk &amp; Showcase by</h3>
             <div class="gv-talks">
