@@ -233,7 +233,10 @@
       var rates = base ? '<div class="wad-rates">' + [[n.delivered, 'delivered'], [n.read, 'read'], [n.taps, 'tapped the button'], [n.replied, 'replied'], [n.failed, 'not delivered']]
         .map(function (x) { return '<span><b>' + rate(x[0]) + '</b>' + x[1] + '</span>'; }).join('') + '</div>' : '';
       var reasons = (b.reasons || []).length ? '<details class="wad-reasons"><summary>Why ' + num(n.failed) + ' did not arrive</summary><ul>'
-        + b.reasons.map(function (r) { return '<li><b>' + num(r.n) + '</b> ' + esc(r.words) + '</li>'; }).join('') + '</ul></details>' : '';
+        + b.reasons.map(function (r) {
+          return '<li><b>' + num(r.n) + '</b> ' + esc(r.words)
+            + (r.retry && b.status !== 'cancelled' ? ' <button class="wad-btn wad-small" data-act="batch" data-what="retry" data-n="' + num(r.n) + '" data-id="' + b.id + '"' + (busy ? ' disabled' : '') + '>Try again for these ' + num(r.n) + '</button>' : '') + '</li>';
+        }).join('') + '</ul></details>' : '';
       return '<div class="wad-batch"><div class="wad-batch-top"><b>' + esc(b.title || kindWords(b.kind)) + '</b> ' + chip(st) + '<span class="wad-sub">' + people(n.total) + ' &middot; started ' + esc(when(b.created_at)) + (b.created_by ? ' by ' + esc(b.created_by) : '') + '</span></div>'
         + '<div class="wad-bar"><span style="width:' + n.pct + '%"></span></div>' + rates + '<p class="wad-sub">' + (bits || 'Nothing sent yet') + '</p>' + reasons
         + (b.note ? '<p class="wad-warn">' + esc(b.note) + '</p>' : '') + '<div class="wad-actions">' + buttons + '<button class="wad-btn wad-small" data-act="report" data-id="' + b.id + '"><i class="fas fa-download" aria-hidden="true"></i> Download report</button></div></div>';
@@ -651,7 +654,12 @@
     if (act === 'batch') {
       var what = t.getAttribute('data-what');
       if (what === 'cancel' && !w.confirm('Cancel everyone still waiting in this send? The ones already sent stay sent.')) return;
-      await work(async function () { take(await opts.api.post('/api/admin/whatsapp/batches/' + t.getAttribute('data-id') + '/' + what, {})); });
+      if (what === 'retry' && !w.confirm('Send it again to the ' + t.getAttribute('data-n') + ' people WhatsApp held back? WhatsApp suggests waiting a day or two first; if it is too soon, it may hold them back again (that costs nothing).')) return;
+      await work(async function () {
+        var rr = await opts.api.post('/api/admin/whatsapp/batches/' + t.getAttribute('data-id') + '/' + what, {});
+        take(rr);
+        if (what === 'retry') toast('Trying again for ' + num(rr.retried) + ' people. They go 20 a minute.');
+      });
       return;
     }
     if (act === 'batch-list') { logBatch = Number(t.getAttribute('data-id')); logStatus = ''; logQ = ''; tab = 'sent'; draw(); loadTab(); return; }

@@ -227,9 +227,10 @@ export function metaMessage(row: any, code: string) {
 // tries again by itself. Anything else is about that one person.
 // person: about that one person and never about the send, so it does not count towards
 // "five in a row refused" (24 Nov 2026: Meta held back about 1 in 4 of the first photos).
-export const ERRORS: Record<number, { words: string; stop?: boolean; soft?: boolean; mine?: boolean; person?: boolean }> = {
+// retry: worth sending again later ("Try again for these" on the send).
+export const ERRORS: Record<number, { words: string; stop?: boolean; soft?: boolean; mine?: boolean; person?: boolean; retry?: boolean }> = {
   131026: { words: 'This number is not on WhatsApp, or their WhatsApp is too old to receive it.', person: true },
-  131049: { words: 'WhatsApp held it back: this person has had many business messages lately. Try again in a day or two.', person: true },
+  131049: { words: 'WhatsApp held it back: this person has had many business messages lately. Try again in a day or two.', person: true, retry: true },
   131050: { words: 'This person has turned off marketing messages from businesses on WhatsApp.', person: true },
   131047: { words: 'More than 24 hours have passed since they wrote to us, so a typed reply is not allowed. Send them an approved message instead.' },
   131056: { words: 'Too many messages to this one number in a short time. Try again later.' },
@@ -1304,7 +1305,7 @@ async function overview(c: any) {
   const replied = ids.length ? await all(c, `SELECT o.batch_id, COUNT(DISTINCT o.wa_number) AS n FROM wa_messages o WHERE o.batch_id IN (${ids.map(() => '?').join(',')})
      AND EXISTS (SELECT 1 FROM wa_messages i WHERE i.direction = 'in' AND i.wa_number = o.wa_number AND i.id > o.id) GROUP BY o.batch_id`, ...ids) : []
   // Why the ones that did not arrive did not arrive, most common first.
-  const why = ids.length ? await all(c, `SELECT batch_id, COALESCE(error, '') AS error, COUNT(*) AS n FROM wa_messages WHERE batch_id IN (${ids.map(() => '?').join(',')})
+  const why = ids.length ? await all(c, `SELECT batch_id, COALESCE(error, '') AS error, MAX(error_code) AS code, COUNT(*) AS n FROM wa_messages WHERE batch_id IN (${ids.map(() => '?').join(',')})
      AND status = 'failed' GROUP BY batch_id, error ORDER BY n DESC`, ...ids) : []
   const sum: Record<string, number> = {}
   let taps = 0
@@ -1316,7 +1317,8 @@ async function overview(c: any) {
       let t = 0
       for (const p of per) if (Number(p.batch_id) === Number(b.id)) { counts[String(p.status)] = Number(p.n); t += Number(p.taps || 0) }
       return { ...b, counts, taps: t, replied: Number(replied.find(x => Number(x.batch_id) === Number(b.id))?.n || 0),
-        reasons: why.filter(x => Number(x.batch_id) === Number(b.id)).slice(0, 6).map(x => ({ words: String(x.error || 'WhatsApp gave no reason'), n: Number(x.n) })) }
+        reasons: why.filter(x => Number(x.batch_id) === Number(b.id)).slice(0, 6).map(x => ({ words: String(x.error || 'WhatsApp gave no reason'), n: Number(x.n),
+          ...(ERRORS[Number(x.code)]?.retry ? { retry: true } : {}) })) }
     }) }
 }
 wa.get('/api/admin/whatsapp', async (c) => { c.header('Cache-Control', 'no-store'); return c.json(await overview(c)) })
@@ -1719,6 +1721,16 @@ wa.post('/api/admin/whatsapp/batches/:id/:what', async (c) => {
   else if (what === 'cancel' && (b.status === 'running' || b.status === 'paused')) {
     await run(c, "UPDATE wa_messages SET status = 'cancelled', updated_at = datetime('now') WHERE batch_id = ? AND status = 'queued'", id)
     await run(c, "UPDATE wa_batches SET status = 'cancelled', finished_at = datetime('now') WHERE id = ?", id)
+  } else if (what === 'retry' && b.status !== 'cancelled') {
+    // The people Meta held back (131049) go back in the queue; the clock checks STOP and
+    // held albums again before each one goes.
+    const codes = Object.keys(ERRORS).map(Number).filter(k => ERRORS[k].retry)
+    const r = await run(c, `UPDATE wa_messages SET status = 'queued', error = NULL, error_code = NULL, updated_at = datetime('now')
+       WHERE batch_id = ? AND status = 'failed' AND error_code IN (${codes.map(() => '?').join(',')})`, id, ...codes)
+    if (!changed(r)) return c.json({ error: 'There is nobody to try again in this send.' }, 409)
+    await run(c, "UPDATE wa_batches SET status = 'running', finished_at = NULL, note = NULL WHERE id = ?", id)
+    await note(c, 'whatsapp.batch.retry', id, { count: changed(r) })
+    return c.json({ success: true, retried: changed(r), ...(await overview(c)) })
   } else return c.json({ error: 'That cannot be done to this send now.' }, 409)
   await note(c, 'whatsapp.batch.' + what, id, {})
   return c.json({ success: true, ...(await overview(c)) })

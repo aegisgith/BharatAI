@@ -375,6 +375,14 @@ t = await tick();
 failWith = null;
 check('six people in a row held back by Meta do not pause the send: that is about each person, not the send', rows('SELECT status FROM wa_batches WHERE id = ?', [batch5])[0].status !== 'paused'
   && msgs("batch_id = ? AND status = 'failed' AND error_code = 131049", [batch5]).length === 6 && msgs("batch_id = ? AND status IN ('sent', 'delivered', 'read')", [batch5]).length === 1, JSON.stringify(t));
+let ovR = (await as('GET', '/api/admin/whatsapp')).json?.batches?.find(b => b.id === batch5);
+check('the send offers "Try again" for the people Meta held back', ovR?.reasons?.some(x => x.retry === true && x.n === 6), JSON.stringify(ovR?.reasons));
+const sb5 = sends().length;
+r = await as('POST', `/api/admin/whatsapp/batches/${batch5}/retry`, {});
+t = await tick();
+check('try again: only those six go again, and the send finishes', r.status === 200 && r.json.retried === 6 && sends().slice(sb5).length === 6
+  && msgs("batch_id = ? AND status IN ('sent', 'delivered', 'read')", [batch5]).length === 7 && rows('SELECT status FROM wa_batches WHERE id = ?', [batch5])[0].status === 'done', r.text.slice(0, 200));
+check('try again with nobody left to try is refused', (await as('POST', `/api/admin/whatsapp/batches/${batch5}/retry`, {})).status === 409, '');
 
 // ---------- reports and the inbox (23 Nov 2026, evening) ----------
 r = await as('GET', '/api/admin/whatsapp');
