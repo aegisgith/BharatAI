@@ -40,7 +40,7 @@ for (const [what, change, words, box] of refusals) {
   const r = await p.submit({ ...GOOD, email: ' asha.rao@example.gov.in ', org: ' Ministry of Tribal Affairs ' }, ['Live Demonstration', 'Exhibition Pavilion']);
   const b = r.body;
   check('filed as a government enquiry', r.done && b.inquiry_type === 'government', JSON.stringify(b));
-  check('the subject names the initiative', b.subject === 'Govt AI · Adi Vaani', b.subject);
+  check('the subject names Delhi 2027 and the initiative', b.subject === 'Delhi 2027 · Govt AI · Adi Vaani', b.subject);
   check('the officer is the person, the Ministry the organisation, spaces trimmed', b.name === 'Asha Rao' && b.email === 'asha.rao@example.gov.in' && b.organization === 'Ministry of Tribal Affairs' && b.phone === GOOD.phone, JSON.stringify(b));
   for (const [what, words] of [['the initiative', 'Initiative: Adi Vaani'], ['the description', 'Translates tribal languages'], ['the officer and designation', 'Asha Rao, Deputy Secretary'], ['every format chosen', 'Live Demonstration, Exhibition Pavilion']]) {
     check(`the message carries ${what}`, b.message.includes(words), b.message);
@@ -85,7 +85,8 @@ const html = read('public/government.html');
 const body = html.slice(html.indexOf('<body>')).replace(/<script[\s\S]*?<\/script>/g, '').replace(/<style[\s\S]*?<\/style>/g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
 const has = (words) => body.includes(words);
 check('20 November 2026 really is a Friday, 21 a Saturday (the page gives the dates only)', new Date('2026-11-20T12:00:00Z').getUTCDay() === 5 && new Date('2026-11-21T12:00:00Z').getUTCDay() === 6);
-check('the dates and the venue', has('20–21 November 2026') && has('World Trade Center, Mumbai'));
+// 24 Nov 2026: the page is for Delhi 2027; Mumbai is named only as the edition that was held.
+check('the dates and the venue: Delhi 2027', has('28–29 July 2027') && has('Bharat Mandapam'));
 check('the 1.4 billion line, in English and Hindi', has('1.4 billion') && body.includes('1.4 अरब') && body.includes('भारतवासियों'));
 for (const theme of ['Better governance', 'Public policy', 'Citizens’ daily lives', 'Fighting corruption', 'Safety and security', 'Health', 'Women and child safety']) check(`names what the organiser asked for: ${theme}`, has(theme));
 for (const f of ['Innovation Talk & Showcase', 'Keynote & Panel Discussion', 'Closed-Door Roundtable', 'Live Demonstration', 'Launch of a New Initiative', 'Government Pavilion', 'Government-Incubated Startups']) check(`offers: ${f}`, has(f));

@@ -145,7 +145,7 @@ const SHUFFLE = `<script>
 
 // Who is on the floor, by kind, naming only exhibitors with a confirmed booth so
 // the line stays true if a held booth falls through.
-const WHO = 'Global IT firms like CGI, platforms like NoBroker, AI startups and the Ministry of Tribal Affairs, showing their work to enterprise and government buyers.'
+const WHO = 'At Bharat AI Innovation Mumbai, November 2026: global IT firms like CGI, platforms like NoBroker, AI startups and the Ministry of Tribal Affairs showed their work to enterprise and government buyers.'
 
 // The three blocks: the home page's strip (also /partner), the exhibition wall and
 // llms.txt. `all` is sized (sizeWall); an entry with `src` shows that file (an upload
@@ -200,7 +200,7 @@ ${SHUFFLE}
 <section class="section-pad exh-section" id="exhibitors">
     <div class="container">
         <div class="section-header reveal">
-            <h2 class="section-title">Join the companies <span class="accent">already exhibiting</span></h2>
+            <h2 class="section-title">The companies that <span class="accent">exhibited in Mumbai</span></h2>
             <p class="section-subtitle">${WHO}</p>
         </div>
     </div>

@@ -178,20 +178,20 @@ const flat = (html) => decode(bodyOf(html).replace(/<[^>]+>/g, ' ')).replace(/\s
       await goTo(p, '#passes');
       const pass = await p.evaluate(() => {
         const cards = [...document.querySelectorAll('.tw-pass')];
-        const b = cards[0].querySelector('.btn').getBoundingClientRect();
+        const lead = document.querySelector('.tw-pass--lead');
+        const b = lead.querySelector('.btn').getBoundingClientRect();
         const top = document.elementFromPoint(b.left + b.width / 2, Math.min(b.top + b.height / 2, innerHeight - 2));
         return {
           text: cards.map((c) => c.textContent.replace(/\s+/g, ' ').trim()),
           links: cards.map((c) => c.querySelector('.btn').getAttribute('href')),
-          glow: getComputedStyle(cards[0], '::before').animationName,
-          pressable: cards[0].querySelector('.btn').contains(top) || b.top + b.height / 2 > innerHeight,
+          glow: getComputedStyle(lead, '::before').animationName,
+          pressable: lead.querySelector('.btn').contains(top) || b.top + b.height / 2 > innerHeight,
         };
       });
-      check(name + ': Premium is struck through to today\'s price', pass.text[0].includes('₹9,999 ₹14,999 + GST'), pass.text[0]);
-      check(name + ': VIP is struck through to today\'s price', pass.text[1].includes('₹19,999 ₹24,999 + GST'), pass.text[1]);
-      check(name + ': each button goes to its pass', pass.links[0] === '/register#premium' && pass.links[1] === '/register#vip', pass.links.join());
+      // 24 Nov 2026: Mumbai is over; the cards sell Delhi 2027 passes by name, and the Delhi form shows the price.
+      check(name + ': three Delhi 2027 passes, no price on them', pass.text.length === 3 && pass.text.every((t) => t.includes('Delhi 2027') && !t.includes('₹')), pass.text.join(' | '));
+      check(name + ': each button goes to its Delhi pass', ['#academic', '#premium', '#vip'].every((h, i) => /^\/delhi-register\?source=training-workshop/.test(pass.links[i]) && pass.links[i].endsWith(h)), pass.links.join());
       check(name + ': the edge of the Premium card is turning, and its button still takes a press', pass.glow === 'tw-turn' && pass.pressable, JSON.stringify(pass));
-      check(name + ': the old prices are really struck through', await p.evaluate(() => [...document.querySelectorAll('.tw-price s')].every((s) => getComputedStyle(s).textDecorationLine === 'line-through')));
 
       // ---- the last heading ----
       const gatherAt = await p.evaluate(() => { const h = document.querySelector('.cta-section h2'); return { label: h.getAttribute('aria-label'), text: h.textContent.replace(/\s+/g, ' ').trim() }; });
@@ -214,7 +214,7 @@ const flat = (html) => decode(bodyOf(html).replace(/<[^>]+>/g, ' ')).replace(/\s
         };
       });
       check(name + ': the letters are all in place where it is read', placed.still === 0 && placed.dim === 0, JSON.stringify(placed));
-      check(name + ': the light travels round the last button, and it still takes a press', placed.beam === 'tw-beam' && placed.pressable && placed.href === '/register#premium', JSON.stringify(placed));
+      check(name + ': the light travels round the last button, and it still takes a press', placed.beam === 'tw-beam' && placed.pressable && /^\/delhi-register\?source=training-workshop[^#]*#premium$/.test(placed.href), JSON.stringify(placed));
 
       // ---- off the screen, nothing keeps moving ----
       await p.evaluate(() => window.scrollTo(0, 0));

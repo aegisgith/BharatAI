@@ -15,22 +15,21 @@ const struck = (html, was, now) => new RegExp('&#8377;' + was + '</s> &#8377;' +
 // Every old figure on a page must be inside the <s> that strikes it through.
 const plainOld = (html, figure) => (html.replace(/<s\b[^>]*>[\s\S]*?<\/s>/g, '').match(new RegExp('(&#8377;|₹)' + figure + '(?![0-9,])', 'g')) || []).length;
 
+// 24 Nov 2026: Mumbai is over. /conference, /networking and /training-workshop sell Delhi through
+// /delhi-register and show no Mumbai pass price at all.
+const noMumbaiPrice = (html) => !/(&#8377;|₹)(4,999|8,999|9,999|14,999|19,999|24,999|999)(?![0-9,])/.test(html);
 const conference = read('conference.html');
-check('/conference: Delegate struck through beside today\'s price, twice', (conference.match(/&#8377;4,999<\/s> &#8377;8,999/g) || []).length === 2);
-check('/conference: nothing offers the old price plainly', plainOld(conference, '4,999') === 0);
+check('/conference: no Mumbai pass price', noMumbaiPrice(conference));
 check('/conference: no countdown to a day that has gone', !conference.includes('data-days-left'));
 
 const networking = read('networking.html');
-check('/networking: Delegate struck through beside today\'s price', struck(networking, '4,999', '8,999'));
-check('/networking: nothing offers the old price plainly', plainOld(networking, '4,999') === 0);
-check('/networking: says it may go up again, and no countdown', networking.includes('Prices went up on 6 Nov and may go up again.') && !networking.includes('data-days-left'));
+check('/networking: no Mumbai pass price, and no countdown', noMumbaiPrice(networking) && !networking.includes('data-days-left'));
 
 const workshops = read('training-workshop.html');
-check('/training-workshop: Premium and VIP struck through in both places', (workshops.match(/&#8377;9,999<\/s> &#8377;14,999/g) || []).length === 2 && (workshops.match(/&#8377;19,999<\/s> &#8377;24,999/g) || []).length === 2);
-check('/training-workshop: Delegate too', struck(workshops, '4,999', '8,999'));
+check('/training-workshop: no Mumbai pass price', noMumbaiPrice(workshops));
 for (const old of ['4,999', '9,999', '19,999']) check('/training-workshop: ' + old + ' is never offered plainly', plainOld(workshops, old) === 0);
 
-for (const f of ['mumbai.html', 'conference.html']) {
+for (const f of ['mumbai.html']) {
   check(f + ': what search engines are told is the top price is today\'s', read(f).includes('"highPrice": "24999"') && !read(f).includes('"highPrice": "19999"'));
 }
 for (const f of ['conference.html', 'networking.html', 'training-workshop.html', 'delegation.html']) {
@@ -39,7 +38,8 @@ for (const f of ['conference.html', 'networking.html', 'training-workshop.html',
 check('/delegation link previews say the prices went up', (read('delegation.html').match(/Prices went up on 6 Nov 2026\./g) || []).length === 2);
 
 const terms = read('terms.html');
-check('terms: the standard price is in the past, an order keeps its price', terms.includes('the standard price applied to orders') && terms.includes('An order keeps the price it was placed at.'));
+// 24 Nov 2026: the terms cover Delhi 2027 too; Mumbai's dated prices are told in the past.
+check('terms: Mumbai\'s standard price is in the past, a Delhi order keeps its price', terms.includes('the standard price applied to orders') && terms.includes('An order kept the price it was placed at.') && terms.includes('an order keeps the price it was placed at'));
 const llms = read('llms.txt');
 check('llms.txt: lists today\'s prices', ['Academic Pass** — ₹3,999', 'Delegate Pass** — ₹8,999', 'Premium Delegate Pass** — ₹14,999', 'VIP Pass** — ₹24,999'].every(s => llms.includes(s)));
 check('llms.txt: says what they were, in the past', llms.includes('Until 5 November they were Academic ₹999, Delegate ₹4,999, Premium Delegate ₹9,999, VIP ₹19,999'));
@@ -50,7 +50,8 @@ const exhibition = read('exhibition.html');
 check('/exhibition: the Startup Pod struck through on its card and in the table', (exhibition.match(/₹38,000<\/s> ₹48,000/g) || []).length === 2);
 check('/exhibition: what search engines read is the plain price', exhibition.includes('"name": "Startup Pod", "price": "48000"'));
 const fpVersion = (exhibition.match(/js\/floor-plan\.js\?v=([0-9a-z-]+)/) || [])[1] || '';
-check('/exhibition: the floor plan script is a new version, so nobody keeps the old file', fpVersion >= '2026-11-06b', fpVersion);
+// 24 Nov 2026: Mumbai's floor plan left /exhibition (Delhi's plan comes later), so no script version to check.
+check('/exhibition: Mumbai\'s floor plan is gone, or its script is a new version', !read('exhibition.html').includes('js/floor-plan.js?v=') || fpVersion >= '2026-11-06b', fpVersion);
 check('floor plan: the panel strikes the old price for a pod only', read('js/floor-plan.js').includes("it.type==='pod'") && read('js/floor-plan.js').includes('inr(38000)'));
 check('/partner and the home page show it struck through too', /&#8377;38,000<\/s> &#8377;48,000/.test(read('partner.html')) && /<s>₹38,000<\/s> ₹48,000/.test(read('mumbai.html')));
 check('the home page (Delhi, a different event) is not touched', !read('index.html').includes('38,000'));

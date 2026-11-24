@@ -43,10 +43,10 @@ export function partnersEmailHTML(origin = SITE): string {
   <tr><td align="center" style="padding:8px 12px 24px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;border-collapse:separate;background:#ffffff;border:1px solid #E3E6EF;border-radius:12px;">
       <tr><td align="center" style="padding:20px 16px 4px;">
-        ${cap('Bharat AI Innovation ' + esc(PARTNERS_EDITION) + ' &middot; Powered by')}
+        ${cap('Bharat AI Innovation ' + esc(PARTNERS_EDITION) + ' was powered by')}
         <img src="${esc(origin + POWERED_BY.email_logo)}" width="180" alt="${esc(POWERED_BY.name)}" style="display:block;margin:10px auto 0;width:180px;max-width:70%;height:auto;border:0;border-radius:6px;">
       </td></tr>
-      <tr><td align="center" style="padding:18px 16px 6px;">${cap('Our partners')}</td></tr>
+      <tr><td align="center" style="padding:18px 16px 6px;">${cap('Our ' + esc(PARTNERS_EDITION) + ' partners')}</td></tr>
       <tr><td style="padding:2px 8px 12px;">${rows.join('')}</td></tr>
     </table>
   </td></tr>

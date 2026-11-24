@@ -46,7 +46,7 @@
     }
     function roleLine(p) { return [p.title, p.company].filter(Boolean).join(' · '); }
     function openWho(p) {
-        if (!dialog || typeof dialog.showModal !== 'function') { window.location.href = '/register#delegate'; return; }
+        if (!dialog || typeof dialog.showModal !== 'function') { window.location.href = '/delhi-register?source=networking-glimpse#delegate'; return; }
         var ava = document.getElementById('nw-d-ava');
         ava.innerHTML = '';
         if (p && p.photo) ava.appendChild(photo(p, '', 72)); else ava.appendChild(icon('fa-lock'));

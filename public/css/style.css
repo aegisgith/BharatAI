@@ -3909,6 +3909,13 @@ section { position: relative; }
     pointer-events: none;
     transition: var(--t-med);
     box-shadow: var(--shadow-lg);
+    /* 16 links are taller than a phone: the menu scrolls inside the screen, so Contact and the
+       button at its foot can be reached (24 Nov 2026). */
+    max-height: calc(100vh - var(--nav-h));
+    max-height: calc(100dvh - var(--nav-h));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .nav-menu.active {

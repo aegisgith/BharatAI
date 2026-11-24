@@ -46,7 +46,29 @@ check('/training-workshop has the call for workshop partners and its form', r.st
 r = await hit('/partner');
 check('/partner lists the Leaders’ Evening, Networking Lunch and AI Partner cards, and no Cocktail Evening card', ['Bharat AI Leaders’ Evening Partner', 'Networking Lunch Partner', '<h3>AI Partner</h3>'].every((w) => r.text.includes(w)) && !r.text.includes('Cocktail Evening Partner'), r.status);
 r = await hit('/government');
-check('/government names the dates and the form, and offers no price', r.text.includes('20–21 November 2026') && r.text.includes('id="gv-form"') && !r.text.includes('₹'), r.status);
+check('/government is for Delhi 2027: the dates, the form, and no price', /28(–|&ndash;)29 July 2027/.test(r.text) && r.text.includes('Bharat Mandapam') && r.text.includes('id="gv-form"') && !r.text.includes('₹'), r.status);
+
+// 24 Nov 2026, the Delhi readiness review's first fixes: nothing a Delhi buyer opens sells Mumbai.
+r = await hit('/exhibition');
+check('/exhibition: titled for Delhi 2027, Mumbai\'s floor plan gone, every booth button goes to the Delhi application', r.text.includes('<title>Exhibition — Bharat AI Innovation Delhi 2027') && !r.text.includes('id="baiFloor"') && !r.text.includes('href="/inquiry') && r.text.includes('href="/delhi-exhibit?booth=mega"'), r.status);
+r = await hit('/partner');
+check('/partner: titled for Delhi 2027, included passes at Delhi\'s prices', r.text.includes('<title>Partnership Opportunities — Bharat AI Innovation Delhi 2027') && r.text.includes('&#8377;19,999 + GST per pass') && !r.text.includes('&#8377;24,999') && !r.text.includes('Held at WTC Mumbai'), r.status);
+r = await hit('/inquiry?booth=mega');
+check('/inquiry (Mumbai\'s booking form) sends people to the Delhi application, the booth kept', r.status === 302 && r.h.location === '/delhi-exhibit?booth=mega', r.status + ' ' + r.h.location);
+r = await hit('/group');
+check('/group: Mumbai group booking is closed and points to Delhi', r.status === 200 && r.text.includes('Thank you, Mumbai') && r.text.includes('href="/delhi-register"'), r.status);
+r = await hit('/api/group/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+check('/api/group/start refuses: Mumbai is over (410)', r.status === 410, r.status + ' ' + r.text.slice(0, 80));
+r = await hit('/contact');
+check('/contact names Delhi 2027 and Bharat Mandapam, not WTC', r.text.includes('Bharat Mandapam') && !r.text.includes('Cuffe Parade') && r.text.includes('href="/delhi-register"'), r.status);
+r = await hit('/terms');
+check('/terms covers Delhi 2027', r.text.includes('<strong>Delhi 2027</strong>, at Bharat Mandapam') && r.text.includes('Last updated: 24 November 2026'), r.status);
+for (const p of ['/conference', '/networking', '/training-workshop', '/about', '/gallery']) {
+  r = await hit(p);
+  check(p + ': the menu\'s Passes goes to Delhi, the footer names Bharat Mandapam, no WTC address', r.text.includes('href="/delhi-register" class="nav-link">Passes') && !r.text.includes('World Trade Center Mumbai, Cuffe Parade, Mumbai'), r.status);
+}
+r = await hit('/css/style.css?v=' + ((/css\/style\.css\?v=([0-9a-z]+)/.exec((await hit('/')).text) || [])[1] || ''));
+check('the phone menu scrolls inside the screen', r.text.includes('overscroll-behavior: contain') && /\.nav-menu \{[^}]*overflow-y: auto/.test(r.text), r.status);
 r = await hit('/');
 check('the home menu has the Govt tab', r.text.includes('href="/government" class="nav-link"'), 'no tab');
 r = await hit('/images/government/governance-panel-820.webp');

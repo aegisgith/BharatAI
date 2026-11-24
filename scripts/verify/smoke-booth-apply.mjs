@@ -196,7 +196,7 @@ const count = () => q('SELECT COUNT(*) AS n FROM inquiries')[0].n;
   check('the three saved replies are there: approved for Mumbai, approved for Delhi, not this time', ['booth-approved-mumbai', 'booth-approved-delhi', 'booth-declined'].every((id) => ids.includes(id)), ids.join());
   const yes = t.find((x) => x.id === 'booth-approved-delhi');
   const no = t.find((x) => x.id === 'booth-declined');
-  check('approved (Delhi) gives the next step and the right dates; not this time is polite and offers a pass', yes.body.includes('approved to exhibit') && yes.body.includes('28 and 29 July 2027') && yes.body.includes('{organisation}') && no.body.includes('not able to offer {organisation} a booth') && no.body.includes('/passes'), yes.body.slice(0, 80));
+  check('approved (Delhi) gives the next step and the right dates; not this time is polite and offers a pass', yes.body.includes('approved to exhibit') && yes.body.includes('28 and 29 July 2027') && yes.body.includes('{organisation}') && no.body.includes('not able to offer {organisation} a booth') && no.body.includes('/delhi-register'), yes.body.slice(0, 80));
   check('a stranger cannot read the applications', [401, 403].includes((await hit('GET', '/api/admin/inquiries?type=booth_inquiry')).status));
 }
 {
@@ -207,13 +207,15 @@ const count = () => q('SELECT COUNT(*) AS n FROM inquiries')[0].n;
   check('/inquiry: the organiser\'s words and the button', html.includes('Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days.') && html.includes('Send my application'));
   check('/inquiry: shows the floor plan\'s stand when it arrives with one', html.includes('id="iq-stand"') && html.includes("urlParams.get('stand')"));
   const fpjs = read('public/js/floor-plan.js');
-  check('the floor plan\'s panel applies, with the stand and the package, and no longer sends its own enquiry', fpjs.includes("'/inquiry?booth='+encodeURIComponent(word)+'&stand='") && !fpjs.includes('/api/inquiries') && read('public/exhibition.html').includes('id="fpApply"') && !read('public/exhibition.html').includes('id="fpFSubmit"'));
+  // 24 Nov 2026: Mumbai's floor plan left /exhibition (Delhi's comes later); the script stays for when it returns.
+  check('Mumbai\'s floor plan is off /exhibition', !read('public/exhibition.html').includes('id="baiFloor"') && !read('public/exhibition.html').includes('js/floor-plan.js?v='));
+  if (read('public/exhibition.html').includes('id="baiFloor"')) check('the floor plan\'s panel applies, with the stand and the package, and no longer sends its own enquiry', fpjs.includes("'/inquiry?booth='+encodeURIComponent(word)+'&stand='") && !fpjs.includes('/api/inquiries') && read('public/exhibition.html').includes('id="fpApply"') && !read('public/exhibition.html').includes('id="fpFSubmit"'));
   const contact = (await hit('GET', '/contact')).text;
   check('/contact: Exhibition points to the application and still takes a question', contact.includes('To book a booth, apply for one.') && contact.includes('Only a question about exhibiting?'));
   const appJs = (await hit('GET', '/app.js')).text;
   check('the app: booth buttons and the Exhibition enquiry open the application', appJs.includes("window.location.href = '/inquiry?booth='") && appJs.includes("if (type === 'exhibition') { window.location.href = '/inquiry#inquiry-form-card'; return; }"));
   const ex = read('public/exhibition.html');
-  check('/exhibition: each package\'s button opens the application on that booth', ['startup', 'explorer', 'innovator', 'accelerator', 'enterprise', 'flagship', 'mega'].every((k) => ex.includes(`href="/inquiry?booth=${k}#inquiry-form-card"`)) && !ex.includes('>Enquire Now <'));
+  check('/exhibition: each package\'s button opens the application on that booth', ['startup', 'explorer', 'innovator', 'accelerator', 'enterprise', 'flagship', 'mega'].every((k) => ex.includes(`href="/delhi-exhibit?booth=${k}"`)) && !ex.includes('href="/inquiry') && !ex.includes('>Enquire Now <'));
 }
 
 console.log(fails ? `\n${fails} failed` : '\nall passed');

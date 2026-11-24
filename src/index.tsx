@@ -23024,21 +23024,21 @@ const INQUIRY_DEFAULT_TEMPLATES: InquiryTemplate[] = [
   { id: 'booth-approved-delhi', name: 'Booth application: approved (Delhi)', type: 'booth_inquiry', subject: 'Your booth application is approved - Bharat AI Innovation Delhi 2027',
     body: 'Thank you for applying to exhibit at Bharat AI Innovation Delhi 2027, on 28 and 29 July 2027 at Bharat Mandapam, New Delhi.\n\nWe are glad to confirm that {organisation} is approved to exhibit.\n\nThe next step: reply with the booth you would like and the company name and GSTIN for the invoice, and we will send the invoice to book it. We will publish the floor plan later and place every booth from it.\n\nYour reference is {ref}.' },
   { id: 'booth-declined', name: 'Booth application: not this time', type: 'booth_inquiry', subject: 'Your booth application - Bharat AI Innovation',
-    body: 'Thank you for applying to exhibit at Bharat AI Innovation, and for telling us about your work.\n\nWe review every application so the exhibition stays relevant for the buyers who come, and this time we are not able to offer {organisation} a booth.\n\nYou are welcome to attend. The passes are here:\nhttps://bharataiinnovation.com/passes\n\nAs your product grows, we would be glad to hear from you again for a future edition.' },
-  { id: 'sponsor', name: 'Sponsorship: options and a call', type: 'sponsorship', subject: 'Partnering with Bharat AI Innovation 2026',
-    body: 'Thank you for your interest in partnering with Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nThe partnership options are here:\nhttps://bharataiinnovation.com/partner\n\nWe can shape a package around what {organisation} wants from the event: leads, stage time, brand presence or meetings with buyers.\n\nCould we have a 15-minute call this week? Please reply with a time that suits you and the best number to reach you.' },
-  { id: 'speaking', name: 'Speaking: thank you, we will be in touch', type: 'speaking', subject: 'Your request to speak at Bharat AI Innovation 2026',
-    body: 'Thank you for offering to speak at Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nOur programme team reads every request. If your topic fits a session, we will write to you with the details.\n\nYou are welcome to attend either way. The passes are here:\nhttps://bharataiinnovation.com/passes' },
-  { id: 'speaking-booth', name: 'Speaking: a stage slot comes with a booth', type: 'speaking', subject: 'A stage slot at Bharat AI Innovation 2026',
-    body: 'Thank you for offering to speak at Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nOne sure way onto the stage: every exhibitor gets a talk slot on the Innovation Talks stage, to present and demonstrate their work. The booths and their prices are here:\nhttps://bharataiinnovation.com/exhibition\n\nIf that suits {organisation}, reply and we will hold a stand for you.' },
-  { id: 'media', name: 'Media: what we need for a pass', type: 'media', subject: 'Your media pass for Bharat AI Innovation 2026',
-    body: 'Thank you for your interest in covering Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nTo issue a media pass we need:\n- the publication or channel you are with\n- a link to your recent work on technology or business\n- the days you plan to attend\n\nPlease reply with these and we will confirm.' },
-  { id: 'group', name: 'Group registration: next steps', type: 'group_registration', subject: 'Passes for your group at Bharat AI Innovation 2026',
-    body: 'Thank you for asking about passes for a group.\n\nPlease reply with:\n- how many people\n- the pass you would like for them (see https://bharataiinnovation.com/passes)\n- a name and address for the invoice\n\nWe will send the details and how to register everyone in one go.' },
-  { id: 'general', name: 'General: the main links', type: 'general', subject: 'Re: your enquiry - Bharat AI Innovation 2026',
-    body: 'Thank you for writing to us. Bharat AI Innovation 2026 takes place on 20 and 21 November at the World Trade Center, Mumbai.\n\nPasses, including the free Visitor Pass: https://bharataiinnovation.com/passes\nThe conference programme: https://bharataiinnovation.com/conference\nThe exhibition: https://bharataiinnovation.com/exhibition\n\nIf this does not answer your question, just reply and we will help.' },
+    body: 'Thank you for applying to exhibit at Bharat AI Innovation, and for telling us about your work.\n\nWe review every application so the exhibition stays relevant for the buyers who come, and this time we are not able to offer {organisation} a booth.\n\nYou are welcome to attend. The passes are here:\nhttps://bharataiinnovation.com/delhi-register\n\nAs your product grows, we would be glad to hear from you again for a future edition.' },
+  { id: 'sponsor', name: 'Sponsorship: options and a call', type: 'sponsorship', subject: 'Partnering with Bharat AI Innovation Delhi 2027',
+    body: 'Thank you for your interest in partnering with Bharat AI Innovation Delhi 2027, on 28 and 29 July 2027 at Bharat Mandapam, New Delhi.\n\nThe partnership options and prices are here:\nhttps://bharataiinnovation.com/partner#delhi\n\nWe can shape a package around what {organisation} wants from the event: leads, stage time, brand presence or meetings with buyers.\n\nCould we have a 15-minute call this week? Please reply with a time that suits you and the best number to reach you.' },
+  { id: 'speaking', name: 'Speaking: thank you, we will be in touch', type: 'speaking', subject: 'Your request to speak at Bharat AI Innovation Delhi 2027',
+    body: 'Thank you for offering to speak at Bharat AI Innovation Delhi 2027, on 28 and 29 July 2027 at Bharat Mandapam, New Delhi.\n\nOur programme team reads every request. If your topic fits a session, we will write to you with the details.\n\nYou are welcome to attend either way. The passes are here:\nhttps://bharataiinnovation.com/delhi-register' },
+  { id: 'speaking-booth', name: 'Speaking: a stage slot comes with a booth', type: 'speaking', subject: 'A stage slot at Bharat AI Innovation Delhi 2027',
+    body: 'Thank you for offering to speak at Bharat AI Innovation Delhi 2027, on 28 and 29 July 2027 at Bharat Mandapam, New Delhi.\n\nOne sure way onto the stage: every exhibitor gets a talk slot on the Innovation Talks stage, to present and demonstrate their work. The booths and their prices are here:\nhttps://bharataiinnovation.com/exhibition#delhi\n\nIf that suits {organisation}, apply here and we will reply within 2 working days:\nhttps://bharataiinnovation.com/delhi-exhibit' },
+  { id: 'media', name: 'Media: what we need for a pass', type: 'media', subject: 'Your media pass for Bharat AI Innovation Delhi 2027',
+    body: 'Thank you for your interest in covering Bharat AI Innovation Delhi 2027, on 28 and 29 July 2027 at Bharat Mandapam, New Delhi.\n\nTo issue a media pass we need:\n- the publication or channel you are with\n- a link to your recent work on technology or business\n- the days you plan to attend\n\nPlease reply with these and we will confirm.' },
+  { id: 'group', name: 'Group registration: next steps', type: 'group_registration', subject: 'Passes for your group at Bharat AI Innovation Delhi 2027',
+    body: 'Thank you for asking about passes for a group.\n\nPlease reply with:\n- how many people\n- the pass you would like for them (see https://bharataiinnovation.com/delhi-register)\n- a name and address for the invoice\n\nWe will send the details and how to register everyone in one go.' },
+  { id: 'general', name: 'General: the main links', type: 'general', subject: 'Re: your enquiry - Bharat AI Innovation',
+    body: 'Thank you for writing to us. The next Bharat AI Innovation is in New Delhi on 28 and 29 July 2027, at Bharat Mandapam.\n\nPasses: https://bharataiinnovation.com/delhi-register\nBooths: https://bharataiinnovation.com/exhibition#delhi\nPartnerships: https://bharataiinnovation.com/partner#delhi\nAbout the event: https://bharataiinnovation.com/\n\nIf this does not answer your question, just reply and we will help.' },
   { id: 'follow-up', name: 'Follow-up: checking in', type: '', subject: 'Following up: your enquiry {ref}',
-    body: 'I am following up on your enquiry (reference {ref}).\n\nIs there anything else you need from us to decide? With the event on 20 and 21 November, a reply this week lets us hold everything for {organisation}.' },
+    body: 'I am following up on your enquiry (reference {ref}).\n\nIs there anything else you need from us to decide? A reply this week helps us hold everything for {organisation} for Delhi, on 28 and 29 July 2027.' },
 ]
 
 function inqMeta(r: any): any {
@@ -23288,7 +23288,7 @@ function inquiryReplyHtml(inq: any, message: string): string {
     <p style="margin:0 0 14px;font-size:15px">Dear ${esc(inq.name) || 'Sir/Madam'},</p>
     <div style="font-size:15px;line-height:1.65;white-space:pre-wrap">${esc(message)}</div>
     <p style="margin:22px 0 0;font-size:14px;color:#555">Warm regards,<br>Team Bharat AI Innovation<br>
-      <span style="color:#888">Bharat AI Innovation Conference &amp; Exhibition 2026 &middot; 20-21 November 2026 &middot; World Trade Center, Mumbai</span></p>
+      <span style="color:#888">Bharat AI Innovation Conference &amp; Exhibition &middot; Next edition: 28-29 July 2027 &middot; Bharat Mandapam, New Delhi</span></p>
   </div></body></html>`
 }
 
@@ -23300,7 +23300,7 @@ async function sendInquiryReplyTo(c: any, inq: any, subject: string, message: st
   const me = inqActorName(c)
   const owner = String(inq.assigned_to || '').trim() || me
   const text = inqMerge(message, inq, owner)
-  const subj = inqMerge(subject, inq, owner) || 'Re: your enquiry - Bharat AI Innovation 2026'
+  const subj = inqMerge(subject, inq, owner) || 'Re: your enquiry - Bharat AI Innovation'
   const sent = await sendAdminEmail(c, inq.email, subj, inquiryReplyHtml(inq, text))
   if (!sent.ok) {
     await audit(c, 'inquiry.reply-failed', 'inquiry', inq.id, { error: sent.error, ...extra })
@@ -23430,12 +23430,12 @@ function inquiryAckHtml(row: any, owner: string): string {
   const first = titledName(row.name) || 'there'
   const ref = 'BHAI-INQ-' + String(row.id ?? '').padStart(5, '0')
   const next: Record<string, [string, string]> = {
-    booth_inquiry: ['See the floor plan and booth prices', 'https://bharataiinnovation.com/exhibition'],
-    exhibition: ['See the floor plan and booth prices', 'https://bharataiinnovation.com/exhibition'],
-    sponsorship: ['See the partnership options', 'https://bharataiinnovation.com/partner'],
-    speaking: ['See the conference programme', 'https://bharataiinnovation.com/conference'],
-    group_registration: ['See the passes', 'https://bharataiinnovation.com/passes'],
-    general: ['See the passes', 'https://bharataiinnovation.com/passes'],
+    booth_inquiry: ['See the booths and prices', 'https://bharataiinnovation.com/exhibition#delhi'],
+    exhibition: ['See the booths and prices', 'https://bharataiinnovation.com/exhibition#delhi'],
+    sponsorship: ['See the partnership options', 'https://bharataiinnovation.com/partner#delhi'],
+    speaking: ['See Delhi 2027', 'https://bharataiinnovation.com/'],
+    group_registration: ['See the passes', 'https://bharataiinnovation.com/delhi-register'],
+    general: ['See the passes', 'https://bharataiinnovation.com/delhi-register'],
     government: ['Bharat AI Innovation for government', 'https://bharataiinnovation.com/government'],
     workshop_partner: ['See the workshops', 'https://bharataiinnovation.com/training-workshop'],
   }
@@ -23443,13 +23443,13 @@ function inquiryAckHtml(row: any, owner: string): string {
   const about = (INQUIRY_TYPE_LABEL[String(row.inquiry_type)] || 'your').toLowerCase()
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
-      ${emailBrandHeader('We have your enquiry', '20&ndash;21 November 2026 &middot; World Trade Center, Mumbai')}
+      ${emailBrandHeader('We have your enquiry', 'Delhi 2027 &middot; 28&ndash;29 July 2027 &middot; Bharat Mandapam, New Delhi')}
       <div style="padding:26px 24px;">
         <p style="margin:0 0 10px;font-size:15px;color:#1E2140;">Hello ${esc(first)},</p>
-        <p style="margin:0 0 14px;font-size:14px;line-height:1.65;color:#444;">Thank you for writing to us about ${esc(about === 'other' || about === 'general' ? 'Bharat AI Innovation 2026' : about)}. We have your message, and ${owner ? esc(owner) + ' from our team' : 'our team'} will reply within one working day.</p>
+        <p style="margin:0 0 14px;font-size:14px;line-height:1.65;color:#444;">Thank you for writing to us about ${esc(about === 'other' || about === 'general' ? 'Bharat AI Innovation' : about)}. We have your message, and ${owner ? esc(owner) + ' from our team' : 'our team'} will reply within one working day.</p>
         <p style="margin:0 0 18px;font-size:14px;line-height:1.65;color:#444;">Your reference is <strong>${ref}</strong>. If you write again, please quote it.</p>
         ${link ? `<div style="text-align:center;margin:0 0 20px;"><a href="${link[1]}" style="display:inline-block;padding:12px 24px;background:#C84F00;color:#fff;text-decoration:none;border-radius:9px;font-weight:bold;font-size:14px;">${esc(link[0])}</a></div>` : ''}
-        <p style="margin:0;font-size:12.5px;line-height:1.6;color:#777;">Bharat AI Innovation Conference &amp; Exhibition 2026 &middot; 20&ndash;21 November 2026 &middot; World Trade Center, Mumbai</p>
+        <p style="margin:0;font-size:12.5px;line-height:1.6;color:#777;">Bharat AI Innovation Conference &amp; Exhibition &middot; Next edition: 28&ndash;29 July 2027 &middot; Bharat Mandapam, New Delhi</p>
       </div>
     </div></body></html>`
 }
@@ -25708,6 +25708,7 @@ function mumbaiIsOver(): boolean {
 const MUMBAI_OVER_TEXT = 'Bharat AI Innovation 2026 in Mumbai is over, so passes for it are no longer on sale. Thank you for your interest. The next edition is in Delhi on 28 and 29 July 2027: bharataiinnovation.com/delhi'
 function mumbaiOverPageHTML(path: string): string {
   return `${sharedHeadHTML('Thank you, Mumbai', path, 'Bharat AI Innovation 2026 took place on 20 and 21 November 2026 at World Trade Center, Mumbai. Thank you. The next edition is in Delhi on 28 and 29 July 2027.')}
+<link rel="stylesheet" href="/css/passes-design.css?v=20261113a">
 <style>
   .mo-wrap{max-width:720px;margin:0 auto;padding:56px 16px 72px;text-align:center}
   .mo-eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:#C84F00;margin:0 0 14px}
@@ -25734,7 +25735,7 @@ ${siteHeaderHTML(path)}
     <h2 id="mo-delhi">Next: Delhi, 28&ndash;29 July 2027</h2>
     <p>Bharat AI Innovation comes to Bharat Mandapam, New Delhi. Passes, booths and partnerships are open now.</p>
     <div class="mo-btns">
-      <a class="mo-btn mo-btn--main" href="/delhi">See Delhi 2027</a>
+      <a class="mo-btn mo-btn--main" href="/">See Delhi 2027</a>
       <a class="mo-btn mo-btn--ghost" href="/delhi-register">Get a Delhi pass</a>
     </div>
   </section>
@@ -25921,6 +25922,8 @@ const _groupStarts = new Map<string, number[]>()
 // Step one: the list checked, the buyer found (or registered), one order at our price.
 app.post('/api/group/start', async (c) => {
   c.header('Cache-Control', 'no-store')
+  // Mumbai is over: no order for its passes is started, from a page left open either.
+  if (mumbaiIsOver()) return c.json({ error: MUMBAI_OVER_TEXT, event_over: true }, 410)
   if (!(await groupReady(c))) return c.json({ error: 'Group booking opens shortly. Please try again in a little while, or write to info@bharataiinnovation.com.' }, 503)
   if (!(await onlinePaymentsOn(c))) return c.json({ error: 'Online payment is not available just now. Please try again in a little while, or write to info@bharataiinnovation.com.' }, 503)
   // Every try counts, refusals too: the answer says whether an address holds a pass.
@@ -26263,6 +26266,8 @@ async function groupMemberNotSql(c: any, alias = 'a'): Promise<string> {
 // does); /js/group-booking.js adds people, keeps the total and checks the fields.
 app.get('/group', async (c) => {
   c.header('Cache-Control', 'no-store')
+  // 24 Nov 2026: a group pass is a Mumbai pass, and Mumbai is over. The page closes with /register and /passes.
+  if (mumbaiIsOver()) return c.html(mumbaiOverPageHTML('/group'))
   const open = await groupReady(c)
   const payOn = open && !!(await onlinePaymentsOn(c))
   let fill: any = null
@@ -27202,6 +27207,12 @@ app.post('/api/admin/media-pass/:id/decline', async (c) => {
 // ==================== STANDALONE INQUIRY FORM (embeddable URL for main website) ====================
 
 app.get('/inquiry', (c) => {
+  // 24 Nov 2026: this is Mumbai's booth booking form, and Mumbai is over. A booth is now a Delhi
+  // booth: old links, emails and search results land on Delhi's application, the booth kept.
+  if (mumbaiIsOver()) {
+    const booth = String(c.req.query('booth') || '').replace(/[^a-z]/gi, '').slice(0, 20).toLowerCase()
+    return c.redirect('/delhi-exhibit' + (booth ? '?booth=' + booth : ''), 302)
+  }
   return c.html(inquiryFormPageHTML())
 })
 
@@ -27350,8 +27361,13 @@ function brandThemeCSS(): string {
 // scripts/gen-og-cards.mjs; a path without its own card uses the home card.
 const OG_CARD_BY_PATH: Record<string, string> = { '/register': 'register', '/contact': 'contact', '/inquiry': 'inquiry' }
 function sharedHeadHTML(title: string, path: string = '/', desc?: string): string {
-  const fullTitle = `${title} — Bharat AI Innovation 2026`
-  const description = desc || `${title} for Bharat AI Innovation 2026, India's B2B AI conference and exhibition. 20–21 Nov 2026, WTC Mumbai. Register free.`
+  // 24 Nov 2026: Mumbai is over, so these pages name the next edition. mumbaiIsOver() keeps the old
+  // words for the suites written before the event (MUMBAI_SALES_OPEN=1).
+  const over = mumbaiIsOver()
+  const fullTitle = over ? `${title} — Bharat AI Innovation` : `${title} — Bharat AI Innovation 2026`
+  const description = desc || (over
+    ? `${title} for Bharat AI Innovation, India's B2B AI conference and exhibition. Next edition: 28–29 July 2027, Bharat Mandapam, New Delhi.`
+    : `${title} for Bharat AI Innovation 2026, India's B2B AI conference and exhibition. 20–21 Nov 2026, WTC Mumbai. Register free.`)
   const url = `https://bharataiinnovation.com${path}`
   const ogImage = `https://bharataiinnovation.com/images/og/${OG_CARD_BY_PATH[path] || 'home'}.jpg`
   // /c/:token pages are one person's connection request: shareable, never indexed.
@@ -27377,25 +27393,29 @@ function sharedHeadHTML(title: string, path: string = '/', desc?: string): strin
   <meta property="og:image:type" content="image/jpeg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="${fullTitle}, 20–21 November 2026, World Trade Center Mumbai">
+  <meta property="og:image:alt" content="${fullTitle}, ${over ? "28–29 July 2027, Bharat Mandapam, New Delhi" : "20–21 November 2026, World Trade Center Mumbai"}">
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="${fullTitle}">
   <meta name="twitter:description" content="${description}">
   <meta name="twitter:image" content="${ogImage}">
-  <meta name="twitter:image:alt" content="${fullTitle}, 20–21 November 2026, World Trade Center Mumbai">
+  <meta name="twitter:image:alt" content="${fullTitle}, ${over ? "28–29 July 2027, Bharat Mandapam, New Delhi" : "20–21 November 2026, World Trade Center Mumbai"}">
   <!-- Structured data -->
   <script type="application/ld+json">${JSON.stringify({
     "@context": "https://schema.org", "@type": "Event",
-    name: "Bharat AI Innovation 2026",
-    description: "India's B2B AI conference and exhibition: the organisations running AI in production, the companies providing it and the policymakers shaping it. 20–21 Nov 2026, WTC Mumbai.",
-    startDate: "2026-11-20", endDate: "2026-11-21",
+    name: over ? "Bharat AI Innovation Delhi 2027" : "Bharat AI Innovation 2026",
+    description: "India's B2B AI conference and exhibition: the organisations running AI in production, the companies providing it and the policymakers shaping it. " + (over ? "28–29 July 2027, Bharat Mandapam, New Delhi." : "20–21 Nov 2026, WTC Mumbai."),
+    startDate: over ? "2027-07-28" : "2026-11-20", endDate: over ? "2027-07-29" : "2026-11-21",
     eventStatus: "https://schema.org/EventScheduled",
     eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
-    location: { "@type": "Place", name: "World Trade Center, Mumbai", address: { "@type": "PostalAddress", addressLocality: "Mumbai", addressRegion: "Maharashtra", addressCountry: "IN" } },
+    location: over
+      ? { "@type": "Place", name: "Bharat Mandapam", address: { "@type": "PostalAddress", streetAddress: "Pragati Maidan", addressLocality: "New Delhi", addressRegion: "Delhi", addressCountry: "IN" } }
+      : { "@type": "Place", name: "World Trade Center, Mumbai", address: { "@type": "PostalAddress", addressLocality: "Mumbai", addressRegion: "Maharashtra", addressCountry: "IN" } },
     image: [ogImage],
     organizer: { "@type": "Organization", name: "Bharat AI Innovation", url: "https://bharataiinnovation.com" },
-    offers: { "@type": "Offer", url: "https://bharataiinnovation.com/register", price: "0", priceCurrency: "INR", availability: "https://schema.org/InStock" }
+    offers: over
+      ? { "@type": "Offer", url: "https://bharataiinnovation.com/delhi-register", availability: "https://schema.org/InStock" }
+      : { "@type": "Offer", url: "https://bharataiinnovation.com/register", price: "0", priceCurrency: "INR", availability: "https://schema.org/InStock" }
   })}</script>
   <link rel="stylesheet" href="${FA_CSS}">
   <link rel="stylesheet" href="/css/fonts-app.css?v=1">
@@ -27491,8 +27511,8 @@ function sharedFooterHTML(): string {
         <div class="flex items-center gap-3 mb-3">
           <img src="/images/logo-nav.webp" alt="BHAI" class="w-10 h-10 rounded-lg object-contain">
           <div>
-            <h3 class="font-bold text-sm">Bharat AI Innovation 2026</h3>
-            <p class="text-[10px] text-gray-400">Conference &amp; Exhibition 2026</p>
+            <h3 class="font-bold text-sm">Bharat AI Innovation${mumbaiIsOver() ? "" : " 2026"}</h3>
+            <p class="text-[10px] text-gray-400">Conference &amp; Exhibition${mumbaiIsOver() ? "" : " 2026"}</p>
           </div>
         </div>
         <p class="text-xs text-gray-400">India's B2B AI conference and exhibition, bringing together innovators, researchers, startups and industry leaders.</p>
@@ -27500,10 +27520,10 @@ function sharedFooterHTML(): string {
       <div>
         <h4 class="font-semibold text-sm mb-3">Event Details</h4>
         <ul class="space-y-2 text-xs text-gray-400">
-          <li><i class="fas fa-calendar mr-2 text-primary-400"></i>20-21 Nov 2026</li>
-          <li><i class="fas fa-map-marker-alt mr-2 text-primary-400"></i>World Trade Center, Mumbai</li>
-          <li><i class="fas fa-building mr-2 text-primary-400"></i>Centre 1 Building, Cuffe Parade, 400005</li>
-          <li><a href="https://maps.google.com/?q=World+Trade+Centre+Mumbai+Cuffe+Parade" target="_blank" class="text-primary-400 hover:underline"><i class="fas fa-directions mr-1"></i>Get Directions</a></li>
+          <li><i class="fas fa-calendar mr-2 text-primary-400"></i>${mumbaiIsOver() ? "Next: 28-29 July 2027" : "20-21 Nov 2026"}</li>
+          <li><i class="fas fa-map-marker-alt mr-2 text-primary-400"></i>${mumbaiIsOver() ? "Bharat Mandapam, New Delhi" : "World Trade Center, Mumbai"}</li>
+          <li><i class="fas fa-building mr-2 text-primary-400"></i>${mumbaiIsOver() ? "Pragati Maidan, New Delhi" : "Centre 1 Building, Cuffe Parade, 400005"}</li>
+          <li><a href="https://maps.google.com/?q=${mumbaiIsOver() ? "Bharat+Mandapam+Pragati+Maidan+New+Delhi" : "World+Trade+Centre+Mumbai+Cuffe+Parade"}" target="_blank" class="text-primary-400 hover:underline"><i class="fas fa-directions mr-1"></i>Get Directions</a></li>
         </ul>
       </div>
       <div>
@@ -27539,7 +27559,7 @@ function sharedToastJS(): string {
 }
 
 function contactPageHTML(): string {
-  return `${sharedHeadHTML('Contact Us', '/contact', "Questions about Bharat AI Innovation 2026? Reach the team for registration, sponsorship, exhibition, and press enquiries. 20-21 Nov 2026, WTC Mumbai.")}
+  return `${sharedHeadHTML('Contact Us', '/contact', mumbaiIsOver() ? "Questions about Bharat AI Innovation? Reach the team for passes, sponsorship, exhibition and press enquiries. Next edition: 28-29 July 2027, Bharat Mandapam, New Delhi." : "Questions about Bharat AI Innovation 2026? Reach the team for registration, sponsorship, exhibition, and press enquiries. 20-21 Nov 2026, WTC Mumbai.")}
 <body class="min-h-screen">
 ${sharedNavHTML('contact')}
 
@@ -27547,7 +27567,7 @@ ${sharedNavHTML('contact')}
   <!-- Hero -->
   <div class="text-center mb-8">
     <h1 class="text-3xl md:text-4xl font-bold mb-3"><i class="fas fa-headset text-primary-400 mr-3"></i>Contact Us</h1>
-    <p class="text-gray-400 max-w-2xl mx-auto">Have questions about Bharat AI Innovation 2026? We're here to help. Choose your inquiry type below and we'll respond within 24 hours.</p>
+    <p class="text-gray-400 max-w-2xl mx-auto">Have questions about Bharat AI Innovation${mumbaiIsOver() ? " Delhi 2027" : " 2026"}? We're here to help. Choose your inquiry type below and we'll respond within 24 hours.</p>
   </div>
 
   <!-- Inquiry Type Cards -->
@@ -27667,8 +27687,8 @@ ${sharedNavHTML('contact')}
         <div class="w-8 h-8 rounded-lg bg-primary-500/20 flex items-center justify-center shrink-0"><i class="fas fa-map-marker-alt text-sm text-primary-400"></i></div>
         <h3 class="font-semibold text-sm">Event venue</h3>
       </div>
-      <address class="not-italic text-xs text-gray-400 leading-relaxed">World Trade Center Mumbai,<br>Centre 1 Building, Cuffe Parade,<br>Mumbai - 400005</address>
-      <a href="https://maps.google.com/?q=World+Trade+Centre+Mumbai+Cuffe+Parade" target="_blank" rel="noopener" class="inline-block mt-2 text-xs text-primary-400 hover:underline"><i class="fas fa-directions mr-1"></i>Get Directions</a>
+      <address class="not-italic text-xs text-gray-400 leading-relaxed">${mumbaiIsOver() ? "Bharat Mandapam,<br>Pragati Maidan,<br>New Delhi" : "World Trade Center Mumbai,<br>Centre 1 Building, Cuffe Parade,<br>Mumbai - 400005"}</address>
+      <a href="https://maps.google.com/?q=${mumbaiIsOver() ? "Bharat+Mandapam+Pragati+Maidan+New+Delhi" : "World+Trade+Centre+Mumbai+Cuffe+Parade"}" target="_blank" rel="noopener" class="inline-block mt-2 text-xs text-primary-400 hover:underline"><i class="fas fa-directions mr-1"></i>Get Directions</a>
     </div>
   </div>
 
@@ -27678,7 +27698,7 @@ ${sharedNavHTML('contact')}
       <span><i class="fas fa-envelope text-primary-400 mr-1.5"></i><a href="mailto:info@bharataiinnovation.com" class="hover:text-white transition">info@bharataiinnovation.com</a></span>
       <span><i class="fas fa-phone text-primary-400 mr-1.5"></i><a href="tel:+918976580367" class="hover:text-white transition">+91 89765 80367</a></span>
       <span><i class="fas fa-globe text-primary-400 mr-1.5"></i><a href="https://bharataiinnovation.com" target="_blank" class="hover:text-white transition">bharataiinnovation.com</a></span>
-      <span><i class="fas fa-calendar text-primary-400 mr-1.5"></i>20-21 Nov 2026</span>
+      <span><i class="fas fa-calendar text-primary-400 mr-1.5"></i>${mumbaiIsOver() ? "Next: 28-29 July 2027" : "20-21 Nov 2026"}</span>
     </div>
   </div>
 </main>
@@ -27695,7 +27715,7 @@ const TYPE_CONFIG = {
   speaking: { icon: 'fa-microphone-alt', color: 'purple', title: 'Speaking Opportunity', subtitle: 'Submit your talk or workshop proposal' },
   media: { icon: 'fa-newspaper', color: 'rose', title: 'Media / Press Inquiry', subtitle: 'Accreditation, interviews & coverage' },
   group_registration: { icon: 'fa-users', color: 'green', title: 'Group Registration', subtitle: '${GROUP_MIN}+ passes: ${groupPctFor(GROUP_MIN)}% off each, ${GROUP_TIERS[0].min}+: ${GROUP_DISCOUNT_PCT}% off, booked online at /group' },
-  meeting_room: { icon: 'fa-handshake', color: 'green', title: 'Private Boardroom', subtitle: 'Reserve a WTC boardroom by the hour for 20-21 Nov' },
+  meeting_room: { icon: 'fa-handshake', color: 'green', title: 'Private Boardroom', subtitle: 'Reserve a private boardroom by the hour at the event' },
 };
 
 function selectType(type) {
@@ -28044,7 +28064,7 @@ function passComparisonHTML(): string {
 // the page belongs under. The app's bar sent Home to /app and, on a phone, offered no menu at all.
 function siteHeaderHTML(current: string): string {
   const menu: [string, string][] = [
-    ['/', 'Home'], ['/conference', 'Conference'], ['/exhibition', 'Exhibition'], ['/networking', 'Networking'], ['/passes', 'Passes'], ['/delhi-accommodation', 'Hotels'],
+    ['/', 'Home'], ['/conference', 'Conference'], ['/exhibition', 'Exhibition'], ['/networking', 'Networking'], ['/delhi-register', 'Passes'], ['/delhi-accommodation', 'Hotels'],
     ['/partner', 'Partner'], ['/government', 'Govt'], ['/training-workshop', 'Workshops'], ['/marketplace', 'AI Marketplace'],
     ['/campus-series', 'Campus Series'], ['/mumbai', 'Mumbai'], ['/gallery', 'Gallery'], ['/ai-readiness', 'AI Readiness'], ['https://bellaward.com', 'AGBA'], ['/contact', 'Contact'],
   ]
@@ -28052,7 +28072,7 @@ function siteHeaderHTML(current: string): string {
   <div class="ps-head-in">
     <a href="/" class="ps-logo"><img src="/images/logo-nav.webp" alt="Bharat AI Innovation" loading="eager"></a>
     <nav class="ps-nav" aria-label="Main">
-      ${menu.map(([href, label]) => `<a href="${href}"${href === current ? ' aria-current="page"' : ''}${href.startsWith('http') ? ' target="_blank" rel="noopener noreferrer"' : ''}>${label}</a>`).join('')}
+      ${menu.map(([href, label]) => `<a href="${href}"${href === (current === '/passes' ? '/delhi-register' : current) ? ' aria-current="page"' : ''}${href.startsWith('http') ? ' target="_blank" rel="noopener noreferrer"' : ''}>${label}</a>`).join('')}
     </nav>
     <a href="/app#login" class="ps-login"><i class="fas fa-sign-in-alt" aria-hidden="true"></i> Log In</a>
   </div>

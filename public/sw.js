@@ -49,7 +49,8 @@
 // 19 Nov 2026 (bhai-v41): Shri Ashish Nandkishore Jaiswal off the speakers list; drop saved copies.
 // 19 Nov 2026 (bhai-v42): Shri Chandrakant Dada Patil off the speakers list and the Friday 10:00 keynote.
 // 23 Nov 2026 (bhai-v43): style.css?v=20261123, the 15-link menu with Gallery.
-const VERSION = 'bhai-v43';
+// 24 Nov 2026 (bhai-v44): style.css?v=20261124, the phone menu scrolls inside the screen (16 links).
+const VERSION = 'bhai-v44';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 // The badge desk's scanner page, kept so it opens with no internet (12 Nov 2026).
@@ -82,7 +83,7 @@ const PRECACHE = [
   '/manifest.webmanifest',
   '/js/pass-render.js?v=20261114',
   '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
-  '/css/style.css?v=20261123',        // marketing shell: /, /conference, /exhibition, ...
+  '/css/style.css?v=20261124',        // marketing shell: /, /conference, /exhibition, ...
   '/js/main.js?v=20261112b',
   '/js/carousel.js?v=20261027',
 ];

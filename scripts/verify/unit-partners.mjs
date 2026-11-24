@@ -30,7 +30,8 @@ check('email logos are PNG (Outlook cannot show WebP)', [DATA.powered_by, ...DAT
 // The email block
 const block = L.partnersEmailHTML()
 check('the email block names IDFC FIRST Bank as Powered by and shows all seven, with their labels',
-  block.includes('Powered by') && block.includes('alt="IDFC FIRST Bank"') && DATA.partners.every(p => block.includes('alt="' + p.name.replace(/&/g, '&amp;') + '"')) && block.includes('Assessment OS Partner &amp; Panel Host'))
+  // 24 Nov 2026: Mumbai is over, so the email says the edition WAS powered by the bank.
+  block.includes('Mumbai 2026 was powered by') && block.includes('alt="IDFC FIRST Bank"') && DATA.partners.every(p => block.includes('alt="' + p.name.replace(/&/g, '&amp;') + '"')) && block.includes('Assessment OS Partner &amp; Panel Host'))
 check('its pictures are full https addresses, PNG only', !/src="(?!https:\/\/bharataiinnovation\.com\/images\/email\/partners\/)/.test(block) && !block.includes('.webp'))
 check('it is tables, no <style> or class (mail apps drop them)', !block.includes('<style') && !/\sclass=/.test(block) && block.includes('role="presentation"'))
 const doc = '<html><body><p>Hello</p></body></html>'

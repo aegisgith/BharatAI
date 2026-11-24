@@ -28,13 +28,17 @@ const { chromium } = require('./verify/playwright.cjs')
 
 const OUT = 'public/images/og'
 const MAX_BYTES = 300 * 1024
-const WHEN = '20–21 Nov 2026'
-const WHERE = 'WTC Mumbai'
+// The next edition (24 Nov 2026: Mumbai is over). A card for a page that records Mumbai
+// carries its own when/where.
+const WHEN = '28–29 Jul 2027'
+const WHERE = 'Bharat Mandapam'
 
 // accent: the part of the headline painted in the site's sunset gradient.
 export const CARDS = {
   home: {
     path: '',
+    when: '20–21 Nov 2026',
+    where: 'WTC Mumbai',
     label: 'Conference · Exhibition · Business meetings',
     headline: "India's B2B platform for AI",
     accent: 'for AI',
@@ -44,16 +48,16 @@ export const CARDS = {
   conference: {
     path: '/conference',
     label: 'Conference',
-    headline: 'Two days. Five halls. 10+ tracks.',
-    accent: '10+ tracks.',
-    sub: 'Generative AI, LLMs, agentic AI and AI governance, plus AI for BFSI, healthcare, manufacturing, agriculture and retail.',
-    chips: ['CXO panels', 'Innovation Stage', '09:00–18:00 IST'],
+    headline: 'Where AI in India is going',
+    accent: 'is going',
+    sub: 'Keynotes, panel discussions, Innovation Talks and closed-door roundtables, with leaders from government and industry.',
+    chips: ['Keynotes', 'Panels', 'Roundtables'],
   },
   exhibition: {
     path: '/exhibition',
     label: 'Exhibition',
-    headline: '93 booths. 8 industry zones.',
-    accent: '8 industry zones.',
+    headline: 'Book a booth in New Delhi',
+    accent: 'New Delhi',
     sub: 'Show your AI to enterprise buyers, government departments and investors on the exhibition floor.',
     chips: ['Startup Pod from ₹48,000 + GST', 'Innovation Stage talks'],
   },
@@ -91,6 +95,8 @@ export const CARDS = {
   },
   accommodation: {
     path: '/accommodation',
+    when: '20–21 Nov 2026',
+    where: 'WTC Mumbai',
     label: 'Hotels & Accommodation',
     headline: 'Stay minutes from WTC Mumbai',
     accent: 'WTC Mumbai',
@@ -102,7 +108,7 @@ export const CARDS = {
     label: 'Networking & Private Boardrooms',
     headline: 'Meet the right people, not just the crowd',
     accent: 'not just the crowd',
-    sub: 'AI matchmaking and 1:1 meetings on Bharat AI Connect, then four private WTC Mumbai boardrooms bookable by the hour.',
+    sub: 'AI matchmaking and 1:1 meetings on Bharat AI Connect, booked before you arrive, and private boardrooms by the hour.',
     chips: ['AI matchmaking', '1:1 meetings', 'Private boardrooms'],
   },
   'past-speakers': {
@@ -115,6 +121,8 @@ export const CARDS = {
   },
   'campus-series': {
     path: '/campus-series',
+    when: '20–21 Nov 2026',
+    where: 'WTC Mumbai',
     label: 'Campus Series',
     headline: 'AI and Employability, on campus',
     accent: 'on campus',
@@ -123,6 +131,8 @@ export const CARDS = {
   },
   insights: {
     path: '/insights',
+    when: '20–21 Nov 2026',
+    where: 'WTC Mumbai',
     label: 'Campus Series · Insights Reports',
     headline: 'What two campuses learned about AI and jobs',
     accent: 'AI and jobs',
@@ -206,8 +216,8 @@ export const CARDS = {
     label: 'Policy',
     headline: 'Terms of Service',
     accent: 'Terms',
-    sub: 'The terms for registering for and attending Bharat AI Innovation Conference & Exhibition 2026.',
-    chips: ['Bharat AI Innovation 2026'],
+    sub: 'The terms for registering for and attending Bharat AI Innovation Conference & Exhibition.',
+    chips: ['Delhi 2027'],
   },
   government: {
     path: '/government',

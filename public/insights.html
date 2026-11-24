@@ -64,7 +64,7 @@
     <link rel="preload" href="/fonts/manrope-latin-300-800.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/css/fonts.css?v=1">
     <link rel="stylesheet" href="/css/fa-subset.css?v=2">
-    <link rel="stylesheet" href="css/style.css?v=20261123">
+    <link rel="stylesheet" href="css/style.css?v=20261124">
     <link rel="stylesheet" href="css/campus-panel.css?v=20261008">
     <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
 
@@ -192,7 +192,7 @@
                 <a href="/conference" class="nav-link">Conference</a>
                 <a href="/exhibition" class="nav-link">Exhibition</a>
                 <a href="/networking" class="nav-link">Networking</a>
-                <a href="/passes" class="nav-link">Passes</a>
+                <a href="/delhi-register" class="nav-link">Passes</a>
                 <a href="/delhi-accommodation" class="nav-link">Hotels</a>
                 <a href="/partner" class="nav-link">Partner</a>
                 <a href="/government" class="nav-link">Govt</a>
@@ -204,7 +204,7 @@
                 <a href="/ai-readiness" class="nav-link">AI Readiness</a>
                 <a href="https://bellaward.com" target="_blank" rel="noopener noreferrer" class="nav-link">AGBA</a>
                 <a href="/contact" class="nav-link">Contact</a>
-                <a href="/register" class="nav-cta">Register <i class="fas fa-arrow-right"></i></a>
+                <a href="/delhi-register?source=insights" class="nav-cta">Register <i class="fas fa-arrow-right"></i></a>
             </div>
             <div class="nav-toggle" id="nav-toggle">
                 <span class="bar"></span><span class="bar"></span><span class="bar"></span>
@@ -312,7 +312,7 @@
                     <ul class="cp-reg-points">
                         <li><i class="fas fa-check-circle"></i> Both reports, free, and no payment details asked for</li>
                         <li><i class="fas fa-check-circle"></i> Share them with your class, your department or your team</li>
-                        <li><i class="fas fa-check-circle"></i> Asking for the reports does not register you for anything; a pass for the conference in November is a separate choice</li>
+                        <li><i class="fas fa-check-circle"></i> Asking for the reports does not register you for anything; a pass for Bharat AI Innovation Delhi 2027 is a separate choice</li>
                     </ul>
                 </div>
 
@@ -435,9 +435,9 @@
     <!-- ===== CLOSING CTA ===== -->
     <section class="cp-closing">
         <div class="container">
-            <h2>The panels are the warm-up.</h2>
-            <p>Bharat AI Innovation 2026 brings 5,000+ researchers, founders, CXOs and policymakers to the World Trade Center Mumbai on 20–21 November. Passes start at &#8377;999 + GST.</p>
-            <a href="/register?utm_source=insights&amp;utm_medium=closing-cta" class="btn btn-primary btn-xl">Get your pass <i class="fas fa-arrow-right"></i></a>
+            <h2>The panels were the warm-up.</h2>
+            <p>Bharat AI Innovation brings 5,000+ researchers, founders, CXOs and policymakers to Bharat Mandapam, New Delhi, on 28–29 July 2027. Passes are open now.</p>
+            <a href="/delhi-register?source=insights-cta" class="btn btn-primary btn-xl">Get your Delhi 2027 pass <i class="fas fa-arrow-right"></i></a>
         </div>
     </section>
 
@@ -489,7 +489,7 @@
                         <li><a href="/campus-series">Campus Series</a></li>
                         <li><a href="/insights">Insights Reports</a></li>
                         <li><a href="/past-speakers">Past Speakers</a></li>
-                        <li><a href="/passes">Passes &amp; Registration</a></li>
+                        <li><a href="/delhi-register">Passes &amp; Registration</a></li>
                         <li><a href="/training-workshop">Workshops</a></li>
                         <li><a href="/partner">Partner</a></li>
                         <li><a href="https://bellaward.com/" target="_blank" rel="noopener noreferrer">Aegis Graham Bell Awards</a></li>
@@ -501,7 +501,8 @@
                         <li><a href="/conference#schedule">Schedule</a></li>
                         <li><a href="/conference">Programme</a></li>
                         <li><a href="/exhibition">Exhibition Zones</a></li>
-                        <li><a href="/accommodation">Hotels</a></li>
+                        <li><a href="/delhi-accommodation">Hotels near Bharat Mandapam</a></li>
+                        <li><a href="/delhi-visa">Visa letter for Delhi</a></li>
                     </ul>
                 </div>
                 <div class="footer-section">
@@ -509,7 +510,7 @@
                     <div class="contact-info">
                         <p><i class="fas fa-envelope"></i> info@bharataiinnovation.com</p>
                         <p><i class="fas fa-phone"></i> +91 89765 80367</p>
-                        <p><i class="fas fa-map-marker-alt"></i> World Trade Center Mumbai, Cuffe Parade, Mumbai</p>
+                        <p><i class="fas fa-map-marker-alt"></i> Delhi edition: Bharat Mandapam, Pragati Maidan, New Delhi</p>
                     </div>
                 </div>
             </div>
@@ -605,8 +606,8 @@
         done.appendChild(list);
         done.appendChild(el('p', 'ir-small', 'The reports are free to share with your class, your department or your team. The links work for 90 days; come back here for fresh ones.'));
         var reg = el('a', 'btn btn-outline');
-        reg.href = '/register?utm_source=insights&utm_medium=thanks';
-        reg.innerHTML = 'Get your pass for the conference <i class="fas fa-arrow-right"></i>';
+        reg.href = '/delhi-register?source=insights-thanks';
+        reg.innerHTML = 'Get your Delhi 2027 pass <i class="fas fa-arrow-right"></i>';
         done.appendChild(reg);
         var reset = el('button', 'ir-reset', 'Not you? Fill in the form for your own links');
         reset.type = 'button';
