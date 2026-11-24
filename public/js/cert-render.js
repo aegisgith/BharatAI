@@ -57,10 +57,20 @@
     // Double border
     ctx.strokeStyle = 'rgba(255,107,0,0.55)'; ctx.lineWidth = 4; ctx.strokeRect(40, 40, W - 80, H - 80);
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1.5; ctx.strokeRect(58, 58, W - 116, H - 116);
-    // Logo
+    // Logo, 340 wide (was 150 until 24 Nov 2026: the organiser asked for it bigger).
+    // The PNG has a solid white background, so it sits on a rounded white card
+    // rather than as a bare white block on the dark certificate.
     try {
       var logo = await loadImage(o.logo || proxy(LOGO));
-      var lw = 150, lh = logo.height * (lw / logo.width); ctx.drawImage(logo, (W - lw) / 2, 110, lw, lh);
+      var lw = 340, lh = logo.height * (lw / logo.width), ly = 104;
+      var px = 22, py = 14, cx = (W - lw) / 2 - px, cy = ly - py, cw = lw + px * 2, chh = lh + py * 2, r = 16;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(cx + r, cy);
+      ctx.arcTo(cx + cw, cy, cx + cw, cy + chh, r); ctx.arcTo(cx + cw, cy + chh, cx, cy + chh, r);
+      ctx.arcTo(cx, cy + chh, cx, cy, r); ctx.arcTo(cx, cy, cx + cw, cy, r);
+      ctx.closePath(); ctx.fill();
+      ctx.drawImage(logo, (W - lw) / 2, ly, lw, lh);
     } catch (e) { /* drawn without it, as before */ }
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ff9a52'; ctx.font = '600 26px Inter, Arial'; ctx.fillText('CERTIFICATE OF PARTICIPATION', W / 2, 320);
