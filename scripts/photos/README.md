@@ -114,6 +114,13 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
 - `ref-photos/<kind>-<id>.jpg` replaces a person's site photo as their reference
   (`speaker-3.jpg`: Dr. Abhijit Gangopadhyay's site photo also shows his face on the stage
   screen behind him, so the biggest face was the screen's).
+- **A panellist on the programme by name only gets no album.** refs.py reads speaker
+  records, so a name typed into a session's speaker text with no speaker record is never
+  looked for. On 24 Nov Tarun Anand and Madhvendra Singh (session 145) had none: they became
+  speakers 175 and 176 (`extra-speakers.json`, `ref-photos/speaker-175.jpg`, `-176.jpg`, D1
+  rows by the organiser), and their albums were found from the site photo in their panel
+  hour and checked by eye. To find others: every `links` row with `"speaker_id": null` in
+  `scripts/data/programme.json`.
 - `guests.json` lists people the organiser names who are not speakers (id, name, title,
   role, email). Each needs `ref-photos/guest-<id>.jpg`. Their album key is `g<id>`, and
   they get the speakers' 50 full-size saves. A guest's reference can be their clearest event

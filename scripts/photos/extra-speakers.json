@@ -4,5 +4,17 @@
     "name": "Prof. Dr. Jayantrao Patil",
     "organisation": "R. C. Patel Institute of Technology, Shirpur",
     "note": "Added to D1 on 23 Nov 2026 (speaker 174, session 145) after the programme snapshot in scripts/data/programme.json. Was guest g6 until then. Reference: the organiser’s photo of him at a podium, cropped to his face."
+  },
+  {
+    "id": 175,
+    "name": "Tarun Anand",
+    "organisation": "Universal AI University",
+    "note": "Panellist, session 145 (21 Nov 4:30 pm, Homi J. Bhabha Hall), on the programme by name only until 24 Nov 2026, so no album. Speaker 175 to be added to D1 by the organiser (add-panel-145-speakers.sql). Album s175: 22 photos, all in his panel hour, 0.48-0.78 against his site photo, next person 0.42 at most, every one checked by eye (red turban)."
+  },
+  {
+    "id": 176,
+    "name": "Madhvendra Singh",
+    "organisation": "Electronics Sector Skills Council of India",
+    "note": "Panellist, session 145 (21 Nov 4:30 pm, Homi J. Bhabha Hall), on the programme by name only until 24 Nov 2026, so no album. Speaker 176 to be added to D1 by the organiser (add-panel-145-speakers.sql). Album s176: 23 photos, all in his panel hour, 0.40-0.77 against his site photo, next person 0.38 at most, every one checked by eye."
   }
 ]
