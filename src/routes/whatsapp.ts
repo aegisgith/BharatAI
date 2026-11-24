@@ -4,6 +4,7 @@ import { whatsappNumber, shownNumber, isNoEmail } from './team-guests'
 import { pageUrl, hiddenPhotos, personFor as albumFor, NOT_ME, OPT_OUT, ATT_SENT, AUDIT_ACTION } from './photos'
 import { photoLink } from './photo-store'
 import { boothAlbumOf } from './exhibitor-photos'
+import { repsFor, saveRep } from './photo-reps'
 import ATTENDEES from '../data/attendee-photos.json'
 import PHOTO_CHECKS from '../data/photo-checks.json'
 
@@ -1008,6 +1009,11 @@ wa.post('/api/admin/whatsapp/photos-one', async (c) => {
   const sent = await sendNow(c, cfg, rowFor(p, { kind: 'photos', event: 1 }, got.tpl, actorOf(c)))
   if (!sent.ok) return c.json({ error: sent.error }, 502)
   await note(c, 'whatsapp.send.photos_one', sent.id, { key, again: !!b.again, number_from: who.source })
+  // A typed number that is someone who looks after them (their PR, someone at the company):
+  // who it is, said by the team with the send (b.rep), is kept for the Sent list.
+  if (who.source === 'typed' && b.rep && typeof b.rep === 'object' && oneLine(b.rep.name, 120)) {
+    try { await saveRep(c, key, { name: b.rep.name, title: b.rep.title, email: b.rep.email, mobile: '+' + who.number }) } catch { /* the message went either way */ }
+  }
   return c.json({ success: true, to: who.name, number: shown })
 })
 // Every album's last photos message on WhatsApp, for the rows on those two screens.
@@ -2073,11 +2079,26 @@ wa.get('/api/admin/whatsapp/messages', async (c) => {
   const pm = await photoMail(c, rows)
   const marks = await photoMarks(c, rows.filter(r => r.kind === 'photos').flatMap(pm.keysOf))
   const faces = await facesFor(c, rows, who)
+  // Who looks after them (their PR, someone at the company), under the main name: the one
+  // this message went to first (here), or everyone when it went to the person themselves.
+  const repKeys = (r: any): string[] => [...new Set([String(r.person || ''), String(albumOf(r)?.key || '')].filter(Boolean))]
+  const repMap = await repsFor(c, rows.flatMap(repKeys)).catch(() => new Map<string, any[]>())
+  const repsOf = (r: any) => {
+    const seen = new Set<string>(), list: any[] = []
+    for (const p of repKeys(r).flatMap(k => repMap.get(k) || [])) {
+      const id = p.number || p.email
+      if (seen.has(id)) continue
+      seen.add(id)
+      list.push({ name: p.name, title: p.title, email: p.email, mobile: p.mobile, here: !!p.number && p.number === String(r.wa_number) })
+    }
+    const here = list.filter(p => p.here)
+    return here.length ? here : list
+  }
   return c.json({ rows: rows.map(r => {
     const sent = r.sent_at || r.created_at
     const { person: _p, ...rest } = r
     const { photo: _ph, ...them } = who.get(Number(r.id)) || ({} as any)
-    const base = { ...rest, number: shownNumber(String(r.wa_number)), ...them, face: faces.get(Number(r.id)) || null }
+    const base = { ...rest, number: shownNumber(String(r.wa_number)), ...them, face: faces.get(Number(r.id)) || null, reps: repsOf(r) }
     if (r.kind !== 'photos') return base
     // The same album can sit under more than one key (a<id> and s<id>): add up the marks.
     const ks = pm.keysOf(r), ms = ks.map(k => marks.get(k)).filter(Boolean) as Marks[]

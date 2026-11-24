@@ -365,6 +365,18 @@
 
   // ---------- Sent ----------
 
+  // Who looks after them, under the main name (the organiser, 24 Nov 2026: "put the name,
+  // email, designation, mobile of pr below main guys"): the person this message went to
+  // (their PR, someone at the company), or their PR when it went to the person themselves.
+  function repsHtml(r) {
+    return (r.reps || []).map(function (p) {
+      var bits = [[p.name, p.title].filter(function (x) { return x; }).join(', '), p.email, p.mobile].filter(function (x) { return x; });
+      if (!bits.length) return '';
+      var label = p.here ? 'Sent to' : r.pass === 'Exhibitor' ? 'Team' : 'PR';
+      return '<small class="wad-rep"><b>' + label + ':</b> ' + esc(bits.join(' · ')) + '</small>';
+    }).join('');
+  }
+
   function sentHtml() {
     var chips = [['', 'All'], ['waiting', 'Waiting'], ['gone', 'Sent'], ['reached', 'Delivered'], ['read', 'Read'], ['tapped', 'Tapped'], ['failed', 'Not delivered'], ['skipped', 'Left out']].map(function (x) {
       return '<button class="wad-filter' + (logStatus === x[0] ? ' wad-filter-on' : '') + '" data-act="log-status" data-status="' + x[0] + '">' + x[1] + '</button>';
@@ -377,7 +389,7 @@
       var last = r.read_at || r.delivered_at || r.sent_at || r.created_at;
       var job = [r.title, r.company].filter(function (x) { return x; }).join(', ');
       return '<tr><td><div class="wad-who">' + faceHtml(r) + '<div><b>' + esc(r.name || 'No name') + '</b>' + (r.pass ? ' ' + passChip(r.pass) : '') + (r.tags || []).map(function (t) { return ' ' + passChip(t); }).join('')
-        + (job ? '<small class="wad-job">' + esc(job) + '</small>' : '') + '<small>' + esc(r.number) + '</small></div></div></td>'
+        + (job ? '<small class="wad-job">' + esc(job) + '</small>' : '') + '<small>' + esc(r.number) + '</small>' + repsHtml(r) + '</div></div></td>'
         + '<td>' + esc(kindWords(r.kind)) + (r.test ? ' <span class="wad-sub">(test)</span>' : '') + (r.own ? ' <span class="wad-sub">(own WhatsApp)</span>' : '') + '</td>'
         + '<td>' + statusChip(r.status) + (r.clicked_at ? ' ' + chip(['Tapped', 'good']) : '')
         // Looked after this WhatsApp: only said where this WhatsApp could have brought them;

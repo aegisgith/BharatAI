@@ -23,6 +23,7 @@ import teamGuests, { configureTeamGuests, isNoEmail, NO_EMAIL_SQL, NO_EMAIL_ERRO
 import talkSelf, { configureTalkSelf, talkDetailsLink } from './routes/talk-self'
 import exhibitorMedia, { configureExhibitorMedia } from './routes/exhibitor-media'
 import whatsapp, { configureWhatsapp, whatsappTick, whatsappYes } from './routes/whatsapp'
+import photoReps, { configurePhotoReps } from './routes/photo-reps'
 import adminAssist from './routes/admin-assist'
 import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, SUMMIT_EVENT_NAME, SUMMIT_WHEN } from './routes/agent-summit'
 import { signinPayIntent } from './lib/signin-pay'
@@ -706,6 +707,10 @@ configureWhatsapp({ audit, actor: (c: any) => adminActor(c).actor, columns: (c: 
     return href
   } })
 app.route('/', whatsapp)
+// Who looks after a main person's photos (their PR, their office, someone at the company),
+// shown under their name in Admin -> WhatsApp -> Sent (24 Nov 2026). routes/photo-reps.ts.
+configurePhotoReps({ audit })
+app.route('/', photoReps)
 // Ask, in Admin (24 Nov 2026): Ctrl+K or the Ask button answers a question from the
 // dashboard's own totals with Workers AI, and holds back any answer whose numbers the
 // totals do not hold. Behind the /api/admin/* middleware; routes/admin-assist.ts.
@@ -42914,7 +42919,7 @@ function adminPageScript(): string {
     // WhatsApp: sending from our own number and the replies live in /js/admin-whatsapp.js
     // (one global, WaDesk) with their own stylesheet, loaded the first time the section
     // opens. Bump WA_DESK_VERSION on any change to either.
-    var WA_DESK_VERSION = '20261124j';
+    var WA_DESK_VERSION = '20261124k';
     var waDeskAssets = null;
     function waDeskLoadAssets() {
       if (window.WaDesk) return Promise.resolve();

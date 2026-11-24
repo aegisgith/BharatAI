@@ -822,7 +822,34 @@ check('a guest album shows the guest’s own title and role, "PR of" the speaker
 check('a face in a circle: their own photo at the small size, signed for their album and centred on their face; a "Not me" photo never; else the picture they chose; else none',
   (ashaWho?.face?.src || '').includes('/photo/W00abcdefghi/s.jpg?u=') && ashaWho.face.src.includes('u=' + keys[0]) && /[?&]k=[0-9a-f]+/.test(ashaWho.face.src) && typeof ashaWho.face.x === 'number'
   && raviWho?.face?.src === '/api/mp/uploads/77' && akWho?.face === null && !('photo' in (ashaWho || {})), JSON.stringify([ashaWho?.face, raviWho?.face, akWho?.face]));
-db.run("DELETE FROM wa_messages WHERE person = 'g16'");
+// ---- who looks after them, under the main name (routes/photo-reps.ts, 24 Nov 2026) ----
+check('before anyone is named, a row has no one under it', Array.isArray(akWho?.reps) && akWho.reps.length === 0, JSON.stringify(akWho?.reps));
+check('saving who looks after an album needs an admin', (await hit('POST', '/api/admin/photo-reps', { key: 'g16', name: 'Ram Mali', mobile: '95555 00016' })).status === 401 && (await hit('GET', '/api/admin/photo-reps?key=g16')).status === 401, '');
+r = await as('POST', '/api/admin/photo-reps', { key: 'g16', mobile: '95555 00016' });
+const noName = r.status === 400 && /name/i.test(r.json?.error || '');
+r = await as('POST', '/api/admin/photo-reps', { key: 'g16', name: 'Ram Mali' });
+const noWay = r.status === 400 && /mobile number or their email/i.test(r.json?.error || '');
+r = await as('POST', '/api/admin/photo-reps', { key: 'not a key', name: 'Ram Mali', mobile: '95555 00016' });
+check('...and their name, a mobile or an email, and a real album', noName && noWay && r.status === 400, r.status + ' ' + r.text);
+r = await as('POST', '/api/admin/photo-reps', { key: 'g16', name: 'Ram Mali', title: 'PR', mobile: '95555 00016' });
+check('the team says who a number is: saved against the album', r.status === 200 && r.json?.reps.length === 1 && r.json.reps[0].name === 'Ram Mali' && r.json.reps[0].title === 'PR' && r.json.reps[0].mobile === '+91 95555 00016'
+  && rows("SELECT detail FROM admin_audit WHERE action = 'photos.rep' AND entity_id = 'g16'").length === 1, r.text);
+r = await as('GET', '/api/admin/whatsapp/messages?q=Akanksha');
+const akRep = (r.json?.rows || []).find(x => x.name === 'Akanksha Tiwari');
+check('the Sent list then shows them under the main name, as the person this message went to; the "PR of" tag stays', akRep?.reps.length === 1 && akRep.reps[0].name === 'Ram Mali' && akRep.reps[0].title === 'PR'
+  && akRep.reps[0].mobile === '+91 95555 00016' && akRep.reps[0].here === true && JSON.stringify(akRep.tags) === '["PR of Tarun Chugh"]', JSON.stringify(akRep?.reps));
+r = await as('GET', '/api/admin/photo-reps?key=s999');
+check('a copy of a speaker’s photos email names its address as their PR', r.status === 200 && r.json?.reps.length === 1 && r.json.reps[0].email === 'akanksha.tiwari@bajajlife.com' && r.json.reps[0].by.includes('email copy'), r.text);
+// A company's photos on WhatsApp: whoever they went to is at that company, known from their registration.
+db.run("INSERT INTO attendees (event_id, name, email, mobile, job_title, company) VALUES (1, 'Tina Team', 'tina@acme-co.test', '+91 98333 00001', 'PR Manager', 'Acme Co')");
+db.run("INSERT INTO wa_messages (direction, kind, wa_number, person, name, template, status) VALUES ('out', 'photos', '919833300001', 'x7', 'Acme Co', 'x', 'sent')");
+r = await as('GET', '/api/admin/whatsapp/messages?q=Acme Co');
+const coRow = (r.json?.rows || []).find(x => x.name === 'Acme Co');
+check('a company’s photos sent to a typed number: the row says who that is, with designation, email and mobile from their registration', coRow?.pass === 'Exhibitor' && coRow.reps.length === 1
+  && coRow.reps[0].name === 'Tina Team' && coRow.reps[0].title === 'PR Manager' && coRow.reps[0].email === 'tina@acme-co.test' && coRow.reps[0].mobile === '+91 98333 00001' && coRow.reps[0].here === true, JSON.stringify(coRow?.reps));
+r = await as('POST', '/api/admin/photo-reps', { key: 'g16', mobile: '95555 00016', remove: true });
+check('taking someone off again', r.status === 200 && r.json?.reps.length === 0, r.text);
+db.run("DELETE FROM wa_messages WHERE person IN ('g16', 'x7')");
 db.run("DELETE FROM admin_audit WHERE action = 'photos.not_me' AND entity_id = ?", [keys[1]]);
 const b1 = (await as('GET', '/api/admin/whatsapp')).json?.batches?.find(b => b.id === batch1);
 check('the photos send counts how many looked and saved since', b1?.looked_after === 1 && b1.saved_after === 1, JSON.stringify(b1 && { l: b1.looked_after, s: b1.saved_after }));
