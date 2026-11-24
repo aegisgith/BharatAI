@@ -121,6 +121,12 @@ python -m venv venv-ort  && venv-ort/Scripts/pip install onnxruntime==1.19.2 "nu
   rows by the organiser), and their albums were found from the site photo in their panel
   hour and checked by eye. To find others: every `links` row with `"speaker_id": null` in
   `scripts/data/programme.json`.
+- **One person, a talk album and a later speaker record.** Ganesh Nagarajan's album is the
+  Innovation Talk's, `t13`. On 24 Nov the organiser gave him speaker record 177 (panel 124).
+  By hand, `speakers: [177]` was added to that album so the panel line-up finds his photos,
+  and the key stays `t13` because his emailed link uses it. `export.py` does not know this: a
+  re-export drops the 177, or renames the album `s177` if 177 gets a reference. Put it back
+  as `t13` with `speakers: [177]`.
 - `guests.json` lists people the organiser names who are not speakers (id, name, title,
   role, email). Each needs `ref-photos/guest-<id>.jpg`. Their album key is `g<id>`, and
   they get the speakers' 50 full-size saves. A guest's reference can be their clearest event
