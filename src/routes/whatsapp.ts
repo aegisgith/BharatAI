@@ -1132,8 +1132,16 @@ wa.post('/api/external/whatsapp/send', async (c) => {
   if (b.dry) return c.json({ count: people.length, skipped, sample: people.slice(0, 3).map(p => ({ ref: p.person.slice(AMP_REF.length), name: p.name, number: shownNumber(p.number), text: p.text })) })
   if (!people.length) return c.json({ error: 'There is nobody to send this to.', skipped }, 409)
   const by = ampBy(b), spec: Spec = { kind: 'custom', template: name, event: Math.max(1, Math.floor(Number(b.event) || 1)) }
+  // How and when each person said yes, as AImailPilot recorded it: kept with their message.
+  const evidence = new Map<string, { source: string; at: string }>()
+  for (const x of list) if (x?.consent === true && (x.consent_source || x.consent_at)) evidence.set(AMP_REF + oneLine(x?.ref, 64), { source: oneLine(x.consent_source, 80), at: oneLine(x.consent_at, 30) })
+  const rowOf = (p: Person, extra: Record<string, any> = {}) => {
+    const row: any = rowFor(p, spec, tpl, by, extra), ev = evidence.get(p.person)
+    if (ev) { try { row.payload = JSON.stringify({ ...JSON.parse(row.payload), consent: ev }) } catch { /* keep it as it is */ } }
+    return row
+  }
   if (list.length === 1) {
-    const sent = await sendNow(c, cfg, rowFor(people[0], spec, tpl, by))
+    const sent = await sendNow(c, cfg, rowOf(people[0]))
     if (!sent.ok) return c.json({ error: sent.error }, 502)
     await note(c, 'whatsapp.aimailpilot.send_one', sent.id, { template: name, by })
     return c.json({ success: true, sent: 1, id: sent.id, to: people[0].name })
@@ -1143,7 +1151,7 @@ wa.post('/api/external/whatsapp/send', async (c) => {
   const ins = await run(c, "INSERT INTO wa_batches (event_id, kind, template, title, audience, status, total, created_by) VALUES (?, 'custom', ?, ?, 'aimailpilot', 'running', ?, ?)",
     spec.event, name, title.slice(0, 120), people.length, by)
   const batchId = Number(ins?.meta?.last_row_id || 0)
-  const rows = people.map(p => rowFor(p, spec, tpl, by, { batch_id: batchId }))
+  const rows = people.map(p => rowOf(p, { batch_id: batchId }))
   const cols = Object.keys(rows[0])
   const sql = `INSERT INTO wa_messages (${cols.join(', ')}, status, updated_at) VALUES (${cols.map(() => '?').join(', ')}, 'queued', datetime('now'))`
   for (let i = 0; i < rows.length; i += 40) await c.env.DB.batch(rows.slice(i, i + 40).map(r => c.env.DB.prepare(sql).bind(...cols.map(k => (r as any)[k] ?? null))))
@@ -1163,9 +1171,14 @@ wa.get('/api/external/whatsapp/batches/:id', async (c) => {
   const b = await one(c, "SELECT * FROM wa_batches WHERE id = ? AND audience = 'aimailpilot'", id)
   if (!b) return c.json({ error: 'That send is not here.' }, 404)
   const k = await ampCounts(c, [id])
-  const people = await all(c, 'SELECT person, name, wa_number, status, error, sent_at, delivered_at, read_at, clicked_at FROM wa_messages WHERE batch_id = ? ORDER BY id', id)
-  return c.json({ ...ampBatch(b, k.get(id)), people: people.map(p => ({ ref: String(p.person || '').replace(/^amp:/, ''), name: p.name, number: shownNumber(String(p.wa_number)), status: p.status,
-    error: p.error || '', sent_at: p.sent_at || '', delivered_at: p.delivered_at || '', read_at: p.read_at || '', clicked_at: p.clicked_at || '' })) })
+  // ?since=<updated_at from the last answer>: only the people whose state moved since.
+  const since = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(String(c.req.query('since') || '')) ? String(c.req.query('since')) : ''
+  const people = await all(c, `SELECT person, name, wa_number, status, error, sent_at, delivered_at, read_at, clicked_at, COALESCE(updated_at, created_at) AS updated_at FROM wa_messages
+     WHERE batch_id = ?${since ? ' AND COALESCE(updated_at, created_at) > ?' : ''} ORDER BY id`, ...(since ? [id, since] : [id]))
+  const stopped = await stoppedNumbers(c)
+  return c.json({ ...ampBatch(b, k.get(id)), ...(since ? { since } : {}), people: people.map(p => ({ ref: String(p.person || '').replace(/^amp:/, ''), name: p.name, number: shownNumber(String(p.wa_number)), status: p.status,
+    error: p.error || '', sent_at: p.sent_at || '', delivered_at: p.delivered_at || '', read_at: p.read_at || '', clicked_at: p.clicked_at || '', updated_at: p.updated_at || '',
+    stopped: stopped.has(String(p.wa_number)) })) })
 })
 wa.post('/api/external/whatsapp/batches/:id/:what', async (c) => {
   const no = await ampGate(c); if (no) return no

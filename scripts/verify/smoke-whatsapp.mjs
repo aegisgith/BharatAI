@@ -686,7 +686,7 @@ const MK = ampT.find(x => x.name === custom);
 check('AImailPilot: it sees only approved messages the team wrote, each with its blanks, its picture and whether it needs a yes', r.status === 200 && r.json.connected === true && ampT.length >= 1 && ampT.every(x => !/^bhai_(event|auto)_/.test(x.name))
   && MK?.needs_consent === true && MK.blanks.join() === 'name' && MK.header.type === 'image' && MK.header.url.startsWith(SITE + '/api/uploads/') && MK.buttons[0]?.text === 'See Delhi 2027' && !r.text.includes(TOKEN), JSON.stringify(MK));
 const ppl = [
-  { ref: 'c1', number: '98200 70001', name: 'Rina Shah', consent: true },
+  { ref: 'c1', number: '98200 70001', name: 'Rina Shah', consent: true, consent_source: 'Said yes on a call', consent_at: '2026-11-20 10:00:00' },
   { ref: 'c2', number: '98200 70002', name: 'No Yes' },
   { ref: 'c3', number: '12345', name: 'Short', consent: true },
   { ref: 'c4', number: '', name: 'Nothing', consent: true },
@@ -713,6 +713,13 @@ const ampW = rows('SELECT wamid FROM wa_messages WHERE batch_id = ? AND person =
 await hooked(envelope({ statuses: [{ id: ampW, status: 'read', timestamp: now(), recipient_id: '919820070001' }] }));
 r = await amp('GET', '/api/external/whatsapp/batches/' + ampB);
 check('AImailPilot: it reads its send back: counts, and each contact’s state', r.status === 200 && r.json.title === 'Delhi early bird' && r.json.created_by === 'Anita' && r.json.counts.read === 1 && r.json.people.find(p => p.ref === 'c1')?.status === 'read' && !!r.json.people.find(p => p.ref === 'c1').read_at, JSON.stringify(r.json).slice(0, 300));
+check('AImailPilot: how and when a person said yes is kept with their message', JSON.parse(msgs("person = 'amp:c1' AND batch_id = ?", [ampB])[0].payload).consent?.source === 'Said yes on a call'
+  && !JSON.parse(msgs("person = 'amp:c7' AND batch_id = ?", [ampB])[0].payload).consent, msgs("person = 'amp:c1'")[0]?.payload);
+const ampAll = (await amp('GET', '/api/external/whatsapp/batches/' + ampB)).json;
+const lastSeen = ampAll.people.map(p => p.updated_at).sort().pop();
+r = await amp('GET', '/api/external/whatsapp/batches/' + ampB + '?since=' + encodeURIComponent(lastSeen));
+check('AImailPilot: each person carries when they last moved and whether they said STOP; since= returns only what moved', ampAll.people.every(p => p.updated_at && p.stopped === false)
+  && r.status === 200 && r.json.people.length === 0 && r.json.since === lastSeen, JSON.stringify(r.json?.people));
 r = await amp('GET', '/api/external/whatsapp/batches');
 check('AImailPilot: its list of sends has only its own', r.status === 200 && r.json.rows.length === 1 && r.json.rows[0].id === ampB, JSON.stringify(r.json?.rows?.map(x => x.id)));
 check('AImailPilot: it cannot see or stop a send made here', (await amp('GET', '/api/external/whatsapp/batches/' + batch1)).status === 404 && (await amp('POST', '/api/external/whatsapp/batches/' + batch1 + '/pause')).status === 404, '');
