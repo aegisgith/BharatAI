@@ -162,16 +162,17 @@
     ctx.stroke(); ctx.restore();
   }
   // A round seal: saffron serrated edge, ink disc, the event name around it, the mark inside.
-  function seal(ctx, cx, cy, r, mark, text) {
+  function seal(ctx, cx, cy, r, mark, text, ring) {
+    ring = ring || SAFFRON;
     ctx.save();
     ctx.beginPath();
     for (var i = 0; i <= 72; i++) { var a = (i / 72) * Math.PI * 2, rr = i % 2 ? r : r + 5; ctx.lineTo(cx + rr * Math.cos(a), cy + rr * Math.sin(a)); }
-    ctx.closePath(); ctx.fillStyle = SAFFRON; ctx.fill();
+    ctx.closePath(); ctx.fillStyle = ring; ctx.fill();
     ctx.beginPath(); ctx.arc(cx, cy, r - 4, 0, Math.PI * 2); ctx.fillStyle = INK; ctx.fill();
-    ctx.strokeStyle = SAFFRON; ctx.lineWidth = 1.2;
+    ctx.strokeStyle = ring; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.arc(cx, cy, r - 12, 0, Math.PI * 2); ctx.stroke();
     ctx.beginPath(); ctx.arc(cx, cy, r - 40, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = '#F2EDE3'; ctx.font = '700 13px ' + MS; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#F2EDE3'; ctx.font = '700 ' + (r < 110 ? 11 : 13) + 'px ' + MS; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     var chars = String(text).split(''), step = (Math.PI * 2) / chars.length;
     chars.forEach(function (ch, k) {
       var a = -Math.PI / 2 + k * step;
@@ -180,13 +181,60 @@
     if (mark) { var mw = (r - 46) * 1.45, mh = mark.height * (mw / mark.width); ctx.drawImage(mark, cx - mw / 2, cy - mh / 2, mw, mh); }
     ctx.restore();
   }
+  // The photo version (organiser, 24 Nov 2026: "one with photo and one without"): the
+  // person's photo in a ring striped like the flag, a small seal on its edge, and what
+  // they were at the event in a pill under it. Square-cropped, a little above centre,
+  // where a face usually is.
+  function portrait(ctx, cx, cy, r, img) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r + 11, 0, Math.PI * 2); ctx.clip();
+    var top = cy - r - 11, band = (2 * r + 22) / 3;
+    ctx.fillStyle = SAFFRON; ctx.fillRect(cx - r - 11, top, 2 * r + 22, band);
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(cx - r - 11, top + band, 2 * r + 22, band);
+    ctx.fillStyle = GREEN; ctx.fillRect(cx - r - 11, top + 2 * band, 2 * r + 22, band + 1);
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r + 3, 0, Math.PI * 2); ctx.fillStyle = INK; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+    var s = Math.min(img.width, img.height), sx = (img.width - s) / 2, sy = Math.max(0, (img.height - s) * 0.3);
+    ctx.drawImage(img, sx, sy, s, s, cx - r, cy - r, 2 * r, 2 * r);
+    ctx.restore();
+  }
+  function smallSeal(ctx, cx, cy, r, mark, ring) {
+    ctx.save();
+    ctx.beginPath();
+    for (var i = 0; i <= 48; i++) { var a = (i / 48) * Math.PI * 2, rr = i % 2 ? r : r + 4; ctx.lineTo(cx + rr * Math.cos(a), cy + rr * Math.sin(a)); }
+    ctx.closePath(); ctx.fillStyle = ring; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r - 4, 0, Math.PI * 2); ctx.fillStyle = INK; ctx.fill();
+    ctx.strokeStyle = ring; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r - 9, 0, Math.PI * 2); ctx.stroke();
+    if (mark) { var mw = (r - 12) * 1.5, mh = mark.height * (mw / mark.width); ctx.drawImage(mark, cx - mw / 2, cy - mh / 2, mw, mh); }
+    ctx.restore();
+  }
+  function pill(ctx, cx, cy, text, fill, ink) {
+    if (!text) return;
+    ctx.save(); ctx.font = '700 15px ' + MS;
+    var w = 0, i, chars = text.split('');
+    for (i = 0; i < chars.length; i++) w += ctx.measureText(chars[i]).width + (i < chars.length - 1 ? 3 : 0);
+    var pw = Math.min(PW - 60, w + 48), ph = 40;
+    ctx.fillStyle = fill; roundRect(ctx, cx - pw / 2, cy - ph / 2, pw, ph, ph / 2); ctx.fill();
+    ctx.fillStyle = ink; ctx.textBaseline = 'middle'; spaced(ctx, text, cx, cy + 1, 3, 'center');
+    ctx.restore();
+  }
+  function photoSrc(u) {
+    u = String(u || '').trim();
+    if (!u) return '';
+    var here = global.location && global.location.origin ? global.location.origin + '/' : '';
+    if (/^https?:/i.test(u) && !(here && u.indexOf(here) === 0)) return '/api/image-proxy?url=' + encodeURIComponent(u);
+    return u;
+  }
+
   // A signature block, left-aligned at x: a line, the name, the role in capitals, the organisation.
-  function signBlock(ctx, x, y, p) {
+  function signBlock(ctx, x, y, p, accent) {
     var maxW = 410;
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(14,20,48,0.4)'; ctx.fillRect(x, y, 340, 1.5);
     ctx.fillStyle = INK; fit(ctx, p.name, '700', 28, 18, PF, maxW); ctx.fillText(p.name, x, y + 40);
-    ctx.fillStyle = RUST; fit(ctx, String(p.role || '').toUpperCase(), '700', 14, 11, MS, maxW - 40);
+    ctx.fillStyle = accent || RUST; fit(ctx, String(p.role || '').toUpperCase(), '700', 14, 11, MS, maxW - 40);
     spaced(ctx, String(p.role || '').toUpperCase(), x, y + 68, 2.5, 'left');
     if (p.org) {
       ctx.fillStyle = SLATE;
@@ -216,9 +264,64 @@
   }
 
   // What each kind of certificate says. Workshop and conference are the Mumbai event;
-  // a campus panel is its own date and college.
+  // a campus panel is its own date and college. Speakers and Innovation Stage presenters
+  // get a certificate of appreciation (organiser, 24 Nov 2026), each in its own colour:
+  // saffron for taking part, gold for a speaker, green for the Innovation Stage.
+  var GOLD = '#8A6514', GOLD_RING = '#E0B252', STAGE = '#0B6B2E', STAGE_RING = '#2FA84F';
   function content(o) {
-    var ws = o.workshop || null, pn = o.panel || null;
+    var k = contentBody(o);
+    k.eyebrow = k.eyebrow || 'CERTIFICATE OF PARTICIPATION';
+    k.lead1 = k.lead1 || 'This is to certify that';
+    k.accent = k.accent || RUST;
+    k.ring = k.ring || SAFFRON;
+    k.pillText = k.pillText || INK;
+    k.glow = k.glow || '#FFB36B';
+    k.eventSubs = k.eventSubs || k.subs;
+    // Designation and company under the name (organiser, 24 Nov 2026), when we have them.
+    k.designation = String(o.designation || k.designation || '').replace(/\s+/g, ' ').trim();
+    k.pill = String(k.pill || '').toUpperCase();
+    return k;
+  }
+  function contentBody(o) {
+    var ws = o.workshop || null, pn = o.panel || null, sp = o.speaker || null, st = o.stage || null;
+    if (sp) {
+      // A speaker on the programme: the session they spoke in, as moderator, panellist,
+      // keynote or speaker, from Admin -> Conference.
+      var sess = sp.session || {}, role = String(sp.role || 'speaker').toLowerCase();
+      var keynote = role === 'keynote' || String(sess.type || '').toLowerCase() === 'keynote';
+      var label = role === 'moderator' ? 'Moderator' : role === 'panellist' ? 'Panellist' : keynote ? 'Keynote Speaker' : 'Speaker';
+      var lead = role === 'moderator' ? 'with thanks for moderating the panel'
+        : role === 'panellist' ? 'with thanks for speaking on the panel'
+        : keynote ? 'with thanks for delivering the keynote address' : 'with thanks for speaking in the session';
+      var sday = dayLabel(sess.start);
+      return {
+        kind: 'speaker', eyebrow: 'CERTIFICATE OF APPRECIATION', lead1: 'This is presented to', lead: lead,
+        headline: String(sess.title || 'Bharat AI Innovation 2026'), second: '',
+        subs: [[[sess.room, sday].filter(Boolean).join(' · '), '#2A3150', '600', 21],
+          ['at Bharat AI Innovation 2026, India’s B2B AI Conference & Exhibition', SLATE, '500', 21]],
+        seal: 'BHARAT AI INNOVATION · MUMBAI 2026 · SPEAKER · ',
+        when: (sday || '20–21 November 2026').toUpperCase(), where: 'World Trade Center, Mumbai',
+        left: COMMITTEE, certId: 'BHAI-SPK-' + pad(sp.id != null ? sp.id : o.id, 4), foot: '',
+        accent: GOLD, ring: GOLD_RING, glow: '#F0C766', pill: label,
+      };
+    }
+    if (st) {
+      // A talk on the Innovation Stage (Aryabhata Theatre, Expo Hall): an exhibitor's
+      // talk, an Innovation Talk or a paid Showcase slot, all rows of innovation_talks.
+      var tday = dayLabel(st.slot);
+      return {
+        kind: 'stage', eyebrow: 'CERTIFICATE OF APPRECIATION', lead1: 'This is presented to',
+        lead: 'with thanks for presenting on the Innovation Stage', headline: String(st.topic || 'Innovation Talk'), second: '',
+        subs: [[[st.title, st.company].filter(Boolean).join(', '), '#2A3150', '600', 21],
+          ['Innovation Stage, Aryabhata Theatre · Bharat AI Innovation 2026', SLATE, '500', 21]],
+        seal: 'BHARAT AI INNOVATION · INNOVATION STAGE · ',
+        when: (tday || '20–21 November 2026').toUpperCase(), where: 'World Trade Center, Mumbai',
+        left: COMMITTEE, certId: 'BHAI-IT-' + pad(st.id != null ? st.id : o.id, 4), foot: '',
+        accent: STAGE, ring: STAGE_RING, glow: '#6FD98A', pillText: '#FFFFFF', pill: 'Innovation Stage',
+        designation: [st.title, st.company].filter(Boolean).join(', '),
+        eventSubs: [['Innovation Stage, Aryabhata Theatre · 20–21 November 2026'], ['at Bharat AI Innovation 2026, India’s B2B AI Conference & Exhibition']],
+      };
+    }
     if (pn) {
       var t = String(pn.titleShort || pn.title || 'Campus panel');
       return {
@@ -230,7 +333,7 @@
         when: String(pn.dateLabel || '').toUpperCase(), where: [pn.hostShort || pn.host, pn.city].filter(Boolean).join(', '),
         left: COMMITTEE,
         certId: 'BHAI-CS-' + String(pn.slug || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + '-' + pad(o.id, 5),
-        foot: pn.claimed ? 'Attendance confirmed ' + pn.claimed : '',
+        foot: pn.claimed ? 'Attendance confirmed ' + pn.claimed : '', pill: 'Campus Series',
       };
     }
     if (ws) {
@@ -239,7 +342,7 @@
         subs: [['at Bharat AI Innovation 2026, India’s B2B AI Conference & Exhibition', SLATE, '500', 21]],
         seal: 'BHARAT AI INNOVATION · MUMBAI 2026 · WORKSHOP · ',
         when: (dayLabel(ws.day) || '20–21 November 2026').toUpperCase(), where: 'World Trade Center, Mumbai',
-        left: facilitator(ws.speaker) || COMMITTEE, certId: 'BHAI-WS-' + pad(o.id, 4), foot: '',
+        left: facilitator(ws.speaker) || COMMITTEE, certId: 'BHAI-WS-' + pad(o.id, 4), foot: '', pill: 'Workshop',
       };
     }
     var subs = [['India’s B2B AI Conference & Exhibition', SLATE, '500', 21]];
@@ -250,8 +353,33 @@
       kind: 'conference', lead: 'has participated in', headline: 'Bharat AI Innovation 2026', second: '', subs: subs,
       seal: 'BHARAT AI INNOVATION · MUMBAI 2026 · CONFERENCE · ',
       when: '20–21 NOVEMBER 2026', where: 'World Trade Center, Mumbai',
-      left: COMMITTEE, certId: 'BHAI-CERT-' + pad(o.id, 4), foot: '',
+      left: COMMITTEE, certId: 'BHAI-CERT-' + pad(o.id, 4), foot: '', pill: certPass || 'Participant',
+      // The event style shows the pass in the pill, so its lines carry the date and place instead.
+      eventSubs: [['India’s B2B AI Conference & Exhibition'], ['20–21 November 2026 · World Trade Center, Mumbai']].concat(certWs ? [['Workshop attended: ' + certWs]] : []),
     };
+  }
+
+  // The sponsor and partners of Mumbai 2026, in the order of src/data/partners.json (the
+  // one list; smoke-cert-preview.mjs checks that this copy matches it). The event is over,
+  // so the certificate keeps the partners who backed it.
+  var POWERED_BY = { name: 'IDFC FIRST Bank', logo: '/images/logo-idfc-first-bank.webp' };
+  var PARTNERS = [
+    { name: 'Aegis Superintelligence Lab', label: 'AI Partner', logo: '/images/org-logos/aegis-superintelligence-lab.webp', dark: true },
+    { name: 'Assessfy', label: 'Assessment OS Partner & Panel Host', logo: '/images/exhibitors/assessfy.webp' },
+    { name: 'Aegis School of Data Science & AI', label: 'AI COE', logo: '/images/logo-aegis.webp' },
+    { name: 'Jade Global', label: 'Panel Host Partner', logo: '/images/exhibitors/jade-global.webp' },
+    { name: 'Pramaana Labs', label: 'Partner', logo: '/images/org-logos/pramaana-labs.webp' },
+    { name: 'Decimal Point Analytics', label: 'Analytics Partner', logo: '/images/org-logos/decimal-point-analytics.webp' },
+    { name: 'EXENI', label: 'Partner', logo: '/images/org-logos/exeni.webp' },
+  ];
+
+  // Which style: design C for the workshop (and the campus panel); the event style for the
+  // certificate of participation, a speaker's and an Innovation Stage presenter's
+  // (organiser, 24 Nov 2026: "create new style of certificate, this style we are using for
+  // workshop"). o.style 'C' or 'event' forces one, for previews.
+  function styleOf(o) {
+    if (o.style === 'C' || o.style === 'event') return o.style;
+    return o.workshop || o.panel ? 'C' : 'event';
   }
 
   async function draw(o) {
@@ -259,14 +387,18 @@
     var name = String(o.name || '').trim() || 'Attendee';
     var k = content(o);
     var pn = o.panel || null;
-    var loaded = await Promise.all([tryImage(IMG.bharat), tryImage(IMG.mark), tryImage(IMG.aegis), tryImage(pn && pn.hostLogo),
-      fontsReady([name, k.headline, k.second, k.left.name, k.left.org, DEAN.name, DEAN.org, k.where].concat(k.subs.map(function (s) { return s[0]; })).join(' '))]);
-    var bharat = loaded[0], mark = loaded[1], aegis = loaded[2], hostLogo = loaded[3];
+    var ev = styleOf(o) === 'event';
+    var loaded = await Promise.all([tryImage(IMG.bharat), tryImage(IMG.mark), ev ? null : tryImage(IMG.aegis), tryImage(pn && pn.hostLogo), tryImage(photoSrc(o.photo)),
+      ev ? Promise.all([tryImage(POWERED_BY.logo)].concat(PARTNERS.map(function (p) { return tryImage(p.logo); }))) : null,
+      fontsReady([name, k.headline, k.second, k.left.name, k.left.org, DEAN.name, DEAN.org, k.where].concat(k.subs.concat(k.eventSubs).map(function (s) { return s[0]; }), PARTNERS.map(function (p) { return p.label; })).join(' '))]);
+    // A photo that will not load leaves the certificate without one: the seal design.
+    var bharat = loaded[0], mark = loaded[1], aegis = loaded[2], hostLogo = loaded[3], photo = loaded[4];
 
     var canvas = document.createElement('canvas'); canvas.width = W * SCALE; canvas.height = H * SCALE;
     var ctx = canvas.getContext('2d');
     ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
     ctx.textBaseline = 'alphabetic';
+    if (ev) { paintEvent(ctx, o, k, name, { bharat: bharat, mark: mark, photo: photo, sponsor: loaded[5][0], partners: loaded[5].slice(1) }); return canvas; }
 
     // ---- the ink panel ----
     ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
@@ -281,7 +413,13 @@
     if (bharat) { var lw = 360, lh = bharat.height * (lw / bharat.width); ctx.drawImage(bharat, (PW - lw) / 2, 100, lw, lh); }
     else { ctx.textAlign = 'center'; ctx.fillStyle = '#F2EDE3'; ctx.font = '700 32px ' + MS; ctx.fillText('BHARAT AI INNOVATION', PW / 2, 170); }
     hindi(ctx, PW / 2, 248, 34);
-    seal(ctx, PW / 2, 600, 118, mark, k.seal);
+    if (photo) {
+      portrait(ctx, PW / 2, 560, 132, photo);
+      smallSeal(ctx, PW / 2 + 98, 560 + 98, 40, mark, k.ring);
+      pill(ctx, PW / 2, 770, k.pill, k.ring, k.pillText);
+    } else {
+      seal(ctx, PW / 2, 600, 118, mark, k.seal, k.ring);
+    }
     ctx.textAlign = 'center';
     ctx.fillStyle = '#FFB36B'; fit(ctx, k.when, '600', 15, 12, MS, PW - 80); spaced(ctx, k.when, PW / 2, 930, 3, 'center');
     ctx.fillStyle = '#C8CBDA'; fit(ctx, k.where, '500', 19, 14, MR, PW - 60); ctx.fillText(k.where, PW / 2, 964);
@@ -306,8 +444,8 @@
     }
 
     ctx.textAlign = 'left';
-    ctx.fillStyle = RUST; ctx.font = '600 20px ' + MS; spaced(ctx, 'CERTIFICATE OF PARTICIPATION', X, 330, 6, 'left');
-    ctx.fillStyle = SLATE; ctx.font = '500 22px ' + MR; ctx.fillText('This is to certify that', X, 388);
+    ctx.fillStyle = k.accent; ctx.font = '600 20px ' + MS; spaced(ctx, k.eyebrow, X, 330, 6, 'left');
+    ctx.fillStyle = SLATE; ctx.font = '500 22px ' + MR; ctx.fillText(k.lead1, X, 388);
     // The name: one line down to 50 px, else two lines (the longest real names).
     var nm = setLines(ctx, name, '700', 86, 50, PF, maxW, 56, 36);
     ctx.fillStyle = INK; ctx.font = '700 ' + nm.size + 'px ' + PF;
@@ -328,13 +466,117 @@
     });
 
     // Signed by the facilitator (or the Organizing Committee) and the Dean.
-    signBlock(ctx, X, 850, k.left);
-    signBlock(ctx, X + 470, 850, DEAN);
+    signBlock(ctx, X, 850, k.left, k.accent);
+    signBlock(ctx, X + 470, 850, DEAN, k.accent);
 
     ctx.fillStyle = '#9A9FAD'; ctx.font = '500 14px ' + MR;
     spaced(ctx, 'CERTIFICATE ID  ' + k.certId, R - 20, 1050, 2, 'right');
     if (k.foot) { ctx.textAlign = 'left'; fit(ctx, k.foot, '500', 14, 11, MR, 420); ctx.fillText(k.foot, X, 1050); }
     return canvas;
+  }
+
+  /* The event style (24 Nov 2026), for the certificate of participation, a speaker's and
+   * an Innovation Stage presenter's: deep ink, centred, our logo with the Hindi line top
+   * left, the QR top right, the person's photo (or the seal) above the name, no
+   * signatures, and a white band along the foot with "Powered by IDFC FIRST Bank" and the
+   * seven partners, who asked to be seen after the event. */
+  function paintEvent(ctx, o, k, name, im) {
+    var CX = W / 2, BAND = 878, maxW = 1240;
+    var bg = ctx.createRadialGradient(CX, 470, 60, CX, 520, 1000);
+    bg.addColorStop(0, '#18235A'); bg.addColorStop(1, '#070A18');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    guilloche(ctx, 52, 22, 24, '#FFB15C', 0.06, 0, W);
+    rosette(ctx, CX, 470, 340, '#FFB15C', 0.05);
+
+    // Top row: logo and the Hindi line under it, the kind of certificate, the QR.
+    var lw = 300, lh = 79;
+    if (im.bharat) { lh = im.bharat.height * (lw / im.bharat.width); ctx.drawImage(im.bharat, 78, 64, lw, lh); }
+    else { ctx.textAlign = 'left'; ctx.fillStyle = '#F2EDE3'; ctx.font = '700 28px ' + MS; ctx.fillText('BHARAT AI INNOVATION', 78, 120); }
+    hindi(ctx, 78 + lw / 2, 64 + lh + 40, 28);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = k.glow; ctx.font = '600 20px ' + MS;
+    var tw = spaced(ctx, k.eyebrow, CX, 132, 7, 'center');
+    ctx.globalAlpha = 0.7; ctx.fillRect(CX - tw / 2 - 86, 125, 56, 1.5); ctx.fillRect(CX + tw / 2 + 30, 125, 56, 1.5); ctx.globalAlpha = 1;
+    var q = qrCode(o.verifyUrl), qx = W - 78 - 150, qy = 56;
+    if (q) {
+      ctx.fillStyle = '#FFFFFF'; roundRect(ctx, qx, qy, 150, 150, 12); ctx.fill();
+      drawQR(ctx, q, qx + 10, qy + 10, 130);
+      ctx.fillStyle = '#C8CBDA'; ctx.font = '700 11px ' + MS; spaced(ctx, 'SCAN TO VERIFY', qx + 75, qy + 174, 2.5, 'center');
+      ctx.fillStyle = '#7F85A3'; ctx.font = '500 12px ' + MR; spaced(ctx, k.certId, qx + 75, qy + 194, 1.5, 'center');
+    } else {
+      ctx.fillStyle = '#7F85A3'; ctx.font = '500 12px ' + MR; spaced(ctx, 'CERTIFICATE ID  ' + k.certId, W - 78, BAND - 18, 1.5, 'right');
+    }
+
+    // The photo in a ring striped like the flag, or the seal; what they were, in a pill.
+    var my = 290;
+    if (im.photo) { portrait(ctx, CX, my, 86, im.photo); smallSeal(ctx, CX + 66, my + 66, 28, im.mark, k.ring); }
+    else seal(ctx, CX, my, 96, im.mark, k.seal, k.ring);
+    pill(ctx, CX, 430, k.pill, k.ring, k.pillText);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#C8CBDA'; ctx.font = '500 22px ' + MR; ctx.fillText(k.lead1, CX, 490);
+    var nm = setLines(ctx, name, '700', 78, 50, PF, maxW, 52, 36);
+    var y = nm.lines.length > 1 ? 550 : 568, lineH = Math.round(nm.size * 1.1);
+    // A two-line name and a two-line title together leave less room above the partners'
+    // band: the last lines go first (the logo already says Bharat AI Innovation 2026).
+    var hdPre = setLines(ctx, k.headline, '700', 38, 30, MS, maxW, 34, 24);
+    var subs = k.eventSubs.slice();
+    var bottom = function () {
+      return y + (nm.lines.length - 1) * lineH + (k.designation ? 44 : 0) + 26 + 50 + 48
+        + (hdPre.lines.length - 1) * Math.round(hdPre.size * 1.25) + subs.reduce(function (a, s, i) { return a + (i ? 30 : 38); }, 0);
+    };
+    while (subs.length > 1 && bottom() > BAND - 30) subs.pop();
+    var ng = ctx.createLinearGradient(0, y - nm.size, 0, y + (nm.lines.length - 1) * lineH); ng.addColorStop(0, '#FFFFFF'); ng.addColorStop(1, '#F3E3CC');
+    ctx.fillStyle = ng; ctx.font = '700 ' + nm.size + 'px ' + PF;
+    nm.lines.forEach(function (ln, i) { ctx.fillText(ln, CX, y + i * lineH); });
+    y += (nm.lines.length - 1) * lineH;
+    if (k.designation) { ctx.fillStyle = '#E3E6F0'; fit(ctx, k.designation, '600', 22, 15, MR, maxW); y += 44; ctx.fillText(k.designation, CX, y); }
+    y += 26;
+    ctx.fillStyle = SAFFRON; ctx.fillRect(CX - 60, y, 40, 3); ctx.fillStyle = '#FFFFFF'; ctx.fillRect(CX - 20, y, 40, 3); ctx.fillStyle = GREEN_DARK; ctx.fillRect(CX + 20, y, 40, 3);
+    y += 50; ctx.fillStyle = '#C8CBDA'; ctx.font = '500 22px ' + MR; ctx.fillText(k.lead, CX, y);
+    var hd = setLines(ctx, k.headline, '700', 38, 30, MS, maxW, 34, 24);
+    ctx.fillStyle = '#FFFFFF'; ctx.font = '700 ' + hd.size + 'px ' + MS;
+    y += 48; hd.lines.forEach(function (ln, i) { ctx.fillText(ln, CX, y + i * Math.round(hd.size * 1.25)); });
+    y += (hd.lines.length - 1) * Math.round(hd.size * 1.25);
+    subs.forEach(function (s, i) {
+      ctx.fillStyle = i ? '#9EA3BB' : '#E3E6F0';
+      fit(ctx, s[0], i ? '500' : '600', 20, 14, MR, maxW);
+      y += i ? 30 : 38; ctx.fillText(s[0], CX, y);
+    });
+
+    // The partners' band.
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(28, BAND, W - 56, H - 28 - BAND);
+    ctx.fillStyle = SAFFRON; ctx.fillRect(28, BAND, (W - 56) / 3, 3); ctx.fillStyle = '#E8E2D4'; ctx.fillRect(28 + (W - 56) / 3, BAND, (W - 56) / 3, 3); ctx.fillStyle = GREEN; ctx.fillRect(28 + 2 * (W - 56) / 3, BAND, (W - 56) / 3 + 1, 3);
+    // IDFC FIRST Bank larger than any partner (organiser, 24 Nov 2026: "make idfc first logo relatively bigger").
+    ctx.font = '700 15px ' + MS;
+    var label = 'POWERED BY', sw = 0, i;
+    for (i = 0; i < label.length; i++) sw += ctx.measureText(label[i]).width + (i < label.length - 1 ? 3 : 0);
+    var sh = 66, swid = im.sponsor ? im.sponsor.width * (sh / im.sponsor.height) : 0, sx = CX - (sw + 18 + swid) / 2;
+    ctx.fillStyle = SLATE; ctx.font = '700 15px ' + MS; spaced(ctx, label, sx, BAND + 55, 3, 'left');
+    if (im.sponsor) { ctx.save(); roundRect(ctx, sx + sw + 18, BAND + 16, swid, sh, 8); ctx.clip(); ctx.drawImage(im.sponsor, sx + sw + 18, BAND + 16, swid, sh); ctx.restore(); }
+    else { ctx.fillStyle = INK; ctx.font = '700 18px ' + MS; ctx.textAlign = 'left'; ctx.fillText(POWERED_BY.name, sx + sw + 18, BAND + 56); }
+    ctx.fillStyle = '#ECE7DC'; ctx.fillRect(CX - 600, BAND + 96, 1200, 1);
+    var colW = (W - 140) / PARTNERS.length;
+    PARTNERS.forEach(function (p, j) {
+      var cx = 70 + colW * j + colW / 2, cy = BAND + 134, img = im.partners[j];
+      if (img) {
+        var h = 40, w = img.width * (h / img.height);
+        if (w > 150) { w = 150; h = img.height * (w / img.width); }
+        ctx.save(); if (p.dark) { roundRect(ctx, cx - w / 2, cy - h / 2, w, h, 6); ctx.clip(); }
+        ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h); ctx.restore();
+      } else { ctx.fillStyle = INK; ctx.textAlign = 'center'; fit(ctx, p.name, '700', 15, 10, MS, colW - 16); ctx.fillText(p.name, cx, cy + 5); }
+      ctx.fillStyle = SLATE; ctx.font = '700 10px ' + MS;
+      var parts = String(p.label).toUpperCase(), lines = [parts];
+      if (ctx.measureText(parts).width + parts.length * 1.2 > colW - 14) lines = split2(ctx, parts);
+      lines.forEach(function (ln, m) { spaced(ctx, ln, cx, cy + 42 + m * 13, 1.2, 'center'); });
+    });
+
+    // The frame, over everything.
+    ctx.strokeStyle = 'rgba(255,153,51,0.75)'; ctx.lineWidth = 1.5; ctx.strokeRect(28, 28, W - 56, H - 56);
+    ctx.strokeStyle = k.ring; ctx.lineWidth = 3;
+    [[28, 28, 1, 1], [W - 28, 28, -1, 1], [28, H - 28, 1, -1], [W - 28, H - 28, -1, -1]].forEach(function (c) {
+      ctx.beginPath(); ctx.moveTo(c[0], c[1] + 60 * c[3]); ctx.lineTo(c[0], c[1]); ctx.lineTo(c[0] + 60 * c[2], c[1]); ctx.stroke();
+    });
   }
 
   function filename(isWorkshop) {
@@ -359,6 +601,7 @@
 
   global.BhaiCert = {
     draw: draw, filename: filename, facilitator: facilitator, content: content, signoff: signoff,
+    styleOf: styleOf, PARTNERS: PARTNERS, POWERED_BY: POWERED_BY,
     DEAN: DEAN, COMMITTEE: COMMITTEE, IMAGES: IMG, SAMPLE_VERIFY_URL: 'https://bharataiinnovation.com/certificate/sample',
   };
 })(typeof window !== 'undefined' ? window : this);

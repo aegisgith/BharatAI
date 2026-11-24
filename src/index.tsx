@@ -12,6 +12,7 @@ import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/t
 import speakerPhotos, { configurePhotos } from './routes/photos'
 import photoTracking, { photoPageBeacon, withOpenPixel } from './routes/photo-tracking'
 import findPhotos, { configureFindPhotos, findPhotosWhereSql } from './routes/find-photos'
+import certificates, { configureCertificates, certAudienceRows, certDrawData, certDownloadPageHTML, certGroupOfRef, CERT_GROUP_REF, CERT_KINDS, CERT_RENDER_V } from './routes/certificates'
 import exhibitorPhotos, { configureExhibitorPhotos, boothAlbum } from './routes/exhibitor-photos'
 import morePhotos, { configureMorePhotos } from './routes/more-photos'
 import myPhotos, { configureMyPhotos } from './routes/my-photos'
@@ -667,6 +668,21 @@ configureFindPhotos({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader,
     return href
   } })
 app.route('/', findPhotos)
+// Certificates by email (24 Nov 2026): participants, speakers and Innovation Stage
+// presenters, each with their photo; no photo, a request for one. Bulk runs of kind
+// cert_ready / cert_photo; routes/certificates.ts. The page they open is /certificate/:code.
+configureCertificates({ sendEmail: sendAdminEmail, emailHeader: emailBrandHeader, certVerifyUrl: (c: any, k: any, id: any, ref?: any) => certVerifyUrl(c, k, id, ref),
+  passLabel: (b: any, p: any) => certPassLabel(b, p),
+  audit: async (c: any, action: string, entity: string, id: any, details?: any) => { await audit(c, action, entity, id, details) },
+  profileLink: async (c: any, eventId: number, email: string) => {
+    const appUrl = (await settingValue(c, 'app_url')) || 'https://bharataiinnovation.com/app'
+    let href = appUrl + '?email=' + encodeURIComponent(email) + '&action=complete-profile'
+    try {
+      if (await verifiedLoginEnabled(c)) href += '&token=' + (await createLoginToken(c, eventId, email, PROFILE_LINK_TTL_MINUTES, 3)).token
+    } catch { /* the plain link opens the sign-in box on their address */ }
+    return href
+  } })
+app.route('/', certificates)
 // My photos in the app (23 Nov 2026): the home screen shows the signed-in person a few of
 // their event photos and a button to their own photos page, or asks for a clear photo
 // when the face match has not found them yet. routes/my-photos.ts.
@@ -14464,7 +14480,7 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
   let row: any = null
   try {
     row = await c.env.DB.prepare(
-      `SELECT a.checked_in_at, a.badge_type, a.payment_status, e.start_date, e.end_date
+      `SELECT a.checked_in_at, a.badge_type, a.payment_status, a.avatar_url, a.job_title, a.company, e.start_date, e.end_date
          FROM attendees a JOIN events e ON e.id = a.event_id
         WHERE a.id = ?`
     ).bind(id).first()
@@ -14532,6 +14548,10 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
     // The pass the certificate names (organiser, 12 Nov 2026): a paid tier not paid for
     // reads as the Visitor Pass, as at the desk.
     pass: certPassLabel(row.badge_type, row.payment_status),
+    // The certificate of participation carries their photo and designation (24 Nov 2026);
+    // without a photo the app asks for one first.
+    photo: String(row.avatar_url || '').trim(),
+    designation: [row.job_title, row.company].map((s: any) => String(s || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join(', '),
     ...(eligible || isAdminRequest(c) ? { verify: await certVerifyUrl(c, 'C', id) } : {}),
   })
 })
@@ -14567,17 +14587,20 @@ function certPassLabel(badge: any, payment: any): string {
   return PAID_TIERS.includes(b) && ['pending', 'refunded'].includes(String(payment || '').trim().toLowerCase()) ? 'Visitor Pass' : b
 }
 
-async function certVerifyUrl(c: any, kind: 'C' | 'W' | 'P', attendeeId: any, ref?: any): Promise<string> {
+// Since 24 Nov 2026 also S<speaker id>-<session id> (a speaker's certificate) and T<talk id>
+// (an Innovation Stage talk), sent by email (routes/certificates.ts).
+const certNoRef = (kind: string) => kind === 'C' || kind === 'T'
+async function certVerifyUrl(c: any, kind: 'C' | 'W' | 'P' | 'S' | 'T', attendeeId: any, ref?: any): Promise<string> {
   const secret = certSecret(c)
   const n = parseInt(String(attendeeId), 10)
   if (!secret || !Number.isFinite(n)) return ''
-  const body = kind + n + (kind === 'C' ? '' : '-' + String(ref ?? '').toLowerCase())
+  const body = kind + n + (certNoRef(kind) ? '' : '-' + String(ref ?? '').toLowerCase())
   return CERT_SITE + '/certificate/' + body + '.' + (await hmacHexA(secret, 'cert:' + body)).slice(0, 16)
 }
 
 async function readCertCode(c: any, code: string): Promise<{ kind: string, id: number, ref: string } | null> {
-  const m = /^([CWP])(\d{1,9})(?:-([a-z0-9-]{1,40}))?\.([0-9a-f]{16})$/.exec(String(code || ''))
-  if (!m || (m[1] === 'C') !== (m[3] === undefined)) return null
+  const m = /^([CWPST])(\d{1,9})(?:-([a-z0-9-]{1,40}))?\.([0-9a-f]{16})$/.exec(String(code || ''))
+  if (!m || certNoRef(m[1]) !== (m[3] === undefined)) return null
   const secret = certSecret(c)
   if (!secret) return null
   const body = m[1] + m[2] + (m[3] === undefined ? '' : '-' + m[3])
@@ -14597,9 +14620,35 @@ app.get('/certificate/:code', async (c) => {
   const raw = c.req.param('code')
   if (raw === 'sample') return c.html(certCheckPageHTML({ state: 'sample' }))
   const v = await readCertCode(c, raw)
-  if (!v) return c.html(certCheckPageHTML({ state: 'bad' }), 404)
+  const download = c.req.query('download') === '1'
+  if (!v) return c.html(download ? certDownloadPageHTML({ data: null, state: 'bad', code: '' }) : certCheckPageHTML({ state: 'bad' }), 404)
   const DEAN = 'Dr. Abhijit Gangopadhyay, Dean, Aegis School of Data Science and AI'
   const COMMITTEE = 'Organizing Committee, Bharat AI Innovation 2026'
+  // The participation, speaker and Innovation Stage certificates (event style, 24 Nov 2026):
+  // ?download=1 is the page their email opens, which draws and saves it; without it, the
+  // check page the QR opens. No photo on record, no certificate: the page asks for one.
+  if (v.kind === 'C' || v.kind === 'S' || v.kind === 'T') {
+    let d: any = null
+    try { d = await certDrawData(c, v.kind, v.id, v.ref) } catch { return c.html(certCheckPageHTML({ state: 'down' }), 503) }
+    if (download) {
+      if (d) await audit(c, 'certificate.opened', 'certificate', raw).catch(() => {})
+      return c.html(certDownloadPageHTML({ data: d, state: !d ? 'bad' : d.photo ? 'ok' : 'no-photo', code: raw }), d ? 200 : 404)
+    }
+    if (!d) return c.html(certCheckPageHTML({ state: 'gone' }), 404)
+    if (v.kind === 'S') {
+      return c.html(certCheckPageHTML({
+        state: 'ok', name: d.name, what: 'Certificate of appreciation', lead: 'spoke as ' + d.role + ' in the session', title: d.session,
+        lines: [[d.room, d.day].filter(Boolean).join(' · '), 'Bharat AI Innovation 2026 · World Trade Center, Mumbai'], signers: [], certId: d.certId,
+      }))
+    }
+    if (v.kind === 'T') {
+      return c.html(certCheckPageHTML({
+        state: 'ok', name: d.name, what: 'Certificate of appreciation', lead: 'presented on the Innovation Stage', title: d.topic,
+        lines: [d.company ? 'For ' + d.company : '', ['Aryabhata Theatre', d.day].filter(Boolean).join(' · '), 'Bharat AI Innovation 2026 · World Trade Center, Mumbai'].filter(Boolean),
+        signers: [], certId: d.certId,
+      }))
+    }
+  }
   try {
     const a = await c.env.DB.prepare('SELECT id, name, badge_type, payment_status FROM attendees WHERE id = ?').bind(v.id).first() as any
     if (!a) return c.html(certCheckPageHTML({ state: 'gone' }), 404)
@@ -14633,7 +14682,8 @@ app.get('/certificate/:code', async (c) => {
     return c.html(certCheckPageHTML({
       state: 'ok', name: a.name, what: 'Certificate of participation', lead: 'took part in', title: 'Bharat AI Innovation 2026',
       lines: ['India’s B2B AI Conference & Exhibition', '20 to 21 November 2026 · World Trade Center, Mumbai', 'Pass: ' + certPassLabel(a.badge_type, a.payment_status)],
-      signers: [COMMITTEE, DEAN], certId: 'BHAI-CERT-' + pad(4),
+      // The participation certificate carries no signatures since 24 Nov 2026 (event style).
+      signers: [], certId: 'BHAI-CERT-' + pad(4),
     }))
   } catch {
     return c.html(certCheckPageHTML({ state: 'down' }), 503)
@@ -14665,7 +14715,7 @@ function certCheckPageHTML(o: any): string {
     <h2>${esc(o.title)}</h2>
     ${(o.lines || []).map((l: string) => `<p class="line">${esc(l)}</p>`).join('')}
     <div class="meta">
-      <div><span>Signed by</span>${(o.signers || []).map((x: string) => `<b>${esc(x)}</b>`).join('')}</div>
+      ${(o.signers || []).length ? `<div><span>Signed by</span>${(o.signers || []).map((x: string) => `<b>${esc(x)}</b>`).join('')}</div>` : '<div><span>Issued by</span><b>Bharat AI Innovation 2026</b></div>'}
       <div><span>Certificate ID</span><b>${esc(o.certId)}</b></div>
     </div>
     <div class="note"><b>Check it against the certificate in front of you.</b> The name and details there must match this page exactly. If anything differs, the certificate was changed after we issued it.</div>
@@ -20989,11 +21039,14 @@ async function campaignSendOne(c: any, kind: string, refId: any, r: any, auth = 
     : kind === 'sat_open' ? `/api/admin/attendees/${r.attendee_id}/send-sat-open`
     : kind === 'day2_programme' ? `/api/admin/attendees/${r.attendee_id}/send-day2`
     : kind === 'offer' ? '/api/admin/offers/send'
+    : CERT_KINDS.includes(kind) ? '/api/admin/certificates/send'
     : `/api/admin/attendees/${r.attendee_id}/notify`
   try {
     const url = new URL(c.req.url)
     url.pathname = path
-    url.search = kind === 'upgrade' ? '?offer=' + (Number(refId) === 2 ? 'academic' : 'delegate')
+    url.search = CERT_KINDS.includes(kind) ? '?variant=' + (kind === 'cert_photo' ? 'photo' : 'ready') + '&group=' + certGroupOfRef(refId)
+        + '&attendee=' + encodeURIComponent(String(r.attendee_id || '')) + '&email=' + encodeURIComponent(String(r.email || ''))
+      : kind === 'upgrade' ? '?offer=' + (Number(refId) === 2 ? 'academic' : 'delegate')
       : kind === 'offer' ? '?audience=' + offerAudienceOf(refId) + '&email=' + encodeURIComponent(String(r.email || '')) + '&attendee=' + encodeURIComponent(String(r.attendee_id || ''))
       : ''
     const res = await app.fetch(new Request(url.toString(), {
@@ -21105,10 +21158,16 @@ async function campaignAudienceRows(c: any, kind: string, audience: string, incl
 // Start a campaign. Returns it with its recipient count; nothing is sent yet.
 app.post('/api/admin/campaigns', async (c) => {
   const body = await c.req.json().catch(() => ({})) as any
-  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week', 'entry_slot', 'entry_reoffer', 'sat_open', 'find_photos'].includes(body.kind) ? body.kind : ''
+  const kind = ['notify', 'thankyou', 'announcement', 'profile_reminder', 'upgrade', 'networking', 'waitlist_confirm', 'feedback', 'offer', 'workshop_invite', 'event_week', 'entry_slot', 'entry_reoffer', 'sat_open', 'find_photos', ...CERT_KINDS].includes(body.kind) ? body.kind : ''
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
+  // Certificates (routes/certificates.ts): ref_id is the group, 1 participants, 2 speakers, 3 stage.
+  if (CERT_KINDS.includes(kind)) {
+    const g = String(body.group || ([1, 2, 3].includes(Number(refId)) ? certGroupOfRef(refId) : '')) as keyof typeof CERT_GROUP_REF
+    if (!CERT_GROUP_REF[g]) return c.json({ error: 'A certificate run is for participants, speakers or stage.' }, 400)
+    refId = CERT_GROUP_REF[g]
+  }
   if (kind === 'upgrade') {
     if (!UPGRADE_OFFERS[audience]) return c.json({ error: 'An upgrade campaign is for "senior" or "students".' }, 400)
     refId = UPGRADE_OFFERS[audience].refId
@@ -21145,6 +21204,9 @@ app.post('/api/admin/campaigns', async (c) => {
     rows = ((results as any[]) || []).sort((a: any, b: any) => (at.get(Number(a.id)) ?? 0) - (at.get(Number(b.id)) ?? 0))
   } else if (kind === 'offer') {
     rows = await offerAudienceRows(c, audience, body.inquiry_ids)
+  } else if (CERT_KINDS.includes(kind)) {
+    // Speakers and presenters by address (attendee id empty); participants as attendees.
+    rows = await certAudienceRows(c, kind, certGroupOfRef(refId), audience)
   } else {
     rows = await campaignAudienceRows(c, kind, audience, body.include_panel_only === true)
   }
@@ -21166,6 +21228,8 @@ app.post('/api/admin/campaigns', async (c) => {
     : kind === 'thankyou' ? 'Post-event thank you'
     : kind === 'profile_reminder' ? 'Complete your profile'
     : kind === 'find_photos' ? 'Are you in the photos?'
+    : kind === 'cert_ready' ? 'Certificate: ' + certGroupOfRef(refId)
+    : kind === 'cert_photo' ? 'Certificate photo request: ' + certGroupOfRef(refId)
     : kind === 'waitlist_confirm' ? 'Waiting list: your Free Visitor Pass is confirmed'
     : kind === 'feedback' ? 'Feedback survey'
     : kind === 'workshop_invite' ? 'Workshop invitation' : 'Announcement')).slice(0, 160)
@@ -21229,7 +21293,7 @@ async function tickCampaigns(c: any): Promise<any[]> {
     try {
       // The event-week email is not paced by the send gap (routes/event-week.ts): ten a
       // minute, so a few thousand go in a day and not a week.
-      const r = await pumpCampaign(c, k.id, k.kind === 'sat_open' ? 50 : k.kind === 'day2_programme' ? 40 : k.kind === 'feedback' || k.kind === 'find_photos' ? 30 : k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
+      const r = await pumpCampaign(c, k.id, k.kind === 'sat_open' ? 50 : k.kind === 'day2_programme' ? 40 : k.kind === 'feedback' || k.kind === 'find_photos' || CERT_KINDS.includes(k.kind) ? 30 : k.kind === 'event_week' || k.kind === 'entry_slot' || k.kind === 'entry_reoffer' ? 10 : 1, 'Bearer ' + secret)
       out.push({ id: k.id, sent: r.body?.sent ?? null, remaining: r.body?.remaining ?? null, wait_seconds: r.body?.wait_seconds ?? 0 })
     } catch (e: any) { out.push({ id: k.id, error: String(e?.message || e).slice(0, 200) }) }
   }
@@ -30256,7 +30320,7 @@ function mainPageHTML(): string {
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
-  <script src="/js/cert-render.js?v=2026112403" defer></script>
+  <script src="/js/cert-render.js?v=2026112404" defer></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261102"></script>
@@ -39165,6 +39229,15 @@ function mainPageScript(): string {
         refreshCertificateButton();
         return;
       }
+      // The certificate of participation carries the person's photo (organiser, 24 Nov 2026:
+      // "in case no photo on record don't send, ... update photo for getting the participation
+      // certificate"), as the one emailed does. The workshop certificate does not.
+      const myPhoto = String((gate && gate.photo) || user.avatar_url || '').trim();
+      if (!ws && !myPhoto) {
+        showToast('Your certificate carries your photo. Add a clear photo of yourself to your profile, then tap Certificate again.', 'info');
+        if (typeof openEditProfile === 'function') openEditProfile();
+        return;
+      }
       showToast('Generating your certificate…', 'info');
       // Drawn by /js/cert-render.js (23 Nov 2026), the same file Admin previews with,
       // so the organisers check exactly what the attendee downloads.
@@ -39174,7 +39247,8 @@ function mainPageScript(): string {
         id: user.id, name: user.name || '',
         workshop: ws ? { title: ws.title, speaker: ws.speaker, day: ws.day } : null,
         pass: gate && gate.pass,
-        workshopAttended: !ws && gate && gate.workshop && gate.workshop.eligible ? String(gate.workshop.title || '') : '',
+        photo: ws ? '' : myPhoto,
+        designation: ws ? '' : ((gate && gate.designation) || [user.job_title, user.company].map(function (s) { return String(s || '').trim(); }).filter(Boolean).join(', ')),
         verifyUrl: (ws ? ws.verify : gate && gate.verify) || '',
       });
       // Download
@@ -41871,7 +41945,7 @@ function adminPageHTML(): string {
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
-  <script src="/js/cert-render.js?v=2026112403" defer></script>
+  <script src="/js/cert-render.js?v=2026112404" defer></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
@@ -42907,13 +42981,31 @@ function adminPageScript(): string {
       afterDeskAssets = Promise.all([css, js]).catch(function (err) { afterDeskAssets = null; throw err; });
       return afterDeskAssets;
     }
+    // Certificates by email (24 Nov 2026) sit above the desk in their own box, drawn by
+    // /js/admin-certs.js (one global, CertDesk) with the desk's stylesheet.
+    var CERT_DESK_VERSION = '20261124a';
+    function certDeskLoad() {
+      if (window.CertDesk) return Promise.resolve();
+      return new Promise(function (resolve, reject) {
+        var s = document.createElement('script');
+        s.src = '/js/admin-certs.js?v=' + CERT_DESK_VERSION;
+        s.onload = function () { if (window.CertDesk) resolve(); else reject(new Error('The certificates box did not start.')); };
+        s.onerror = function () { s.remove(); reject(new Error('The certificates box could not be downloaded.')); };
+        document.head.appendChild(s);
+      });
+    }
     async function loadAdminAfter() {
-      var host = document.getElementById('section-after');
+      var section = document.getElementById('section-after');
+      if (!document.getElementById('after-main')) section.innerHTML = '<div id="after-certs"></div><div id="after-main"></div>';
+      var host = document.getElementById('after-main');
       if (!window.AfterDesk) {
         if (!host.firstChild) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading...</div>';
         try { await afterDeskLoadAssets(); }
         catch (err) { sectionError(host, 'after', { message: err.message }, 'loadAdminAfter()'); return; }
       }
+      certDeskLoad().then(function () {
+        return window.CertDesk.mount(document.getElementById('after-certs'), { api: api, toast: toast, startCampaign: startCampaign });
+      }).catch(function (err) { toast(err.message || 'The certificates box did not load.', 'error'); });
       await window.AfterDesk.mount(host, { api: api, toast: toast, startCampaign: startCampaign, authHeaders: authHeaders });
     }
     // WhatsApp: sending from our own number and the replies live in /js/admin-whatsapp.js
@@ -43354,9 +43446,11 @@ function adminPageScript(): string {
         var bad = bodyError(g);
         if (bad) { toast(bad, 'error'); return; }
         var items = [];
+        // Event style with their photo (24 Nov 2026). Without one, Admin still shows it (with the
+        // seal), and says the app asks them for a photo first.
         var conf = await BhaiCert.draw({ id: id, name: name, pass: g.pass, verifyUrl: g.verify || '',
-          workshopAttended: g.workshop && g.workshop.eligible ? String(g.workshop.title || '') : '' });
-        items.push({ who: name, label: 'Certificate of participation', ok: !!g.eligible, reason: g.reason || '',
+          photo: g.photo || '', designation: g.designation || '' });
+        items.push({ who: name, label: 'Certificate of participation' + (g.photo ? '' : ' (no photo yet: the app asks them to add one first)'), ok: !!g.eligible, reason: g.reason || '',
           url: conf.toDataURL('image/png'), file: adminCertFile(name, false) });
         if (g.workshop) {
           var wc = await BhaiCert.draw({ id: id, name: name, workshop: { title: g.workshop.title, speaker: g.workshop.speaker, day: g.workshop.day },

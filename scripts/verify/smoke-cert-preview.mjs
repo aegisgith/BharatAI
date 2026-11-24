@@ -29,6 +29,8 @@ const SQL = await initSqlJs();
 const db = new SQL.Database();
 db.exec(readFileSync(new URL('./prod-schema.sql', import.meta.url), 'utf8'));
 db.exec(readFileSync(new URL('../../migrations/0051_leads_and_daily_checkins.sql', import.meta.url), 'utf8'));
+// The programme tables and a stage talk's own address, for the certificates by email (24 Nov 2026).
+for (const m of ['0052_innovation_talk_details.sql', '0054_conference_manager.sql']) { try { db.exec(readFileSync(new URL('../../migrations/' + m, import.meta.url), 'utf8')); } catch (e) { console.log('note: ' + m + ': ' + e.message); } }
 const clean = (a) => a.map(v => (v === undefined ? null : typeof v === 'boolean' ? Number(v) : v));
 const rows = (sql, args) => { const st = db.prepare(sql); st.bind(args); const out = []; while (st.step()) out.push(st.getAsObject()); st.free(); return out; };
 const D1 = {
@@ -46,9 +48,13 @@ const D1 = {
   async batch(list) { return list.map(s => ({ results: s._rows(), meta: {} })); },
   async exec(sql) { db.exec(sql); return { count: 1 }; },
 };
-globalThis.fetch = async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+const sent = [];
+globalThis.fetch = async (url, init) => {
+  if (String(url).includes('elasticemail')) { try { const b = JSON.parse(init.body); sent.push({ to: b.Recipients.To[0], subject: b.Content.Subject, html: b.Content.Body[0].Content }); } catch {} }
+  return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+};
 const SESSION = 'smoke-session', ADMIN = 'smoke-admin';
-const env = new Proxy({ ADMIN_SECRET: ADMIN, SESSION_SECRET: SESSION, DB: D1 }, { get: (t, k) => (k in t ? t[k] : undefined) });
+const env = new Proxy({ ADMIN_SECRET: ADMIN, SESSION_SECRET: SESSION, ELASTIC_EMAIL_API_KEY: 'smoke-key', DB: D1 }, { get: (t, k) => (k in t ? t[k] : undefined) });
 const ctx = { waitUntil() {}, passThroughOnException() {} };
 const hit = async (method, path, body, headers = {}) => {
   const req = new Request('https://bharataiinnovation.com' + path, { method, headers: { 'Content-Type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -149,7 +155,7 @@ const fac = BC.facilitator ? BC.facilitator('Dr. Ashish Tendulkar, PhD, IIT Bomb
 const kWs = BC.content ? BC.content({ id: 7, workshop: { title: 'T', speaker: 'Dr. Ashish Tendulkar, PhD, IIT Bombay; Google AI', day: '2026-11-20' } }) : {};
 const kConf = BC.content ? BC.content({ id: 7, pass: 'VIP Pass' }) : {};
 const kPanel = BC.content ? BC.content({ id: 7, panel: { slug: 'djsanghvi-21sep', titleShort: 'AI and Employability', subtitle: 'S' } }) : {};
-check('signed by the facilitator (the workshop speaker, name before the first comma) and the Dean', BC.DEAN?.name === 'Dr. Abhijit Gangopadhyay' && BC.DEAN?.role === 'Dean' && BC.DEAN?.org === 'Aegis School of Data Science and AI' && fac?.name === 'Dr. Ashish Tendulkar' && fac?.role === 'Workshop Facilitator' && fac?.org === 'PhD, IIT Bombay · Google AI' && BC.facilitator('') === null && BC.COMMITTEE?.name === 'Organizing Committee' && kWs.left?.name === 'Dr. Ashish Tendulkar' && kConf.left === BC.COMMITTEE && kPanel.left === BC.COMMITTEE && /signBlock\(ctx, X \+ 470, 850, DEAN\)/.test(renderer), JSON.stringify(fac));
+check('signed by the facilitator (the workshop speaker, name before the first comma) and the Dean', BC.DEAN?.name === 'Dr. Abhijit Gangopadhyay' && BC.DEAN?.role === 'Dean' && BC.DEAN?.org === 'Aegis School of Data Science and AI' && fac?.name === 'Dr. Ashish Tendulkar' && fac?.role === 'Workshop Facilitator' && fac?.org === 'PhD, IIT Bombay · Google AI' && BC.facilitator('') === null && BC.COMMITTEE?.name === 'Organizing Committee' && kWs.left?.name === 'Dr. Ashish Tendulkar' && kConf.left === BC.COMMITTEE && kPanel.left === BC.COMMITTEE && /signBlock\(ctx, X \+ 470, 850, DEAN/.test(renderer), JSON.stringify(fac));
 // Design C (24 Nov 2026): one drawing for all three certificates, the Hindi line in
 // tricolour under our logo, the Aegis logo, and the QR.
 check('one design for the workshop, conference and campus-panel certificates, each with its own number', kWs.certId === 'BHAI-WS-0007' && kWs.when === '20 NOVEMBER 2026' && kConf.certId === 'BHAI-CERT-0007' && kConf.subs.some(s => s[0] === 'Pass: VIP Pass') && kPanel.certId === 'BHAI-CS-DJSANG-00007' && /BhaiCert\.draw\(\{[\s\S]{0,80}panel: \{/.test(appJs) && /verifyUrl: p\.verify/.test(appJs) && !/BhaiCert\.signoff\(/.test(appJs), JSON.stringify([kWs.certId, kConf.certId, kPanel.certId]));
@@ -177,6 +183,91 @@ const p5 = (await hit('GET', '/api/attendees/5/panels', undefined, { Cookie: ses
 const p3 = (await hit('GET', '/api/attendees/3/panels', undefined, { Cookie: sessionCookie(SESSION, 3) })).json || [];
 pg = await open(p5[0]?.verify);
 check('a claimed campus panel has a QR (an unclaimed one has none) and it opens the panel and the college', /\/certificate\/P5-djsanghvi-21sep\.[0-9a-f]{16}$/.test(p5[0]?.verify || '') && p3[0] && !('verify' in p3[0]) && pg.status === 200 && /AI and Employability/.test(pg.text) && /Dwarkadas J\. Sanghvi College of Engineering/.test(pg.text) && /BHAI-CS-DJSANG-00005/.test(pg.text) && /21 September 2026/.test(pg.text), JSON.stringify([p5[0]?.verify, p3[0]?.verify, pg.status]));
+
+// ==== Certificates by email and the event style (24 Nov 2026) ====
+// The organiser: a participation certificate to everyone who came, another to speakers,
+// another to Innovation Stage presenters, in a new style (design C stays for the workshop);
+// no photo on record, no certificate: a request for one instead; IDFC FIRST Bank and the
+// partners at the foot.
+const partnersJson = JSON.parse(readFileSync(new URL('../../src/data/partners.json', import.meta.url), 'utf8'));
+check('the event style for participation, speakers and the stage; design C for the workshop and the campus panel',
+  BC.styleOf({}) === 'event' && BC.styleOf({ speaker: {} }) === 'event' && BC.styleOf({ stage: {} }) === 'event' && BC.styleOf({ workshop: {} }) === 'C' && BC.styleOf({ panel: {} }) === 'C', '');
+check('the partners at the foot are partners.json, in its order, and IDFC FIRST Bank powers it',
+  JSON.stringify((BC.PARTNERS || []).map(p => [p.name, p.label, p.logo])) === JSON.stringify(partnersJson.partners.map(p => [p.name, p.label, p.logo])) && BC.POWERED_BY?.logo === partnersJson.powered_by.logo, '');
+const kSp = BC.content({ id: 9, speaker: { id: 9, role: 'moderator', session: { title: 'AI for Viksit Bharat', type: 'panel', room: 'Homi J. Bhabha Hall', start: '2026-11-20 11:30' } } });
+const kSt = BC.content({ id: 26, stage: { id: 26, topic: 'Reimagining Marketplaces', title: 'Founder', company: 'NoBroker', slot: '2026-11-20 12:30' } });
+check('a speaker: appreciation, gold, MODERATOR; a stage talk: appreciation, green, their title and company under the name',
+  kSp.eyebrow === 'CERTIFICATE OF APPRECIATION' && kSp.pill === 'MODERATOR' && kSp.certId === 'BHAI-SPK-0009' && kSp.when === '20 NOVEMBER 2026'
+  && kSt.eyebrow === 'CERTIFICATE OF APPRECIATION' && kSt.pill === 'INNOVATION STAGE' && kSt.certId === 'BHAI-IT-0026' && kSt.designation === 'Founder, NoBroker', JSON.stringify([kSp.pill, kSt.designation]));
+check('the app asks for a photo before the certificate of participation, and draws it with the photo and designation',
+  /Your certificate carries your photo/.test(appJs) && /photo: ws \? '' : myPhoto/.test(appJs), '');
+
+// The people: 3 participants checked in (2 with a photo), 1 not checked in; 2 speakers on a
+// published session (one with no photo, one on two sessions), 1 on a draft session; stage talks
+// with a time (one by its booth contact), one never given a time.
+db.run("UPDATE attendees SET avatar_url = '/api/uploads/p1.jpg', job_title = 'Data Scientist', company = 'TCS' WHERE id = 1");
+db.run("UPDATE attendees SET avatar_url = '/api/uploads/p3.jpg' WHERE id = 3");
+db.run("INSERT INTO speakers (id, event_id, slug, name, role, organisation, photo_url, email, is_published) VALUES (40, 1, 'asha', 'Dr. Asha Rao', 'CTO', 'Acme', '/images/asha.jpg', 'asha@example.test', 1), (41, 1, 'ravi', 'Ravi Iyer', 'CEO', 'Beta', '', 'ravi@example.test', 1), (42, 1, 'gone', 'Gone Person', 'X', 'Y', '/images/g.jpg', 'gone@example.test', 1)");
+db.run("INSERT INTO sessions (id, event_id, title, session_type, room, start_time, end_time) VALUES (124, 1, 'AI for Viksit Bharat', 'panel', 'Homi J. Bhabha Hall', '2026-11-20 11:30', '2026-11-20 12:30'), (145, 1, 'Improving Learning Outcomes with AI', 'panel', 'Kalam Theatre', '2026-11-21 14:00', '2026-11-21 15:00'), (150, 1, 'Never held', 'keynote', 'Raman Theatre', '2026-11-21 10:00', '2026-11-21 10:30')");
+db.run("INSERT INTO session_speakers (session_id, speaker_id, role) VALUES (124, 40, 'moderator'), (145, 40, 'panellist'), (124, 41, 'panellist'), (150, 42, 'speaker')");
+db.run("INSERT INTO session_admin (session_id, status) VALUES (150, 'draft')");
+db.run("INSERT INTO exhibitors (id, event_id, company_name, contact_email) VALUES (7, 1, 'NoBroker', 'booth@nobroker.test')");
+db.run("INSERT INTO innovation_talks (id, event_id, speaker_name, company, topic, status, speaker_email, speaker_photo_url, starts_at, exhibitor_id, speaker_title) VALUES (26, 1, 'Akhil Gupta', 'NoBroker', 'Reimagining Marketplaces', 'confirmed', '', '/api/mp/uploads/a.jpg', '2026-11-20 12:30', 7, 'Founder'), (27, 1, 'Meera Shah', 'Shah AI', 'Agents at work', 'confirmed', 'meera@example.test', '/api/mp/uploads/m.jpg', '2026-11-21 11:00', NULL, 'CEO'), (28, 1, 'No Time', 'Later Co', 'Untimed', 'confirmed', 'later@example.test', '/x.jpg', NULL, NULL, '')");
+db.run("UPDATE attendees SET checked_in_at = NULL WHERE id = 4");
+const certInfo = (await hit('GET', '/api/admin/certificates', undefined, admin)).json || {};
+const G = certInfo.groups || {};
+check('Admin: who is in each group, with and without a photo, the untimed talk and the booth contact shown',
+  G.participants?.total === 6 && G.participants?.with_photo === 2 && G.speakers?.certificates === 3 && G.speakers?.addresses === 2 && G.speakers?.no_photo === 1
+  && G.stage?.certificates === 2 && G.stage?.no_time?.length === 1 && G.stage?.rows?.some(r => r.via_booth && r.email === 'booth@nobroker.test')
+  && !!certInfo.emails?.speakers?.photo?.html, JSON.stringify({ p: [G.participants?.total, G.participants?.with_photo], s: [G.speakers?.certificates, G.speakers?.addresses, G.speakers?.no_photo], t: [G.stage?.certificates, G.stage?.no_time?.length], e: G.participants?.error || G.speakers?.error || G.stage?.error }));
+check('the certificate runs need the admin token', (await hit('GET', '/api/admin/certificates')).status === 401 || (await hit('GET', '/api/admin/certificates')).status === 403, '');
+
+// Run every group, both emails, through the campaign engine, pumping until done.
+const runCert = async (kind, ref) => {
+  const r = await hit('POST', '/api/admin/campaigns', { kind, ref_id: ref, audience: 'all' }, admin);
+  if (!r.json?.id) return { status: r.status, error: r.json?.error, total: 0 };
+  for (let i = 0; i < 10; i++) { const p = await hit('POST', '/api/admin/campaigns/' + r.json.id + '/pump', { batch: 25 }, admin); if (p.json?.status === 'done' || p.json?.finished) break; }
+  return { status: r.status, total: r.json.total };
+};
+sent.length = 0;
+const pr = await runCert('cert_ready', 1), pp = await runCert('cert_photo', 1);
+const byTo = (to) => sent.filter(m => m.to === to);
+const m1 = byTo('p1@example.test')[0], m2 = byTo('p2@example.test')[0];
+const c1 = (m1?.html.match(/\/certificate\/(C1\.[0-9a-f]{16})\?download=1/) || [])[1];
+check('participants: the 2 with a photo get "Your certificate" with their own download link; the rest who came are asked for a photo; never the one who did not come',
+  pr.total === 2 && pp.total === 4 && /Your certificate/.test(m1?.subject || '') && !!c1 && /Add your photo/.test(m2?.subject || '') && /action=complete-profile/.test(m2?.html || '') && !byTo('p4@example.test').length,
+  JSON.stringify({ pr, pp, subjects: sent.map(m => m.to + ': ' + m.subject) }));
+const again = await hit('POST', '/api/admin/campaigns', { kind: 'cert_ready', ref_id: 1, audience: 'all' }, admin);
+check('nobody gets the same email twice: a second run finds nobody', again.status === 400, again.status + ' ' + JSON.stringify(again.json));
+sent.length = 0;
+const sr = await runCert('cert_ready', 2), sp = await runCert('cert_photo', 2);
+const asha = byTo('asha@example.test')[0], ravi = byTo('ravi@example.test')[0];
+check('speakers: one email per person with a link per session; no photo, a request to reply with one; a draft session gets nothing',
+  sr.total === 1 && sp.total === 1 && (asha?.html.match(/\/certificate\/S40-\d+\.[0-9a-f]{16}\?download=1/g) || []).length === 2 && /Moderator: AI for Viksit Bharat/.test(asha?.html || '')
+  && /Dear Dr\. Asha/.test(asha?.html || '') && /reply to this email with a clear photo/i.test(ravi?.html || '') && !byTo('gone@example.test').length,
+  JSON.stringify({ sr, sp, to: sent.map(m => m.to) }));
+sent.length = 0;
+const tr = await runCert('cert_ready', 3);
+check('stage: a talk with a time, to the speaker or else the booth contact; the talk never given a time gets nothing',
+  tr.total === 2 && byTo('booth@nobroker.test').length === 1 && byTo('meera@example.test').length === 1 && !byTo('later@example.test').length, JSON.stringify({ tr, to: sent.map(m => m.to) }));
+
+// The page the email opens, and the check page the QR opens.
+let dp = await hit('GET', '/certificate/' + c1 + '?download=1');
+check('the download page draws their certificate with their photo and designation, and carries no email address',
+  dp.status === 200 && /BhaiCert\.draw/.test(dp.text) && /p1\.jpg/.test(dp.text) && /Data Scientist, TCS/.test(dp.text) && /linkedin\.com\/profile\/add/.test(dp.text) && !/@example\.test/.test(dp.text), dp.status);
+const c2 = await (async () => { const g = (await hit('GET', '/api/attendees/2/certificate-eligibility', undefined, admin)).json; return String(g?.verify || '').split('/certificate/')[1]; })();
+dp = await hit('GET', '/certificate/' + c2 + '?download=1');
+check('no photo on record: the page asks for one and draws nothing', dp.status === 200 && /Add your photo first/.test(dp.text) && /var d = null/.test(dp.text), dp.status);
+const sCode = (asha.html.match(/\/certificate\/(S40-124\.[0-9a-f]{16})/) || [])[1];
+pg = await hit('GET', '/certificate/' + sCode);
+check('a speaker QR opens "Genuine certificate" with the role, the session, the hall and no signatures',
+  pg.status === 200 && /Genuine certificate/.test(pg.text) && /Dr\. Asha Rao/.test(pg.text) && /spoke as Moderator/.test(pg.text) && /Homi J\. Bhabha Hall/.test(pg.text) && /BHAI-SPK-0040/.test(pg.text) && /Issued by/.test(pg.text), pg.status);
+pg = await hit('GET', '/certificate/' + String(sCode).replace('S40-124', 'S41-124'));
+check('a speaker code with another person in it is refused', pg.status === 404, pg.status);
+pg = await hit('GET', '/certificate/' + c1);
+check('the participation QR page says it is issued by the event, with no signatures', pg.status === 200 && /Issued by/.test(pg.text) && !/Signed by/.test(pg.text), pg.status);
+const sv = await hit('POST', '/api/certificates/' + c1 + '/saved');
+check('a save from the download page is counted', sv.status === 204 && rows("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'certificate.saved'", [])[0].n === 1, sv.status);
 
 console.log(fails ? `\n${fails} FAILED` : '\nAll certificate preview checks passed');
 process.exit(fails ? 1 : 0);
