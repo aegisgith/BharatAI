@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-23T03:51:17.058Z",
+ "generated_at": "2026-11-24T04:13:18.600Z",
  "live": true,
  "event": {
   "id": 1,
@@ -2410,16 +2410,23 @@
   {
    "id": 243,
    "title": "Innovation Talk: ary-soft",
-   "description": "Speaker to be announced.",
+   "description": "",
    "session_type": "talk",
    "track": "Innovation Talks",
    "room": "Aryabhata Theatre",
    "start_time": "2026-11-21 11:30",
    "end_time": "2026-11-21 11:50",
-   "speaker_name": "",
-   "speaker_title": "",
+   "speaker_name": "Aman Sethi",
+   "speaker_title": "BDM, ary-soft",
    "links": [],
-   "people": []
+   "people": [
+    {
+     "speaker_id": null,
+     "name": "Aman Sethi",
+     "info": "",
+     "part": ""
+    }
+   ]
   },
   {
    "id": 140,
@@ -3177,11 +3184,19 @@
      "role": "panellist"
     },
     {
+     "speaker_id": 175,
+     "role": "panellist"
+    },
+    {
      "speaker_id": 174,
      "role": "panellist"
     },
     {
      "speaker_id": 71,
+     "role": "panellist"
+    },
+    {
+     "speaker_id": 176,
      "role": "panellist"
     }
    ],
@@ -3203,10 +3218,12 @@
      "part": "panellist"
     },
     {
-     "speaker_id": null,
+     "speaker_id": 175,
      "name": "Tarun Anand",
-     "info": "Universal AI University",
-     "part": ""
+     "role": "Founder & Chancellor",
+     "organisation": "Universal AI University",
+     "photo_url": "/images/speaker-tarun-anand-sq.webp",
+     "part": "panellist"
     },
     {
      "speaker_id": 174,
@@ -3225,10 +3242,12 @@
      "part": "panellist"
     },
     {
-     "speaker_id": null,
+     "speaker_id": 176,
      "name": "Madhvendra Singh",
-     "info": "Electronics Sector Skill Council of India",
-     "part": ""
+     "role": "CEO",
+     "organisation": "Electronics Sector Skills Council of India",
+     "photo_url": "/images/speaker-madhvendra-singh-panel.webp",
+     "part": "panellist"
     }
    ]
   },
@@ -3628,7 +3647,7 @@
    "topic": "AI Talent",
    "photo_url": "/images/speaker-bhupesh-daheria.jpg",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/bhupeshd",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 21
@@ -3656,7 +3675,7 @@
    "topic": "AI in Insurance",
    "photo_url": "/images/speaker-tarun-chugh.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/tarunchughbajajlife",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 23
@@ -3684,7 +3703,7 @@
    "topic": "AI in Media",
    "photo_url": "/images/speakers/saurabh-kushwah.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/saurabhkushwah",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 25
@@ -3740,7 +3759,7 @@
    "topic": "Enterprise AI",
    "photo_url": "/images/speaker-arun-menon-sq.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/arun-menon-79072212",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 29
@@ -3754,7 +3773,7 @@
    "topic": "Enterprise AI",
    "photo_url": "/images/speaker-sushil-vishwakarma-sq.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/sushil-vishwakarma-226146a",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 30
@@ -3768,7 +3787,7 @@
    "topic": "AI in Telecom",
    "photo_url": "/images/speaker-rajkumar-upadhyay.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/rkupadhyay",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 31
@@ -3782,7 +3801,7 @@
    "topic": "Enterprise AI",
    "photo_url": "/images/speaker-amod-deshpande-sq.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/amoddeshpande",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 31
@@ -3796,7 +3815,7 @@
    "topic": "Enterprise AI",
    "photo_url": "/images/speaker-ganesh-joshi-sq.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/ganesh-joshi-2a43982",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 32
@@ -3810,7 +3829,7 @@
    "topic": "GenAI & Agentic AI",
    "photo_url": "/images/talks/raveesh-dewan.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/raveeshdewan",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 33
@@ -3852,7 +3871,7 @@
    "topic": "AI in Insurance",
    "photo_url": "/images/speaker-abhay-tewari-sq.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/abhay-tewari-fia-fiai-cfa-39868416",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 36
@@ -3908,7 +3927,7 @@
    "topic": "AI in Finance",
    "photo_url": "/images/speaker-shailesh-dhuri-final.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/shaileshdhuri",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 41
@@ -3922,7 +3941,7 @@
    "topic": "AI Research",
    "photo_url": "/images/speaker-ashish-tendulkar-final.jpg",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/ashishtendulkar",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 42
@@ -3936,7 +3955,7 @@
    "topic": "AI at Scale",
    "photo_url": "/images/speaker-mukesh-jain-capgemini.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/mukeshjaincoach",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 43
@@ -3950,7 +3969,7 @@
    "topic": "AI in Telecom",
    "photo_url": "/images/speaker-manish-agarwal-comviva.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/manish-agrawal-9b2549137",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 44
@@ -3964,7 +3983,7 @@
    "topic": "AI Project Management",
    "photo_url": "/images/speaker-rinoo-rajesh.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/rinoorajesh",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 45
@@ -3992,7 +4011,7 @@
    "topic": "AI in Banking",
    "photo_url": "/images/speaker-ratan-kumar-kesh-bandhan.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/ratan-kesh-660774",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 47
@@ -4020,7 +4039,7 @@
    "topic": "AgriTech AI",
    "photo_url": "/images/speaker-parag-dabhade.jpg",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/paragdabhade",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 49
@@ -4034,7 +4053,7 @@
    "topic": "Healthcare AI",
    "photo_url": "/images/speaker-joy-chakraborty.jpg",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/joy-chakraborty-1b120415",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 50
@@ -4048,7 +4067,7 @@
    "topic": "AI in Pharma",
    "photo_url": "/images/speaker-rahul-molasi.jpg",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/rahul-molasi-358a6b1b",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 51
@@ -4118,7 +4137,7 @@
    "topic": "AI for Business",
    "photo_url": "/images/speaker-vishal-rally-sq.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/vishal-rally-1281182",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 56
@@ -4132,7 +4151,7 @@
    "topic": "AI in PropTech",
    "photo_url": "/images/speaker-akhil-gupta.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/akhil10s",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 57
@@ -4146,7 +4165,7 @@
    "topic": "AI in Pharma",
    "photo_url": "/images/speaker-dheeraj-sinha.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/sinhadheeraj",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 58
@@ -4188,7 +4207,7 @@
    "topic": "AI in Cybersecurity",
    "photo_url": "/images/speaker-sudhir-kumar-rai-sq.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/sudhir-kumar-rai-b353384b",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 61
@@ -4292,6 +4311,20 @@
    "sort_order": 67
   },
   {
+   "id": 175,
+   "slug": "tarun-anand",
+   "name": "Tarun Anand",
+   "role": "Founder & Chancellor",
+   "organisation": "Universal AI University",
+   "topic": "Education Panel",
+   "photo_url": "/images/speaker-tarun-anand-sq.webp",
+   "bio": "",
+   "linkedin_url": "",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 67
+  },
+  {
    "id": 76,
    "slug": "parijat-shukla",
    "name": "Dr. Parijat Shukla",
@@ -4315,6 +4348,20 @@
    "photo_url": "/images/speakers/abhishek-talwar.webp",
    "bio": "",
    "linkedin_url": "https://www.linkedin.com/in/abhishek-biplobworld/",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 68
+  },
+  {
+   "id": 176,
+   "slug": "madhvendra-singh",
+   "name": "Madhvendra Singh",
+   "role": "CEO",
+   "organisation": "Electronics Sector Skills Council of India",
+   "topic": "Education Panel",
+   "photo_url": "/images/speaker-madhvendra-singh-panel.webp",
+   "bio": "",
+   "linkedin_url": "",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 68
@@ -4370,7 +4417,7 @@
    "topic": "",
    "photo_url": "/images/speakers/vishal-deo.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/vishal-deo-5b66761a",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 70
@@ -4384,7 +4431,7 @@
    "topic": "AI in Telecom",
    "photo_url": "/images/speaker-ashutosh-agrawal-sq.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/ashutoshagrawal1",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 71
@@ -4398,7 +4445,7 @@
    "topic": "",
    "photo_url": "/images/speakers/reny-varghese.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/renyvarghese",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 71
@@ -4426,7 +4473,7 @@
    "topic": "AI in Agriculture",
    "photo_url": "/images/speaker-santosh-vyas-sq.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/dr-santosh-vyas-a1748621",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 72
@@ -4468,7 +4515,7 @@
    "topic": "",
    "photo_url": "/images/speakers/rajat-nigam.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/rajat-nigam-a066747",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 74
@@ -4510,7 +4557,7 @@
    "topic": "AI Democratizing and Driving Financial Inclusion",
    "photo_url": "/images/speakers/kiran-nambiar.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/kiranpnambiar",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 76
@@ -4524,7 +4571,7 @@
    "topic": "",
    "photo_url": "/images/speakers/princee-sabharwal.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/pprincee-sabharwal-609a0413",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 77
@@ -4552,7 +4599,7 @@
    "topic": "",
    "photo_url": "/images/speakers/vijay-talreja.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/vijaytalreja",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 79
@@ -4566,7 +4613,7 @@
    "topic": "",
    "photo_url": "/images/speakers/manish-k-prahlad.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/manish-prahlad",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 80
@@ -4580,7 +4627,7 @@
    "topic": "",
    "photo_url": "/images/speaker-omprakash-mandge-sq.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/omprakash-mandge-2a01a5158",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 81
@@ -4594,7 +4641,7 @@
    "topic": "Verifiable, Deterministic AI for Governance and Regulation",
    "photo_url": "/images/speakers/krishnan-raghavan.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/krishnan-raghavan-834aa091",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 82
@@ -4636,7 +4683,7 @@
    "topic": "",
    "photo_url": "/images/speakers/manish-p-daga.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/cottonguruindia",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 85
@@ -4706,7 +4753,7 @@
    "topic": "",
    "photo_url": "/images/speakers/sarosh-amaria.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/sarosh-amaria-3b255936",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 90
@@ -4720,7 +4767,7 @@
    "topic": "",
    "photo_url": "/images/speakers/girish-malhotra.webp",
    "bio": "Girish Malhotra brings 35+ years of experience in banking and financial services, including a 16-year stint with Citibank in India and leadership roles abroad in Vietnam and Dubai. Currently, he heads the New Economy Group at IDFC FIRST Bank, strategically empowering the startup, VC, and PE ecosystem.",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/girish-malhotra-0a70507",
    "is_featured": 1,
    "is_published": 1,
    "sort_order": 91
@@ -4804,7 +4851,7 @@
    "topic": "",
    "photo_url": "/images/speakers/rakhi-prasad.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/rakhiprasad",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 97
@@ -4846,7 +4893,7 @@
    "topic": "",
    "photo_url": "/images/speakers/shreenivas-chetlapalli.webp",
    "bio": "",
-   "linkedin_url": "",
+   "linkedin_url": "https://www.linkedin.com/in/shreenivas-chetlapalli-6625216",
    "is_featured": 0,
    "is_published": 1,
    "sort_order": 100
@@ -5469,6 +5516,54 @@
    "duration_min": 8,
    "hall": "",
    "photo_url": "/images/talks/saurabh-singh.webp",
+   "status": "confirmed"
+  },
+  {
+   "id": 60,
+   "company": "ary-soft",
+   "speaker_name": "Aman Sethi",
+   "speaker_title": "BDM",
+   "topic": "",
+   "starts_at": null,
+   "duration_min": 30,
+   "hall": "",
+   "photo_url": "/images/speakers/talk-aman-sethi.webp",
+   "status": "confirmed"
+  },
+  {
+   "id": 61,
+   "company": "EURYS infosystemS private limited",
+   "speaker_name": "Divyanshi Saxena",
+   "speaker_title": "Sr. Manager – Sales",
+   "topic": "",
+   "starts_at": null,
+   "duration_min": 8,
+   "hall": "",
+   "photo_url": "/images/talks/divyanshi-saxena.webp",
+   "status": "confirmed"
+  },
+  {
+   "id": 62,
+   "company": "Joget INC",
+   "speaker_name": "Anoop Nair",
+   "speaker_title": "Vice President",
+   "topic": "",
+   "starts_at": null,
+   "duration_min": 20,
+   "hall": "",
+   "photo_url": "/images/speakers/talk-anoop-nair.webp",
+   "status": "confirmed"
+  },
+  {
+   "id": 63,
+   "company": "Seem Fintech & Sustainability Pvt Ltd",
+   "speaker_name": "Seema Sutradhar",
+   "speaker_title": "Founder",
+   "topic": "",
+   "starts_at": null,
+   "duration_min": 10,
+   "hall": "",
+   "photo_url": "/images/talks/seema-sutradhar.webp",
    "status": "confirmed"
   },
   {

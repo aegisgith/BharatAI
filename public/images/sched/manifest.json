@@ -461,6 +461,11 @@
    "w": 144,
    "h": 144
   },
+  "aman-sethi": {
+   "src": "images/sched/aman-sethi.webp?v=ecb8f483",
+   "w": 144,
+   "h": 144
+  },
   "sandeep-kumar": {
    "src": "images/sched/sandeep-kumar.webp?v=40adcc2c",
    "w": 144,
@@ -492,7 +497,7 @@
    "h": 144
   },
   "anoop-nair": {
-   "src": "images/sched/anoop-nair.webp?v=e10c3dc0",
+   "src": "images/sched/anoop-nair.webp?v=83d185a5",
    "w": 144,
    "h": 144
   },
@@ -1170,6 +1175,13 @@
    "h": 80,
    "lw": 66,
    "lh": 29
+  },
+  "images/exhibitors/ary-soft.webp": {
+   "src": "images/sched/logo-ary-soft.webp?v=2a14b321",
+   "w": 80,
+   "h": 80,
+   "lw": 40,
+   "lh": 40
   },
   "images/org-logos/favicon-godigit.com.png": {
    "src": "images/sched/logo-godigit-com.webp?v=83ec1516",

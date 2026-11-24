@@ -1,5 +1,5 @@
 {
-  "source": "the app (Admin → Conference), 2026-11-23T03:51:17.058Z",
+  "source": "the app (Admin → Conference), 2026-11-24T04:13:18.600Z",
   "days": [
     "2026-11-20",
     "2026-11-21"
@@ -1808,7 +1808,14 @@
       "id": 243,
       "track": "Innovation Talks",
       "company": "ary-soft",
-      "note": "Speaker to be announced."
+      "talk": {
+        "name": "Aman Sethi",
+        "title": "BDM",
+        "company": "ary-soft",
+        "topic": "",
+        "photo": "/images/speakers/talk-aman-sethi.webp",
+        "hall": ""
+      }
     },
     {
       "hall": "bhabha",
@@ -2386,8 +2393,9 @@
         {
           "name": "Tarun Anand",
           "org": "Universal AI University",
-          "role": "",
-          "photo": ""
+          "role": "Founder & Chancellor",
+          "photo": "/images/speaker-tarun-anand-sq.webp",
+          "listed": true
         },
         {
           "name": "Prof. Dr. Jayantrao Patil",
@@ -2405,9 +2413,10 @@
         },
         {
           "name": "Madhvendra Singh",
-          "org": "Electronics Sector Skill Council of India",
-          "role": "",
-          "photo": ""
+          "org": "Electronics Sector Skills Council of India",
+          "role": "CEO",
+          "photo": "/images/speaker-madhvendra-singh-panel.webp",
+          "listed": true
         }
       ]
     },
