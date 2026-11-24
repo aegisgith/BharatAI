@@ -521,6 +521,13 @@
       + (list.length ? '<table class="afd-table"><thead><tr><th>Who</th><th>Found by</th><th>Photos link</th><th>Account email</th></tr></thead><tbody>' + rows + '</tbody></table>'
         : '<p class="afd-note">We found nobody for this company: no contact email, no dashboard account, nobody on its team list and nobody registered under its name. Add the booth contact in Exhibitors.</p>')
       + (acct.error ? '<p class="afd-note">The account email: ' + esc(acct.error) + '</p>' : '')
+      // Someone on none of our lists (a coordinator known only from their emails to us). The
+      // server takes only an address at the company's own email domain, and says so otherwise.
+      + '<div class="afd-team-add"><b>Someone else at this company</b>'
+      + '<p class="afd-note">For a person who is on none of our lists. Their address must be at the company&rsquo;s own email domain' + ((people.domains || []).length ? ' (' + esc(people.domains.join(', ')) + ')' : '') + '.</p>'
+      + '<div class="afd-actions"><input type="text" data-team-name placeholder="Their name" aria-label="Their name" autocomplete="off">'
+      + '<input type="email" data-team-email placeholder="Their email" aria-label="Their email" autocomplete="off">'
+      + '<button type="button" class="afd-btn" data-team-add>Send them the photos link</button></div></div>'
       + '<div class="afd-actions afd-team-actions">'
       + '<button type="button" class="afd-btn afd-primary" data-team-send="team"' + (needLink.length ? '' : ' disabled') + '>Send the photos link to ' + notHad(needLink.length) + '</button>'
       + '<button type="button" class="afd-btn afd-primary" data-team-send="account"' + (needAccount.length ? '' : ' disabled') + '>Send the account email to ' + notHad(needAccount.length) + '</button>'
@@ -532,7 +539,7 @@
     var working = false;
     box.addEventListener('click', async function (e) {
       if (e.target === box || e.target.hasAttribute('data-close')) { close(); return; }
-      var t = e.target.closest('[data-team-send], [data-team-preview]');
+      var t = e.target.closest('[data-team-send], [data-team-preview], [data-team-add]');
       if (!t || t.disabled || working) return;
       var sayEl = box.querySelector('[data-team-say]');
       try {
@@ -541,6 +548,25 @@
           var pv = await opts.api.post(teamUrl(key, 'account'), { dry: true, html: true });
           close();
           preview('Your photos are in your account', (pv.would && pv.would[0] && pv.would[0].email) || '', pv.subject || '', pv.html || '');
+          return;
+        }
+        if (t.hasAttribute('data-team-add')) {
+          var nm = (box.querySelector('[data-team-name]').value || '').trim(), em = (box.querySelector('[data-team-email]').value || '').trim().toLowerCase();
+          if (!emailOk(em)) { toast('Type their email address.', 'error'); return; }
+          if (!w.confirm('Send the photos link email to ' + (nm ? nm + ', ' : '') + em + ', at ' + (people.company || row.company) + '?')) return;
+          working = true; t.disabled = true;
+          if (sayEl) sayEl.textContent = 'Sending...';
+          var ar = await opts.api.post(teamUrl(key, 'team'), { extra: [{ email: em, name: nm }], only: [em] });
+          t.disabled = false;
+          if (sayEl) sayEl.textContent = '';
+          var no = (ar.refused || []).find(function (x) { return x.email === em; }), sk = (ar.skipped || []).find(function (x) { return x.email === em; });
+          if (no) { toast(no.why, 'error'); return; }
+          if ((ar.failed || []).length) { toast('It did not send: ' + (ar.failed[0].error || 'not sent'), 'error'); return; }
+          if (!(ar.sent || []).length) { toast(sk ? (sk.why === 'unsubscribed' ? 'They unsubscribed from our emails, so nothing was sent.' : 'They have already had it.') : 'Nothing was sent.', 'error'); return; }
+          toast('Sent to ' + em + '.');
+          close();
+          await refresh();
+          await teamBox(key);
           return;
         }
         var kind = t.getAttribute('data-team-send') === 'account' ? 'account' : 'team';

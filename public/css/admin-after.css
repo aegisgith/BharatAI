@@ -109,6 +109,10 @@
 .afd-modal-body .afd-btn.afd-primary { background: #C84F00; border-color: #C84F00; color: #fff; }
 .afd-modal-body .afd-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
 .afd-team-actions { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.afd-team-add { margin-top: 16px; padding-top: 12px; border-top: 1px solid #e3e6ef; }
+.afd-team-add .afd-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px; }
+.afd-team-add input { flex: 1 1 180px; min-width: 0; min-height: 40px; padding: 0 10px; border: 1px solid #cfd4e2; border-radius: 10px; font: inherit; color: #1e2140; background: #fff; }
+.afd-team-add input:focus-visible { outline: 3px solid #C84F00; outline-offset: 1px; }
 .afd-team { margin: 14px 0 6px; padding: 12px 14px; border: 1px solid var(--af-line, #e3e6ef); border-radius: 12px; }
 .afd-team h3 { margin: 0 0 4px; font-size: 15px; }
 .afd-team .afd-actions { margin-top: 8px; }

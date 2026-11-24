@@ -694,9 +694,21 @@ ep.get('/api/admin/booth-photos/:key/people', async (c) => {
   if (!co) return c.json({ error: 'No exhibitor by that key.' }, 404)
   const r = await representativesOf(c, co)
   const sent = await alreadySent(c, key)
-  const unsub = await unsubscribed(c, r.people.map(p => p.email))
+  // People the team added by hand (send-team's `extra`) are on none of our lists: they are
+  // shown from the record of their send, so the list says everyone who has had it.
+  const added: Representative[] = []
+  for (const row of await all(c, "SELECT detail FROM admin_audit WHERE action = ? AND entity = 'booth_photos' AND entity_id = ? ORDER BY id", TEAM_AUDIT, key).catch(() => [] as any[])) {
+    let d: any = {}
+    try { d = JSON.parse(row.detail || '{}') } catch { d = {} }
+    const e = String(d.to || '').toLowerCase()
+    if (!e || !Array.isArray(d.why) || !d.why.includes('added by the team')) continue
+    if (r.people.some(p => p.email === e) || added.some(p => p.email === e)) continue
+    added.push({ email: e, name: String(d.name || ''), why: ['added by the team'], attendee_id: null, mobile: '' })
+  }
+  const everyone = [...r.people, ...added]
+  const unsub = await unsubscribed(c, everyone.map(p => p.email))
   return c.json({ company: co.name, page: await pageUrl(c, personOf(co)), domains: r.domains, shared_domains: r.shared,
-    people: r.people.map(p => ({ ...p, sent: sent.has(p.email), unsubscribed: unsub.has(p.email) })) })
+    people: everyone.map(p => ({ ...p, sent: sent.has(p.email), unsubscribed: unsub.has(p.email) })) })
 })
 
 // The photos email to everyone who represents the company and has not had it (each once).
@@ -707,13 +719,31 @@ ep.post('/api/admin/booth-photos/:key/send-team', async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as any
   const only = Array.isArray(body.only) ? new Set(body.only.map((e: any) => String(e || '').trim().toLowerCase())) : null
   const r = await representativesOf(c, co)
+  // extra: [{ email, name }], people the team names who are on none of our lists (a
+  // coordinator known only from their emails to us; 24 Nov 2026). Only an address at one of
+  // the company's own email domains is taken: the domain is the proof they are at that
+  // company. Anyone else has to go on the company's team list first, and is refused here.
+  const refused: { email: string; why: string }[] = []
+  const extra: Representative[] = []
+  for (const x of Array.isArray(body.extra) ? body.extra.slice(0, 20) : []) {
+    const e = String(x?.email || '').trim().toLowerCase()
+    if (!EMAIL_OK.test(e) || isNoEmail(e)) { refused.push({ email: e, why: 'That email address is not complete.' }); continue }
+    if (r.people.some(p => p.email === e) || extra.some(p => p.email === e)) continue
+    if (!r.domains.includes(domainOf(e))) {
+      refused.push({ email: e, why: r.domains.length ? 'This address is not at the company’s own email domain (' + r.domains.join(', ') + '). Add them to the company’s team list first.'
+        : 'We have no email domain of its own on record for this company, so an address cannot be checked. Add them to the company’s team list first.' })
+      continue
+    }
+    extra.push({ email: e, name: String(x?.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 120), why: ['added by the team'], attendee_id: null, mobile: '' })
+  }
+  const everyone = [...r.people, ...extra]
   const sent = await alreadySent(c, key)
-  const unsub = await unsubscribed(c, r.people.map(p => p.email))
-  const skipped = r.people.filter(p => sent.has(p.email) || unsub.has(p.email)).map(p => ({ email: p.email, why: sent.has(p.email) ? 'already sent' : 'unsubscribed' }))
-  const to = r.people.filter(p => !sent.has(p.email) && !unsub.has(p.email) && (!only || only.has(p.email)))
+  const unsub = await unsubscribed(c, everyone.map(p => p.email))
+  const skipped = everyone.filter(p => sent.has(p.email) || unsub.has(p.email)).map(p => ({ email: p.email, why: sent.has(p.email) ? 'already sent' : 'unsubscribed' }))
+  const to = everyone.filter(p => !sent.has(p.email) && !unsub.has(p.email) && (!only || only.has(p.email)))
   const m = await mailParts(c, co)
   if (!m.got.length) return c.json({ error: 'None of their photos is in the photo store yet.' }, 400)
-  if (body.dry === true) return c.json({ company: m.company, count: m.got.length, page: m.href, would: to, skipped, shared_domains: r.shared })
+  if (body.dry === true) return c.json({ company: m.company, count: m.got.length, page: m.href, would: to, skipped, refused, shared_domains: r.shared })
   if (!hooks.sendEmail) return c.json({ error: 'Email is not set up here.' }, 500)
   const done: string[] = [], failed: { email: string; error: string }[] = []
   for (const p of to) {
@@ -722,9 +752,9 @@ ep.post('/api/admin/booth-photos/:key/send-team', async (c) => {
     try { res = await hooks.sendEmail(c, p.email, mail.subject, mail.html, { unsubscribe: false }) } catch (e: any) { res = { ok: false, error: String(e?.message || e) } }
     if (res && res.ok === false) { failed.push({ email: p.email, error: String(res.error || 'not sent') }); continue }
     done.push(p.email)
-    try { await hooks.audit?.(c, TEAM_AUDIT, 'booth_photos', key, { to: p.email, why: p.why, photos: m.got.length }) } catch { /* sent either way */ }
+    try { await hooks.audit?.(c, TEAM_AUDIT, 'booth_photos', key, { to: p.email, why: p.why, photos: m.got.length, ...(p.why.includes('added by the team') && p.name ? { name: p.name } : {}) }) } catch { /* sent either way */ }
   }
-  return c.json({ ok: true, company: m.company, count: m.got.length, sent: done, failed, skipped })
+  return c.json({ ok: true, company: m.company, count: m.got.length, sent: done, failed, skipped, refused })
 })
 
 // ---- "Your photos are in your account": one email to each representative ----

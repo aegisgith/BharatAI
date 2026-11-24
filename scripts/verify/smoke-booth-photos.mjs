@@ -213,6 +213,21 @@ check('the send: one email each, by name, with the same page button; recorded on
   && rows("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'booth_photos.team' AND entity_id = ?", [KEY])[0].n === wouldN, r.status + ' ' + JSON.stringify(r.json).slice(0, 300));
 r = await as('POST', `/api/admin/booth-photos/${KEY}/send-team`, {});
 check('pressed again, nobody gets it twice', r.status === 200 && r.json?.sent.length === 0 && sent.length === before + wouldN, JSON.stringify(r.json?.sent));
+// ---- someone else at the company, known only from their emails to us (24 Nov 2026) ----
+const beforeX = sent.length;
+r = await as('POST', `/api/admin/booth-photos/${KEY}/send-team`, { dry: true, extra: [{ email: 'Coord@ExCorp.test', name: 'Cora Coordinator' }, { email: 'friend@elsewhere.test', name: 'A Friend' }, { email: 'half@', name: 'Half' }], only: ['coord@excorp.test', 'friend@elsewhere.test'] });
+check('a named person at the company\'s own email domain is taken; another domain and a broken address are refused, in words', r.status === 200 && r.json?.would.length === 1 && r.json.would[0].email === 'coord@excorp.test'
+  && r.json.would[0].why.includes('added by the team') && r.json?.refused.length === 2 && /own email domain \(excorp\.test\)/.test(r.json.refused.find(q => q.email === 'friend@elsewhere.test')?.why || '')
+  && /not complete/.test(r.json.refused.find(q => q.email === 'half@')?.why || '') && sent.length === beforeX, JSON.stringify(r.json));
+r = await as('POST', `/api/admin/booth-photos/${KEY}/send-team`, { extra: [{ email: 'coord@excorp.test', name: 'Cora Coordinator' }, { email: 'friend@elsewhere.test', name: 'A Friend' }], only: ['coord@excorp.test', 'friend@elsewhere.test'] });
+const xm = sent.slice(beforeX);
+check('...the send goes to that one person only, by name, with the company\'s page; recorded as added by the team', r.status === 200 && JSON.stringify(r.json?.sent) === '["coord@excorp.test"]' && xm.length === 1
+  && JSON.stringify(xm[0].Recipients.To) === '["coord@excorp.test"]' && /Dear Cora/.test(xm[0].Content.Body[0].Content) && xm[0].Content.Body[0].Content.includes(link)
+  && rows("SELECT detail FROM admin_audit WHERE action = 'booth_photos.team' AND entity_id = ? AND detail LIKE '%coord@excorp.test%'", [KEY]).some(x => JSON.parse(x.detail).why.includes('added by the team') && JSON.parse(x.detail).name === 'Cora Coordinator'), JSON.stringify(r.json));
+r = await as('POST', `/api/admin/booth-photos/${KEY}/send-team`, { extra: [{ email: 'coord@excorp.test', name: 'Cora Coordinator' }], only: ['coord@excorp.test'] });
+check('...named again, they are not sent it twice', r.status === 200 && r.json?.sent.length === 0 && r.json?.skipped.some(q => q.email === 'coord@excorp.test' && q.why === 'already sent') && sent.length === beforeX + 1, JSON.stringify(r.json));
+r = await as('GET', `/api/admin/booth-photos/${KEY}/people`);
+check('...and the list of people then shows them, as sent', (r.json?.people || []).some(q => q.email === 'coord@excorp.test' && q.name === 'Cora Coordinator' && q.sent === true && q.why.includes('added by the team')), JSON.stringify((r.json?.people || []).map(q => q.email)));
 // ---- our own stands (24 Nov 2026: "dont skip assessfy and aegis and aegis super intelligence lab") ----
 const AEGIS = DATA.companies.aegis, SIL = DATA.companies['aegis-sil'];
 check('the two Aegis stands are albums of their own, picked by eye, each with the names it goes by', !!AEGIS && !!SIL && AEGIS.photos.length >= 20 && SIL.photos.length >= 4
