@@ -646,11 +646,71 @@ r = await as('GET', '/api/admin/whatsapp/photo-status');
 check('photos to one: the rows on the screens learn who was sent their photos on WhatsApp', r.status === 200 && r.json?.approved === true && r.json.people[keys[0]]?.status === 'sent' && r.json.people[SPK]?.status === 'sent', JSON.stringify(r.json?.people?.[keys[0]]));
 check('photos to one: both routes need an admin', (await hit('POST', '/api/admin/whatsapp/photos-one', { key: keys[0], dry: true })).status === 401 && (await hit('GET', '/api/admin/whatsapp/photo-status')).status === 401, '');
 
+// ---------- AImailPilot sends through our number (24 Nov 2026) ----------
+const AMPS = 'amp-shared-secret-0123456789abcdef';
+env.ATTENDEE_EXPORT_SECRET = AMPS;
+const amp = (method, path, body, secret = AMPS) => hit(method, path, body, secret ? { Authorization: 'Bearer ' + secret } : {});
+r = await amp('GET', '/api/external/whatsapp/status', undefined, 'amp-shared-secret-0123456789abcdeX');
+check('AImailPilot: a wrong key is refused', r.status === 401 && (await amp('GET', '/api/external/whatsapp/status', undefined, '')).status === 401, r.status);
+r = await amp('GET', '/api/external/whatsapp/status');
+check('AImailPilot: off until the organiser switches it on, and it says where', r.status === 403 && r.json?.off === true && /Setup/.test(r.json.error || ''), r.text.slice(0, 200));
+r = await as('POST', '/api/admin/whatsapp/aimailpilot', { on: true });
+check('AImailPilot: the switch, on the Setup screen', r.status === 200 && r.json?.aimailpilot?.on === true && r.json.aimailpilot.linked === true, JSON.stringify(r.json?.aimailpilot));
+r = await amp('GET', '/api/external/whatsapp/status');
+const ampT = r.json?.templates || [];
+const MK = ampT.find(x => x.name === custom);
+check('AImailPilot: it sees only approved messages the team wrote, each with its blanks, its picture and whether it needs a yes', r.status === 200 && r.json.connected === true && ampT.length >= 1 && ampT.every(x => !/^bhai_(event|auto)_/.test(x.name))
+  && MK?.needs_consent === true && MK.blanks.join() === 'name' && MK.header.type === 'image' && MK.header.url.startsWith(SITE + '/api/uploads/') && MK.buttons[0]?.text === 'See Delhi 2027' && !r.text.includes(TOKEN), JSON.stringify(MK));
+const ppl = [
+  { ref: 'c1', number: '98200 70001', name: 'Rina Shah', consent: true },
+  { ref: 'c2', number: '98200 70002', name: 'No Yes' },
+  { ref: 'c3', number: '12345', name: 'Short', consent: true },
+  { ref: 'c4', number: '', name: 'Nothing', consent: true },
+  { ref: 'c5', number: '+91 98200 70001', name: 'Same Number', consent: true },
+  { ref: 'c6', number: '98200 44444', name: 'Said Stop', consent: true },
+  { ref: 'c7', number: '447700900123', name: 'London Lead', consent: true }];
+r = await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, title: 'Delhi early bird', by: 'Anita', dry: true, people: ppl });
+check('AImailPilot: the check counts who gets it and says why each other one is left out (a promotional message needs their yes)', r.status === 200 && r.json.count === 2
+  && ['no_consent', 'bad_number', 'no_number', 'twice', 'stopped'].every(w => r.json.skipped.some(s => s.why === w)) && r.json.sample.map(s => s.ref).join() === 'c1,c7' && r.json.sample[0].text.startsWith('Hello Rina,'), JSON.stringify(r.json));
+sb = sends().length;
+r = await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, title: 'Delhi early bird', by: 'Anita', expect: 7, people: ppl });
+check('AImailPilot: a send whose count changed is refused, as on the screen', r.status === 409 && r.json?.changed === true && r.json.count === 2 && sends().length === sb, r.text.slice(0, 200));
+r = await amp('POST', '/api/external/whatsapp/send', { template: 'bhai_event_photos_v1', by: 'Anita', dry: true, people: ppl });
+check('AImailPilot: a built-in message (photos, pass) cannot be used', r.status === 400, r.status);
+r = await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, title: 'Delhi early bird', by: 'Anita', expect: 2, people: ppl });
+const ampB = r.json?.batch, ampRows = msgs('batch_id = ?', [ampB]);
+check('AImailPilot: the send joins our queue, named for AImailPilot, each row carrying its contact', r.status === 200 && ampRows.length === 2 && ampRows.every(x => x.status === 'queued' && x.created_by === 'AImailPilot: Anita' && /^amp:c[17]$/.test(x.person))
+  && rows('SELECT title, audience FROM wa_batches WHERE id = ?', [ampB])[0]?.title === 'AImailPilot: Delhi early bird', JSON.stringify(ampRows.map(x => [x.person, x.status, x.created_by])));
+t = await tick();
+const ampSent = sends().slice(sb).map(x => x.body).filter(x => x.template?.name === MK?.name);
+check('AImailPilot: the minute clock sends them like any send: our picture, their name, our tracked button', ampSent.map(x => x.to).sort().join() === '447700900123,919820070001'
+  && ampSent.every(x => /\/api\/uploads\//.test(x.template.components[0].parameters[0].image.link)) && ampSent.some(x => bodyOf(x)[0] === 'Rina'), JSON.stringify(ampSent.map(x => [x.to, bodyOf(x)])));
+const ampW = rows('SELECT wamid FROM wa_messages WHERE batch_id = ? AND person = ?', [ampB, 'amp:c1'])[0]?.wamid;
+await hooked(envelope({ statuses: [{ id: ampW, status: 'read', timestamp: now(), recipient_id: '919820070001' }] }));
+r = await amp('GET', '/api/external/whatsapp/batches/' + ampB);
+check('AImailPilot: it reads its send back: counts, and each contact’s state', r.status === 200 && r.json.title === 'Delhi early bird' && r.json.created_by === 'Anita' && r.json.counts.read === 1 && r.json.people.find(p => p.ref === 'c1')?.status === 'read' && !!r.json.people.find(p => p.ref === 'c1').read_at, JSON.stringify(r.json).slice(0, 300));
+r = await amp('GET', '/api/external/whatsapp/batches');
+check('AImailPilot: its list of sends has only its own', r.status === 200 && r.json.rows.length === 1 && r.json.rows[0].id === ampB, JSON.stringify(r.json?.rows?.map(x => x.id)));
+check('AImailPilot: it cannot see or stop a send made here', (await amp('GET', '/api/external/whatsapp/batches/' + batch1)).status === 404 && (await amp('POST', '/api/external/whatsapp/batches/' + batch1 + '/pause')).status === 404, '');
+sb = sends().length;
+r = await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, by: 'Kiran', people: [{ ref: 'c9', number: '98200 70009', name: 'Single Lead', consent: true }] });
+check('AImailPilot: one person goes at once', r.status === 200 && r.json.sent === 1 && sends().slice(sb).some(x => x.body.to === '919820070009') && msgs("person = 'amp:c9'")[0]?.created_by === 'AImailPilot: Kiran', r.text.slice(0, 200));
+await hooked(envelope({ contacts: [{ profile: { name: 'Rina' }, wa_id: '919820070001' }], messages: [{ from: '919820070001', id: 'wamid.AMP1', timestamp: now(), type: 'text', text: { body: 'Yes, tell me about Delhi passes' } }] }));
+r = await amp('GET', '/api/external/whatsapp/thread?number=' + encodeURIComponent('98200 70001'));
+check('AImailPilot: the chat with a contact, with their reply, and whether a free reply is allowed', r.status === 200 && r.json.open === true && r.json.messages.some(m => !m.out && /Delhi passes/.test(m.text)) && r.json.messages.some(m => m.out), JSON.stringify(r.json).slice(0, 300));
+sb = sends().length;
+r = await amp('POST', '/api/external/whatsapp/reply', { number: '98200 70001', text: 'Passes open in January. I will send you the link.', by: 'Anita' });
+check('AImailPilot: a reply inside the 24 hours goes, signed for AImailPilot', r.status === 200 && sends().slice(sb).some(x => x.body.to === '919820070001' && x.body.text?.body === 'Passes open in January. I will send you the link.'), r.text.slice(0, 200));
+r = await amp('POST', '/api/external/whatsapp/reply', { number: '447700900123', text: 'Hello', by: 'Anita' });
+check('AImailPilot: no free reply to someone who has not written in 24 hours', r.status === 409 && r.json?.closed === true, r.text.slice(0, 200));
+await as('POST', '/api/admin/whatsapp/aimailpilot', { on: false });
+check('AImailPilot: switched off, it can do nothing', (await amp('GET', '/api/external/whatsapp/status')).status === 403 && (await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, people: ppl, dry: true })).status === 403, '');
+
 // ---------- the lists, and nothing leaking ----------
 r = await as('GET', '/api/admin/whatsapp/messages?status=failed');
 const ov = (await as('GET', '/api/admin/whatsapp')).json;
 check('the Sent list filters by state, and the overview counts every send with its numbers', r.json?.rows.length >= 6 && r.json.rows.every(x => x.status === 'failed' && /^\+91 /.test(x.number))
-  && ov.batches.length === 6 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
+  && ov.batches.length === 7 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
 check('no answer from any admin route ever carried the access key or the app secret', answers.length > 60 && answers.every(a => !a.includes(TOKEN) && !a.includes(SECRET)), answers.length);
 // ---------- registering our number (Meta answers 133010 until it is) ----------
 const registers = () => calls.filter(c => c.path === `${PHONE}/register`);

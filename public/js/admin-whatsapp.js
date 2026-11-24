@@ -482,7 +482,7 @@
       + '<div class="wad-card"><div class="wad-card-head"><h2>For step 7: the webhook</h2></div>'
       + copyRow('Callback URL', d.webhook_url) + copyRow('Verify token', d.verify_token)
       + (c.app_secret ? '' : '<p class="wad-warn">Until the App secret is saved above, nothing Meta tells us is believed: messages still go, but they stay at &ldquo;Sent&rdquo; and replies do not arrive.</p>') + '</div>'
-      + mcpHtml(d.mcp || {})
+      + mcpHtml(d.mcp || {}) + ampHtml(d.aimailpilot || {})
       + '<div class="wad-card"><div class="wad-card-head"><h2>How fast, and when</h2></div>'
       + '<div class="wad-two"><label class="wad-field"><span>Messages a minute (1 to 60)</span><input type="number" min="1" max="60" data-set="per_minute" value="' + esc(s.per_minute) + '"></label>'
       + '<label class="wad-field"><span>People in 24 hours (WhatsApp&rsquo;s limit for us)</span><input type="number" min="1" data-set="daily_limit" value="' + esc(s.daily_limit) + '"></label></div>'
@@ -507,6 +507,13 @@
         + '<div class="wad-actions"><button class="wad-btn" data-act="mcp-make"' + (busy ? ' disabled' : '') + '>Make a new key (the old one stops)</button><button class="wad-btn" data-act="mcp-off"' + (busy ? ' disabled' : '') + '>Switch off</button></div></div>';
     }
     return head + '<div class="wad-actions"><button class="wad-btn wad-primary" data-act="mcp-make"' + (busy ? ' disabled' : '') + '>Make a key for Claude</button></div></div>';
+  }
+  // AImailPilot sends through this number (routes/whatsapp.ts, /api/external/whatsapp/*).
+  function ampHtml(a) {
+    var head = '<div class="wad-card"><div class="wad-card-head"><h2>Let AImailPilot send through this number</h2><p>The team can then send WhatsApp from AImailPilot: one person, or a campaign to a list. It all goes through here, so STOP, the day&rsquo;s number, the sending hours and the reports stay in one place, and each send shows in Sent as &ldquo;AImailPilot: &hellip;&rdquo;. Only messages approved here can be used. A promotional message goes only to people who said yes to WhatsApp.</p></div>';
+    if (!a.linked) return head + '<p class="wad-warn">The link with AImailPilot is not set up on this server (the shared key AImailPilot uses for the attendee list is missing).</p></div>';
+    return head + (a.on ? '<p class="wad-status"><span class="wad-dot wad-dot-on"></span> Switched on.</p><div class="wad-actions"><button class="wad-btn" data-act="amp-off"' + (busy ? ' disabled' : '') + '>Switch off</button></div></div>'
+      : '<div class="wad-actions"><button class="wad-btn wad-primary" data-act="amp-on"' + (busy ? ' disabled' : '') + '>Switch on</button></div></div>');
   }
   function copyRow(label, value) {
     return '<div class="wad-copy"><span>' + esc(label) + '</span><code>' + esc(value || 'Not available on this server') + '</code>' + (value ? '<button class="wad-btn wad-small" data-act="copy" data-copy="' + esc(value) + '">Copy</button>' : '') + '</div>';
@@ -680,6 +687,12 @@
       return;
     }
     if (act === 'mcp-hide') { mcpNew = null; draw(); return; }
+    if (act === 'amp-on' || act === 'amp-off') {
+      var ampOn = act === 'amp-on';
+      if (!w.confirm(ampOn ? 'Let the team send WhatsApp from AImailPilot through this number?' : 'Stop AImailPilot sending through this number? Its sends already waiting still go; pause them in Sent if needed.')) return;
+      await work(async function () { take(await opts.api.post('/api/admin/whatsapp/aimailpilot', { on: ampOn })); toast(ampOn ? 'AImailPilot can send now.' : 'Switched off.'); });
+      return;
+    }
     if (act === 'quick-use') {
       var qr = ((D && D.quick) || [])[Number(t.getAttribute('data-i'))];
       var box = host.querySelector('[data-field="replyText"]');

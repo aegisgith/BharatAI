@@ -958,6 +958,176 @@ wa.get('/api/admin/whatsapp/photo-status', async (c) => {
   return c.json({ ready: true, connected: connected(cfg), approved: String(t?.status || '') === 'APPROVED', people })
 })
 
+// ---------- AImailPilot sends through our number (24 Nov 2026) ----------
+//
+// The organiser: "let's integrate and give them the option to send through AImailPilot".
+// The team works in AImailPilot (its server/routes/bharatai-whatsapp-routes.ts) and sends
+// through THIS number by these routes, so the STOP list, the day's number, the hours, the
+// approved messages and the reports stay in one place. A second system holding the same
+// number would split all four. Auth: the shared secret AImailPilot already uses for the
+// attendee export (ATTENDEE_EXPORT_SECRET), and the organiser's switch in Admin -> WhatsApp
+// -> Setup, off until switched on. Only messages the team wrote here and Meta approved;
+// a promotional (MARKETING) one only to people AImailPilot marks consent: true (they said
+// yes to WhatsApp). Each person's row carries person = 'amp:<AImailPilot contact id>'.
+export const AMP_KEY = 'whatsapp_aimailpilot'
+const AMP_REF = 'amp:'
+const AMP_SKIP: Record<string, string> = { no_number: 'have no mobile number', bad_number: 'have a mobile number that is not complete', stopped: 'asked us to stop on WhatsApp',
+  twice: 'share a number with someone above', no_consent: 'have not said yes to WhatsApp messages (a promotional message needs that)' }
+const ampBy = (b: any) => 'AImailPilot: ' + (oneLine(b?.by, 60) || 'a team member')
+// Ten digits is an Indian mobile; 11 or more digits already carry a country code.
+const ampNumber = (raw: unknown) => { const s = String(raw ?? '').trim(), d = s.replace(/\D/g, ''); return whatsappNumber(s) || (d.length >= 11 ? whatsappNumber('+' + d) : '') }
+async function ampGate(c: any): Promise<Response | null> {
+  const want = String(c.env?.ATTENDEE_EXPORT_SECRET || '')
+  if (!want) return c.json({ error: 'The link with AImailPilot is not set up on this server.' }, 503)
+  const got = String(c.req.header('Authorization') || '').replace(/^Bearer\s+/i, '')
+  if (!sameText(got, want)) return c.json({ error: 'unauthorized' }, 401)
+  c.header('Cache-Control', 'no-store')
+  if (!(await ready(c))) return c.json({ error: 'WhatsApp is not set up in Bharat AI yet.' }, 503)
+  const cfg = await loadCfg(c)
+  if (cfg.set[AMP_KEY] !== 'on') return c.json({ error: 'Sending from AImailPilot is switched off. The organiser switches it on in Bharat AI Admin → WhatsApp → Setup.', off: true }, 403)
+  return null
+}
+function ampTemplate(r: any) {
+  const t = customTpl(r)
+  const category = String(r.meta_category || r.category) === 'UTILITY' ? 'UTILITY' : 'MARKETING'
+  const h = t.header || { type: 'none' }
+  return { name: t.name, title: t.title, category, lang: t.lang, preview: fill(t.text, t.samples), blanks: [...(t.greet ? ['name'] : []), ...t.fields],
+    header: { type: h.type, ...(h.url ? { url: SITE + h.url } : {}), ...(h.text ? { text: h.text } : {}) }, buttons: orderedButtons(t.buttons || []).map(b => ({ type: b.type, text: b.text })),
+    footer: FOOTERS[t.lang] || FOOTER, needs_consent: category === 'MARKETING' }
+}
+async function ampCounts(c: any, ids: number[]) {
+  const per = ids.length ? await all(c, `SELECT batch_id, status, COUNT(*) AS n, SUM(CASE WHEN clicked_at IS NOT NULL THEN 1 ELSE 0 END) AS taps FROM wa_messages WHERE batch_id IN (${ids.map(() => '?').join(',')}) GROUP BY batch_id, status`, ...ids) : []
+  const out = new Map<number, { counts: Record<string, number>; taps: number }>()
+  for (const r of per) { const k = Number(r.batch_id), o = out.get(k) || { counts: {}, taps: 0 }; o.counts[String(r.status)] = Number(r.n); o.taps += Number(r.taps || 0); out.set(k, o) }
+  return out
+}
+const ampBatch = (b: any, k?: { counts: Record<string, number>; taps: number }) => ({ id: Number(b.id), title: String(b.title || '').replace(/^AImailPilot: /, ''), status: String(b.status), total: Number(b.total || 0),
+  counts: k?.counts || {}, taps: k?.taps || 0, note: b.note || '', created_at: b.created_at, created_by: String(b.created_by || '').replace(/^AImailPilot: /, '') })
+
+wa.get('/api/external/whatsapp/status', async (c) => {
+  const no = await ampGate(c); if (no) return no
+  const cfg = await loadCfg(c)
+  let checked: any = null
+  try { checked = cfg.set.whatsapp_checked ? JSON.parse(cfg.set.whatsapp_checked) : null } catch { checked = null }
+  const [from, to] = hoursOf(cfg.set.whatsapp_hours || '')
+  const rows = await all(c, "SELECT * FROM wa_templates WHERE builtin = 0 AND status = 'APPROVED' ORDER BY created_at DESC, name")
+  return c.json({ on: true, connected: connected(cfg), number: String(checked?.number || ''), name: String(checked?.name || ''), sending: cfg.set.whatsapp_sending === 'off' ? 'off' : 'on',
+    daily_limit: numberSetting(cfg, 'whatsapp_daily_limit', DEFAULT_DAILY_LIMIT, 1, 1000000), used_today: await usedToday(c), hours: { from, to },
+    templates: rows.filter(r => !BUILT_IN[String(r.name)]).map(ampTemplate) })
+})
+
+wa.post('/api/external/whatsapp/send', async (c) => {
+  const no = await ampGate(c); if (no) return no
+  const b = await c.req.json().catch(() => ({})) as any
+  const name = String(b.template || '')
+  const row = BUILT_IN[name] ? null : await one(c, 'SELECT * FROM wa_templates WHERE name = ? AND builtin = 0', name).catch(() => null)
+  if (!row) return c.json({ error: 'Choose one of the approved messages.' }, 400)
+  const cfg = await loadCfg(c)
+  const refuse = refuseSend(cfg, row)
+  if (refuse) return c.json({ error: refuse }, 409)
+  const tpl = customTpl(row), info = ampTemplate(row)
+  const list: any[] = Array.isArray(b.people) ? b.people : []
+  if (!list.length) return c.json({ error: 'Choose who gets it.' }, 400)
+  if (list.length > BATCH_MAX) return c.json({ error: 'That is more than ' + BATCH_MAX + ' in one send. Choose a smaller group.' }, 409)
+  const stopped = await stoppedNumbers(c)
+  const greet = (nm: unknown) => blank(titledName(nm) || 'there', 60)
+  const seen = new Set<string>(), skipped: { ref: string; why: string; words: string }[] = [], people: Person[] = []
+  for (const x of list) {
+    const ref = oneLine(x?.ref, 64), raw = String(x?.number ?? '').trim(), n = raw ? ampNumber(raw) : ''
+    const why = !raw ? 'no_number' : !n ? 'bad_number' : stopped.has(n) ? 'stopped' : info.needs_consent && x?.consent !== true ? 'no_consent' : seen.has(n) ? 'twice' : ''
+    if (why) { skipped.push({ ref, why, words: AMP_SKIP[why] }); continue }
+    seen.add(n)
+    const nm = oneLine(x?.name, 80), v = (x?.values && typeof x.values === 'object') ? x.values : {}
+    const params = [...(tpl.greet ? [greet(nm)] : []), ...(tpl.fields || []).map(f => f === 'pass' ? blank(v.pass || 'pass', 40) : f === 'event' ? blank(v.event || 'Bharat AI Innovation', 60) : greet(nm))]
+    people.push({ attendee_id: null, person: AMP_REF + ref, name: nm, number: n, params, image: tpl.imageUrl ? SITE + tpl.imageUrl : '', target: tpl.buttonUrl, text: fill(tpl.text, params) })
+  }
+  if (b.dry) return c.json({ count: people.length, skipped, sample: people.slice(0, 3).map(p => ({ ref: p.person.slice(AMP_REF.length), name: p.name, number: shownNumber(p.number), text: p.text })) })
+  if (!people.length) return c.json({ error: 'There is nobody to send this to.', skipped }, 409)
+  const by = ampBy(b), spec: Spec = { kind: 'custom', template: name, event: Math.max(1, Math.floor(Number(b.event) || 1)) }
+  if (list.length === 1) {
+    const sent = await sendNow(c, cfg, rowFor(people[0], spec, tpl, by))
+    if (!sent.ok) return c.json({ error: sent.error }, 502)
+    await note(c, 'whatsapp.aimailpilot.send_one', sent.id, { template: name, by })
+    return c.json({ success: true, sent: 1, id: sent.id, to: people[0].name })
+  }
+  if (Number(b.expect) !== people.length) return c.json({ error: 'The list has changed: it is now ' + people.length + '. Look again, then send.', count: people.length, changed: true }, 409)
+  const title = 'AImailPilot: ' + (oneLine(b.title, 100) || tpl.title)
+  const ins = await run(c, "INSERT INTO wa_batches (event_id, kind, template, title, audience, status, total, created_by) VALUES (?, 'custom', ?, ?, 'aimailpilot', 'running', ?, ?)",
+    spec.event, name, title.slice(0, 120), people.length, by)
+  const batchId = Number(ins?.meta?.last_row_id || 0)
+  const rows = people.map(p => rowFor(p, spec, tpl, by, { batch_id: batchId }))
+  const cols = Object.keys(rows[0])
+  const sql = `INSERT INTO wa_messages (${cols.join(', ')}, status, updated_at) VALUES (${cols.map(() => '?').join(', ')}, 'queued', datetime('now'))`
+  for (let i = 0; i < rows.length; i += 40) await c.env.DB.batch(rows.slice(i, i + 40).map(r => c.env.DB.prepare(sql).bind(...cols.map(k => (r as any)[k] ?? null))))
+  await note(c, 'whatsapp.aimailpilot.send', batchId, { template: name, by, count: people.length, skipped: skipped.length })
+  return c.json({ success: true, batch: batchId, count: people.length, skipped })
+})
+
+wa.get('/api/external/whatsapp/batches', async (c) => {
+  const no = await ampGate(c); if (no) return no
+  const list = await all(c, "SELECT * FROM wa_batches WHERE audience = 'aimailpilot' ORDER BY id DESC LIMIT 50")
+  const k = await ampCounts(c, list.map(b => Number(b.id)))
+  return c.json({ rows: list.map(b => ampBatch(b, k.get(Number(b.id)))) })
+})
+wa.get('/api/external/whatsapp/batches/:id', async (c) => {
+  const no = await ampGate(c); if (no) return no
+  const id = Number(c.req.param('id'))
+  const b = await one(c, "SELECT * FROM wa_batches WHERE id = ? AND audience = 'aimailpilot'", id)
+  if (!b) return c.json({ error: 'That send is not here.' }, 404)
+  const k = await ampCounts(c, [id])
+  const people = await all(c, 'SELECT person, name, wa_number, status, error, sent_at, delivered_at, read_at, clicked_at FROM wa_messages WHERE batch_id = ? ORDER BY id', id)
+  return c.json({ ...ampBatch(b, k.get(id)), people: people.map(p => ({ ref: String(p.person || '').replace(/^amp:/, ''), name: p.name, number: shownNumber(String(p.wa_number)), status: p.status,
+    error: p.error || '', sent_at: p.sent_at || '', delivered_at: p.delivered_at || '', read_at: p.read_at || '', clicked_at: p.clicked_at || '' })) })
+})
+wa.post('/api/external/whatsapp/batches/:id/:what', async (c) => {
+  const no = await ampGate(c); if (no) return no
+  const id = Number(c.req.param('id')), what = String(c.req.param('what'))
+  const b = await one(c, "SELECT * FROM wa_batches WHERE id = ? AND audience = 'aimailpilot'", id)
+  if (!b) return c.json({ error: 'That send is not here.' }, 404)
+  if (what === 'pause' && b.status === 'running') await run(c, "UPDATE wa_batches SET status = 'paused', note = NULL WHERE id = ?", id)
+  else if (what === 'resume' && b.status === 'paused') await run(c, "UPDATE wa_batches SET status = 'running', note = NULL WHERE id = ?", id)
+  else if (what === 'cancel' && (b.status === 'running' || b.status === 'paused')) {
+    await run(c, "UPDATE wa_messages SET status = 'cancelled', updated_at = datetime('now') WHERE batch_id = ? AND status = 'queued'", id)
+    await run(c, "UPDATE wa_batches SET status = 'cancelled', finished_at = datetime('now') WHERE id = ?", id)
+  } else return c.json({ error: 'That cannot be done to this send now.' }, 409)
+  await note(c, 'whatsapp.aimailpilot.' + what, id, {})
+  return c.json({ success: true })
+})
+wa.get('/api/external/whatsapp/thread', async (c) => {
+  const no = await ampGate(c); if (no) return no
+  const n = ampNumber(c.req.query('number'))
+  if (!n) return c.json({ error: 'That mobile number is not complete.' }, 400)
+  const k = await one(c, "SELECT *, CASE WHEN last_in_at > datetime('now', '-1 day') THEN 1 ELSE 0 END AS open FROM wa_contacts WHERE wa_number = ?", n)
+  const rows = await all(c, 'SELECT id, direction, kind, payload, status, error, created_at, created_by FROM wa_messages WHERE wa_number = ? AND test = 0 ORDER BY id DESC LIMIT 60', n)
+  return c.json({ number: shownNumber(n), name: String(k?.name || ''), open: Number(k?.open || 0) === 1, stopped: !!k?.opted_out_at,
+    messages: rows.reverse().map(r => { let p: any = {}; try { p = JSON.parse(r.payload || '{}') } catch { p = {} }
+      return { id: r.id, out: r.direction === 'out', kind: r.kind, text: String(p.text || (p.type ? '[' + p.type + ']' : '')), status: r.status, error: r.error || '', at: r.created_at, by: r.created_by || '' } }) })
+})
+wa.post('/api/external/whatsapp/reply', async (c) => {
+  const no = await ampGate(c); if (no) return no
+  const b = await c.req.json().catch(() => ({})) as any
+  const n = ampNumber(b.number), text = String(b.text ?? '').trim().slice(0, 2000)
+  if (!n || !text) return c.json({ error: 'Type your reply.' }, 400)
+  const cfg = await loadCfg(c)
+  if (!connected(cfg)) return c.json({ error: 'WhatsApp is not connected yet in Bharat AI.' }, 409)
+  const k = await one(c, "SELECT opted_out_at, name, CASE WHEN last_in_at > datetime('now', '-1 day') THEN 1 ELSE 0 END AS open FROM wa_contacts WHERE wa_number = ?", n)
+  if (k?.opted_out_at) return c.json({ error: 'They asked us to stop on WhatsApp.' }, 409)
+  if (!k || Number(k.open) !== 1) return c.json({ error: ERRORS[131047].words, closed: true }, 409)
+  const last = await one(c, "SELECT attendee_id, name, event_id FROM wa_messages WHERE wa_number = ? AND name <> '' ORDER BY id DESC LIMIT 1", n).catch(() => null)
+  const sent = await sendNow(c, cfg, { event_id: Number(last?.event_id || 1), direction: 'out', kind: 'reply', wa_number: n, attendee_id: last?.attendee_id ?? null,
+    name: oneLine(last?.name || k.name, 120), template: '', payload: JSON.stringify({ text }), created_by: ampBy(b) })
+  if (!sent.ok) return c.json({ error: sent.error }, 502)
+  return c.json({ success: true })
+})
+// The organiser's switch (Admin -> WhatsApp -> Setup).
+wa.post('/api/admin/whatsapp/aimailpilot', async (c) => {
+  if (!(await ready(c))) return notReady(c)
+  const b = await c.req.json().catch(() => ({})) as any
+  await saveSetting(c, AMP_KEY, b.on === true ? 'on' : 'off')
+  await note(c, 'whatsapp.aimailpilot.' + (b.on === true ? 'on' : 'off'), null, {})
+  return c.json({ success: true, ...(await overview(c)) })
+})
+
 // ---------- Meta calls us: delivered, read, failed, and replies ----------
 
 wa.get('/api/whatsapp/webhook', async (c) => {
@@ -1114,7 +1284,8 @@ async function overview(c: any) {
     webhook_url: SITE + '/api/whatsapp/webhook', verify_token: await verifyToken(c), checked,
     settings: { sending: cfg.set.whatsapp_sending === 'off' ? 'off' : 'on', per_minute: numberSetting(cfg, 'whatsapp_per_minute', DEFAULT_PER_MINUTE, 1, 60),
       daily_limit: numberSetting(cfg, 'whatsapp_daily_limit', DEFAULT_DAILY_LIMIT, 1, 1000000), hours_from: from, hours_to: to },
-    open_now: indiaHour() >= from && indiaHour() < to, footer: FOOTER, mcp: mcpState(cfg) }
+    open_now: indiaHour() >= from && indiaHour() < to, footer: FOOTER, mcp: mcpState(cfg),
+    aimailpilot: { on: cfg.set[AMP_KEY] === 'on', linked: !!c.env?.ATTENDEE_EXPORT_SECRET } }
   if (!isReady) return { ...base, templates: shapeTemplates([]), batches: [], totals: {}, used_today: 0, unread: 0, events: [], passes: [], auto: [] }
   const [tpls, batches, totals, unread, events, autoCounts] = await Promise.all([
     templateRows(c),
