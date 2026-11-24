@@ -133,6 +133,10 @@
 .wad-pass-spk { background: #fff1e6; color: var(--wa-accent); }
 .wad-pass-vip { background: var(--wa-ink); color: #f6d36b; }
 .wad small.wad-job { color: var(--wa-ink); font-size: 13px; margin-top: 2px; }
+.wad-pass-pr { background: #f1ecff; color: #5b3cc4; }
+.wad-pass-ws { background: #e3f5f7; color: #0e6b78; }
+.wad small.wad-mail { margin-top: 4px; }
+.wad small.wad-ok-line { color: var(--wa-good); font-weight: 600; }
 
 .wad-own { display: grid; gap: 0; max-height: 520px; overflow-y: auto; border: 1px solid var(--wa-line); border-radius: 10px; }
 .wad-own-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid var(--wa-line); }

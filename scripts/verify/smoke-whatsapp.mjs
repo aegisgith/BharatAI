@@ -787,14 +787,35 @@ r = await as('GET', '/api/admin/whatsapp/messages?batch=' + batch1);
 const ashaRow = (r.json?.rows || []).find(x => x.name === 'Dr. Asha Mehta'), raviRow = (r.json?.rows || []).find(x => x.name === 'Ravi Kumar');
 check('the Sent list says who looked at their photos and saved how many after the WhatsApp (a look from before it does not count)', ashaRow?.looked_after === true && ashaRow.saved === 2 && ashaRow.saved_after === true
   && raviRow?.looked_after === false && !('person' in (ashaRow || {})), JSON.stringify([ashaRow && { l: ashaRow.looked_after, s: ashaRow.saved, sa: ashaRow.saved_after }, raviRow && { l: raviRow.looked_after }]));
-// Who they are (24 Nov 2026): designation, company and pass beside each name; someone on
-// the speakers table is a Speaker whatever pass they hold.
-db.run("UPDATE attendees SET job_title = 'Chief Data Officer', company = 'Tata Steel', badge_type = 'Premium Delegate Pass' WHERE id = ?", [idOf(keys[0])]);
+// Who they are (24 Nov 2026): designation, company and pass beside each name, a pass given
+// free says free, and beside it Speaker (on the speakers table), Exhibitor team, Workshop
+// and "PR of <speaker>" (a copy of that speaker's album was emailed to them).
+db.exec(read('migrations/0049_workshop_seats.sql'));
+db.run("UPDATE attendees SET job_title = 'Chief Data Officer', company = 'Tata Steel', badge_type = 'Premium Delegate Pass', payment_status = 'waived' WHERE id = ?", [idOf(keys[0])]);
 db.run("INSERT INTO speakers (event_id, slug, name, role, organisation, email) VALUES (1, 'ravi-kumar-wa', 'Ravi Kumar', 'Director', 'NIC', ?)", ['P' + idOf(keys[1]) + '@Example.com ']);
+db.run("INSERT INTO workshops (event_id, slug, title) VALUES (1, 'wa-ws', 'Build with AI')");
+db.run("INSERT INTO workshop_seats (event_id, attendee_id, workshop_id) VALUES (1, ?, (SELECT id FROM workshops WHERE slug = 'wa-ws'))", [idOf(keys[0])]);
+db.run("INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, email, designation, company) VALUES (1, 7, 'Ravi', ?, 'Solutions Lead', 'Acme AI')", ['p' + idOf(keys[1]) + '@example.com']);
+db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail) VALUES ('t', 'admin', 'speaker.photos_copy', 'photo_album', 's999', ?)", [JSON.stringify({ name: 'Tarun Chugh', to: 'Akanksha.Tiwari@bajajlife.com', count: 9 })]);
+// Their photos by email: Asha's went and was opened; Akanksha (a guest's album) has had neither.
+db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail, created_at) VALUES ('t', 'admin', 'attendee.photos', 'photo_album', ?, '{}', '2026-11-23 10:00:00')", [keys[0]]);
+db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail) VALUES ('visitor', 'public', 'photos.opened', 'photo_album', ?, '{}')", [keys[0]]);
+db.run("INSERT INTO wa_messages (direction, kind, wa_number, person, name, template, status, error) VALUES ('out', 'photos', '919555500016', 'g16', 'Akanksha Tiwari', 'x', 'failed', 'held back')");
 r = await as('GET', '/api/admin/whatsapp/messages?batch=' + batch1);
 const ashaWho = (r.json?.rows || []).find(x => x.name === 'Dr. Asha Mehta'), raviWho = (r.json?.rows || []).find(x => x.name === 'Ravi Kumar');
-check('the Sent list shows designation, company and pass, and a speaker as a Speaker', ashaWho?.title === 'Chief Data Officer' && ashaWho.company === 'Tata Steel' && ashaWho.pass === 'Premium Delegate Pass' && ashaWho.speaker === false
-  && raviWho?.pass === 'Visitor Pass' && raviWho.speaker === true && raviWho.title === '' && !('email' in raviWho), JSON.stringify([ashaWho && { t: ashaWho.title, c: ashaWho.company, p: ashaWho.pass, s: ashaWho.speaker }, raviWho && { p: raviWho.pass, s: raviWho.speaker }]));
+check('the Sent list shows designation, company and pass (a free one says free), with Speaker, Exhibitor team and Workshop beside it',
+  ashaWho?.title === 'Chief Data Officer' && ashaWho.company === 'Tata Steel' && ashaWho.pass === 'Premium Delegate Pass · free' && JSON.stringify(ashaWho.tags) === '["Workshop"]'
+  && raviWho?.pass === 'Visitor Pass' && JSON.stringify(raviWho.tags) === '["Speaker","Exhibitor team"]' && raviWho.title === 'Solutions Lead' && raviWho.company === 'Acme AI' && !('email' in raviWho),
+  JSON.stringify([ashaWho && { t: ashaWho.title, c: ashaWho.company, p: ashaWho.pass, g: ashaWho.tags }, raviWho && { p: raviWho.pass, g: raviWho.tags, t: raviWho.title }]));
+const ashaReached = msgs("kind = 'photos' AND test = 0 AND person = ? AND status IN ('delivered', 'read')", [keys[0]]).length > 0;
+check('under a photos message: the photos email (when, opened), and whether any photos WhatsApp reached them', ashaWho?.mail?.sent === '2026-11-23 10:00:00' && ashaWho.mail.opened === true && ashaWho.mail.pr === false
+  && ashaWho.wa_reached === ashaReached && raviWho?.mail?.sent === '' && raviWho.mail.opened === false && typeof raviWho.wa_reached === 'boolean', JSON.stringify([ashaWho?.mail, ashaWho?.wa_reached, raviWho?.mail]));
+r = await as('GET', '/api/admin/whatsapp/messages?q=Akanksha');
+const akWho = (r.json?.rows || []).find(x => x.name === 'Akanksha Tiwari');
+check('a guest album shows the guest’s own title and role, "PR of" the speaker whose album was copied to them, and no email, no look, no WhatsApp',
+  akWho?.pass === 'Guest' && akWho.title === 'Marketing, Bajaj Life Insurance' && JSON.stringify(akWho.tags) === '["PR of Tarun Chugh"]'
+  && akWho.mail?.sent === '' && akWho.looked === 0 && akWho.saved === 0 && akWho.wa_reached === false, JSON.stringify(akWho && { p: akWho.pass, t: akWho.title, g: akWho.tags, m: akWho.mail, l: akWho.looked, s: akWho.saved, w: akWho.wa_reached }));
+db.run("DELETE FROM wa_messages WHERE person = 'g16'");
 const b1 = (await as('GET', '/api/admin/whatsapp')).json?.batches?.find(b => b.id === batch1);
 check('the photos send counts how many looked and saved since', b1?.looked_after === 1 && b1.saved_after === 1, JSON.stringify(b1 && { l: b1.looked_after, s: b1.saved_after }));
 

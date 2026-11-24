@@ -56,9 +56,28 @@
   // The pass someone holds, coloured by kind so a Speaker, an Exhibitor or a VIP stands out
   // down the Sent list. A paid pass not paid for stays grey.
   function passChip(p) {
-    var s = String(p || ''), kind = /not paid/i.test(s) ? 'muted' : /speaker|jury/i.test(s) ? 'pass-spk' : /vip|organiser/i.test(s) ? 'pass-vip'
-      : /exhibitor/i.test(s) ? 'sent' : /delegate|academic|student|expo|investor|media|influencer/i.test(s) ? 'good' : 'muted';
+    var s = String(p || ''), kind = /not paid/i.test(s) ? 'muted' : /^pr of /i.test(s) ? 'pass-pr' : /workshop/i.test(s) ? 'pass-ws' : /speaker|jury/i.test(s) ? 'pass-spk'
+      : /vip|organiser|special guest/i.test(s) ? 'pass-vip' : /exhibitor/i.test(s) ? 'sent' : /delegate|academic|student|expo|investor|media|influencer/i.test(s) ? 'good' : 'muted';
     return chip([s, kind]);
+  }
+  // Photos reach a person by WhatsApp or by email. Under a photos message: what the photos
+  // email did, what they did on their photos page, and one line on whether the photos have
+  // reached them by either. A WhatsApp still on its way ('sent', no receipt yet) is not judged.
+  function photoRemark(r) {
+    if (r.kind !== 'photos' || r.test) return '';
+    var m = r.mail || {}, bits = [];
+    bits.push(m.sent ? 'Photos email sent ' + when(m.sent) + (m.opened ? ', opened' : '') : 'No photos email sent');
+    if (m.more) bits.push('more photos emailed');
+    if (m.pr) bits.push('a copy went to their PR');
+    if (r.looked && !r.looked_after) bits.push('looked at their photos');
+    if (r.saved && !r.saved_after) bits.push('saved ' + num(r.saved) + ' photo' + (r.saved === 1 ? '' : 's'));
+    var out = '<small class="wad-mail">' + esc(bits.join(' · ')) + '</small>';
+    if (r.status === 'delivered' || r.status === 'read') return out;
+    if (r.wa_reached) return out + '<small class="wad-ok-line">Another WhatsApp of their photos reached them.</small>';
+    if (r.status === 'queued' || r.status === 'sending' || r.status === 'sent') return out;
+    if (m.sent) return out + '<small class="wad-ok-line">Sent by email instead.</small>';
+    if (r.looked || r.saved) return out + '<small class="wad-ok-line">Has seen their photos.</small>';
+    return out + '<small class="wad-bad">Has not got their photos by WhatsApp or email yet.</small>';
   }
   function tplChip(s) { return chip(TPL_STATUS[s] || [s, 'muted']); }
   function kindWords(k) { return { photos: 'Photos', pass: 'Pass', custom: 'Announcement', reply: 'Reply', auto: 'Automatic' }[k] || k; }
@@ -346,12 +365,12 @@
     return '<div class="wad-card">' + top + '<div class="wad-table"><table><thead><tr><th>Who</th><th>What</th><th>State</th><th>When</th></tr></thead><tbody>' + log.map(function (r) {
       var last = r.read_at || r.delivered_at || r.sent_at || r.created_at;
       var job = [r.title, r.company].filter(function (x) { return x; }).join(', ');
-      return '<tr><td><b>' + esc(r.name || 'No name') + '</b>' + (r.pass ? ' ' + passChip(r.pass) : '') + (r.speaker ? ' ' + passChip('Speaker') : '')
+      return '<tr><td><b>' + esc(r.name || 'No name') + '</b>' + (r.pass ? ' ' + passChip(r.pass) : '') + (r.tags || []).map(function (t) { return ' ' + passChip(t); }).join('')
         + (job ? '<small class="wad-job">' + esc(job) + '</small>' : '') + '<small>' + esc(r.number) + '</small></td>'
         + '<td>' + esc(kindWords(r.kind)) + (r.test ? ' <span class="wad-sub">(test)</span>' : '') + (r.own ? ' <span class="wad-sub">(own WhatsApp)</span>' : '') + '</td>'
         + '<td>' + statusChip(r.status) + (r.clicked_at ? ' ' + chip(['Tapped', 'good']) : '')
         + (r.looked_after ? ' ' + chip(['Looked at their photos', 'good']) : '') + (r.saved_after ? ' ' + chip(['Saved ' + num(r.saved) + ' photo' + (r.saved === 1 ? '' : 's'), 'good']) : '')
-        + (r.error ? '<small class="wad-bad">' + esc(r.error) + '</small>' : '') + '</td>'
+        + (r.error ? '<small class="wad-bad">' + esc(r.error) + '</small>' : '') + photoRemark(r) + '</td>'
         + '<td><small>' + esc(when(last)) + '</small></td></tr>';
     }).join('') + '</tbody></table></div><p class="wad-sub">The newest 200 are shown.</p></div>';
   }

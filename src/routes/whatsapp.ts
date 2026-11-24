@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { titledName } from '../lib/greet'
 import { whatsappNumber, shownNumber, isNoEmail } from './team-guests'
-import { pageUrl, hiddenPhotos, personFor as albumFor, NOT_ME, OPT_OUT, ATT_SENT } from './photos'
+import { pageUrl, hiddenPhotos, personFor as albumFor, NOT_ME, OPT_OUT, ATT_SENT, AUDIT_ACTION } from './photos'
 import { photoLink } from './photo-store'
 import { boothAlbumOf } from './exhibitor-photos'
 import ATTENDEES from '../data/attendee-photos.json'
@@ -1905,42 +1905,105 @@ wa.post('/api/admin/whatsapp/tick', async (c) => {
 
 // Who each message went to, as the team knows them (the organiser, 24 Nov 2026: "show
 // their designation and company name, speaker, exhibitor, vip, delegate, premium
-// delegate"). The registration behind the message: its attendee_id, or an attendee's
-// album key a<id>. A speaker's own album (s/t keys) has no registration: the speakers
-// table gives their role and organisation. Anyone whose email is on the speakers table
-// is a Speaker whatever pass they hold. A paid pass not paid for says so, and one given
-// free says complimentary: the same words as the Attendees grid (attPassLabel).
-// ids and emails in chunks of 90: D1 binds at most 100 values a query.
+// delegate", then "organiser, exhibitor, pr team of who, workshop, premium delegate free,
+// expo"). The registration behind the message: its attendee_id, or an attendee's album
+// key a<id>. An album with no registration speaks for itself: s<id> the speakers table,
+// t<id> the Innovation Talks, g<n> a guest's own title and role (Organiser, VIP guest...),
+// x<id> a company's booth photos. A paid pass not paid for says so, and one given free
+// says free (the Attendees grid's chip). Beside the pass, `tags`: Speaker (their email is
+// on the speakers table), Exhibitor team (on a company's team), Workshop (holds a seat),
+// and "PR of <name>" (a speaker's album was emailed to them as the person who looks after
+// that speaker: speaker.photos_copy). Every lookup on its own: a missing table only loses
+// its own words. ids and emails in chunks of 90: D1 binds at most 100 values a query.
 const WHO_PAID_TIERS = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass', 'Expo Pass']
-type Who = { title: string; company: string; pass: string; speaker: boolean }
+type Who = { title: string; company: string; pass: string; tags: string[] }
+const chunks90 = <T>(xs: T[]): T[][] => { const r: T[][] = []; for (let i = 0; i < xs.length; i += 90) r.push(xs.slice(i, i + 90)); return r }
+const qs = (n: number) => new Array(n).fill('?').join(',')
+const lower = (v: unknown) => String(v || '').trim().toLowerCase()
+const attOf = (r: any): number => Number(r.attendee_id) || (/^a\d+$/.test(String(r.person || '')) ? Number(String(r.person).slice(1)) : 0)
+const albumOf = (r: any): any => (r.person && !/^[ax]\d/.test(String(r.person)) ? albumFor(String(r.person)) : null)
+async function someRows(c: any, sql: string, list: any[]): Promise<any[]> {
+  const out: any[] = []
+  for (const ch of chunks90([...new Set(list.filter(v => v !== '' && v !== 0 && v != null))])) {
+    try { out.push(...(await all(c, sql.replace('(?)', '(' + qs(ch.length) + ')'), ...ch))) } catch { /* that table is not here */ }
+  }
+  return out
+}
 async function whoTheyAre(c: any, rows: any[]): Promise<Map<number, Who>> {
   const out = new Map<number, Who>()
-  const chunks = <T>(xs: T[]): T[][] => { const r: T[][] = []; for (let i = 0; i < xs.length; i += 90) r.push(xs.slice(i, i + 90)); return r }
-  const marks = (n: number) => new Array(n).fill('?').join(',')
-  const attOf = (r: any): number => Number(r.attendee_id) || (/^a\d+$/.test(String(r.person || '')) ? Number(String(r.person).slice(1)) : 0)
-  const spkOf = (r: any): number => { if (attOf(r) || !r.person) return 0; const p: any = albumFor(String(r.person)); return Number((p && p.speakers && p.speakers[0]) || 0) }
-  try {
-    const att = new Map<number, any>(), spk = new Map<number, any>(), onStage = new Set<string>()
-    for (const ids of chunks([...new Set(rows.map(attOf).filter(Boolean))]))
-      for (const a of await all(c, `SELECT id, job_title, company, badge_type, payment_status, email FROM attendees WHERE id IN (${marks(ids.length)})`, ...ids)) att.set(Number(a.id), a)
-    const emails = [...new Set([...att.values()].map(a => String(a.email || '').trim().toLowerCase()).filter(e => e && !isNoEmail(e)))]
-    for (const es of chunks(emails))
-      for (const s of await all(c, `SELECT DISTINCT LOWER(TRIM(email)) AS e FROM speakers WHERE LOWER(TRIM(email)) IN (${marks(es.length)})`, ...es)) onStage.add(String(s.e))
-    for (const ids of chunks([...new Set(rows.map(spkOf).filter(Boolean))]))
-      for (const s of await all(c, `SELECT id, role, organisation FROM speakers WHERE id IN (${marks(ids.length)})`, ...ids)) spk.set(Number(s.id), s)
-    for (const r of rows) {
-      const a = att.get(attOf(r))
-      if (a) {
-        const b = String(a.badge_type || '').trim(), pay = String(a.payment_status || '').trim().toLowerCase(), tier = WHO_PAID_TIERS.includes(b)
-        const pass = tier && (pay === 'pending' || pay === 'refunded') ? b + ' · not paid' : tier && pay === 'waived' ? b + ' · complimentary' : b
-        out.set(Number(r.id), { title: String(a.job_title || '').trim(), company: String(a.company || '').trim(), pass, speaker: onStage.has(String(a.email || '').trim().toLowerCase()) && !/speaker/i.test(b) })
-        continue
-      }
-      const s = spk.get(spkOf(r))
-      if (s) out.set(Number(r.id), { title: String(s.role || '').trim(), company: String(s.organisation || '').trim(), pass: 'Speaker', speaker: false })
+  const att = new Map<number, any>()
+  for (const a of await someRows(c, 'SELECT id, job_title, company, badge_type, payment_status, email FROM attendees WHERE id IN (?)', rows.map(attOf))) att.set(Number(a.id), a)
+  const emailOf = (r: any): string => { const a = att.get(attOf(r)); const g = albumOf(r)?.guest; const e = lower(a ? a.email : g ? g.email : ''); return e && !isNoEmail(e) ? e : '' }
+  const emails = rows.map(emailOf)
+  const onStage = new Set((await someRows(c, 'SELECT DISTINCT LOWER(TRIM(email)) AS e FROM speakers WHERE LOWER(TRIM(email)) IN (?)', emails)).map(s => String(s.e)))
+  const workshop = new Set((await someRows(c, 'SELECT DISTINCT attendee_id FROM workshop_seats WHERE attendee_id IN (?)', [...att.keys()])).map(s => Number(s.attendee_id)))
+  const team = new Map<string, any>()
+  for (const t of await someRows(c, 'SELECT attendee_id, LOWER(TRIM(email)) AS e, designation, company FROM exhibitor_team WHERE attendee_id IN (?)', [...att.keys()])) team.set('a' + t.attendee_id, t)
+  for (const t of await someRows(c, 'SELECT attendee_id, LOWER(TRIM(email)) AS e, designation, company FROM exhibitor_team WHERE LOWER(TRIM(email)) IN (?)', emails)) team.set('e' + t.e, t)
+  // The person who looks after a speaker: the address a copy of that speaker's album went to.
+  const prOf = new Map<string, string[]>()
+  for (const p of await all(c, "SELECT detail FROM admin_audit WHERE action = ? AND entity = 'photo_album'", AUDIT_ACTION + '_copy').catch(() => [] as any[])) {
+    let d: any = {}
+    try { d = JSON.parse(p.detail || '{}') } catch { d = {} }
+    const to = lower(d.to), nm = String(d.name || '').trim()
+    if (to && nm) prOf.set(to, [...new Set([...(prOf.get(to) || []), nm])])
+  }
+  const spk = new Map<number, any>(), talk = new Map<number, any>()
+  for (const s of await someRows(c, 'SELECT id, role, organisation FROM speakers WHERE id IN (?)', rows.map(r => Number(albumOf(r)?.speakers?.[0] || 0)))) spk.set(Number(s.id), s)
+  for (const t of await someRows(c, 'SELECT id, speaker_title, company FROM innovation_talks WHERE id IN (?)', rows.map(r => Number(albumOf(r)?.talks?.[0] || 0)))) talk.set(Number(t.id), t)
+  for (const r of rows) {
+    const a = att.get(attOf(r)), al = albumOf(r), e = emailOf(r), tags: string[] = []
+    const t = (a && team.get('a' + a.id)) || (e && team.get('e' + e))
+    let who: Who | null = null
+    if (a) {
+      const b = String(a.badge_type || '').trim(), pay = lower(a.payment_status), tier = WHO_PAID_TIERS.includes(b)
+      const pass = tier && (pay === 'pending' || pay === 'refunded') ? b + ' · not paid' : tier && pay === 'waived' ? b + ' · free' : b
+      who = { title: String(a.job_title || '').trim() || String(t?.designation || '').trim(), company: String(a.company || '').trim() || String(t?.company || '').trim(), pass, tags }
+      if (onStage.has(e) && !/speaker/i.test(b)) tags.push('Speaker')
+      if (t && !/exhibitor/i.test(b)) tags.push('Exhibitor team')
+      if (workshop.has(Number(a.id))) tags.push('Workshop')
+    } else if (al && al.guest) {
+      who = { title: String(al.guest.title || '').trim(), company: '', pass: String(al.guest.role || 'Guest').trim(), tags }
+    } else if (al && spk.get(Number(al.speakers?.[0] || 0))) {
+      const s = spk.get(Number(al.speakers[0]))
+      who = { title: String(s.role || '').trim(), company: String(s.organisation || '').trim(), pass: 'Speaker', tags }
+    } else if (al && talk.get(Number(al.talks?.[0] || 0))) {
+      const s = talk.get(Number(al.talks[0]))
+      who = { title: String(s.speaker_title || '').trim(), company: String(s.company || '').trim(), pass: 'Exhibition Speaker', tags }
+    } else if (/^x\d/.test(String(r.person || ''))) {
+      who = { title: '', company: '', pass: 'Exhibitor', tags }
     }
-  } catch { /* the list still shows without them */ }
+    if (!who) continue
+    for (const nm of (e && prOf.get(e)) || []) if (lower(nm) !== lower(r.name)) tags.push('PR of ' + nm)
+    out.set(Number(r.id), who)
+  }
   return out
+}
+
+// Photos reach a person by WhatsApp OR by email (the organiser, 24 Nov 2026: "check if photo
+// were delivered by email and downloaded ... photo should be delivered either whatsapp or
+// email"). For each photos message: the photos email to the same album (attendee.photos,
+// speaker.photos, booth_photos.sent; the first one's time), whether it was opened
+// (photos.opened, since its picture went in on 23 Nov), a "more photos" email (photos.more),
+// a copy to their PR (speaker.photos_copy), and whether ANY photos WhatsApp to them reached
+// their phone, so a first try held back and a later one delivered is not called unreached.
+type Mail = { sent: string; opened: boolean; more: boolean; pr: boolean }
+async function photoMail(c: any, rows: any[]): Promise<{ mail: Map<string, Mail>; reached: Set<string>; keysOf: (r: any) => string[] }> {
+  const keysOf = (r: any): string[] => [...new Set([String(r.person || ''), String(albumOf(r)?.key || ''), attOf(r) ? 'a' + attOf(r) : ''].filter(Boolean))]
+  const photoRows = rows.filter(r => r.kind === 'photos')
+  const keys = photoRows.flatMap(keysOf)
+  const mail = new Map<string, Mail>()
+  const get = (k: string) => { let m = mail.get(k); if (!m) { m = { sent: '', opened: false, more: false, pr: false }; mail.set(k, m) } return m }
+  for (const r of await someRows(c, `SELECT action, entity_id, created_at FROM admin_audit WHERE entity IN ('photo_album', 'booth_photos')
+       AND action IN ('${ATT_SENT}', '${AUDIT_ACTION}', '${AUDIT_ACTION}_copy', 'booth_photos.sent', 'photos.more', 'photos.opened') AND entity_id IN (?)`, keys)) {
+    const m = get(String(r.entity_id)), at = String(r.created_at || '')
+    if (r.action === 'photos.opened') m.opened = true
+    else if (r.action === 'photos.more') m.more = true
+    else if (r.action === AUDIT_ACTION + '_copy') m.pr = true
+    else if (!m.sent || at < m.sent) m.sent = at
+  }
+  const reached = new Set((await someRows(c, "SELECT DISTINCT person FROM wa_messages WHERE direction = 'out' AND kind = 'photos' AND test = 0 AND status IN ('delivered', 'read') AND person IN (?)", keys)).map(r => String(r.person)))
+  return { mail, reached, keysOf }
 }
 
 wa.get('/api/admin/whatsapp/messages', async (c) => {
@@ -1960,12 +2023,20 @@ wa.get('/api/admin/whatsapp/messages', async (c) => {
   const rows = await all(c, `SELECT m.id, m.kind, m.wa_number, m.name, m.template, m.status, m.error, m.test, m.own, m.batch_id, m.created_at, m.sent_at, m.delivered_at, m.read_at, m.clicked_at, m.price_category, m.created_by, m.person
      FROM wa_messages m WHERE ${where.join(' AND ')} ORDER BY m.id DESC LIMIT 200`, ...args)
   // A photos message: did they look at their photos, and save any, after it went?
-  const marks = await photoMarks(c, rows.filter(r => r.kind === 'photos' && r.person).map(r => String(r.person)))
   const who = await whoTheyAre(c, rows)
+  const pm = await photoMail(c, rows)
+  const marks = await photoMarks(c, rows.filter(r => r.kind === 'photos').flatMap(pm.keysOf))
   return c.json({ rows: rows.map(r => {
-    const m = r.kind === 'photos' ? marks.get(String(r.person || '')) : undefined, sent = r.sent_at || r.created_at
+    const sent = r.sent_at || r.created_at
     const { person: _p, ...rest } = r
-    return { ...rest, number: shownNumber(String(r.wa_number)), ...(who.get(Number(r.id)) || {}), ...(m ? { looked_after: afterSend(m.looked_last, sent), saved: m.saved, saved_after: afterSend(m.saved_last, sent) } : {}) }
+    const base = { ...rest, number: shownNumber(String(r.wa_number)), ...(who.get(Number(r.id)) || {}) }
+    if (r.kind !== 'photos') return base
+    // The same album can sit under more than one key (a<id> and s<id>): add up the marks.
+    const ks = pm.keysOf(r), ms = ks.map(k => marks.get(k)).filter(Boolean) as Marks[]
+    const lookedLast = ms.reduce((x, m) => (m.looked_last > x ? m.looked_last : x), ''), savedLast = ms.reduce((x, m) => (m.saved_last > x ? m.saved_last : x), '')
+    const mail = ks.reduce((x: Mail, k) => { const m = pm.mail.get(k); return m ? { sent: [x.sent, m.sent].filter(Boolean).sort()[0] || '', opened: x.opened || m.opened, more: x.more || m.more, pr: x.pr || m.pr } : x }, { sent: '', opened: false, more: false, pr: false })
+    return { ...base, looked: ms.reduce((n, m) => n + m.looked, 0), looked_after: afterSend(lookedLast, sent), saved: ms.reduce((n, m) => n + m.saved, 0), saved_after: afterSend(savedLast, sent),
+      mail, wa_reached: ks.some(k => pm.reached.has(k)) }
   }) })
 })
 

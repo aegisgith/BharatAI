@@ -42914,7 +42914,7 @@ function adminPageScript(): string {
     // WhatsApp: sending from our own number and the replies live in /js/admin-whatsapp.js
     // (one global, WaDesk) with their own stylesheet, loaded the first time the section
     // opens. Bump WA_DESK_VERSION on any change to either.
-    var WA_DESK_VERSION = '20261124h';
+    var WA_DESK_VERSION = '20261124i';
     var waDeskAssets = null;
     function waDeskLoadAssets() {
       if (window.WaDesk) return Promise.resolve();
