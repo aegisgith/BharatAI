@@ -111,10 +111,11 @@
         + (notRegistered(ck) ? ' <b class="wad-bad">Nothing can be sent yet: the number is not registered with WhatsApp.</b> <button class="wad-link" data-act="tab" data-tab="setup">Register it in Setup</button>.' : '')
       : '<span class="wad-dot"></span> Not connected to WhatsApp yet. <button class="wad-link" data-act="tab" data-tab="setup">Open Setup</button> and follow the steps.';
     var t = d.totals || {}, s = d.settings || {};
+    // Each number opens the Sent list with just those people.
     var tiles = [
-      ['Waiting', (t.queued || 0) + (t.sending || 0)], ['Sent', (t.sent || 0) + (t.delivered || 0) + (t.read || 0)], ['Delivered', (t.delivered || 0) + (t.read || 0)],
-      ['Read', t.read || 0], ['Tapped the button', t.taps || 0], ['Not delivered', t.failed || 0]
-    ].map(function (x) { return '<div><b>' + num(x[1]) + '</b><span>' + x[0] + '</span></div>'; }).join('');
+      ['Waiting', (t.queued || 0) + (t.sending || 0), 'waiting'], ['Sent', (t.sent || 0) + (t.delivered || 0) + (t.read || 0), 'gone'], ['Delivered', (t.delivered || 0) + (t.read || 0), 'reached'],
+      ['Read', t.read || 0, 'read'], ['Tapped the button', t.taps || 0, 'tapped'], ['Not delivered', t.failed || 0, 'failed']
+    ].map(function (x) { return '<button type="button" class="wad-tile" data-act="stat" data-status="' + x[2] + '" title="See who"><b>' + num(x[1]) + '</b><span>' + x[0] + '</span></button>'; }).join('');
     var extra = d.connected ? '<p class="wad-note">Today: ' + num(d.used_today) + ' of ' + num(s.daily_limit) + ' people (WhatsApp&rsquo;s limit for our number in 24 hours). Bulk sends go between '
       + hour(s.hours_from) + ' and ' + hour(s.hours_to) + ' in India, ' + num(s.per_minute) + ' a minute.'
       + (s.sending === 'off' ? ' <b class="wad-bad">Sending is switched off in Setup.</b>' : (d.open_now ? '' : ' <b>It is outside those hours now, so bulk sends wait.</b>')) + '</p>' : '';
@@ -328,7 +329,7 @@
   // ---------- Sent ----------
 
   function sentHtml() {
-    var chips = [['', 'All'], ['queued', 'Waiting'], ['sent', 'Sent'], ['delivered', 'Delivered'], ['read', 'Read'], ['tapped', 'Tapped'], ['failed', 'Not delivered'], ['skipped', 'Left out']].map(function (x) {
+    var chips = [['', 'All'], ['waiting', 'Waiting'], ['gone', 'Sent'], ['reached', 'Delivered'], ['read', 'Read'], ['tapped', 'Tapped'], ['failed', 'Not delivered'], ['skipped', 'Left out']].map(function (x) {
       return '<button class="wad-filter' + (logStatus === x[0] ? ' wad-filter-on' : '') + '" data-act="log-status" data-status="' + x[0] + '">' + x[1] + '</button>';
     }).join('');
     var top = '<div class="wad-filters">' + chips + '<input type="search" data-field="logQ" value="' + esc(logQ) + '" placeholder="Name or number" aria-label="Find by name or number">'
@@ -668,6 +669,7 @@
       return;
     }
     if (act === 'batch-list') { logBatch = Number(t.getAttribute('data-id')); logStatus = ''; logQ = ''; tab = 'sent'; draw(); loadTab(); return; }
+    if (act === 'stat') { logBatch = 0; logStatus = t.getAttribute('data-status') || ''; logQ = ''; tab = 'sent'; draw(); loadTab(); return; }
     if (act === 'report') {
       await work(async function () {
         var res = await w.fetch('/api/admin/whatsapp/batches/' + encodeURIComponent(t.getAttribute('data-id')) + '/report', { headers: opts.authHeaders ? opts.authHeaders() : {} });

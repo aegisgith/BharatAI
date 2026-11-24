@@ -232,6 +232,7 @@ export const ERRORS: Record<number, { words: string; stop?: boolean; soft?: bool
   131026: { words: 'This number is not on WhatsApp, or their WhatsApp is too old to receive it.', person: true },
   131049: { words: 'WhatsApp held it back: this person has had many business messages lately. Try again in a day or two.', person: true, retry: true },
   131050: { words: 'This person has turned off marketing messages from businesses on WhatsApp.', person: true },
+  130472: { words: 'Meta is running a trial that holds back some marketing messages to this number. Nothing to fix on our side: send it by email instead.', person: true },
   131047: { words: 'More than 24 hours have passed since they wrote to us, so a typed reply is not allowed. Send them an approved message instead.' },
   131056: { words: 'Too many messages to this one number in a short time. Try again later.' },
   131021: { words: 'That is our own WhatsApp number.' },
@@ -1847,8 +1848,14 @@ wa.get('/api/admin/whatsapp/messages', async (c) => {
   if (!(await ready(c))) return notReady(c)
   const where: string[] = ["m.direction = 'out'"], args: any[] = []
   const st = String(c.req.query('status') || ''), batch = Number(c.req.query('batch') || 0), q = oneLine(c.req.query('q'), 60)
+  // The same groups as the numbers at the top of the screen (each opens this list): "Sent"
+  // counts the ones since delivered and read too, and a test to our own phone is not counted.
   if (st === 'tapped') where.push('m.clicked_at IS NOT NULL')
+  else if (st === 'waiting') where.push("m.status IN ('queued', 'sending')")
+  else if (st === 'gone') where.push("m.status IN ('sent', 'delivered', 'read')")
+  else if (st === 'reached') where.push("m.status IN ('delivered', 'read')")
   else if (st) { where.push('m.status = ?'); args.push(st) }
+  if (st) where.push('m.test = 0')
   if (batch) { where.push('m.batch_id = ?'); args.push(batch) }
   if (q) { where.push('(m.name LIKE ? OR m.wa_number LIKE ?)'); args.push('%' + q + '%', '%' + q.replace(/\D/g, '') + '%') }
   const rows = await all(c, `SELECT m.id, m.kind, m.wa_number, m.name, m.template, m.status, m.error, m.test, m.own, m.batch_id, m.created_at, m.sent_at, m.delivered_at, m.read_at, m.clicked_at, m.price_category, m.created_by, m.person

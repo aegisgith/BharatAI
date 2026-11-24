@@ -759,6 +759,15 @@ check('the Sent list says who looked at their photos and saved how many after th
 const b1 = (await as('GET', '/api/admin/whatsapp')).json?.batches?.find(b => b.id === batch1);
 check('the photos send counts how many looked and saved since', b1?.looked_after === 1 && b1.saved_after === 1, JSON.stringify(b1 && { l: b1.looked_after, s: b1.saved_after }));
 
+// ---------- the numbers at the top open the Sent list with just those people (24 Nov 2026) ----------
+const top = (await as('GET', '/api/admin/whatsapp')).json?.totals || {};
+const listOf = async (st) => (await as('GET', '/api/admin/whatsapp/messages?status=' + st)).json?.rows || [];
+const gone = await listOf('gone'), reached = await listOf('reached'), waitingL = await listOf('waiting');
+check('the "Sent" number opens everyone sent (delivered and read included), never a test', gone.length === Math.min(200, (top.sent || 0) + (top.delivered || 0) + (top.read || 0))
+  && gone.every(x => ['sent', 'delivered', 'read'].includes(x.status) && !x.test), gone.length + ' vs ' + JSON.stringify(top));
+check('the "Delivered" and "Waiting" numbers open their own people', reached.every(x => x.status === 'delivered' || x.status === 'read') && reached.length === Math.min(200, (top.delivered || 0) + (top.read || 0))
+  && waitingL.every(x => x.status === 'queued' || x.status === 'sending'), reached.length + ' / ' + waitingL.length);
+
 // ---------- the lists, and nothing leaking ----------
 r = await as('GET', '/api/admin/whatsapp/messages?status=failed');
 const ov = (await as('GET', '/api/admin/whatsapp')).json;

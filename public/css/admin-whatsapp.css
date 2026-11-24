@@ -39,6 +39,10 @@
 .wad-stats div { background: var(--wa-soft); border-radius: 10px; padding: 10px 12px; min-width: 0; }
 .wad-stats b { display: block; font-size: 20px; line-height: 1.2; overflow-wrap: anywhere; }
 .wad-stats span { color: var(--wa-muted); font-size: 12.5px; }
+/* The numbers at the top open the Sent list with just those people. */
+.wad-stats .wad-tile { display: block; width: 100%; min-width: 0; background: var(--wa-soft); border: 1px solid transparent; border-radius: 10px; padding: 10px 12px; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.wad-stats .wad-tile:hover { border-color: var(--wa-line, #d9dce8); }
+.wad-stats .wad-tile:focus-visible { outline: 2px solid #C84F00; outline-offset: 2px; }
 
 .wad-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .wad-tab { flex: 0 0 auto; min-height: 44px; padding: 0 16px; border: 1px solid var(--wa-line); border-radius: 999px; background: #fff; color: var(--wa-ink); font-weight: 700; cursor: pointer; }
