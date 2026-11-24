@@ -21,7 +21,7 @@
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
     <link rel="stylesheet" href="/css/fonts.css?v=1">
     <link rel="stylesheet" href="/css/fa-subset.css?v=2">
-    <link rel="stylesheet" href="css/style.css?v=20261124">
+    <link rel="stylesheet" href="css/style.css?v=20261124b">
     <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
     <style>
     /* The paid form for Delhi. The price charged is decided on the server; these are printed copies. */
@@ -77,7 +77,7 @@
 <body>
     <main class="dr" id="main-content">
         <div class="dr-wrap">
-            <a href="/#passes" class="dr-back">← Delhi 2027</a>
+            <a href="/" class="dr-back">← Delhi 2027</a>
             <h1>Get your pass for Delhi</h1>
             <p class="dr-when">Bharat AI Innovation Delhi 2027. 28–29 July 2027, Bharat Mandapam, New Delhi.</p>
             <div class="dr-card">
@@ -299,7 +299,7 @@
             name: value('dr-name'),
             email: value('dr-email'),
             mobile: value('dr-phone'),
-            whatsapp_yes: !!byId('dr-wa').checked,
+            whatsapp_yes: !!(byId('dr-wa') || {}).checked,
             company: value('dr-org'),
             job_title: academic ? '' : value('dr-job'),
             city: value('dr-city'),

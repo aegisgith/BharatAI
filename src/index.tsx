@@ -28069,7 +28069,7 @@ function passComparisonHTML(): string {
 // the page belongs under. The app's bar sent Home to /app and, on a phone, offered no menu at all.
 function siteHeaderHTML(current: string): string {
   const menu: [string, string][] = [
-    ['/', 'Home'], ['/conference', 'Conference'], ['/exhibition', 'Exhibition'], ['/networking', 'Networking'], ['/delhi-register', 'Passes'], ['/delhi-accommodation', 'Hotels'],
+    ['/', 'Home'], ['/conference', 'Conference'], ['/exhibition', 'Exhibition'], ['/networking', 'Networking'],
     ['/partner', 'Partner'], ['/government', 'Govt'], ['/training-workshop', 'Workshops'], ['/marketplace', 'AI Marketplace'],
     ['/campus-series', 'Campus Series'], ['/mumbai', 'Mumbai'], ['/gallery', 'Gallery'], ['/ai-readiness', 'AI Readiness'], ['https://bellaward.com', 'AGBA'], ['/contact', 'Contact'],
   ]
@@ -30940,7 +30940,7 @@ ${['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass'].map(p 
             </div>
             <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
               <a href="/delhi-register?source=app-passes" class="px-6 py-3 rounded-xl font-bold text-white transition-all text-sm hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 20px rgba(245,98,10,0.3);"><i class="fas fa-ticket-alt mr-2"></i>Get your Delhi pass</a>
-              <a href="/delhi?from=app-passes#passes" class="px-6 py-3 rounded-xl font-semibold transition-all text-sm no-underline" style="border:1px solid rgba(255,122,0,0.45);color:#C84F00;">What each pass includes</a>
+              <a href="/delhi-register?source=app-passes" class="px-6 py-3 rounded-xl font-semibold transition-all text-sm no-underline" style="border:1px solid rgba(255,122,0,0.45);color:#C84F00;">What each pass includes</a>
             </div>
           </div>
         </div>

@@ -65,10 +65,12 @@ r = await hit('/terms');
 check('/terms covers Delhi 2027', r.text.includes('<strong>Delhi 2027</strong>, at Bharat Mandapam') && r.text.includes('Last updated: 24 November 2026'), r.status);
 for (const p of ['/conference', '/networking', '/training-workshop', '/about', '/gallery']) {
   r = await hit(p);
-  check(p + ': the menu\'s Passes goes to Delhi, the footer names Bharat Mandapam, no WTC address', r.text.includes('href="/delhi-register" class="nav-link">Passes') && !r.text.includes('World Trade Center Mumbai, Cuffe Parade, Mumbai'), r.status);
+  check(p + ': no Passes or Hotels in the menu, the footer links Delhi\'s hotels and visa letter and names Bharat Mandapam', !/class="nav-link[^"]*">(Passes|Hotels)</.test(r.text) && r.text.includes('href="/delhi-accommodation">Hotels near Bharat Mandapam') && r.text.includes('href="/delhi-visa"') && !r.text.includes('World Trade Center Mumbai, Cuffe Parade, Mumbai'), r.status);
 }
+r = await hit('/');
+check('home: a Government card in Take part, the passes section moved to /delhi-register, the menu button on one line', r.text.includes('<h3>Government</h3>') && r.text.includes('href="/government" class="btn btn-outline">Nominate your initiative') && !r.text.includes('id="passes"') && !/class="nav-link[^"]*">(Passes|Hotels)</.test(r.text), r.status);
 r = await hit('/css/style.css?v=' + ((/css\/style\.css\?v=([0-9a-z]+)/.exec((await hit('/')).text) || [])[1] || ''));
-check('the phone menu scrolls inside the screen', r.text.includes('overscroll-behavior: contain') && /\.nav-menu \{[^}]*overflow-y: auto/.test(r.text), r.status);
+check('the phone menu scrolls inside the screen, and the menu button stays on one line', /\.nav-cta \{[^}]*white-space: nowrap/.test(r.text) && r.text.includes('overscroll-behavior: contain') && /\.nav-menu \{[^}]*overflow-y: auto/.test(r.text), r.status);
 r = await hit('/');
 check('the home menu has the Govt tab', r.text.includes('href="/government" class="nav-link"'), 'no tab');
 r = await hit('/images/government/governance-panel-820.webp');

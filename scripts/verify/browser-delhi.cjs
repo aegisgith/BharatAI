@@ -52,9 +52,10 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     check('and its button can be reached by keyboard', await page.getAttribute('#stickyCta a', 'tabindex') === '0');
     // 24 Nov 2026: the bar's button goes straight to the pass form, where the prices are.
     check('the bar\'s button goes to the pass form', await page.getAttribute('#stickyCta a', 'href') === '/delhi-register?source=home-bar');
-    await page.locator('#passes').scrollIntoViewIfNeeded();
+    // 24 Nov 2026: the passes section moved to /delhi-register; the bar steps aside at the form.
+    await page.locator('#updates').scrollIntoViewIfNeeded();
     await page.waitForTimeout(900);
-    check('and it steps aside at the passes', await page.locator('#stickyCta.is-on').count() === 0 && await page.locator('#passes').isVisible());
+    check('and it steps aside at the form', await page.locator('#stickyCta.is-on').count() === 0 && await page.locator('#updates').isVisible());
 
     // Everything appears, every picture loads
     for (const sel of ['.dl-collage', '.dl-tiles', '.dl-rows', '.dl-faq']) {
@@ -102,12 +103,12 @@ const settled = async (p) => { await p.evaluate(() => document.fonts.ready); awa
     await page.goto(BASE + '/', { waitUntil: 'load' });
     await settled(page);
     check('Get your pass goes to the pass form', (await page.getAttribute('.dl-hero-actions .btn-primary', 'href')) === '/delhi-register?source=home-hero');
-    await page.locator('#passes').scrollIntoViewIfNeeded();
-    await page.waitForTimeout(600);
-    check('the passes are named, with no price, and the button goes to the form', await page.evaluate(() => { const t = document.getElementById('passes').innerText; return t.includes('Premium Delegate') && t.includes('Academic') && !/₹/.test(t); }) && (await page.getAttribute('#passes .btn-primary', 'href')) === '/delhi-register?source=home-passes');
-    await page.click('#passes a[data-interest="attend"]');
+    check('the passes are on the registration page, not here; Government is a way to take part', await page.locator('#passes').count() === 0 && await page.locator('#take-part h3', { hasText: 'Government' }).count() === 1);
+    if (await page.locator('#passes').count()) check('the passes are named, with no price, and the button goes to the form', await page.evaluate(() => { const t = document.getElementById('passes').innerText; return t.includes('Premium Delegate') && t.includes('Academic') && !/₹/.test(t); }) && (await page.getAttribute('#passes .btn-primary', 'href')) === '/delhi-register?source=home-passes');
+    await page.locator('#updates').scrollIntoViewIfNeeded();
+    await page.locator('label.dl-way', { hasText: 'Attend' }).click();
     await page.waitForTimeout(900);
-    check('the free pass link scrolls to the form, on the pass', await page.locator('#dl-form').isVisible() && await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'attend' && (await page.textContent('#dl-form-title')).includes('free pass'));
+    check('the form offers the free pass on Attend', await page.locator('#dl-form').isVisible() && await page.evaluate(() => document.querySelector('input[name="interest"]:checked').value) === 'attend' && (await page.textContent('#dl-form-title')).includes('free pass'));
     await page.locator('label.dl-way', { hasText: 'Exhibit' }).click();
     check('choosing Exhibit puts away designation and city and says Send', !(await page.locator('#dl-job').isVisible()) && !(await page.locator('#dl-city').isVisible()) && (await page.textContent('#dl-submit')).includes('Send'));
     await page.locator('label.dl-way', { hasText: 'Attend' }).click();

@@ -112,7 +112,7 @@
     <link rel="preload" href="/fonts/bricolage-grotesque-latin-400-800.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/css/fonts.css?v=1">
     <link rel="stylesheet" href="/css/fa-subset.css?v=2">
-    <link rel="stylesheet" href="css/style.css?v=20261124">
+    <link rel="stylesheet" href="css/style.css?v=20261124b">
     <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
 
     <style>
@@ -269,7 +269,7 @@
     .dl-apply-words { max-width: 62ch; margin: 0.9rem auto 0; padding: 0.8rem 1rem; background: #fff; border: 1px solid #E3E6F6; border-radius: 14px; font-size: 0.98rem; line-height: 1.6; color: var(--charcoal); text-wrap: pretty; }
     .dl-chosen { grid-column: 1 / -1; margin: 0; padding: 0.5rem 0.75rem; background: rgba(255,107,0,0.09); border-radius: 10px; font-size: 0.88rem; font-weight: 700; color: var(--ink-orange); line-height: 1.4; }
     @media (min-width: 900px) {
-        .dl-pass-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+        .dl-pass-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
         .dl-sale-photo { aspect-ratio: 16 / 4; }
         .dl-sale-row { grid-template-columns: minmax(0, 1fr) 9rem 11.5rem; gap: 1rem; padding: 0.8rem 1.25rem; }
         .dl-sale-row > div { grid-column: auto; }
@@ -283,6 +283,7 @@
     .dl-cta-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-top: 1.5rem; }
     .dl-partners .dl-chips li { background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.18); color: #fff; }
     @media (min-width: 640px) and (max-width: 899px) { .dl-pass-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1200px) { .dl-pass-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } .dl-role .btn { padding-left: 0.9rem; padding-right: 0.9rem; } }
     .dl-kicker { display: inline-block; margin: 0 0 0.9rem; padding: 0.4rem 0.95rem; border: 1px solid rgba(255,255,255,0.3); border-radius: 999px; background: rgba(10,12,28,0.35); font-size: 0.74rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #FFD2AE; backdrop-filter: blur(6px); }
     /* Government showcase and India and the world: a photo beside the words */
     .dl-gov { background: var(--off-white); }
@@ -608,8 +609,6 @@
                 <a href="/conference" class="nav-link">Conference</a>
                 <a href="/exhibition" class="nav-link">Exhibition</a>
                 <a href="/networking" class="nav-link">Networking</a>
-                <a href="/delhi-register" class="nav-link">Passes</a>
-                <a href="/delhi-accommodation" class="nav-link">Hotels</a>
                 <a href="/partner" class="nav-link">Partner</a>
                 <a href="/government" class="nav-link">Govt</a>
                 <a href="/training-workshop" class="nav-link">Workshops</a>
@@ -823,7 +822,7 @@
         <div class="container">
             <div class="section-header reveal">
                 <h2 class="section-title">Take part in <span class="accent">New Delhi</span></h2>
-                <p class="section-subtitle">For companies, startups, small businesses and campuses.</p>
+                <p class="section-subtitle">For government, companies, startups, small businesses and campuses.</p>
             </div>
             <ul class="dl-pass-grid">
                 <li class="dl-pass dl-role is-lead reveal">
@@ -837,6 +836,17 @@
                         <li>Partner with the event</li>
                     </ul>
                     <a href="/partner#delhi" class="btn btn-outline">Partner with us</a>
+                </li>
+                <li class="dl-pass dl-role reveal">
+                    <i class="fas fa-university dl-role-icon" aria-hidden="true"></i>
+                    <h3>Government</h3>
+                    <p class="dl-pass-for">Central ministries, state governments and their departments.</p>
+                    <ul>
+                        <li>Show your AI work on stage</li>
+                        <li>A pavilion with live demonstrations</li>
+                        <li>Closed-door roundtables with industry</li>
+                    </ul>
+                    <a href="/government" class="btn btn-outline">Nominate your initiative</a>
                 </li>
                 <li class="dl-pass dl-role reveal">
                     <i class="fas fa-rocket dl-role-icon" aria-hidden="true"></i>
@@ -929,21 +939,6 @@
                 <a href="/delhi-exhibit" class="btn btn-primary btn-lg">Apply for a booth <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                 <a href="/exhibition#delhi" class="btn btn-outline btn-lg">See all booths</a>
             </div>
-        </div>
-    </section>
-
-    <!-- ===== PASSES: no prices here; they are on /delhi-register ===== -->
-    <section class="dl-passes dl-sec" id="passes">
-        <div class="container">
-            <div class="section-header reveal">
-                <h2 class="section-title">Passes for <span class="accent">New Delhi</span></h2>
-                <p class="section-subtitle">Delegate, Premium Delegate, VIP and Academic passes are on sale now. Pay online, and your receipt comes by email.</p>
-            </div>
-            <div class="dl-cta-row reveal">
-                <a href="/delhi-register?source=home-passes" class="btn btn-primary btn-lg dl-shine">Get your pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
-                <a href="#updates" class="btn btn-outline btn-lg" data-interest="attend">Join the free Visitor Pass waitlist</a>
-            </div>
-            <p class="dl-small">The Visitor Pass is free: exhibition only, with entry by time slot. A pass is for Delhi only. Your entry pass and the app for Delhi come by email closer to the event.</p>
         </div>
     </section>
 
@@ -1085,7 +1080,7 @@
                 <li><img width="720" height="480" loading="lazy" decoding="async" src="img/mumbai-2026/venue-entrance-720.webp" alt="The Bharat AI Innovation arch at the entrance to World Trade Center Mumbai"></li>
             </ul>
             <div class="dl-mumbai-actions">
-                <a href="#passes" class="btn btn-primary btn-lg">Get your Delhi pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
+                <a href="/delhi-register?source=home-mumbai" class="btn btn-primary btn-lg">Get your Delhi pass <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                 <a href="/gallery" class="btn btn-ghost btn-lg">More photos from Mumbai</a>
             </div>
         </div>
@@ -1260,7 +1255,7 @@
             name: name.value.trim(),
             email: email.value.trim(),
             mobile: phone.value.trim(),
-            whatsapp_yes: !!document.getElementById('dl-whatsapp').checked,
+            whatsapp_yes: !!(document.getElementById('dl-whatsapp') || {}).checked,
             company: org.value.trim(),
             job_title: job.value.trim(),
             city: city.value.trim(),
@@ -1270,7 +1265,7 @@
             name: name.value.trim(),
             email: email.value.trim(),
             phone: phone.value.trim(),
-            whatsapp_yes: !!document.getElementById('dl-whatsapp').checked,
+            whatsapp_yes: !!(document.getElementById('dl-whatsapp') || {}).checked,
             organization: org.value.trim(),
             subject: 'Delhi 2027 · ' + LABELS[i] + (chosen ? ' · ' + chosen : ''),
             message: 'Interested in Bharat AI Innovation Delhi (28–29 July 2027, Bharat Mandapam, New Delhi): ' + (chosen || LABELS[i]) + '.',
@@ -1388,7 +1383,7 @@
         link.tabIndex = on ? 0 : -1;
         bar.setAttribute('aria-hidden', on ? 'false' : 'true');
       });
-      ['.dl-hero-actions', '#passes', '#updates', '#mumbai', '.footer'].forEach(function (sel, i) {
+      ['.dl-hero-actions', '#updates', '#mumbai', '.footer'].forEach(function (sel, i) {
         var el = document.querySelector(sel);
         if (el) { el.setAttribute('data-sticky-key', 'k' + i); io.observe(el); }
       });

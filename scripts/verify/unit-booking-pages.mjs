@@ -150,15 +150,15 @@ for (const [name, html] of [['/register', register], ['/inquiry', inquiry]]) {
   const folded = [...b.matchAll(/<details[\s\S]*?<\/details>/g)].map((m) => m[0]).join('');
   check(name + ': nothing required, and no box the browser would refuse, in a folded part', folded.length > 100 && !/\srequired\b/.test(folded) && !/type="(url|email)"/.test(folded), 'folded');
   check(name + ': no box the browser refuses with a bubble for a plain website', !/type="url"/.test(b), 'type=url');
-  check(name + ': the site\'s own menu', (b.match(/<nav class="ps-nav"[\s\S]*?<\/nav>/) || [''])[0].split('<a ').length - 1 === 16); // 16 since Hotels and Mumbai (24 Nov 2026)
+  check(name + ': the site\'s own menu', (b.match(/<nav class="ps-nav"[\s\S]*?<\/nav>/) || [''])[0].split('<a ').length - 1 === 14); // 14: Passes and Hotels left the menu (24 Nov 2026)
   check(name + ': the credit the free Skiper UI licence asks for, in the open', /Motion effects from <a [^>]*skiper-ui\.com[^>]*>Skiper UI<\/a> and <a [^>]*VengeanceUI[^>]*>Vengeance UI<\/a>, and small details after <a [^>]*uiverse\.io[^>]*>Uiverse<\/a>\./.test(b), 'credit');
   for (const f of ['css/passes-design.css', 'css/booking-design.css', 'css/passes-motion.css', 'css/booking-motion.css', 'js/passes-motion.js', 'js/booking-motion.js']) {
     check(name + ': names ' + f + ' and it is on disk', html.includes('/' + f + '?v=') && existsSync(new URL('../../public/' + f, import.meta.url)), f);
   }
   check(name + ': never the word RSVP, and no count of people', !/rsvp/i.test(b) && !/\b\d[\d,]* (seats left|seats taken|registered|attendees|delegates|exhibitors)\b/i.test(b), 'count');
 }
-// Since 24 Nov 2026 the menu's Passes is Delhi's pass form; /register and /passes still sit under it.
-same('/register sits under Passes in the menu', (regBody.match(/<a href="([^"]+)" aria-current="page"/) || [])[1], '/delhi-register');
+// Since 24 Nov 2026 Passes is not in the menu (the "Get your pass" button is), so nothing is lit on /register.
+same('/register lights no menu item', (regBody.match(/<a href="([^"]+)" aria-current="page"/) || [])[1], undefined);
 same('/inquiry sits under Exhibition in the menu', (body.match(/<a href="([^"]+)" aria-current="page"/) || [])[1], '/exhibition');
 same('/passes reads the same menu', (bodyOf(passes).match(/<nav class="ps-nav"[\s\S]*?<\/nav>/) || [''])[0], (regBody.match(/<nav class="ps-nav"[\s\S]*?<\/nav>/) || [''])[0]);
 

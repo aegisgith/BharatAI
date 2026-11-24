@@ -457,6 +457,8 @@ section { position: relative; }
   box-shadow: var(--shadow-saffron);
   transition: var(--t-med);
   margin-left: 0.5rem;
+  white-space: nowrap;   /* 24 Nov 2026: it broke onto two lines beside a full menu */
+  flex-shrink: 0;
 }
 
 .nav-cta:hover {

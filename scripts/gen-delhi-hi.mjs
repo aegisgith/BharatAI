@@ -56,11 +56,11 @@ swap('    <style>\n', "    <style>\n    /* Hindi: Devanagari letters come from M
 swap('<a href="#main-content" class="skip-link">Skip to main content</a>', '<a href="#main-content" class="skip-link">मुख्य सामग्री पर जाएँ</a>');
 
 // ---- the menu (its links stay the English pages) ----
-for (const [a, b] of [['Mumbai', 'मुंबई'], ['Conference', 'कॉन्फ्रेंस'], ['Exhibition', 'प्रदर्शनी'], ['Networking', 'नेटवर्किंग'], ['Passes', 'पास'], ['Hotels', 'होटल'], ['Partner', 'पार्टनर'], ['Govt', 'सरकार'], ['Workshops', 'वर्कशॉप'], ['AI Marketplace', 'एआई मार्केटप्लेस'], ['Campus Series', 'कैंपस सीरीज़'], ['Gallery', 'गैलरी'], ['AI Readiness', 'एआई रेडीनेस'], ['Contact', 'संपर्क']]) {
+for (const [a, b] of [['Mumbai', 'मुंबई'], ['Conference', 'कॉन्फ्रेंस'], ['Exhibition', 'प्रदर्शनी'], ['Networking', 'नेटवर्किंग'], ['Partner', 'पार्टनर'], ['Govt', 'सरकार'], ['Workshops', 'वर्कशॉप'], ['AI Marketplace', 'एआई मार्केटप्लेस'], ['Campus Series', 'कैंपस सीरीज़'], ['Gallery', 'गैलरी'], ['AI Readiness', 'एआई रेडीनेस'], ['Contact', 'संपर्क']]) {
   swap(`class="nav-link">${a}</a>`, `class="nav-link">${b}</a>`);
 }
 swap('class="nav-link active">Home</a>', 'class="nav-link active">होम</a>');
-swap('Get your pass', 'अपना पास लें', 5);
+swap('Get your pass', 'अपना पास लें', 4);
 
 // ---- the hero ----
 swap('<span>28–29 July 2027</span>', '<span>28–29 जुलाई 2027</span>');
@@ -137,7 +137,7 @@ for (const [a, b] of [
 
 // ---- take part ----
 swap('Take part in <span class="accent">New Delhi</span>', '<span class="accent">नई दिल्ली</span> में भाग लें');
-swap('For companies, startups, small businesses and campuses.', 'कंपनियों, स्टार्टअप्स, छोटे व्यवसायों और शिक्षण संस्थानों के लिए।');
+swap('For government, companies, startups, small businesses and campuses.', 'सरकार, कंपनियों, स्टार्टअप्स, छोटे व्यवसायों और शिक्षण संस्थानों के लिए।');
 for (const [a, b] of [
   ['<h3>Corporates</h3>', '<h3>कॉर्पोरेट</h3>'],
   ['Enterprises, and the companies that bring them AI.', 'उद्यम, और वे कंपनियाँ जो उन तक एआई पहुँचाती हैं।'],
@@ -145,6 +145,12 @@ for (const [a, b] of [
   ['<li>Show your AI products to buyers</li>', '<li>ख़रीदारों को अपने एआई उत्पाद दिखाएँ</li>'],
   ['<li>Partner with the event</li>', '<li>आयोजन के पार्टनर बनें</li>'],
   ['>Partner with us</a>', '>हमारे पार्टनर बनें</a>'],
+  ['<h3>Government</h3>', '<h3>सरकार</h3>'],
+  ['Central ministries, state governments and their departments.', 'केंद्रीय मंत्रालय, राज्य सरकारें और उनके विभाग।'],
+  ['<li>Show your AI work on stage</li>', '<li>मंच पर अपना एआई काम दिखाएँ</li>'],
+  ['<li>A pavilion with live demonstrations</li>', '<li>लाइव प्रदर्शन के साथ एक पवेलियन</li>'],
+  ['<li>Closed-door roundtables with industry</li>', '<li>उद्योग के साथ बंद कमरे में गोलमेज़ बैठकें</li>'],
+  ['>Nominate your initiative</a>', '>अपनी पहल नामांकित करें</a>'],
   ['<h3>Startups</h3>', '<h3>स्टार्टअप्स</h3>'],
   ['Startups building AI products.', 'एआई उत्पाद बनाने वाले स्टार्टअप्स।'],
   ['<li>A Startup Pod with an Innovation Talk</li>', '<li>इनोवेशन टॉक के साथ एक स्टार्टअप पॉड</li>'],
@@ -201,12 +207,7 @@ for (const [a, b] of [
   ['>See all booths</a>', '>सभी बूथ देखें</a>'],
 ]) swap(a, b);
 
-// ---- passes: no prices on the page (they are on /delhi-register) ----
-swap('Passes for <span class="accent">New Delhi</span>', '<span class="accent">नई दिल्ली</span> के लिए पास');
-swap('Delegate, Premium Delegate, VIP and Academic passes are on sale now. Pay online, and your receipt comes by email.', 'डेलीगेट, प्रीमियम डेलीगेट, वीआईपी और एकेडमिक पास अभी बिक्री पर हैं। ऑनलाइन भुगतान करें, रसीद ईमेल पर आएगी।');
-swap('>Join the free Visitor Pass waitlist</a>', '>मुफ़्त विज़िटर पास की प्रतीक्षा सूची में जुड़ें</a>');
-swap('The Visitor Pass is free: exhibition only, with entry by time slot. A pass is for Delhi only. Your entry pass and the app for Delhi come by email closer to the event.',
-  'विज़िटर पास मुफ़्त है: केवल प्रदर्शनी, तय समय-स्लॉट में प्रवेश। पास केवल दिल्ली के लिए है। आपका एंट्री पास और दिल्ली का ऐप आयोजन के क़रीब ईमेल से आएगा।');
+// ---- passes: on /delhi-register only (24 Nov 2026) ----
 
 // ---- the venue ----
 swap('Bharat Mandapam, <span class="accent">New Delhi</span>', 'भारत मंडपम, <span class="accent">नई दिल्ली</span>');

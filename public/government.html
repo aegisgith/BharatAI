@@ -99,7 +99,7 @@
     <link rel="preload" href="/fonts/bricolage-grotesque-latin-400-800.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/css/fonts.css?v=1">
     <link rel="stylesheet" href="/css/fa-subset.css?v=2">
-    <link rel="stylesheet" href="css/style.css?v=20261124">
+    <link rel="stylesheet" href="css/style.css?v=20261124b">
     <link rel="icon" type="image/png" sizes="64x64" href="/images/favicon-64.png">
 
     <style>
@@ -417,8 +417,6 @@
                 <a href="/conference" class="nav-link">Conference</a>
                 <a href="/exhibition" class="nav-link">Exhibition</a>
                 <a href="/networking" class="nav-link">Networking</a>
-                <a href="/delhi-register" class="nav-link">Passes</a>
-                <a href="/delhi-accommodation" class="nav-link">Hotels</a>
                 <a href="/partner" class="nav-link">Partner</a>
                 <a href="/government" class="nav-link active">Govt</a>
                 <a href="/training-workshop" class="nav-link">Workshops</a>
@@ -950,7 +948,7 @@
             name: name,
             email: email,
             phone: val('gv-phone'),
-            whatsapp_yes: !!document.getElementById('gv-whatsapp').checked,
+            whatsapp_yes: !!(document.getElementById('gv-whatsapp') || {}).checked,
             organization: val('gv-org'),
             subject: 'Delhi 2027 · Govt AI · ' + initiative,
             message: 'Initiative: ' + initiative + '\n\nAbout it: ' + val('gv-about') + '\n\nNodal officer: ' + name + ', ' + designation + '\n\nPreferred format: ' + (formats || 'Not chosen'),
