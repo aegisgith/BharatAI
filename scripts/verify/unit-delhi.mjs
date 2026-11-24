@@ -141,8 +141,9 @@ check('search-engine event data offers the passes, with no price, at /delhi-regi
 check('no price anywhere on the home page', !/₹|&#8377;|Lakhs?\b|\bCr\b|\+ 18% GST/.test(html.replace(/<script[\s\S]*?<\/script>/g, '')), (html.match(/₹[^<]{0,20}|Lakhs?/) || [])[0]);
 check('the vision, the Government AI Showcase, India and the world and the ways to take part are on it', ['id="vision"', 'id="government"', 'id="international"', 'id="take-part"'].every((x) => html.includes(x)) && body.includes('Embassies, high commissions') && body.includes('improve governance'));
 check('"Tell me first" and "first to know" are gone from the page', !/tell me first|first to know/i.test(html));
-check('every Get your pass button goes to the pass form, where the prices are', [...html.matchAll(/<a ([^>]*)>Get your pass/g)].length === 5 && [...html.matchAll(/<a ([^>]*)>Get your pass/g)].every((m) => m[1].includes('href="/delhi-register')));
-check('the free pass is still offered, and still goes to the form on Attend', /<a href="#updates" class="btn btn-outline btn-lg" data-interest="attend">Join the free Visitor Pass waitlist<\/a>/.test(html));
+// 24 Nov 2026: the passes section moved to /delhi-register, so four buttons, not five.
+check('every Get your pass button goes to the pass form, where the prices are', [...html.matchAll(/<a ([^>]*)>Get your pass/g)].length === 4 && [...html.matchAll(/<a ([^>]*)>Get your pass/g)].every((m) => m[1].includes('href="/delhi-register')));
+check('the free pass is still offered: Attend on the form, and the questions point to it; no passes section', /name="interest" value="attend" checked/.test(html) && /The free Visitor Pass is exhibition only[^<]*<a href="#updates"/.test(html) && !html.includes('id="passes"'));
 check('the page gives Mumbai\'s rule for the free pass, says waitlist, and that the two events are separate', body.includes('Exhibition only, entry by time slot') && body.includes('join the waitlist') && body.includes('A pass for one does not cover the other'));
 check('the form asks for all six: name, email, mobile, organisation, designation, city', ['dl-name', 'dl-email', 'dl-phone', 'dl-org', 'dl-job', 'dl-city'].every((id) => html.includes('id="' + id + '"')));
 check('search data no longer says passes are closed', !JSON.stringify(graph).includes('Not yet.') && JSON.stringify(graph).includes('free Visitor Pass'));
