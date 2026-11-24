@@ -1060,8 +1060,13 @@ const AMP_REF = 'amp:'
 const AMP_SKIP: Record<string, string> = { no_number: 'have no mobile number', bad_number: 'have a mobile number that is not complete', stopped: 'asked us to stop on WhatsApp',
   twice: 'share a number with someone above', no_consent: 'have not said yes to WhatsApp messages (a promotional message needs that)' }
 const ampBy = (b: any) => 'AImailPilot: ' + (oneLine(b?.by, 60) || 'a team member')
-// Ten digits is an Indian mobile; 11 or more digits already carry a country code.
-const ampNumber = (raw: unknown) => { const s = String(raw ?? '').trim(), d = s.replace(/\D/g, ''); return whatsappNumber(s) || (d.length >= 11 ? whatsappNumber('+' + d) : '') }
+// Ten digits is an Indian mobile; 11 or more digits already carry a country code, after any
+// 0 or 00 dialled in front of it (0091 98765 43210). A 0-prefixed landline stays incomplete.
+const ampNumber = (raw: unknown) => { const s = String(raw ?? '').trim(), d = s.replace(/\D/g, '').replace(/^0+/, ''); return whatsappNumber(s) || (d.length >= 11 ? whatsappNumber('+' + d) : '') }
+// Every time AImailPilot is given is UTC with its zone written: 2026-11-24T10:00:00Z.
+const isoZ = (v: unknown) => { const s = String(v ?? ''); return /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(s) ? s.replace(' ', 'T') + 'Z' : s }
+// request_id: one Send pressed in AImailPilot. The same one again within a day never sends again.
+const ampRequestId = (v: unknown) => { const s = String(v ?? ''); return /^[A-Za-z0-9_-]{8,64}$/.test(s) ? s : '' }
 async function ampGate(c: any): Promise<Response | null> {
   const want = String(c.env?.ATTENDEE_EXPORT_SECRET || '')
   if (!want) return c.json({ error: 'The link with AImailPilot is not set up on this server.' }, 503)
@@ -1088,7 +1093,9 @@ async function ampCounts(c: any, ids: number[]) {
   return out
 }
 const ampBatch = (b: any, k?: { counts: Record<string, number>; taps: number }) => ({ id: Number(b.id), title: String(b.title || '').replace(/^AImailPilot: /, ''), status: String(b.status), total: Number(b.total || 0),
-  counts: k?.counts || {}, taps: k?.taps || 0, note: b.note || '', created_at: b.created_at, created_by: String(b.created_by || '').replace(/^AImailPilot: /, '') })
+  counts: k?.counts || {}, taps: k?.taps || 0, note: b.note || '', created_at: isoZ(b.created_at), created_by: String(b.created_by || '').replace(/^AImailPilot: /, '') })
+// A send from AImailPilot is a batch with audience 'aimailpilot' or 'aimailpilot:<request_id>'.
+const AMP_AUD = "(audience = 'aimailpilot' OR audience LIKE 'aimailpilot:%')"
 
 wa.get('/api/external/whatsapp/status', async (c) => {
   const no = await ampGate(c); if (no) return no
@@ -1140,50 +1147,77 @@ wa.post('/api/external/whatsapp/send', async (c) => {
     if (ev) { try { row.payload = JSON.stringify({ ...JSON.parse(row.payload), consent: ev }) } catch { /* keep it as it is */ } }
     return row
   }
+  // The same Send pressed again (no answer came back the first time): never a second message.
+  const rid = ampRequestId(b.request_id)
   if (list.length === 1) {
-    const sent = await sendNow(c, cfg, rowOf(people[0]))
+    if (rid) {
+      const before = await one(c, `SELECT id, name FROM wa_messages WHERE batch_id IS NULL AND created_by LIKE 'AImailPilot:%' AND created_at > datetime('now', '-1 day')
+         AND instr(payload, ?) > 0 ORDER BY id LIMIT 1`, '"rid":"' + rid + '"').catch(() => null)
+      if (before) return c.json({ success: true, sent: 1, id: Number(before.id), to: String(before.name || ''), again: true })
+    }
+    const row = rowOf(people[0])
+    if (rid) { try { row.payload = JSON.stringify({ ...JSON.parse(row.payload), rid }) } catch { /* keep it */ } }
+    const sent = await sendNow(c, cfg, row)
     if (!sent.ok) return c.json({ error: sent.error }, 502)
     await note(c, 'whatsapp.aimailpilot.send_one', sent.id, { template: name, by })
     return c.json({ success: true, sent: 1, id: sent.id, to: people[0].name })
   }
+  const sql = (cols: string[]) => `INSERT INTO wa_messages (${cols.join(', ')}, status, updated_at) VALUES (${cols.map(() => '?').join(', ')}, 'queued', datetime('now'))`
+  const insert = async (batchId: number, list2: Person[]) => {
+    if (!list2.length) return
+    const rows = list2.map(p => rowOf(p, { batch_id: batchId }))
+    const cols = Object.keys(rows[0]), q = sql(cols)
+    for (let i = 0; i < rows.length; i += 40) await c.env.DB.batch(rows.slice(i, i + 40).map(r => c.env.DB.prepare(q).bind(...cols.map(k => (r as any)[k] ?? null))))
+  }
+  if (rid) {
+    const before = await one(c, "SELECT id, status FROM wa_batches WHERE audience = ? AND created_at > datetime('now', '-1 day') ORDER BY id LIMIT 1", 'aimailpilot:' + rid).catch(() => null)
+    if (before) {
+      // A send cut off half-way (the connection dropped while its people were written) is completed.
+      const have = new Set((await all(c, 'SELECT person FROM wa_messages WHERE batch_id = ?', Number(before.id))).map(r => String(r.person)))
+      const missing = before.status === 'cancelled' ? [] : people.filter(p => !have.has(p.person))
+      await insert(Number(before.id), missing)
+      if (missing.length && before.status === 'done') await run(c, "UPDATE wa_batches SET status = 'running', finished_at = NULL WHERE id = ?", Number(before.id))
+      if (missing.length) await note(c, 'whatsapp.aimailpilot.completed', Number(before.id), { added: missing.length })
+      return c.json({ success: true, batch: Number(before.id), count: people.length, skipped, again: true, ...(missing.length ? { added: missing.length } : {}) })
+    }
+  }
   if (Number(b.expect) !== people.length) return c.json({ error: 'The list has changed: it is now ' + people.length + '. Look again, then send.', count: people.length, changed: true }, 409)
   const title = 'AImailPilot: ' + (oneLine(b.title, 100) || tpl.title)
-  const ins = await run(c, "INSERT INTO wa_batches (event_id, kind, template, title, audience, status, total, created_by) VALUES (?, 'custom', ?, ?, 'aimailpilot', 'running', ?, ?)",
-    spec.event, name, title.slice(0, 120), people.length, by)
+  const ins = await run(c, "INSERT INTO wa_batches (event_id, kind, template, title, audience, status, total, created_by) VALUES (?, 'custom', ?, ?, ?, 'running', ?, ?)",
+    spec.event, name, title.slice(0, 120), rid ? 'aimailpilot:' + rid : 'aimailpilot', people.length, by)
   const batchId = Number(ins?.meta?.last_row_id || 0)
-  const rows = people.map(p => rowOf(p, { batch_id: batchId }))
-  const cols = Object.keys(rows[0])
-  const sql = `INSERT INTO wa_messages (${cols.join(', ')}, status, updated_at) VALUES (${cols.map(() => '?').join(', ')}, 'queued', datetime('now'))`
-  for (let i = 0; i < rows.length; i += 40) await c.env.DB.batch(rows.slice(i, i + 40).map(r => c.env.DB.prepare(sql).bind(...cols.map(k => (r as any)[k] ?? null))))
+  await insert(batchId, people)
   await note(c, 'whatsapp.aimailpilot.send', batchId, { template: name, by, count: people.length, skipped: skipped.length })
   return c.json({ success: true, batch: batchId, count: people.length, skipped })
 })
 
 wa.get('/api/external/whatsapp/batches', async (c) => {
   const no = await ampGate(c); if (no) return no
-  const list = await all(c, "SELECT * FROM wa_batches WHERE audience = 'aimailpilot' ORDER BY id DESC LIMIT 50")
+  const list = await all(c, `SELECT * FROM wa_batches WHERE ${AMP_AUD} ORDER BY id DESC LIMIT 50`)
   const k = await ampCounts(c, list.map(b => Number(b.id)))
   return c.json({ rows: list.map(b => ampBatch(b, k.get(Number(b.id)))) })
 })
 wa.get('/api/external/whatsapp/batches/:id', async (c) => {
   const no = await ampGate(c); if (no) return no
   const id = Number(c.req.param('id'))
-  const b = await one(c, "SELECT * FROM wa_batches WHERE id = ? AND audience = 'aimailpilot'", id)
+  const b = await one(c, `SELECT * FROM wa_batches WHERE id = ? AND ${AMP_AUD}`, id)
   if (!b) return c.json({ error: 'That send is not here.' }, 404)
   const k = await ampCounts(c, [id])
-  // ?since=<updated_at from the last answer>: only the people whose state moved since.
-  const since = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(String(c.req.query('since') || '')) ? String(c.req.query('since')) : ''
+  // ?since=<updated_at from the last answer> (2026-11-24T10:00:00Z, or the database's own
+  // 2026-11-24 10:00:00): only the people whose state moved since.
+  const sm = /^(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d:\d\d)Z?$/.exec(String(c.req.query('since') || ''))
+  const since = sm ? sm[1] + ' ' + sm[2] : ''
   const people = await all(c, `SELECT person, name, wa_number, status, error, sent_at, delivered_at, read_at, clicked_at, COALESCE(updated_at, created_at) AS updated_at FROM wa_messages
      WHERE batch_id = ?${since ? ' AND COALESCE(updated_at, created_at) > ?' : ''} ORDER BY id`, ...(since ? [id, since] : [id]))
   const stopped = await stoppedNumbers(c)
-  return c.json({ ...ampBatch(b, k.get(id)), ...(since ? { since } : {}), people: people.map(p => ({ ref: String(p.person || '').replace(/^amp:/, ''), name: p.name, number: shownNumber(String(p.wa_number)), status: p.status,
-    error: p.error || '', sent_at: p.sent_at || '', delivered_at: p.delivered_at || '', read_at: p.read_at || '', clicked_at: p.clicked_at || '', updated_at: p.updated_at || '',
+  return c.json({ ...ampBatch(b, k.get(id)), ...(since ? { since: isoZ(since) } : {}), people: people.map(p => ({ ref: String(p.person || '').replace(/^amp:/, ''), name: p.name, number: shownNumber(String(p.wa_number)), status: p.status,
+    error: p.error || '', sent_at: isoZ(p.sent_at), delivered_at: isoZ(p.delivered_at), read_at: isoZ(p.read_at), clicked_at: isoZ(p.clicked_at), updated_at: isoZ(p.updated_at),
     stopped: stopped.has(String(p.wa_number)) })) })
 })
 wa.post('/api/external/whatsapp/batches/:id/:what', async (c) => {
   const no = await ampGate(c); if (no) return no
   const id = Number(c.req.param('id')), what = String(c.req.param('what'))
-  const b = await one(c, "SELECT * FROM wa_batches WHERE id = ? AND audience = 'aimailpilot'", id)
+  const b = await one(c, `SELECT * FROM wa_batches WHERE id = ? AND ${AMP_AUD}`, id)
   if (!b) return c.json({ error: 'That send is not here.' }, 404)
   if (what === 'pause' && b.status === 'running') await run(c, "UPDATE wa_batches SET status = 'paused', note = NULL WHERE id = ?", id)
   else if (what === 'resume' && b.status === 'paused') await run(c, "UPDATE wa_batches SET status = 'running', note = NULL WHERE id = ?", id)
@@ -1202,13 +1236,15 @@ wa.get('/api/external/whatsapp/thread', async (c) => {
   const rows = await all(c, 'SELECT id, direction, kind, payload, status, error, created_at, created_by FROM wa_messages WHERE wa_number = ? AND test = 0 ORDER BY id DESC LIMIT 60', n)
   return c.json({ number: shownNumber(n), name: String(k?.name || ''), open: Number(k?.open || 0) === 1, stopped: !!k?.opted_out_at,
     messages: rows.reverse().map(r => { let p: any = {}; try { p = JSON.parse(r.payload || '{}') } catch { p = {} }
-      return { id: r.id, out: r.direction === 'out', kind: r.kind, text: String(p.text || (p.type ? '[' + p.type + ']' : '')), status: r.status, error: r.error || '', at: r.created_at, by: r.created_by || '' } }) })
+      return { id: r.id, out: r.direction === 'out', kind: r.kind, text: String(p.text || (p.type ? '[' + p.type + ']' : '')), status: r.status, error: r.error || '', at: isoZ(r.created_at), by: r.created_by || '' } }) })
 })
 wa.post('/api/external/whatsapp/reply', async (c) => {
   const no = await ampGate(c); if (no) return no
   const b = await c.req.json().catch(() => ({})) as any
-  const n = ampNumber(b.number), text = String(b.text ?? '').trim().slice(0, 2000)
+  const n = ampNumber(b.number), text = String(b.text ?? '').trim()
   if (!n || !text) return c.json({ error: 'Type your reply.' }, 400)
+  // Refused, never cut: a cut reply would be shown as sent in full.
+  if (text.length > 2000) return c.json({ error: 'That reply is longer than 2,000 characters. Make it shorter, or send it in two parts.', field: 'text' }, 400)
   const cfg = await loadCfg(c)
   if (!connected(cfg)) return c.json({ error: 'WhatsApp is not connected yet in Bharat AI.' }, 409)
   const k = await one(c, "SELECT opted_out_at, name, CASE WHEN last_in_at > datetime('now', '-1 day') THEN 1 ELSE 0 END AS open FROM wa_contacts WHERE wa_number = ?", n)

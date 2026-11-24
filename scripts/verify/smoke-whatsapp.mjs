@@ -734,6 +734,30 @@ r = await amp('POST', '/api/external/whatsapp/reply', { number: '98200 70001', t
 check('AImailPilot: a reply inside the 24 hours goes, signed for AImailPilot', r.status === 200 && sends().slice(sb).some(x => x.body.to === '919820070001' && x.body.text?.body === 'Passes open in January. I will send you the link.'), r.text.slice(0, 200));
 r = await amp('POST', '/api/external/whatsapp/reply', { number: '447700900123', text: 'Hello', by: 'Anita' });
 check('AImailPilot: no free reply to someone who has not written in 24 hours', r.status === 409 && r.json?.closed === true, r.text.slice(0, 200));
+r = await amp('POST', '/api/external/whatsapp/reply', { number: '98200 70001', text: 'x'.repeat(2001), by: 'Anita' });
+check('AImailPilot: a reply over 2,000 characters is refused, never cut', r.status === 400 && r.json?.field === 'text', r.text.slice(0, 160));
+// The same Send pressed again after no answer came back (24 Nov 2026 review): never twice.
+const rppl = [{ ref: 'r1', number: '0091 98200 72001', name: 'Zero Zero', consent: true }, { ref: 'r2', number: '98200 72002', name: 'Two', consent: true }, { ref: 'r3', number: '98200 72003', name: 'Three', consent: true }];
+r = await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, title: 'Once only', by: 'Anita', expect: 3, people: rppl, request_id: 'req-once-0001' });
+const rb = r.json?.batch;
+check('AImailPilot: 0091 before a mobile is read as India', r.status === 200 && r.json.count === 3 && msgs('batch_id = ?', [rb]).some(x => x.wa_number === '919820072001'), r.text.slice(0, 200));
+const rowsBefore = msgs('batch_id = ?', [rb]).length;
+r = await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, title: 'Once only', by: 'Anita', expect: 3, people: rppl, request_id: 'req-once-0001' });
+check('AImailPilot: the same request_id again returns the same send and sends nobody twice', r.status === 200 && r.json.again === true && r.json.batch === rb && msgs('batch_id = ?', [rb]).length === rowsBefore
+  && rows("SELECT COUNT(*) AS n FROM wa_batches WHERE audience = 'aimailpilot:req-once-0001'")[0].n === 1, r.text.slice(0, 200));
+db.run("DELETE FROM wa_messages WHERE batch_id = ? AND person = 'amp:r3'", [rb]);
+r = await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, title: 'Once only', by: 'Anita', expect: 3, people: rppl, request_id: 'req-once-0001' });
+check('AImailPilot: a send cut off half-way is completed by pressing Send again', r.json?.again === true && r.json.added === 1 && msgs('batch_id = ?', [rb]).length === 3 && msgs("batch_id = ? AND person = 'amp:r3'", [rb]).length === 1, r.text.slice(0, 200));
+sb = sends().length;
+const one1p = { template: MK?.name, by: 'Kiran', people: [{ ref: 'r9', number: '98200 72009', name: 'One Only', consent: true }], request_id: 'req-single-01' };
+await amp('POST', '/api/external/whatsapp/send', one1p);
+r = await amp('POST', '/api/external/whatsapp/send', one1p);
+check('AImailPilot: one person with the same request_id again gets one message', r.status === 200 && r.json.again === true && sends().slice(sb).filter(x => x.body.to === '919820072009').length === 1, r.text.slice(0, 200));
+r = await amp('GET', '/api/external/whatsapp/batches/' + rb);
+const th = (await amp('GET', '/api/external/whatsapp/thread?number=' + encodeURIComponent('98200 70001'))).json;
+check('AImailPilot: every time comes with its zone (UTC, ending in Z)', /Z$/.test(r.json?.created_at || '') && r.json.people.every(p => /Z$/.test(p.updated_at)) && th.messages.every(m => /T.*Z$/.test(m.at)), (r.json?.created_at || '') + ' ' + (th.messages?.[0]?.at || ''));
+r = await amp('GET', '/api/external/whatsapp/batches');
+check('AImailPilot: a send made with a request_id is in its list', r.json?.rows?.some(x => x.id === rb), '');
 // ---------- "Send me updates on WhatsApp" on the Delhi forms (24 Nov 2026) ----------
 const yesRows = () => rows("SELECT entity_id, detail FROM admin_audit WHERE action = 'whatsapp.yes'");
 r = await hit('POST', '/api/inquiries', { inquiry_type: 'sponsorship', name: 'Tick Yes', email: 'tick.yes@example.com', phone: '98200 81001', subject: 'Delhi 2027', message: 'Hello', whatsapp_yes: true });
@@ -779,7 +803,7 @@ check('the "Delivered" and "Waiting" numbers open their own people', reached.eve
 r = await as('GET', '/api/admin/whatsapp/messages?status=failed');
 const ov = (await as('GET', '/api/admin/whatsapp')).json;
 check('the Sent list filters by state, and the overview counts every send with its numbers', r.json?.rows.length >= 6 && r.json.rows.every(x => x.status === 'failed' && /^\+91 /.test(x.number))
-  && ov.batches.length === 9 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
+  && ov.batches.length === 10 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
 check('no answer from any admin route ever carried the access key or the app secret', answers.length > 60 && answers.every(a => !a.includes(TOKEN) && !a.includes(SECRET)), answers.length);
 // ---------- registering our number (Meta answers 133010 until it is) ----------
 const registers = () => calls.filter(c => c.path === `${PHONE}/register`);
