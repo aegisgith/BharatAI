@@ -787,6 +787,14 @@ r = await as('GET', '/api/admin/whatsapp/messages?batch=' + batch1);
 const ashaRow = (r.json?.rows || []).find(x => x.name === 'Dr. Asha Mehta'), raviRow = (r.json?.rows || []).find(x => x.name === 'Ravi Kumar');
 check('the Sent list says who looked at their photos and saved how many after the WhatsApp (a look from before it does not count)', ashaRow?.looked_after === true && ashaRow.saved === 2 && ashaRow.saved_after === true
   && raviRow?.looked_after === false && !('person' in (ashaRow || {})), JSON.stringify([ashaRow && { l: ashaRow.looked_after, s: ashaRow.saved, sa: ashaRow.saved_after }, raviRow && { l: raviRow.looked_after }]));
+// Who they are (24 Nov 2026): designation, company and pass beside each name; someone on
+// the speakers table is a Speaker whatever pass they hold.
+db.run("UPDATE attendees SET job_title = 'Chief Data Officer', company = 'Tata Steel', badge_type = 'Premium Delegate Pass' WHERE id = ?", [idOf(keys[0])]);
+db.run("INSERT INTO speakers (event_id, slug, name, role, organisation, email) VALUES (1, 'ravi-kumar-wa', 'Ravi Kumar', 'Director', 'NIC', ?)", ['P' + idOf(keys[1]) + '@Example.com ']);
+r = await as('GET', '/api/admin/whatsapp/messages?batch=' + batch1);
+const ashaWho = (r.json?.rows || []).find(x => x.name === 'Dr. Asha Mehta'), raviWho = (r.json?.rows || []).find(x => x.name === 'Ravi Kumar');
+check('the Sent list shows designation, company and pass, and a speaker as a Speaker', ashaWho?.title === 'Chief Data Officer' && ashaWho.company === 'Tata Steel' && ashaWho.pass === 'Premium Delegate Pass' && ashaWho.speaker === false
+  && raviWho?.pass === 'Visitor Pass' && raviWho.speaker === true && raviWho.title === '' && !('email' in raviWho), JSON.stringify([ashaWho && { t: ashaWho.title, c: ashaWho.company, p: ashaWho.pass, s: ashaWho.speaker }, raviWho && { p: raviWho.pass, s: raviWho.speaker }]));
 const b1 = (await as('GET', '/api/admin/whatsapp')).json?.batches?.find(b => b.id === batch1);
 check('the photos send counts how many looked and saved since', b1?.looked_after === 1 && b1.saved_after === 1, JSON.stringify(b1 && { l: b1.looked_after, s: b1.saved_after }));
 

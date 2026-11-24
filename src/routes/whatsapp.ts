@@ -3,6 +3,7 @@ import { titledName } from '../lib/greet'
 import { whatsappNumber, shownNumber, isNoEmail } from './team-guests'
 import { pageUrl, hiddenPhotos, personFor as albumFor, NOT_ME, OPT_OUT, ATT_SENT } from './photos'
 import { photoLink } from './photo-store'
+import { boothAlbumOf } from './exhibitor-photos'
 import ATTENDEES from '../data/attendee-photos.json'
 import PHOTO_CHECKS from '../data/photo-checks.json'
 
@@ -893,6 +894,13 @@ async function photoPerson(c: any, key: string, hint: string, typed: string): Pr
     if (a.unsubscribed_at || String(a.marketing_consent ?? '') === '0') return fail(409, who.name + ' unsubscribed from our updates, so nothing is sent to them.')
     mobile = String(a.mobile || '').trim(); if (mobile) who.source = 'their registration'
     photos = al.photos || []; best = al.best || []
+  } else if (/^x\d{1,9}$/.test(key)) {
+    // A company's photos (its booth and its stage talk, routes/exhibitor-photos.ts), to a
+    // number the team types: a company has no mobile of its own.
+    const al = await boothAlbumOf(c, key)
+    if (!al) return fail(404, 'No booth photos were found for that company.')
+    who.name = al.name
+    photos = al.photos; best = al.best
   } else {
     const p = albumFor(key)
     if (!p || p.key !== key) return fail(404, 'That person is not on the list any more.')
@@ -993,7 +1001,9 @@ wa.post('/api/admin/whatsapp/photos-one', async (c) => {
   if (!image || !/[?&]k=[0-9a-f]+/.test(target)) return c.json({ error: 'Photo links cannot be signed on this server.' }, 503)
   // Their row still waiting in a bulk send would send it a second time: this one goes instead.
   if (b.again) await run(c, "UPDATE wa_messages SET status = 'skipped', error = 'Sent by hand instead', updated_at = datetime('now') WHERE direction = 'out' AND kind = 'photos' AND person = ? AND status = 'queued'", key)
-  const params = [blank(titledName(who.name) || 'there', 60), photoWords(who.count)]
+  // A company's photos greet the person they go to (b.name, typed), or the company's team.
+  const hello = /^x\d/.test(key) ? (titledName(oneLine(b.name, 60)) || who.name + ' team') : (titledName(who.name) || 'there')
+  const params = [blank(hello, 60), photoWords(who.count)]
   const p: Person = { attendee_id: who.attendee_id, person: key, name: who.name, number: who.number, params, image, target, text: fill(got.tpl.text, params) }
   const sent = await sendNow(c, cfg, rowFor(p, { kind: 'photos', event: 1 }, got.tpl, actorOf(c)))
   if (!sent.ok) return c.json({ error: sent.error }, 502)
@@ -1893,6 +1903,46 @@ wa.post('/api/admin/whatsapp/tick', async (c) => {
   return c.json({ tick: await whatsappTick(c, { budgetMs: 8000 }), ...(await overview(c)) })
 })
 
+// Who each message went to, as the team knows them (the organiser, 24 Nov 2026: "show
+// their designation and company name, speaker, exhibitor, vip, delegate, premium
+// delegate"). The registration behind the message: its attendee_id, or an attendee's
+// album key a<id>. A speaker's own album (s/t keys) has no registration: the speakers
+// table gives their role and organisation. Anyone whose email is on the speakers table
+// is a Speaker whatever pass they hold. A paid pass not paid for says so, and one given
+// free says complimentary: the same words as the Attendees grid (attPassLabel).
+// ids and emails in chunks of 90: D1 binds at most 100 values a query.
+const WHO_PAID_TIERS = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass', 'Expo Pass']
+type Who = { title: string; company: string; pass: string; speaker: boolean }
+async function whoTheyAre(c: any, rows: any[]): Promise<Map<number, Who>> {
+  const out = new Map<number, Who>()
+  const chunks = <T>(xs: T[]): T[][] => { const r: T[][] = []; for (let i = 0; i < xs.length; i += 90) r.push(xs.slice(i, i + 90)); return r }
+  const marks = (n: number) => new Array(n).fill('?').join(',')
+  const attOf = (r: any): number => Number(r.attendee_id) || (/^a\d+$/.test(String(r.person || '')) ? Number(String(r.person).slice(1)) : 0)
+  const spkOf = (r: any): number => { if (attOf(r) || !r.person) return 0; const p: any = albumFor(String(r.person)); return Number((p && p.speakers && p.speakers[0]) || 0) }
+  try {
+    const att = new Map<number, any>(), spk = new Map<number, any>(), onStage = new Set<string>()
+    for (const ids of chunks([...new Set(rows.map(attOf).filter(Boolean))]))
+      for (const a of await all(c, `SELECT id, job_title, company, badge_type, payment_status, email FROM attendees WHERE id IN (${marks(ids.length)})`, ...ids)) att.set(Number(a.id), a)
+    const emails = [...new Set([...att.values()].map(a => String(a.email || '').trim().toLowerCase()).filter(e => e && !isNoEmail(e)))]
+    for (const es of chunks(emails))
+      for (const s of await all(c, `SELECT DISTINCT LOWER(TRIM(email)) AS e FROM speakers WHERE LOWER(TRIM(email)) IN (${marks(es.length)})`, ...es)) onStage.add(String(s.e))
+    for (const ids of chunks([...new Set(rows.map(spkOf).filter(Boolean))]))
+      for (const s of await all(c, `SELECT id, role, organisation FROM speakers WHERE id IN (${marks(ids.length)})`, ...ids)) spk.set(Number(s.id), s)
+    for (const r of rows) {
+      const a = att.get(attOf(r))
+      if (a) {
+        const b = String(a.badge_type || '').trim(), pay = String(a.payment_status || '').trim().toLowerCase(), tier = WHO_PAID_TIERS.includes(b)
+        const pass = tier && (pay === 'pending' || pay === 'refunded') ? b + ' · not paid' : tier && pay === 'waived' ? b + ' · complimentary' : b
+        out.set(Number(r.id), { title: String(a.job_title || '').trim(), company: String(a.company || '').trim(), pass, speaker: onStage.has(String(a.email || '').trim().toLowerCase()) && !/speaker/i.test(b) })
+        continue
+      }
+      const s = spk.get(spkOf(r))
+      if (s) out.set(Number(r.id), { title: String(s.role || '').trim(), company: String(s.organisation || '').trim(), pass: 'Speaker', speaker: false })
+    }
+  } catch { /* the list still shows without them */ }
+  return out
+}
+
 wa.get('/api/admin/whatsapp/messages', async (c) => {
   if (!(await ready(c))) return notReady(c)
   const where: string[] = ["m.direction = 'out'"], args: any[] = []
@@ -1911,10 +1961,11 @@ wa.get('/api/admin/whatsapp/messages', async (c) => {
      FROM wa_messages m WHERE ${where.join(' AND ')} ORDER BY m.id DESC LIMIT 200`, ...args)
   // A photos message: did they look at their photos, and save any, after it went?
   const marks = await photoMarks(c, rows.filter(r => r.kind === 'photos' && r.person).map(r => String(r.person)))
+  const who = await whoTheyAre(c, rows)
   return c.json({ rows: rows.map(r => {
     const m = r.kind === 'photos' ? marks.get(String(r.person || '')) : undefined, sent = r.sent_at || r.created_at
     const { person: _p, ...rest } = r
-    return { ...rest, number: shownNumber(String(r.wa_number)), ...(m ? { looked_after: afterSend(m.looked_last, sent), saved: m.saved, saved_after: afterSend(m.saved_last, sent) } : {}) }
+    return { ...rest, number: shownNumber(String(r.wa_number)), ...(who.get(Number(r.id)) || {}), ...(m ? { looked_after: afterSend(m.looked_last, sent), saved: m.saved, saved_after: afterSend(m.saved_last, sent) } : {}) }
   }) })
 })
 

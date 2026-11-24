@@ -4,7 +4,7 @@ import { Hono } from 'hono'
 // @ts-ignore - JSON import, bundled by Vite
 import SITE_PHOTO_FINGERPRINTS from './data/site-photo-fingerprints.json'
 import { cors } from 'hono/cors'
-import mp, { configureMarketplace, exhibitorOfCompanySession, guestExhibitorOf, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers, linkBadgeHolderToCompany } from './routes/marketplace'
+import mp, { configureMarketplace, exhibitorOfCompanySession, dashboardAccountOf, guestExhibitorOf, DIRECTORY_SHOWN_SQL, INTERNAL_NOTE_RE, settleTeam, syncStageSpeakers, linkBadgeHolderToCompany } from './routes/marketplace'
 import conference, { configureConference, draftFilterSql, venueSelectSql, fillVenues, speakerSlots, syncTalkSessions, talkRemoved, withAttendeePhotos, withTalkPhotos, withSessionPhotos } from './routes/conference'
 import siteLive, { configureSiteLive } from './routes/site-live'
 import speakerBrief, { configureSpeakerBrief, saturdaySpeakerReminders } from './routes/speaker-brief'
@@ -12,7 +12,7 @@ import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/t
 import speakerPhotos, { configurePhotos } from './routes/photos'
 import photoTracking, { photoPageBeacon, withOpenPixel } from './routes/photo-tracking'
 import findPhotos, { configureFindPhotos, findPhotosWhereSql } from './routes/find-photos'
-import exhibitorPhotos, { configureExhibitorPhotos } from './routes/exhibitor-photos'
+import exhibitorPhotos, { configureExhibitorPhotos, boothAlbum } from './routes/exhibitor-photos'
 import morePhotos, { configureMorePhotos } from './routes/more-photos'
 import myPhotos, { configureMyPhotos } from './routes/my-photos'
 import photoStore, { configurePhotoStore } from './routes/photo-store'
@@ -642,6 +642,10 @@ configurePhotos({ sendEmail: async (c: any, to: string, subject: string, html: s
   audit, emailHeader: emailBrandHeader,
   talkContacts: (c: any, eventId: number) => italkContactsAll(c, eventId) })
 app.route('/', photoTracking)
+// A company's own photo page, /photos/x<exhibitor id> (24 Nov 2026): booth photos and their
+// stage talk, opened from a signed link with no sign-in. Before the speakers' albums, whose
+// router answers every other /photos/<key>. routes/exhibitor-photos.ts.
+app.route('/', boothAlbum)
 app.route('/', speakerPhotos)
 // Event photos in R2 (23 Nov 2026): the photographers' photos, copied once from Drive by
 // scripts/photo-store/ (migration 0064). Every image link is signed for one person, one
@@ -673,7 +677,7 @@ app.route('/', myPhotos)
 // per company from Admin -> After the Event. routes/exhibitor-photos.ts.
 configureExhibitorPhotos({ sendEmail: sendAdminEmail, audit, emailHeader: emailBrandHeader,
   dashboardExhibitor: (c: any) => exhibitorOfCompanySession(c),
-  signInLink: (c: any, accountId: number) => mpSignInLink(c, accountId, 'photos') })
+  dashboardAccount: (c: any) => dashboardAccountOf(c) })
 app.route('/', exhibitorPhotos)
 // "We found more photos of you" (23 Nov 2026): everyone already sent a photos email whose
 // album has grown since (late-found photos, burst shots, more booth names read), one short
@@ -42910,7 +42914,7 @@ function adminPageScript(): string {
     // WhatsApp: sending from our own number and the replies live in /js/admin-whatsapp.js
     // (one global, WaDesk) with their own stylesheet, loaded the first time the section
     // opens. Bump WA_DESK_VERSION on any change to either.
-    var WA_DESK_VERSION = '20261124g';
+    var WA_DESK_VERSION = '20261124h';
     var waDeskAssets = null;
     function waDeskLoadAssets() {
       if (window.WaDesk) return Promise.resolve();

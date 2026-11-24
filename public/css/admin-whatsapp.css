@@ -130,6 +130,9 @@
 .wad-sent { background: #e8f1ff; color: #1849a9; }
 .wad-chip.wad-bad { background: #fde8e6; color: var(--wa-bad); }
 .wad-muted { background: var(--wa-soft); color: var(--wa-muted); }
+.wad-pass-spk { background: #fff1e6; color: var(--wa-accent); }
+.wad-pass-vip { background: var(--wa-ink); color: #f6d36b; }
+.wad small.wad-job { color: var(--wa-ink); font-size: 13px; margin-top: 2px; }
 
 .wad-own { display: grid; gap: 0; max-height: 520px; overflow-y: auto; border: 1px solid var(--wa-line); border-radius: 10px; }
 .wad-own-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid var(--wa-line); }

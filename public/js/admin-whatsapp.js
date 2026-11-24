@@ -53,6 +53,13 @@
   };
   function chip(pair, text) { return '<span class="wad-chip wad-' + pair[1] + '">' + esc(text || pair[0]) + '</span>'; }
   function statusChip(s) { return chip(STATUS[s] || [s, 'muted']); }
+  // The pass someone holds, coloured by kind so a Speaker, an Exhibitor or a VIP stands out
+  // down the Sent list. A paid pass not paid for stays grey.
+  function passChip(p) {
+    var s = String(p || ''), kind = /not paid/i.test(s) ? 'muted' : /speaker|jury/i.test(s) ? 'pass-spk' : /vip|organiser/i.test(s) ? 'pass-vip'
+      : /exhibitor/i.test(s) ? 'sent' : /delegate|academic|student|expo|investor|media|influencer/i.test(s) ? 'good' : 'muted';
+    return chip([s, kind]);
+  }
   function tplChip(s) { return chip(TPL_STATUS[s] || [s, 'muted']); }
   function kindWords(k) { return { photos: 'Photos', pass: 'Pass', custom: 'Announcement', reply: 'Reply', auto: 'Automatic' }[k] || k; }
   // Meta says PENDING (or anything but CONNECTED) until the number is registered for the Cloud API.
@@ -338,7 +345,9 @@
     if (!log.length) return '<div class="wad-card">' + top + '<p class="wad-sub">Nothing here.</p></div>';
     return '<div class="wad-card">' + top + '<div class="wad-table"><table><thead><tr><th>Who</th><th>What</th><th>State</th><th>When</th></tr></thead><tbody>' + log.map(function (r) {
       var last = r.read_at || r.delivered_at || r.sent_at || r.created_at;
-      return '<tr><td><b>' + esc(r.name || 'No name') + '</b><small>' + esc(r.number) + '</small></td>'
+      var job = [r.title, r.company].filter(function (x) { return x; }).join(', ');
+      return '<tr><td><b>' + esc(r.name || 'No name') + '</b>' + (r.pass ? ' ' + passChip(r.pass) : '') + (r.speaker ? ' ' + passChip('Speaker') : '')
+        + (job ? '<small class="wad-job">' + esc(job) + '</small>' : '') + '<small>' + esc(r.number) + '</small></td>'
         + '<td>' + esc(kindWords(r.kind)) + (r.test ? ' <span class="wad-sub">(test)</span>' : '') + (r.own ? ' <span class="wad-sub">(own WhatsApp)</span>' : '') + '</td>'
         + '<td>' + statusChip(r.status) + (r.clicked_at ? ' ' + chip(['Tapped', 'good']) : '')
         + (r.looked_after ? ' ' + chip(['Looked at their photos', 'good']) : '') + (r.saved_after ? ' ' + chip(['Saved ' + num(r.saved) + ' photo' + (r.saved === 1 ? '' : 's'), 'good']) : '')
