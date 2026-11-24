@@ -225,9 +225,12 @@ export function metaMessage(row: any, code: string) {
 // Meta's error numbers in plain words. stop: the fault is ours or the account's, so the
 // send pauses and the person stays in the queue. soft: Meta is busy; the next minute
 // tries again by itself. Anything else is about that one person.
-export const ERRORS: Record<number, { words: string; stop?: boolean; soft?: boolean; mine?: boolean }> = {
-  131026: { words: 'This number is not on WhatsApp, or their WhatsApp is too old to receive it.' },
-  131049: { words: 'WhatsApp held it back: this person has had many business messages lately. Try again in a day or two.' },
+// person: about that one person and never about the send, so it does not count towards
+// "five in a row refused" (24 Nov 2026: Meta held back about 1 in 4 of the first photos).
+export const ERRORS: Record<number, { words: string; stop?: boolean; soft?: boolean; mine?: boolean; person?: boolean }> = {
+  131026: { words: 'This number is not on WhatsApp, or their WhatsApp is too old to receive it.', person: true },
+  131049: { words: 'WhatsApp held it back: this person has had many business messages lately. Try again in a day or two.', person: true },
+  131050: { words: 'This person has turned off marketing messages from businesses on WhatsApp.', person: true },
   131047: { words: 'More than 24 hours have passed since they wrote to us, so a typed reply is not allowed. Send them an approved message instead.' },
   131056: { words: 'Too many messages to this one number in a short time. Try again later.' },
   131021: { words: 'That is our own WhatsApp number.' },
@@ -716,7 +719,7 @@ export async function whatsappTick(c: any, o: { budgetMs?: number } = {}): Promi
     }
     await failRow(c, row.id, r.words, r.code)
     out.failed++
-    if (bulk) {
+    if (bulk && !ERRORS[Number(r.code)]?.person) {
       // Five in a row refused: something is wrong with the send itself, not with five people.
       const n = (fails.get(row.batch_id) || 0) + 1
       fails.set(row.batch_id, n)

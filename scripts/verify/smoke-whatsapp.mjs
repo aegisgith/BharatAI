@@ -367,6 +367,14 @@ check('five refused in a row pauses the send instead of failing everyone', b3.st
 failWith = null;
 r = await as('POST', `/api/admin/whatsapp/batches/${batch4}/cancel`, {});
 check('cancel drops whoever is still waiting', r.status === 200 && msgs("batch_id = ? AND status = 'cancelled'", [batch4]).length === 2 && rows('SELECT status FROM wa_batches WHERE id = ?', [batch4])[0].status === 'cancelled', '');
+// 24 Nov 2026: Meta held back about 1 in 4 of the first real photos (131049, about that person).
+r = await as('POST', '/api/admin/whatsapp/send', { kind: 'custom', template: custom, audience: 'list', list: Array.from({ length: 7 }, (_, i) => 'Y, 912230000' + i).join('\n'), expect: 7 });
+const batch5 = r.json?.batch;
+failWith = { code: 131049, message: 'This message was not delivered to maintain healthy ecosystem engagement.', times: 6 };
+t = await tick();
+failWith = null;
+check('six people in a row held back by Meta do not pause the send: that is about each person, not the send', rows('SELECT status FROM wa_batches WHERE id = ?', [batch5])[0].status !== 'paused'
+  && msgs("batch_id = ? AND status = 'failed' AND error_code = 131049", [batch5]).length === 6 && msgs("batch_id = ? AND status IN ('sent', 'delivered', 'read')", [batch5]).length === 1, JSON.stringify(t));
 
 // ---------- reports and the inbox (23 Nov 2026, evening) ----------
 r = await as('GET', '/api/admin/whatsapp');
@@ -710,7 +718,7 @@ check('AImailPilot: switched off, it can do nothing', (await amp('GET', '/api/ex
 r = await as('GET', '/api/admin/whatsapp/messages?status=failed');
 const ov = (await as('GET', '/api/admin/whatsapp')).json;
 check('the Sent list filters by state, and the overview counts every send with its numbers', r.json?.rows.length >= 6 && r.json.rows.every(x => x.status === 'failed' && /^\+91 /.test(x.number))
-  && ov.batches.length === 7 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
+  && ov.batches.length === 8 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
 check('no answer from any admin route ever carried the access key or the app secret', answers.length > 60 && answers.every(a => !a.includes(TOKEN) && !a.includes(SECRET)), answers.length);
 // ---------- registering our number (Meta answers 133010 until it is) ----------
 const registers = () => calls.filter(c => c.path === `${PHONE}/register`);
