@@ -68,7 +68,8 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
     check('every picture loads', await page.evaluate(() => [...document.images].every((i) => i.naturalWidth > 0)), await page.evaluate(() => [...document.images].filter((i) => !i.naturalWidth).map((i) => i.src).join(', ')));
     check('phone: the Ministers stand in two rows', await page.evaluate(() => new Set([...document.querySelectorAll('.gv-mins li')].map((c) => Math.round(c.getBoundingClientRect().top))).size === 2));
     check('every icon draws (an icon missing from the font is blank)', await page.evaluate(() => [...document.querySelectorAll('.gv-more i, .gv-secs i')].every((i) => getComputedStyle(i, '::before').content !== 'none')));
-    check('tap targets on the form are big enough', await page.evaluate(() => [...document.querySelectorAll('.gv-field input, .gv-field textarea, .gv-submit, .gv-fmt span')].every((e) => e.getBoundingClientRect().height >= 44)));
+    // A tick box is tapped through its whole label, so the label is what must be 44 px tall.
+    check('tap targets on the form are big enough', await page.evaluate(() => [...document.querySelectorAll('.gv-field input, .gv-field textarea, .gv-submit, .gv-fmt span')].map((e) => (e.type === 'checkbox' ? e.closest('label') || e : e)).every((e) => e.getBoundingClientRect().height >= 44)), await page.evaluate(() => [...document.querySelectorAll('.gv-field input, .gv-field textarea, .gv-submit, .gv-fmt span')].map((e) => (e.type === 'checkbox' ? e.closest('label') || e : e)).filter((e) => e.getBoundingClientRect().height < 44).map((e) => (e.id || e.htmlFor || e.className) + ' ' + Math.round(e.getBoundingClientRect().height) + 'px').join(', ')));
 
     // Sectors and questions open
     const opened = async (sel, n) => {
