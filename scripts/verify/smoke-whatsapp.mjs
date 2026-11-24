@@ -822,6 +822,12 @@ check('a guest album shows the guest’s own title and role, "PR of" the speaker
 check('a face in a circle: their own photo at the small size, signed for their album and centred on their face; a "Not me" photo never; else the picture they chose; else none',
   (ashaWho?.face?.src || '').includes('/photo/W00abcdefghi/s.jpg?u=') && ashaWho.face.src.includes('u=' + keys[0]) && /[?&]k=[0-9a-f]+/.test(ashaWho.face.src) && typeof ashaWho.face.x === 'number'
   && raviWho?.face?.src === '/api/mp/uploads/77' && akWho?.face === null && !('photo' in (ashaWho || {})), JSON.stringify([ashaWho?.face, raviWho?.face, akWho?.face]));
+// A copy that went to the wrong person (24 Nov 2026: a shared government domain): once the
+// team removes them from that album, they are no longer "PR of" that speaker.
+db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail) VALUES ('t', 'admin', 'photos.rep', 'photo_album', 's999', ?)", [JSON.stringify({ email: 'akanksha.tiwari@bajajlife.com', removed: true })]);
+const akGone = ((await as('GET', '/api/admin/whatsapp/messages?q=Akanksha')).json?.rows || []).find(x => x.name === 'Akanksha Tiwari');
+check('a copy taken off again (photos.rep removed, same album and address) no longer makes them "PR of" that speaker', Array.isArray(akGone?.tags) && akGone.tags.length === 0, JSON.stringify(akGone?.tags));
+db.run("DELETE FROM admin_audit WHERE action = 'photos.rep' AND entity_id = 's999'");
 // ---- who looks after them, under the main name (routes/photo-reps.ts, 24 Nov 2026) ----
 check('before anyone is named, a row has no one under it', Array.isArray(akWho?.reps) && akWho.reps.length === 0, JSON.stringify(akWho?.reps));
 check('saving who looks after an album needs an admin', (await hit('POST', '/api/admin/photo-reps', { key: 'g16', name: 'Ram Mali', mobile: '95555 00016' })).status === 401 && (await hit('GET', '/api/admin/photo-reps?key=g16')).status === 401, '');

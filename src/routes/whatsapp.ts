@@ -1952,13 +1952,20 @@ async function whoTheyAre(c: any, rows: any[]): Promise<Map<number, Who>> {
   for (const t of await someRows(c, 'SELECT attendee_id, LOWER(TRIM(email)) AS e, designation, company, photo_url FROM exhibitor_team WHERE attendee_id IN (?)', [...att.keys()])) team.set('a' + t.attendee_id, t)
   for (const t of await someRows(c, 'SELECT attendee_id, LOWER(TRIM(email)) AS e, designation, company, photo_url FROM exhibitor_team WHERE LOWER(TRIM(email)) IN (?)', emails)) team.set('e' + t.e, t)
   // The person who looks after a speaker: the address a copy of that speaker's album went to.
-  const prOf = new Map<string, string[]>()
-  for (const p of await all(c, "SELECT detail FROM admin_audit WHERE action = ? AND entity = 'photo_album'", AUDIT_ACTION + '_copy').catch(() => [] as any[])) {
+  // A copy can be wrong: a later photos.rep { removed: true } for the same album and address
+  // takes them off that speaker (24 Nov 2026: a shared government domain had tied a Defence
+  // consultant to the Tribal Affairs speaker's album; photo-reps.ts reads the rows the same way).
+  const tie = new Map<string, { to: string; name: string }>()
+  for (const p of await all(c, "SELECT action, entity_id, detail FROM admin_audit WHERE action IN (?, 'photos.rep') AND entity = 'photo_album' ORDER BY id", AUDIT_ACTION + '_copy').catch(() => [] as any[])) {
     let d: any = {}
     try { d = JSON.parse(p.detail || '{}') } catch { d = {} }
+    const k = String(p.entity_id || '')
+    if (p.action === 'photos.rep') { if (d.removed && lower(d.email)) tie.delete(k + '|' + lower(d.email)); continue }
     const to = lower(d.to), nm = String(d.name || '').trim()
-    if (to && nm) prOf.set(to, [...new Set([...(prOf.get(to) || []), nm])])
+    if (to && nm) tie.set(k + '|' + to, { to, name: nm })
   }
+  const prOf = new Map<string, string[]>()
+  for (const t of tie.values()) prOf.set(t.to, [...new Set([...(prOf.get(t.to) || []), t.name])])
   const spk = new Map<number, any>(), talk = new Map<number, any>()
   for (const s of await someRows(c, 'SELECT id, role, organisation, photo_url FROM speakers WHERE id IN (?)', rows.map(r => Number(albumOf(r)?.speakers?.[0] || 0)))) spk.set(Number(s.id), s)
   for (const t of await someRows(c, 'SELECT id, speaker_title, company, speaker_photo_url FROM innovation_talks WHERE id IN (?)', rows.map(r => Number(albumOf(r)?.talks?.[0] || 0)))) talk.set(Number(t.id), t)
