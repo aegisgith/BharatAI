@@ -57,27 +57,38 @@
   // down the Sent list. A paid pass not paid for stays grey.
   function passChip(p) {
     var s = String(p || ''), kind = /not paid/i.test(s) ? 'muted' : /^pr of /i.test(s) ? 'pass-pr' : /workshop/i.test(s) ? 'pass-ws' : /speaker|jury/i.test(s) ? 'pass-spk'
-      : /vip|organiser|special guest/i.test(s) ? 'pass-vip' : /exhibitor/i.test(s) ? 'sent' : /delegate|academic|student|expo|investor|media|influencer/i.test(s) ? 'good' : 'muted';
+      : /vip|organiser|special guest/i.test(s) ? 'pass-vip' : /exhibitor|representative/i.test(s) ? 'sent' : /delegate|academic|student|expo|investor|media|influencer/i.test(s) ? 'good' : 'muted';
     return chip([s, kind]);
   }
+  // Their face in a circle beside the name: from their own photos, centred on their face
+  // (x, y in percent), else a picture they chose; with neither, their initials.
+  function faceHtml(r) {
+    var f = r.face, pc = function (v) { v = Number(v); return isFinite(v) ? Math.max(0, Math.min(100, v)) : 50; };
+    if (f && f.src) return '<img class="wad-face" src="' + esc(f.src) + '" alt="" loading="lazy" style="object-position:' + pc(f.x) + '% ' + pc(f.y) + '%">';
+    var ini = String(r.name || '').replace(/^(dr|mr|mrs|ms|shri|smt|prof)\.?\s+/i, '').split(/\s+/).filter(function (x) { return x; }).slice(0, 2).map(function (x) { return x.charAt(0).toUpperCase(); }).join('');
+    return '<span class="wad-face wad-face-none" aria-hidden="true">' + esc(ini || '?') + '</span>';
+  }
   // Photos reach a person by WhatsApp or by email. Under a photos message: what the photos
-  // email did, what they did on their photos page, and one line on whether the photos have
-  // reached them by either. A WhatsApp still on its way ('sent', no receipt yet) is not judged.
+  // email did, whether they downloaded any (always said, also when none), and one line on
+  // whether the photos reached them by either. When no WhatsApp of their photos ever reached
+  // their phone, the email was their link, so a download is said to be from the email. A
+  // WhatsApp still on its way ('sent', no receipt yet) is not judged.
   function photoRemark(r) {
     if (r.kind !== 'photos' || r.test) return '';
-    var m = r.mail || {}, bits = [];
+    var m = r.mail || {}, bits = [], saved = Number(r.saved || 0), looked = Number(r.looked || 0);
+    var waGot = r.status === 'delivered' || r.status === 'read' || !!r.wa_reached, waWait = r.status === 'queued' || r.status === 'sending' || r.status === 'sent';
     bits.push(m.sent ? 'Photos email sent ' + when(m.sent) + (m.opened ? ', opened' : '') : 'No photos email sent');
     if (m.more) bits.push('more photos emailed');
     if (m.pr) bits.push('a copy went to their PR');
-    if (r.looked && !r.looked_after) bits.push('looked at their photos');
-    if (r.saved && !r.saved_after) bits.push('saved ' + num(r.saved) + ' photo' + (r.saved === 1 ? '' : 's'));
-    var out = '<small class="wad-mail">' + esc(bits.join(' · ')) + '</small>';
-    if (r.status === 'delivered' || r.status === 'read') return out;
+    var head = '<small class="wad-mail">' + esc(bits.join(' · ')) + '</small>';
+    var fromMail = m.sent && !waGot && !waWait ? ' from the email' : '';
+    var out = head + (saved ? '<small class="wad-ok-line">Downloaded ' + num(saved) + ' photo' + (saved === 1 ? '' : 's') + fromMail + '</small>'
+      : '<small class="wad-warn-line">' + (looked ? 'Looked at their photos' + fromMail + ', downloaded none yet' : 'Has not opened their photos page yet') + '</small>');
+    if (r.status === 'delivered' || r.status === 'read' || waWait) return out;
     if (r.wa_reached) return out + '<small class="wad-ok-line">Another WhatsApp of their photos reached them.</small>';
-    if (r.status === 'queued' || r.status === 'sending' || r.status === 'sent') return out;
     if (m.sent) return out + '<small class="wad-ok-line">Sent by email instead.</small>';
-    if (r.looked || r.saved) return out + '<small class="wad-ok-line">Has seen their photos.</small>';
-    return out + '<small class="wad-bad">Has not got their photos by WhatsApp or email yet.</small>';
+    if (looked || saved) return out;
+    return head + '<small class="wad-bad">Has not got their photos by WhatsApp or email yet.</small>';
   }
   function tplChip(s) { return chip(TPL_STATUS[s] || [s, 'muted']); }
   function kindWords(k) { return { photos: 'Photos', pass: 'Pass', custom: 'Announcement', reply: 'Reply', auto: 'Automatic' }[k] || k; }
@@ -365,11 +376,13 @@
     return '<div class="wad-card">' + top + '<div class="wad-table"><table><thead><tr><th>Who</th><th>What</th><th>State</th><th>When</th></tr></thead><tbody>' + log.map(function (r) {
       var last = r.read_at || r.delivered_at || r.sent_at || r.created_at;
       var job = [r.title, r.company].filter(function (x) { return x; }).join(', ');
-      return '<tr><td><b>' + esc(r.name || 'No name') + '</b>' + (r.pass ? ' ' + passChip(r.pass) : '') + (r.tags || []).map(function (t) { return ' ' + passChip(t); }).join('')
-        + (job ? '<small class="wad-job">' + esc(job) + '</small>' : '') + '<small>' + esc(r.number) + '</small></td>'
+      return '<tr><td><div class="wad-who">' + faceHtml(r) + '<div><b>' + esc(r.name || 'No name') + '</b>' + (r.pass ? ' ' + passChip(r.pass) : '') + (r.tags || []).map(function (t) { return ' ' + passChip(t); }).join('')
+        + (job ? '<small class="wad-job">' + esc(job) + '</small>' : '') + '<small>' + esc(r.number) + '</small></div></div></td>'
         + '<td>' + esc(kindWords(r.kind)) + (r.test ? ' <span class="wad-sub">(test)</span>' : '') + (r.own ? ' <span class="wad-sub">(own WhatsApp)</span>' : '') + '</td>'
         + '<td>' + statusChip(r.status) + (r.clicked_at ? ' ' + chip(['Tapped', 'good']) : '')
-        + (r.looked_after ? ' ' + chip(['Looked at their photos', 'good']) : '') + (r.saved_after ? ' ' + chip(['Saved ' + num(r.saved) + ' photo' + (r.saved === 1 ? '' : 's'), 'good']) : '')
+        // Looked after this WhatsApp: only said where this WhatsApp could have brought them;
+        // downloads are in the note below (photoRemark), so they are not said twice.
+        + (r.looked_after && ['failed', 'skipped', 'cancelled'].indexOf(r.status) < 0 ? ' ' + chip(['Looked at their photos', 'good']) : '')
         + (r.error ? '<small class="wad-bad">' + esc(r.error) + '</small>' : '') + photoRemark(r) + '</td>'
         + '<td><small>' + esc(when(last)) + '</small></td></tr>';
     }).join('') + '</tbody></table></div><p class="wad-sub">The newest 200 are shown.</p></div>';

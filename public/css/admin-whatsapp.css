@@ -137,6 +137,11 @@
 .wad-pass-ws { background: #e3f5f7; color: #0e6b78; }
 .wad small.wad-mail { margin-top: 4px; }
 .wad small.wad-ok-line { color: var(--wa-good); font-weight: 600; }
+.wad small.wad-warn-line { color: #93370d; font-weight: 600; }
+.wad-who { display: flex; gap: 12px; align-items: flex-start; }
+.wad-who > div { min-width: 0; }
+.wad-face { flex: 0 0 48px; width: 48px; height: 48px; border-radius: 50%; object-fit: cover; background: var(--wa-soft); border: 1px solid var(--wa-line); }
+.wad-face-none { display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; color: var(--wa-muted); }
 
 .wad-own { display: grid; gap: 0; max-height: 520px; overflow-y: auto; border: 1px solid var(--wa-line); border-radius: 10px; }
 .wad-own-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 8px 12px; border-top: 1px solid var(--wa-line); }

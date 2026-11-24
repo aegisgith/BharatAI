@@ -1915,8 +1915,13 @@ wa.post('/api/admin/whatsapp/tick', async (c) => {
 // and "PR of <name>" (a speaker's album was emailed to them as the person who looks after
 // that speaker: speaker.photos_copy). Every lookup on its own: a missing table only loses
 // its own words. ids and emails in chunks of 90: D1 binds at most 100 values a query.
+// The organiser's words for the tags (24 Nov 2026: "representative, speaker, delegate, free
+// any users participant"): someone on a company's team is its Representative, a workshop
+// seat makes a Workshop participant, and the free Visitor Pass says free.
 const WHO_PAID_TIERS = ['Delegate Pass', 'Premium Delegate Pass', 'VIP Pass', 'Academic Pass', 'Student Pass', 'Expo Pass']
-type Who = { title: string; company: string; pass: string; tags: string[] }
+type Who = { title: string; company: string; pass: string; tags: string[]; photo?: string }
+// A picture they chose (profile, speaker card): a link only, never an old base64 one.
+const pictureUrl = (v: unknown): string => { const s = String(v || '').trim(); return /^(https:\/\/|\/(?!\/))/.test(s) && s.length < 600 ? s : '' }
 const chunks90 = <T>(xs: T[]): T[][] => { const r: T[][] = []; for (let i = 0; i < xs.length; i += 90) r.push(xs.slice(i, i + 90)); return r }
 const qs = (n: number) => new Array(n).fill('?').join(',')
 const lower = (v: unknown) => String(v || '').trim().toLowerCase()
@@ -1932,14 +1937,14 @@ async function someRows(c: any, sql: string, list: any[]): Promise<any[]> {
 async function whoTheyAre(c: any, rows: any[]): Promise<Map<number, Who>> {
   const out = new Map<number, Who>()
   const att = new Map<number, any>()
-  for (const a of await someRows(c, 'SELECT id, job_title, company, badge_type, payment_status, email FROM attendees WHERE id IN (?)', rows.map(attOf))) att.set(Number(a.id), a)
+  for (const a of await someRows(c, 'SELECT id, job_title, company, badge_type, payment_status, email, avatar_url FROM attendees WHERE id IN (?)', rows.map(attOf))) att.set(Number(a.id), a)
   const emailOf = (r: any): string => { const a = att.get(attOf(r)); const g = albumOf(r)?.guest; const e = lower(a ? a.email : g ? g.email : ''); return e && !isNoEmail(e) ? e : '' }
   const emails = rows.map(emailOf)
   const onStage = new Set((await someRows(c, 'SELECT DISTINCT LOWER(TRIM(email)) AS e FROM speakers WHERE LOWER(TRIM(email)) IN (?)', emails)).map(s => String(s.e)))
   const workshop = new Set((await someRows(c, 'SELECT DISTINCT attendee_id FROM workshop_seats WHERE attendee_id IN (?)', [...att.keys()])).map(s => Number(s.attendee_id)))
   const team = new Map<string, any>()
-  for (const t of await someRows(c, 'SELECT attendee_id, LOWER(TRIM(email)) AS e, designation, company FROM exhibitor_team WHERE attendee_id IN (?)', [...att.keys()])) team.set('a' + t.attendee_id, t)
-  for (const t of await someRows(c, 'SELECT attendee_id, LOWER(TRIM(email)) AS e, designation, company FROM exhibitor_team WHERE LOWER(TRIM(email)) IN (?)', emails)) team.set('e' + t.e, t)
+  for (const t of await someRows(c, 'SELECT attendee_id, LOWER(TRIM(email)) AS e, designation, company, photo_url FROM exhibitor_team WHERE attendee_id IN (?)', [...att.keys()])) team.set('a' + t.attendee_id, t)
+  for (const t of await someRows(c, 'SELECT attendee_id, LOWER(TRIM(email)) AS e, designation, company, photo_url FROM exhibitor_team WHERE LOWER(TRIM(email)) IN (?)', emails)) team.set('e' + t.e, t)
   // The person who looks after a speaker: the address a copy of that speaker's album went to.
   const prOf = new Map<string, string[]>()
   for (const p of await all(c, "SELECT detail FROM admin_audit WHERE action = ? AND entity = 'photo_album'", AUDIT_ACTION + '_copy').catch(() => [] as any[])) {
@@ -1949,27 +1954,28 @@ async function whoTheyAre(c: any, rows: any[]): Promise<Map<number, Who>> {
     if (to && nm) prOf.set(to, [...new Set([...(prOf.get(to) || []), nm])])
   }
   const spk = new Map<number, any>(), talk = new Map<number, any>()
-  for (const s of await someRows(c, 'SELECT id, role, organisation FROM speakers WHERE id IN (?)', rows.map(r => Number(albumOf(r)?.speakers?.[0] || 0)))) spk.set(Number(s.id), s)
-  for (const t of await someRows(c, 'SELECT id, speaker_title, company FROM innovation_talks WHERE id IN (?)', rows.map(r => Number(albumOf(r)?.talks?.[0] || 0)))) talk.set(Number(t.id), t)
+  for (const s of await someRows(c, 'SELECT id, role, organisation, photo_url FROM speakers WHERE id IN (?)', rows.map(r => Number(albumOf(r)?.speakers?.[0] || 0)))) spk.set(Number(s.id), s)
+  for (const t of await someRows(c, 'SELECT id, speaker_title, company, speaker_photo_url FROM innovation_talks WHERE id IN (?)', rows.map(r => Number(albumOf(r)?.talks?.[0] || 0)))) talk.set(Number(t.id), t)
   for (const r of rows) {
     const a = att.get(attOf(r)), al = albumOf(r), e = emailOf(r), tags: string[] = []
     const t = (a && team.get('a' + a.id)) || (e && team.get('e' + e))
     let who: Who | null = null
     if (a) {
       const b = String(a.badge_type || '').trim(), pay = lower(a.payment_status), tier = WHO_PAID_TIERS.includes(b)
-      const pass = tier && (pay === 'pending' || pay === 'refunded') ? b + ' · not paid' : tier && pay === 'waived' ? b + ' · free' : b
-      who = { title: String(a.job_title || '').trim() || String(t?.designation || '').trim(), company: String(a.company || '').trim() || String(t?.company || '').trim(), pass, tags }
+      const pass = tier && (pay === 'pending' || pay === 'refunded') ? b + ' · not paid' : tier && pay === 'waived' ? b + ' · free' : b === 'Visitor Pass' ? b + ' · free' : b
+      who = { title: String(a.job_title || '').trim() || String(t?.designation || '').trim(), company: String(a.company || '').trim() || String(t?.company || '').trim(), pass, tags,
+        photo: pictureUrl(a.avatar_url) || pictureUrl(t?.photo_url) }
       if (onStage.has(e) && !/speaker/i.test(b)) tags.push('Speaker')
-      if (t && !/exhibitor/i.test(b)) tags.push('Exhibitor team')
-      if (workshop.has(Number(a.id))) tags.push('Workshop')
+      if (t && !/exhibitor/i.test(b)) tags.push('Representative')
+      if (workshop.has(Number(a.id))) tags.push('Workshop participant')
     } else if (al && al.guest) {
       who = { title: String(al.guest.title || '').trim(), company: '', pass: String(al.guest.role || 'Guest').trim(), tags }
     } else if (al && spk.get(Number(al.speakers?.[0] || 0))) {
       const s = spk.get(Number(al.speakers[0]))
-      who = { title: String(s.role || '').trim(), company: String(s.organisation || '').trim(), pass: 'Speaker', tags }
+      who = { title: String(s.role || '').trim(), company: String(s.organisation || '').trim(), pass: 'Speaker', tags, photo: pictureUrl(s.photo_url) }
     } else if (al && talk.get(Number(al.talks?.[0] || 0))) {
       const s = talk.get(Number(al.talks[0]))
-      who = { title: String(s.speaker_title || '').trim(), company: String(s.company || '').trim(), pass: 'Exhibition Speaker', tags }
+      who = { title: String(s.speaker_title || '').trim(), company: String(s.company || '').trim(), pass: 'Exhibition Speaker', tags, photo: pictureUrl(s.speaker_photo_url) }
     } else if (/^x\d/.test(String(r.person || ''))) {
       who = { title: '', company: '', pass: 'Exhibitor', tags }
     }
@@ -2006,6 +2012,46 @@ async function photoMail(c: any, rows: any[]): Promise<{ mail: Map<string, Mail>
   return { mail, reached, keysOf }
 }
 
+// A face to know them by, in a circle beside the name (the organiser, 24 Nov 2026: "put their
+// photos in circle a thumbnail"). Their own album's best photo at the small size, signed for
+// that album (the small size counts nothing: no visit, no save), with where their face is in
+// it (focus, percent across and down) so the circle centres on it. A photo they marked "Not
+// me", a hidden photo, or an album they asked us not to match is never used. With no album
+// photo: the picture they chose (profile, team or speaker card). Nothing: no circle.
+type Face = { src: string; x: number; y: number }
+async function facesFor(c: any, rows: any[], who: Map<number, Who>): Promise<Map<number, Face>> {
+  const out = new Map<number, Face>()
+  const albumKey = (r: any): string => { for (const k of [String(r.person || ''), attOf(r) ? 'a' + attOf(r) : '']) { if (k && !/^x\d/.test(k) && albumFor(k)) return String(albumFor(k)!.key || k) } return '' }
+  const keys = [...new Set(rows.map(albumKey).filter(Boolean))]
+  const notMe = new Map<string, Set<string>>(), optedOut = new Set<string>()
+  for (const r of await someRows(c, 'SELECT action, entity_id, detail FROM admin_audit WHERE action IN (\'' + NOT_ME + '\', \'' + OPT_OUT + '\') AND entity_id IN (?)', keys)) {
+    const k = String(r.entity_id)
+    if (r.action === OPT_OUT) { optedOut.add(k); continue }
+    try { const d = JSON.parse(r.detail || '{}'); if (d.photo) { const s = notMe.get(k) || new Set<string>(); s.add(String(d.photo)); notMe.set(k, s) } } catch { /* not JSON */ }
+  }
+  const hidden = await hiddenPhotos(c)
+  const pick = new Map<string, string[]>()
+  for (const k of keys) {
+    if (optedOut.has(k)) continue
+    const al: any = albumFor(k), no = notMe.get(k)
+    pick.set(k, [...new Set([...(al.best || []), ...(al.photos || [])])].filter((d: string) => !(no && no.has(d)) && !(hidden && hidden.has(d))).slice(0, 4))
+  }
+  const pid = new Map<string, string>()
+  for (const r of await someRows(c, 'SELECT pid, drive_id FROM event_photos WHERE event_id = 1 AND hidden = 0 AND drive_id IN (?)', [...pick.values()].flat())) pid.set(String(r.drive_id), String(r.pid))
+  const signed = new Map<string, Face | null>()
+  for (const r of rows) {
+    const k = albumKey(r)
+    if (k && !signed.has(k)) {
+      const d = (pick.get(k) || []).find(x => pid.has(x)), f = d ? (albumFor(k) as any)?.focus?.[d] : null
+      const src = d ? await photoLink(c, pid.get(d)!, 's', k) : ''
+      signed.set(k, src && /[?&]k=[0-9a-f]+/.test(src) ? { src, x: Number(f?.[0] ?? 50), y: Number(f?.[1] ?? 35) } : null)
+    }
+    const face = (k && signed.get(k)) || (who.get(Number(r.id))?.photo ? { src: who.get(Number(r.id))!.photo!, x: 50, y: 50 } : null)
+    if (face) out.set(Number(r.id), face)
+  }
+  return out
+}
+
 wa.get('/api/admin/whatsapp/messages', async (c) => {
   if (!(await ready(c))) return notReady(c)
   const where: string[] = ["m.direction = 'out'"], args: any[] = []
@@ -2026,10 +2072,12 @@ wa.get('/api/admin/whatsapp/messages', async (c) => {
   const who = await whoTheyAre(c, rows)
   const pm = await photoMail(c, rows)
   const marks = await photoMarks(c, rows.filter(r => r.kind === 'photos').flatMap(pm.keysOf))
+  const faces = await facesFor(c, rows, who)
   return c.json({ rows: rows.map(r => {
     const sent = r.sent_at || r.created_at
     const { person: _p, ...rest } = r
-    const base = { ...rest, number: shownNumber(String(r.wa_number)), ...(who.get(Number(r.id)) || {}) }
+    const { photo: _ph, ...them } = who.get(Number(r.id)) || ({} as any)
+    const base = { ...rest, number: shownNumber(String(r.wa_number)), ...them, face: faces.get(Number(r.id)) || null }
     if (r.kind !== 'photos') return base
     // The same album can sit under more than one key (a<id> and s<id>): add up the marks.
     const ks = pm.keysOf(r), ms = ks.map(k => marks.get(k)).filter(Boolean) as Marks[]

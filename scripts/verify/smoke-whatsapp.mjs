@@ -801,11 +801,15 @@ db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, d
 db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail, created_at) VALUES ('t', 'admin', 'attendee.photos', 'photo_album', ?, '{}', '2026-11-23 10:00:00')", [keys[0]]);
 db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail) VALUES ('visitor', 'public', 'photos.opened', 'photo_album', ?, '{}')", [keys[0]]);
 db.run("INSERT INTO wa_messages (direction, kind, wa_number, person, name, template, status, error) VALUES ('out', 'photos', '919555500016', 'g16', 'Akanksha Tiwari', 'x', 'failed', 'held back')");
+// Faces: Ravi marked his one stored photo "Not me", so his circle is the picture he chose.
+const raviPhoto = [...(ATT.albums[keys[1]].best || []), ...(ATT.albums[keys[1]].photos || [])][0];
+db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail) VALUES (?, 'attendee', 'photos.not_me', 'photo_album', ?, ?)", [keys[1], keys[1], JSON.stringify({ photo: raviPhoto })]);
+db.run("UPDATE attendees SET avatar_url = '/api/mp/uploads/77' WHERE id = ?", [idOf(keys[1])]);
 r = await as('GET', '/api/admin/whatsapp/messages?batch=' + batch1);
 const ashaWho = (r.json?.rows || []).find(x => x.name === 'Dr. Asha Mehta'), raviWho = (r.json?.rows || []).find(x => x.name === 'Ravi Kumar');
-check('the Sent list shows designation, company and pass (a free one says free), with Speaker, Exhibitor team and Workshop beside it',
-  ashaWho?.title === 'Chief Data Officer' && ashaWho.company === 'Tata Steel' && ashaWho.pass === 'Premium Delegate Pass · free' && JSON.stringify(ashaWho.tags) === '["Workshop"]'
-  && raviWho?.pass === 'Visitor Pass' && JSON.stringify(raviWho.tags) === '["Speaker","Exhibitor team"]' && raviWho.title === 'Solutions Lead' && raviWho.company === 'Acme AI' && !('email' in raviWho),
+check('the Sent list shows designation, company and pass (a free one says free), with Speaker, Representative and Workshop participant beside it',
+  ashaWho?.title === 'Chief Data Officer' && ashaWho.company === 'Tata Steel' && ashaWho.pass === 'Premium Delegate Pass · free' && JSON.stringify(ashaWho.tags) === '["Workshop participant"]'
+  && raviWho?.pass === 'Visitor Pass · free' && JSON.stringify(raviWho.tags) === '["Speaker","Representative"]' && raviWho.title === 'Solutions Lead' && raviWho.company === 'Acme AI' && !('email' in raviWho),
   JSON.stringify([ashaWho && { t: ashaWho.title, c: ashaWho.company, p: ashaWho.pass, g: ashaWho.tags }, raviWho && { p: raviWho.pass, g: raviWho.tags, t: raviWho.title }]));
 const ashaReached = msgs("kind = 'photos' AND test = 0 AND person = ? AND status IN ('delivered', 'read')", [keys[0]]).length > 0;
 check('under a photos message: the photos email (when, opened), and whether any photos WhatsApp reached them', ashaWho?.mail?.sent === '2026-11-23 10:00:00' && ashaWho.mail.opened === true && ashaWho.mail.pr === false
@@ -815,7 +819,11 @@ const akWho = (r.json?.rows || []).find(x => x.name === 'Akanksha Tiwari');
 check('a guest album shows the guest’s own title and role, "PR of" the speaker whose album was copied to them, and no email, no look, no WhatsApp',
   akWho?.pass === 'Guest' && akWho.title === 'Marketing, Bajaj Life Insurance' && JSON.stringify(akWho.tags) === '["PR of Tarun Chugh"]'
   && akWho.mail?.sent === '' && akWho.looked === 0 && akWho.saved === 0 && akWho.wa_reached === false, JSON.stringify(akWho && { p: akWho.pass, t: akWho.title, g: akWho.tags, m: akWho.mail, l: akWho.looked, s: akWho.saved, w: akWho.wa_reached }));
+check('a face in a circle: their own photo at the small size, signed for their album and centred on their face; a "Not me" photo never; else the picture they chose; else none',
+  (ashaWho?.face?.src || '').includes('/photo/W00abcdefghi/s.jpg?u=') && ashaWho.face.src.includes('u=' + keys[0]) && /[?&]k=[0-9a-f]+/.test(ashaWho.face.src) && typeof ashaWho.face.x === 'number'
+  && raviWho?.face?.src === '/api/mp/uploads/77' && akWho?.face === null && !('photo' in (ashaWho || {})), JSON.stringify([ashaWho?.face, raviWho?.face, akWho?.face]));
 db.run("DELETE FROM wa_messages WHERE person = 'g16'");
+db.run("DELETE FROM admin_audit WHERE action = 'photos.not_me' AND entity_id = ?", [keys[1]]);
 const b1 = (await as('GET', '/api/admin/whatsapp')).json?.batches?.find(b => b.id === batch1);
 check('the photos send counts how many looked and saved since', b1?.looked_after === 1 && b1.saved_after === 1, JSON.stringify(b1 && { l: b1.looked_after, s: b1.saved_after }));
 
