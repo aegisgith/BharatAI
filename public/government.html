@@ -247,7 +247,8 @@
     .gv-tiles.gv-stacked { display: block; }
     .gv-stacked .gv-tile { position: sticky; top: calc(var(--nav-h) + 10px + var(--i, 0) * 12px); height: min(58vh, 430px); aspect-ratio: auto; margin-bottom: 0.85rem; transform: scale(calc(1 - 0.07 * var(--p, 0))); transform-origin: 50% 0; box-shadow: 0 -10px 30px rgba(0,0,0,0.42); will-change: transform; }
     .gv-stacked .gv-tile:nth-child(2) { --i: 1; }
-    .gv-stacked .gv-tile:nth-child(3) { --i: 2; margin-bottom: 0; }
+    .gv-stacked .gv-tile:nth-child(3) { --i: 2; }
+    .gv-stacked .gv-tile:nth-child(4) { --i: 3; margin-bottom: 0; }
     .gv-stacked .gv-tile::after { content: ""; position: absolute; inset: 0; background: #05070F; opacity: calc(0.55 * var(--p, 0)); pointer-events: none; }
     @media (min-width: 900px) {
         .gv-tiles.gv-stacked { max-width: 1000px; margin: 0 auto; }
@@ -264,8 +265,8 @@
     .gv-ways-cta { margin-top: 1.5rem; text-align: center; }
     @media (max-width: 480px) { .gv-ways-cta .btn { width: 100%; justify-content: center; } }
     @media (min-width: 900px) {
-        .gv-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
-        .gv-tile { aspect-ratio: 4 / 4.2; }
+        .gv-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+        .gv-tile { aspect-ratio: 3 / 2; }
         .gv-tile div { padding: 5rem 1.35rem 1.35rem; }
         .gv-more { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin-top: 1.25rem; }
     }
@@ -285,6 +286,15 @@
     .gv-show a { margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; font-weight: 800; color: var(--ink-orange); }
     .gv-show.green a { color: #0F6E07; }
     .gv-expo { overflow-x: clip; }
+    /* the Ministry of Tribal Affairs booth at Mumbai 2026, under the two cards */
+    .gv-booth { margin: 1.25rem 0 0; background: #fff; border: 1px solid #E3E6F6; border-radius: 18px; overflow: hidden; box-shadow: 0 14px 34px rgba(13,15,30,0.06); }
+    .gv-booth-pics { display: grid; gap: 3px; background: #E3E6F6; }
+    .gv-booth-pics img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; }
+    .gv-booth figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 1.25rem; padding: 1rem 1.2rem 1.2rem; }
+    .gv-booth .gv-ph-kind { flex-basis: 100%; margin: 0; }
+    .gv-booth-say { flex: 1 1 22rem; color: var(--charcoal); font-size: 1rem; line-height: 1.55; text-wrap: pretty; }
+    .gv-booth .gv-ph-logos { margin: 0; padding: 0; }
+    @media (min-width: 640px) { .gv-booth-pics { grid-template-columns: 1fr 1fr; } }
     @supports (animation-timeline: view()) {
         @media (prefers-reduced-motion: no-preference) {
             .gv-show { animation: gvFromLeft linear both; animation-timeline: view(); animation-range: entry 0% cover 38%; }
@@ -653,12 +663,16 @@
                     <img width="1600" height="1066" loading="lazy" decoding="async" src="images/gallery/7C2A2566.webp" alt="Delegates seated at tables in a conference room, listening to a presenter" style="object-position:60% center">
                     <div><span class="gv-tag">Complimentary · 60–90 minutes</span><b>Closed-Door Roundtable</b><p>Discuss challenges, solutions and collaboration with industry leaders and startups.</p></div>
                 </li>
+                <li class="gv-tile">
+                    <img width="1600" height="1066" loading="lazy" decoding="async" src="images/government/mumbai-2026/tribal-affairs-booth-demo.webp" alt="At the Ministry of Tribal Affairs booth, a team member shows a visitor Adi Vaani on a screen" style="object-position:40% 10%">
+                    <div><span class="gv-tag">Both days · Government Pavilion</span><b>Exhibition Booth</b><p>Show your AI platforms and services to delegates at your own booth. Pictured: the Ministry of Tribal Affairs booth at Mumbai 2026.</p></div>
+                </li>
             </ul>
             <ul class="gv-more reveal">
                 <li><i class="fas fa-laptop-code" aria-hidden="true"></i><div><b>Live Demonstration</b><span>Show delegates your AI-powered platforms, portals, apps and digital public services.</span></div></li>
                 <li><i class="fas fa-rocket" aria-hidden="true"></i><div><b>Launch of a New Initiative</b><span>Announce or demonstrate a new AI-powered service, platform, dataset, policy or programme.</span></div></li>
             </ul>
-            <p class="gv-photo-note">Photos from Data Science Congress, the predecessor to Bharat AI Innovation.</p>
+            <p class="gv-photo-note">Talk, keynote and roundtable photos from Data Science Congress, the predecessor to Bharat AI Innovation. Booth photo from Bharat AI Innovation Mumbai 2026.</p>
             <div class="gv-ways-cta"><a href="#nominate" class="btn btn-primary btn-lg">Nominate your initiative <i class="fas fa-arrow-right" aria-hidden="true"></i></a></div>
         </div>
     </section>
@@ -686,6 +700,13 @@
                     <a href="#nominate" data-format="Incubated Startups Showcase">Showcase your startups <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
                 </article>
             </div>
+            <figure class="gv-booth reveal">
+                <div class="gv-booth-pics">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/tribal-affairs-booth-720.webp" srcset="images/government/mumbai-2026/tribal-affairs-booth-720.webp 720w, images/government/mumbai-2026/tribal-affairs-booth.webp 1200w" sizes="(min-width: 640px) 50vw, 100vw" alt="The Ministry of Tribal Affairs booth, branded Adi Vaani, with visitors at the desk and a demo on screen">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/tribal-affairs-booth-visitors-720.webp" srcset="images/government/mumbai-2026/tribal-affairs-booth-visitors-720.webp 720w, images/government/mumbai-2026/tribal-affairs-booth-visitors.webp 1200w" sizes="(min-width: 640px) 50vw, 100vw" alt="Visitors at the Ministry of Tribal Affairs booth looking at Adi Vaani on a large screen">
+                </div>
+                <figcaption><span class="gv-ph-kind">At Mumbai 2026</span><span class="gv-booth-say">The Ministry of Tribal Affairs, Government of India, showed Adi Vaani, its AI for India’s tribal languages, at its own booth on both days.</span><span class="gv-ph-logos"><img width="336" height="150" loading="lazy" decoding="async" src="images/exhibitors/ministry-of-tribal-affairs.webp" alt="Ministry of Tribal Affairs, Government of India"></span></figcaption>
+            </figure>
         </div>
     </section>
 

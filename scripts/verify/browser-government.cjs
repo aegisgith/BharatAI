@@ -61,6 +61,8 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
       await page.locator(sel).scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);
     }
+    // The Mumbai 2026 photos are a long grid on a phone: bring each one near, or it never starts loading.
+    for (const fig of await page.locator('.gv-ph, .gv-booth').all()) { await fig.scrollIntoViewIfNeeded(); await page.waitForTimeout(150); }
     await page.waitForFunction(() => [...document.images].every((i) => i.complete), null, { timeout: 20000 }).catch(() => {});
     check('sections show with animations off', await page.evaluate(() => ['.gv-rows', '.gv-mins', '.gv-offs', '.gv-talks', '.gv-tiles', '.gv-secs', '.gv-nom-intro'].every((s) => getComputedStyle(document.querySelector(s)).opacity === '1')));
     check('every picture loads', await page.evaluate(() => [...document.images].every((i) => i.naturalWidth > 0)), await page.evaluate(() => [...document.images].filter((i) => !i.naturalWidth).map((i) => i.src).join(', ')));
@@ -108,7 +110,7 @@ const fill = async (page, v) => { for (const [id, val] of Object.entries(v)) awa
     check('the thank-you names the officer and the email', /Asha Rao.*asha\.rao@example\.gov\.in/.test(await page.textContent('#gv-done-text')));
     check('and the form has gone', !(await page.locator('#gv-form').isVisible()));
     const saved = await (await ctx.request.get(BASE + '/__inquiries')).json();
-    check('it really landed in the database', saved.length === 1 && saved[0].inquiry_type === 'government' && saved[0].subject === 'Govt AI · Adi Vaani' && saved[0].organization === 'Ministry of Tribal Affairs' && saved[0].message.includes('Live Demonstration, Government Pavilion'), JSON.stringify(saved));
+    check('it really landed in the database', saved.length === 1 && saved[0].inquiry_type === 'government' && saved[0].subject === 'Delhi 2027 · Govt AI · Adi Vaani' && saved[0].organization === 'Ministry of Tribal Affairs' && saved[0].message.includes('Live Demonstration, Government Pavilion'), JSON.stringify(saved));
     const mail = await (await ctx.request.get(BASE + '/__mail')).json();
     check('and the team was emailed once', mail.length === 1 && mail[0].Content.ReplyTo.includes('asha.rao@example.gov.in'), mail.length);
 
