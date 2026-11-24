@@ -375,6 +375,8 @@ t = await tick();
 failWith = null;
 check('six people in a row held back by Meta do not pause the send: that is about each person, not the send', rows('SELECT status FROM wa_batches WHERE id = ?', [batch5])[0].status !== 'paused'
   && msgs("batch_id = ? AND status = 'failed' AND error_code = 131049", [batch5]).length === 6 && msgs("batch_id = ? AND status IN ('sent', 'delivered', 'read')", [batch5]).length === 1, JSON.stringify(t));
+r = await as('POST', '/api/admin/whatsapp/audience', { kind: 'custom', template: custom, audience: 'list', list: 'Y, 9122300000\nNew Person, 9122399999' });
+check('a new send leaves out anyone Meta held back in the last day, and says to use "Try again" tomorrow', r.json?.count === 1 && r.json.skipped.some(s => s.why === 'held_recently' && s.n === 1 && /Try again/.test(s.words)), JSON.stringify(r.json?.skipped));
 let ovR = (await as('GET', '/api/admin/whatsapp')).json?.batches?.find(b => b.id === batch5);
 check('the send offers "Try again" for the people Meta held back', ovR?.reasons?.some(x => x.retry === true && x.n === 6), JSON.stringify(ovR?.reasons));
 const sb5 = sends().length;
@@ -383,6 +385,12 @@ t = await tick();
 check('try again: only those six go again, and the send finishes', r.status === 200 && r.json.retried === 6 && sends().slice(sb5).length === 6
   && msgs("batch_id = ? AND status IN ('sent', 'delivered', 'read')", [batch5]).length === 7 && rows('SELECT status FROM wa_batches WHERE id = ?', [batch5])[0].status === 'done', r.text.slice(0, 200));
 check('try again with nobody left to try is refused', (await as('POST', `/api/admin/whatsapp/batches/${batch5}/retry`, {})).status === 409, '');
+// A second send that Meta held back for the same person: "Try again" there never sends twice.
+db.run("INSERT INTO wa_batches (event_id, kind, template, title, audience, status, total, created_by) VALUES (1, 'custom', ?, 'Again', 'list', 'done', 1, 'test')", [custom]);
+const batch6 = rows('SELECT MAX(id) AS id FROM wa_batches')[0].id;
+db.run("INSERT INTO wa_messages (event_id, direction, kind, wa_number, person, name, template, payload, target_url, status, error, error_code, batch_id, created_by) VALUES (1, 'out', 'custom', '919122300000', '', 'Y', ?, '{}', '', 'failed', 'held', 131049, ?, 'test')", [custom, batch6]);
+r = await as('POST', `/api/admin/whatsapp/batches/${batch6}/retry`, {});
+check('try again on a second send skips someone already sent the same message since: nobody gets it twice', r.status === 409 && msgs('batch_id = ?', [batch6])[0].status === 'failed', r.text.slice(0, 160));
 
 // ---------- reports and the inbox (23 Nov 2026, evening) ----------
 r = await as('GET', '/api/admin/whatsapp');
@@ -755,7 +763,7 @@ check('the photos send counts how many looked and saved since', b1?.looked_after
 r = await as('GET', '/api/admin/whatsapp/messages?status=failed');
 const ov = (await as('GET', '/api/admin/whatsapp')).json;
 check('the Sent list filters by state, and the overview counts every send with its numbers', r.json?.rows.length >= 6 && r.json.rows.every(x => x.status === 'failed' && /^\+91 /.test(x.number))
-  && ov.batches.length === 8 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
+  && ov.batches.length === 9 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
 check('no answer from any admin route ever carried the access key or the app secret', answers.length > 60 && answers.every(a => !a.includes(TOKEN) && !a.includes(SECRET)), answers.length);
 // ---------- registering our number (Meta answers 133010 until it is) ----------
 const registers = () => calls.filter(c => c.path === `${PHONE}/register`);

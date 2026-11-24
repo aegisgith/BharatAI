@@ -472,7 +472,13 @@ type Built = { people: Person[]; skipped: Record<string, number>; error?: string
 export type Spec = { kind: string; template?: string; event?: number; audience?: string; list?: string; only_new?: boolean; attendee_id?: number; number?: string; name?: string }
 const SKIP_WORDS: Record<string, string> = { no_mobile: 'have no mobile number', bad_number: 'have a mobile number that is not complete', stopped: 'asked us to stop on WhatsApp',
   unsubscribed: 'unsubscribed from our updates', already: 'were already sent this', no_photo: 'have no photo left to show', photo_no: 'asked us not to match their photos', twice: 'share a number with someone above',
-  held: 'have albums the team is not sure are them (held back)', check: 'are weaker matches nobody has looked at yet (send them from After the Event once checked)' }
+  held: 'have albums the team is not sure are them (held back)', check: 'are weaker matches nobody has looked at yet (send them from After the Event once checked)',
+  held_recently: 'were held back by WhatsApp in the last day (too many business messages lately): use "Try again for these" on that send tomorrow' }
+// Numbers Meta held back (131049) in the last 24 hours: sending again so soon only gets them
+// held back again (24 Nov 2026: a second photos send at 10 am went to the same 55, 51 refused).
+async function heldRecently(c: any): Promise<Set<string>> {
+  try { return new Set((await all(c, "SELECT DISTINCT wa_number FROM wa_messages WHERE direction = 'out' AND status = 'failed' AND error_code = 131049 AND updated_at > datetime('now', '-1 day')")).map(r => String(r.wa_number))) } catch { return new Set() }
+}
 
 async function sentAlready(c: any, spec: Spec, tpl: Tpl): Promise<Set<string>> {
   try {
@@ -495,6 +501,8 @@ async function build(c: any, spec: Spec, tpl: Tpl, links = true): Promise<Built>
   const people: Person[] = []
   const stopped = await stoppedNumbers(c)
   const already = spec.only_new === false ? new Set<string>() : await sentAlready(c, spec, tpl)
+  // One person chosen by hand (a reply, Attendees, After the Event) is the team's call.
+  const recent = spec.attendee_id || spec.audience === 'one' ? new Set<string>() : await heldRecently(c)
   const seen = new Set<string>()
   const cols = hooks.columns ? await hooks.columns(c).catch(() => new Set<string>()) : new Set<string>()
   const has = (col: string) => !cols.size || cols.has(col)
@@ -507,6 +515,7 @@ async function build(c: any, spec: Spec, tpl: Tpl, links = true): Promise<Built>
     if (stopped.has(n)) { skip('stopped'); return '' }
     if (checkConsent && (a.unsubscribed_at || String(a.marketing_consent ?? '') === '0')) { skip('unsubscribed'); return '' }
     if (already.has(n)) { skip('already'); return '' }
+    if (recent.has(n)) { skip('held_recently'); return '' }
     if (seen.has(n)) { skip('twice'); return '' }
     seen.add(n)
     return n
@@ -1813,8 +1822,12 @@ wa.post('/api/admin/whatsapp/batches/:id/:what', async (c) => {
     // The people Meta held back (131049) go back in the queue; the clock checks STOP and
     // held albums again before each one goes.
     const codes = Object.keys(ERRORS).map(Number).filter(k => ERRORS[k].retry)
+    // Never twice: someone already waiting, or since sent this kind of message (another send,
+    // or "Try again" pressed on another send that held back the same people), is left alone.
     const r = await run(c, `UPDATE wa_messages SET status = 'queued', error = NULL, error_code = NULL, updated_at = datetime('now')
-       WHERE batch_id = ? AND status = 'failed' AND error_code IN (${codes.map(() => '?').join(',')})`, id, ...codes)
+       WHERE batch_id = ? AND status = 'failed' AND error_code IN (${codes.map(() => '?').join(',')})
+       AND NOT EXISTS (SELECT 1 FROM wa_messages o WHERE o.wa_number = wa_messages.wa_number AND o.template = wa_messages.template AND o.id <> wa_messages.id
+         AND o.direction = 'out' AND o.test = 0 AND o.status IN ('queued', 'sending', 'sent', 'delivered', 'read'))`, id, ...codes)
     if (!changed(r)) return c.json({ error: 'There is nobody to try again in this send.' }, 409)
     await run(c, "UPDATE wa_batches SET status = 'running', finished_at = NULL, note = NULL WHERE id = ?", id)
     await note(c, 'whatsapp.batch.retry', id, { count: changed(r) })
