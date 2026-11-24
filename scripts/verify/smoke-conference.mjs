@@ -308,5 +308,27 @@ const check = (n, ok, d = '') => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (o
   check('a different name is not mistaken for them', other.status === 201, other.json);
 }
 
+// ================= more than 100 speakers with an email (24 Nov 2026) =================
+// Production had 125 speakers, 101 with an email, and the screen showed "Could not load
+// the conference": one query listed every email and D1 takes at most 100 values.
+{
+  const W = await makeWorld({ migrated: true });
+  for (let i = 0; i < 130; i++) {
+    const id = 500 + i
+    W.db.run('INSERT INTO speakers (id, event_id, slug, name, role, organisation, email, is_published, sort_order) VALUES (?, 1, ?, ?, ?, ?, ?, 1, ?)',
+      [id, 'many-' + i, 'Speaker Number ' + i, 'Role', 'Org ' + i, 'many' + i + '@example.test', id]);
+  }
+  // A pass under the 130th speaker's email, with a profile photo the speaker lacks.
+  W.db.run("INSERT INTO attendees (id, event_id, name, email, badge_type, payment_status, main_event, avatar_url) VALUES (9201, 1, 'Speaker Number 129', 'many129@example.test', 'Delegate', 'paid', 1, '/api/uploads/avatars/9201.jpg')");
+  const r = await W.call('GET', '/api/admin/events/1/conference');
+  const n = W.rows("SELECT COUNT(*) AS n FROM speakers WHERE event_id = 1 AND COALESCE(email, '') <> ''")[0].n;
+  check(`with ${n} speakers holding an email (over D1's 100), Admin → Conference still loads`, r.status === 200 && Array.isArray(r.json?.sessions), { status: r.status, error: r.json?.error });
+  const last = (r.json?.speakers || []).find(s => s.id === 629);
+  check('the 130th speaker shows the pass under their email', last && last.pass && last.pass.id === 9201 && last.pass.badge_type === 'Delegate', last);
+  check('...and the photo on that pass', last && last.photo_url === '/api/uploads/avatars/9201.jpg' && last.photo_from_pass === true, last && last.photo_url);
+  const pub = await W.call('GET', '/api/events/1/sessions', undefined, { admin: false });
+  check('the public programme still answers', pub.status === 200 && Array.isArray(pub.json), pub.status);
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

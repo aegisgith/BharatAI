@@ -524,6 +524,17 @@ const audit = async (c: any, action: string, entity: string, id: any, detail: an
   if (hooks.audit) { try { await hooks.audit(c, action, entity, id, detail) } catch { /* the audit log never fails a save */ } }
 }
 const all = async (c: any, sql: string, ...args: any[]) => (((await c.env.DB.prepare(sql).bind(...args).all()) as any).results || []) as any[]
+// D1 refuses a query with more than 100 values in it. A list of every speaker's email
+// passed 100 on 24 Nov 2026 (101 emails + the event), and Admin → Conference stopped
+// loading. allIn() asks in groups of 90: sql has one '(?)' for the list, after `before`.
+export async function allIn(c: any, sql: string, before: any[], list: any[]): Promise<any[]> {
+  const out: any[] = []
+  for (let i = 0; i < list.length; i += 90) {
+    const part = list.slice(i, i + 90)
+    out.push(...await all(c, sql.replace('(?)', '(' + part.map(() => '?').join(',') + ')'), ...before, ...part))
+  }
+  return out
+}
 const one = async (c: any, sql: string, ...args: any[]) => (await c.env.DB.prepare(sql).bind(...args).first()) as any
 
 export async function hallsFor(c: any, eventId: number, isReady: boolean) {
@@ -645,7 +656,7 @@ conf.get('/api/admin/events/:id/conference', async (c) => {
   const emails = [...new Set(speakers.map((s: any) => String(s.email || '').trim().toLowerCase()).filter(Boolean))]
   const passes = new Map<string, any>()
   if (emails.length) {
-    const rows = await all(c, 'SELECT id, email, badge_type, payment_status FROM attendees WHERE event_id = ? AND LOWER(TRIM(email)) IN (' + emails.map(() => '?').join(',') + ')', eventId, ...emails)
+    const rows = await allIn(c, 'SELECT id, email, badge_type, payment_status FROM attendees WHERE event_id = ? AND LOWER(TRIM(email)) IN (?)', [eventId], emails)
     for (const a of rows) passes.set(String(a.email).trim().toLowerCase(), { id: a.id, badge_type: a.badge_type || '', payment_status: a.payment_status || '' })
   }
   const announced = new Map<number, any>()
@@ -1541,8 +1552,11 @@ export async function withAttendeePhotos(c: any, eventId: number, speakers: any[
   const emails = [...new Set(missing.map(sp => String(sp.email || '').trim().toLowerCase()).filter(Boolean))]
   let rows: any[] = []
   try {
-    const where = ["badge_type IN ('Speaker', 'Organiser')", ...(emails.length ? ['LOWER(TRIM(email)) IN (' + emails.map(() => '?').join(',') + ')'] : [])].join(' OR ')
-    rows = await all(c, "SELECT id, name, email, avatar_url FROM attendees WHERE event_id = ? AND avatar_url LIKE '/api/uploads/%' AND (" + where + ')', eventId, ...emails)
+    const base = "SELECT id, name, email, avatar_url FROM attendees WHERE event_id = ? AND avatar_url LIKE '/api/uploads/%' AND "
+    const seen = new Set<number>()
+    for (const a of [...await all(c, base + "badge_type IN ('Speaker', 'Organiser')", eventId), ...await allIn(c, base + 'LOWER(TRIM(email)) IN (?)', [eventId], emails)]) {
+      if (!seen.has(Number(a.id))) { seen.add(Number(a.id)); rows.push(a) }
+    }
   } catch { return speakers }
   if (!rows.length) return speakers
   const byEmail = new Map(rows.map((a: any) => [String(a.email || '').trim().toLowerCase(), a]))

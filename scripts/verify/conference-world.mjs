@@ -19,7 +19,10 @@ export async function makeWorld({ seed = 'small', migrated = false } = {}) {
   db.exec(readFileSync(join(ROOT, 'scripts', 'verify', 'prod-schema.sql'), 'utf8'));
 
   const clean = (a) => a.map(v => (v === undefined ? null : typeof v === 'boolean' ? Number(v) : v));
-  const rows = (sql, args = []) => { const st = db.prepare(sql); st.bind(clean(args)); const out = []; while (st.step()) out.push(st.getAsObject()); st.free(); return out; };
+  // Production D1 refuses more than 100 values in one query (Admin -> Conference broke on
+  // 24 Nov 2026 at 101 speaker emails); sql.js allows thousands, so the world refuses too.
+  const cap = (args) => { if (args.length > 100) throw new Error('D1_ERROR: too many SQL variables (' + args.length + '): SQLITE_ERROR'); };
+  const rows = (sql, args = []) => { cap(args); const st = db.prepare(sql); st.bind(clean(args)); const out = []; while (st.step()) out.push(st.getAsObject()); st.free(); return out; };
   const D1 = {
     prepare(sql) {
       let args = [];
@@ -27,7 +30,7 @@ export async function makeWorld({ seed = 'small', migrated = false } = {}) {
         bind(...a) { args = clean(a); return s; },
         async first() { return rows(sql, args)[0] || null; },
         async all() { return { results: rows(sql, args) }; },
-        async run() { db.run(sql, args); return { meta: { last_row_id: db.exec('SELECT last_insert_rowid()')[0].values[0][0], changes: db.getRowsModified() } }; },
+        async run() { cap(args); db.run(sql, args); return { meta: { last_row_id: db.exec('SELECT last_insert_rowid()')[0].values[0][0], changes: db.getRowsModified() } }; },
         _rows() { return rows(sql, args); },
       };
       return s;
