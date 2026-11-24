@@ -20,7 +20,53 @@
   'use strict';
 
   var LOGO = 'https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png';
+  // Aegis School of Data Science and AI: dark red and grey on a clear background,
+  // so it is only ever drawn on white (the same file the passes carry).
+  var AEGIS_LOGO = 'https://bharataiinnovation.com/images/passes/aegis.png';
   var proxy = function (u) { return '/api/image-proxy?url=' + encodeURIComponent(u); };
+
+  // Every certificate is signed by two people (organiser, 24 Nov 2026): on the
+  // left the facilitator (a workshop's speaker; the Organizing Committee where a
+  // certificate has none), on the right the Dean. Spelling as on the site.
+  var DEAN = { name: 'Dr. Abhijit Gangopadhyay', role: 'Dean', org: 'Aegis School of Data Science and AI' };
+  var COMMITTEE = { name: 'Organizing Committee', role: 'Bharat AI Innovation 2026', org: 'Aegis Knowledge Trust' };
+
+  // "Dr. Ashish Tendulkar, PhD, IIT Bombay; Google AI" -> the name before the
+  // first comma signs; the rest is the line under the role.
+  function facilitator(speaker) {
+    var s = String(speaker || '').trim();
+    if (!s) return null;
+    var i = s.indexOf(',');
+    var name = (i < 0 ? s : s.slice(0, i)).trim();
+    var rest = (i < 0 ? '' : s.slice(i + 1)).trim().replace(/\s*;\s*/g, ' · ');
+    return name ? { name: name, role: 'Workshop Facilitator', org: rest } : null;
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // Two signature blocks side by side: a line, the name, the role, the organisation.
+  // y is the signature line; the block ends about 100 px below it.
+  function signoff(ctx, W, y, people, family) {
+    family = family || 'Inter, Arial';
+    var list = (people || []).filter(Boolean);
+    var span = 340, colW = 440;
+    ctx.save();
+    ctx.textAlign = 'center';
+    list.forEach(function (p, i) {
+      var cx = list.length === 1 ? W / 2 : W / 2 + (i === 0 ? -span : span);
+      ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fillRect(cx - 160, y, 320, 2);
+      ctx.fillStyle = '#ffffff'; fit(ctx, p.name, '600', 26, 18, family, colW); ctx.fillText(p.name, cx, y + 40);
+      ctx.fillStyle = '#ff9a52'; fit(ctx, p.role || '', '600', 18, 13, family, colW); ctx.fillText(p.role || '', cx, y + 70);
+      if (p.org) { ctx.fillStyle = '#9698ac'; fit(ctx, p.org, '400', 17, 12, family, colW); ctx.fillText(p.org, cx, y + 96); }
+    });
+    ctx.restore();
+  }
 
   function loadImage(src) {
     return new Promise(function (resolve, reject) {
@@ -57,21 +103,26 @@
     // Double border
     ctx.strokeStyle = 'rgba(255,107,0,0.55)'; ctx.lineWidth = 4; ctx.strokeRect(40, 40, W - 80, H - 80);
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1.5; ctx.strokeRect(58, 58, W - 116, H - 116);
-    // Logo, 340 wide (was 150 until 24 Nov 2026: the organiser asked for it bigger).
-    // The PNG has a solid white background, so it sits on a rounded white card
-    // rather than as a bare white block on the dark certificate.
-    try {
-      var logo = await loadImage(o.logo || proxy(LOGO));
-      var lw = 340, lh = logo.height * (lw / logo.width), ly = 104;
-      var px = 22, py = 14, cx = (W - lw) / 2 - px, cy = ly - py, cw = lw + px * 2, chh = lh + py * 2, r = 16;
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.moveTo(cx + r, cy);
-      ctx.arcTo(cx + cw, cy, cx + cw, cy + chh, r); ctx.arcTo(cx + cw, cy + chh, cx, cy + chh, r);
-      ctx.arcTo(cx, cy + chh, cx, cy, r); ctx.arcTo(cx, cy, cx + cw, cy, r);
-      ctx.closePath(); ctx.fill();
-      ctx.drawImage(logo, (W - lw) / 2, ly, lw, lh);
-    } catch (e) { /* drawn without it, as before */ }
+    // Logos on one rounded white card: Bharat AI Innovation 340 wide (was 150
+    // until 24 Nov 2026, the organiser asked for it bigger), then a thin rule,
+    // then Aegis School of Data Science and AI. Both PNGs need white behind them.
+    // Whichever fails to load is left out; the card shrinks to what is there.
+    var marks = [];
+    try { var bl = await loadImage(o.logo || proxy(LOGO)); marks.push({ img: bl, w: 340, h: bl.height * (340 / bl.width) }); } catch (e) {}
+    try { var al = await loadImage(o.aegisLogo || proxy(AEGIS_LOGO)); marks.push({ img: al, w: al.width * (124 / al.height), h: 124 }); } catch (e) {}
+    if (marks.length) {
+      var padX = 26, padY = 14, gap = 30, top = 90;
+      var innerH = Math.max.apply(null, marks.map(function (m) { return m.h; }));
+      var cardW = padX * 2 + marks.reduce(function (a, m) { return a + m.w; }, 0) + (marks.length - 1) * (gap * 2 + 2);
+      var x = (W - cardW) / 2;
+      ctx.fillStyle = '#ffffff'; roundRect(ctx, x, top, cardW, innerH + padY * 2, 16); ctx.fill();
+      x += padX;
+      marks.forEach(function (m, i) {
+        if (i) { ctx.fillStyle = 'rgba(11,13,26,0.18)'; ctx.fillRect(x + gap, top + padY + 10, 2, innerH - 20); x += gap * 2 + 2; }
+        ctx.drawImage(m.img, x, top + padY + (innerH - m.h) / 2, m.w, m.h);
+        x += m.w;
+      });
+    }
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ff9a52'; ctx.font = '600 26px Inter, Arial'; ctx.fillText('CERTIFICATE OF PARTICIPATION', W / 2, 320);
     ctx.fillStyle = '#c8c9d6'; ctx.font = '400 22px Inter, Arial'; ctx.fillText('This is proudly presented to', W / 2, 400);
@@ -107,11 +158,11 @@
         ctx.fillText(certLine, W / 2, 848);
       }
     }
-    // Signature line
-    ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(W / 2 - 150, 900, 300, 2);
-    ctx.fillStyle = '#9698ac'; ctx.font = '400 18px Inter, Arial'; ctx.fillText('Organizing Committee · Aegis Knowledge Trust', W / 2, 935);
+    // Signed by the facilitator and the Dean.
+    signoff(ctx, W, 905, [(ws && facilitator(ws.speaker)) || COMMITTEE, DEAN]);
+    ctx.textAlign = 'center';
     ctx.fillStyle = '#6b6a63'; ctx.font = '400 15px Inter, Arial';
-    ctx.fillText('Certificate ID: ' + (ws ? 'BHAI-WS-' : 'BHAI-CERT-') + String(o.id == null ? '' : o.id).padStart(4, '0'), W / 2, 1010);
+    ctx.fillText('Certificate ID: ' + (ws ? 'BHAI-WS-' : 'BHAI-CERT-') + String(o.id == null ? '' : o.id).padStart(4, '0'), W / 2, 1042);
     return canvas;
   }
 
@@ -119,5 +170,10 @@
     return isWorkshop ? 'BharatAI-2026-Workshop-Certificate.png' : 'BharatAI-2026-Certificate.png';
   }
 
-  global.BhaiCert = { draw: draw, filename: filename };
+  // signoff, DEAN, COMMITTEE and the Aegis logo are shared with the campus-panel
+  // certificate (generatePanelCertificate in the app), which draws its own page.
+  global.BhaiCert = {
+    draw: draw, filename: filename, signoff: signoff, facilitator: facilitator,
+    DEAN: DEAN, COMMITTEE: COMMITTEE, AEGIS_LOGO_PATH: '/images/passes/aegis.png',
+  };
 })(typeof window !== 'undefined' ? window : this);

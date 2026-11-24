@@ -133,6 +133,12 @@ const renderer = readFileSync(new URL('../../public/js/cert-render.js', import.m
 const sandbox = { window: {} }; sandbox.window.window = sandbox.window;
 vm.runInNewContext(renderer, sandbox);
 check('cert-render.js defines BhaiCert.draw and BhaiCert.filename', typeof sandbox.window.BhaiCert?.draw === 'function' && sandbox.window.BhaiCert.filename(true) === 'BharatAI-2026-Workshop-Certificate.png' && sandbox.window.BhaiCert.filename(false) === 'BharatAI-2026-Certificate.png', '');
+// 24 Nov 2026, the organiser: every certificate carries the Aegis School of Data Science and AI
+// logo and is signed by two people, the facilitator and the Dean.
+const BC = sandbox.window.BhaiCert || {};
+const fac = BC.facilitator ? BC.facilitator('Dr. Ashish Tendulkar, PhD, IIT Bombay; Google AI') : null;
+check('signed by the facilitator (the workshop speaker, name before the first comma) and the Dean', BC.DEAN?.name === 'Dr. Abhijit Gangopadhyay' && BC.DEAN?.role === 'Dean' && BC.DEAN?.org === 'Aegis School of Data Science and AI' && fac?.name === 'Dr. Ashish Tendulkar' && fac?.role === 'Workshop Facilitator' && fac?.org === 'PhD, IIT Bombay · Google AI' && BC.facilitator('') === null && BC.COMMITTEE?.name === 'Organizing Committee' && /signoff\(ctx, W, 905, \[\(ws && facilitator\(ws\.speaker\)\) \|\| COMMITTEE, DEAN\]\)/.test(renderer), JSON.stringify(fac));
+check('the Aegis logo is on the workshop, conference and campus-panel certificates, and the panel one is signed twice', /images\/passes\/aegis\.png/.test(renderer) && /loadImage\('\/images\/passes\/aegis\.png'\)/.test(appJs) && /BhaiCert\.signoff\(ctx, W, 890, \[BhaiCert\.COMMITTEE, BhaiCert\.DEAN\]/.test(appJs), '');
 
 console.log(fails ? `\n${fails} FAILED` : '\nAll certificate preview checks passed');
 process.exit(fails ? 1 : 0);

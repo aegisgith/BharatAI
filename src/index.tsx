@@ -30067,7 +30067,7 @@ function mainPageHTML(): string {
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
-  <script src="/js/cert-render.js?v=20261124" defer></script>
+  <script src="/js/cert-render.js?v=2026112402" defer></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261102"></script>
@@ -39738,11 +39738,13 @@ function mainPageScript(): string {
       ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
       ctx.strokeStyle = 'rgba(255,107,0,0.55)'; ctx.lineWidth = 4; ctx.strokeRect(40, 40, W - 80, H - 80);
       ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1.5; ctx.strokeRect(58, 58, W - 116, H - 116);
-      // Two marks on white chips: ours and the host college's.
+      // Marks on white chips: ours, Aegis School of Data Science and AI (every
+      // certificate carries it since 24 Nov 2026), then the host college's.
       var chips = [];
       try { chips.push(await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png')); } catch (e) {}
+      try { chips.push(await loadImage('/images/passes/aegis.png')); } catch (e) {}
       if (p.hostLogo) { try { chips.push(await loadImage(p.hostLogo)); } catch (e) {} }
-      var chipH = 104, pad = 16, gap = 28;
+      var chipH = 116, pad = 16, gap = 28;
       var widths = chips.map(function (im) { return im.width * (chipH / im.height); });
       var total = widths.reduce(function (a, b) { return a + b + pad * 2; }, 0) + gap * Math.max(0, chips.length - 1);
       var x = (W - total) / 2, top = 96;
@@ -39767,11 +39769,20 @@ function mainPageScript(): string {
       ctx.fillStyle = '#9698ac'; ctx.font = '400 22px Manrope, Arial';
       ctx.fillText('Hosted at ' + [p.host, p.city].filter(Boolean).join(', '), W / 2, 776);
       ctx.fillText(p.dateLabel + '  ·  ' + p.timeLabel, W / 2, 812);
-      ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(W / 2 - 150, 918, 300, 2);
-      ctx.fillStyle = '#9698ac'; ctx.font = '400 18px Manrope, Arial'; ctx.fillText('Organizing Committee · Aegis Knowledge Trust', W / 2, 953);
+      // Signed by two people, as every certificate is: the Organizing Committee
+      // and the Dean of Aegis School of Data Science and AI (names in cert-render.js).
+      var idY = 1008;
+      if (window.BhaiCert && BhaiCert.signoff) {
+        BhaiCert.signoff(ctx, W, 890, [BhaiCert.COMMITTEE, BhaiCert.DEAN], 'Manrope, Arial');
+        idY = 1032;
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(W / 2 - 150, 918, 300, 2);
+        ctx.fillStyle = '#9698ac'; ctx.font = '400 18px Manrope, Arial'; ctx.fillText('Organizing Committee · Aegis Knowledge Trust', W / 2, 953);
+      }
+      ctx.textAlign = 'center';
       ctx.fillStyle = '#6b6a63'; ctx.font = '400 15px Manrope, Arial';
       var certId = 'BHAI-CS-' + String(p.slug).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + '-' + String(user.id).padStart(5, '0');
-      ctx.fillText('Certificate ID: ' + certId + '  ·  Attendance confirmed ' + panelWhen(p.claimed_at), W / 2, 1008);
+      ctx.fillText('Certificate ID: ' + certId + '  ·  Attendance confirmed ' + panelWhen(p.claimed_at), W / 2, idY);
       var how = await deliverImage(canvas.toDataURL('image/png'),
         'BharatAI-CampusSeries-' + String(p.hostShort || 'Panel').replace(/[^A-Za-z0-9]+/g, '') + '-Certificate.png',
         { title: 'Your certificate' });
@@ -41715,7 +41726,7 @@ function adminPageHTML(): string {
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
-  <script src="/js/cert-render.js?v=20261124" defer></script>
+  <script src="/js/cert-render.js?v=2026112402" defer></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
