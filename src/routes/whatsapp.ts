@@ -920,6 +920,38 @@ async function photoPerson(c: any, key: string, hint: string, typed: string): Pr
   }
   return who
 }
+// Did they look at their photos, and save any, after a photos message went? The page and the
+// saves are the same whichever link brought them (email or WhatsApp): routes/photo-tracking.ts
+// notes each visit (admin_audit photos.visited, detail {n, last}), the photo store each save
+// (photo_downloads). "After" is judged by the last visit or save against the message's time.
+type Marks = { looked: number; looked_last: string; saved: number; saved_last: string }
+async function photoMarks(c: any, keys: string[]): Promise<Map<string, Marks>> {
+  const out = new Map<string, Marks>()
+  const ks = [...new Set(keys.filter(k => /^[a-z]\d{1,9}$/.test(k)))]
+  const get = (k: string) => { let m = out.get(k); if (!m) { m = { looked: 0, looked_last: '', saved: 0, saved_last: '' }; out.set(k, m) } return m }
+  for (let i = 0; i < ks.length; i += 90) {
+    const ch = ks.slice(i, i + 90), q = ch.map(() => '?').join(',')
+    try {
+      for (const r of await all(c, `SELECT entity_id, detail, created_at FROM admin_audit WHERE entity = 'photo_album' AND action = 'photos.visited' AND entity_id IN (${q})`, ...ch)) {
+        let d: any = {}
+        try { d = JSON.parse(r.detail || '{}') } catch { d = {} }
+        const m = get(String(r.entity_id)), last = String(d.last || r.created_at || '')
+        m.looked += Number(d.n) || 1
+        if (last > m.looked_last) m.looked_last = last
+      }
+    } catch { /* no audit table */ }
+    try {
+      for (const r of await all(c, `SELECT person, COUNT(*) AS n, MAX(last_at) AS last_at FROM photo_downloads WHERE person IN (${q}) GROUP BY person`, ...ch)) {
+        const m = get(String(r.person))
+        m.saved += Number(r.n) || 0
+        if (String(r.last_at || '') > m.saved_last) m.saved_last = String(r.last_at || '')
+      }
+    } catch { /* no photo store */ }
+  }
+  return out
+}
+const afterSend = (last: string, sent: unknown) => !!last && !!sent && last >= String(sent)
+
 const PHOTO_LAST = `SELECT id, status, own, created_at, sent_at, read_at, clicked_at FROM wa_messages
    WHERE direction = 'out' AND test = 0 AND kind = 'photos' AND person = ? AND status NOT IN ('failed', 'skipped', 'cancelled') ORDER BY id DESC LIMIT 1`
 wa.post('/api/admin/whatsapp/photos-one', async (c) => {
@@ -1353,6 +1385,18 @@ async function overview(c: any) {
   let taps = 0
   for (const t of totals) { sum[String(t.status)] = Number(t.n); taps += Number(t.taps || 0) }
   const saidYes = await one(c, 'SELECT COUNT(*) AS n FROM admin_audit WHERE action = ?', WA_YES).catch(() => null)
+  // A photos send: how many looked at their photos, and saved any, after it reached them.
+  const photoIds = batches.filter(b => b.kind === 'photos').map(b => Number(b.id))
+  const reached = photoIds.length ? await all(c, `SELECT batch_id, person, sent_at FROM wa_messages WHERE batch_id IN (${photoIds.map(() => '?').join(',')})
+     AND status IN ('sent', 'delivered', 'read') AND person <> ''`, ...photoIds) : []
+  const pm = reached.length ? await photoMarks(c, reached.map(r => String(r.person))) : new Map<string, Marks>()
+  const after = new Map<number, { looked: number; saved: number }>()
+  for (const r of reached) {
+    const m = pm.get(String(r.person)), a = after.get(Number(r.batch_id)) || { looked: 0, saved: 0 }
+    if (m && afterSend(m.looked_last, r.sent_at)) a.looked++
+    if (m && afterSend(m.saved_last, r.sent_at)) a.saved++
+    after.set(Number(r.batch_id), a)
+  }
   return { ...base, templates: shapeTemplates(tpls), used_today: await usedToday(c), unread: Number(unread?.n || 0), events, quick: quickReplies(cfg), said_yes: Number(saidYes?.n || 0),
     totals: { ...sum, taps },
     batches: batches.map(b => {
@@ -1360,6 +1404,7 @@ async function overview(c: any) {
       let t = 0
       for (const p of per) if (Number(p.batch_id) === Number(b.id)) { counts[String(p.status)] = Number(p.n); t += Number(p.taps || 0) }
       return { ...b, counts, taps: t, replied: Number(replied.find(x => Number(x.batch_id) === Number(b.id))?.n || 0),
+        ...(b.kind === 'photos' ? { looked_after: after.get(Number(b.id))?.looked || 0, saved_after: after.get(Number(b.id))?.saved || 0 } : {}),
         reasons: why.filter(x => Number(x.batch_id) === Number(b.id)).slice(0, 6).map(x => ({ words: String(x.error || 'WhatsApp gave no reason'), n: Number(x.n),
           ...(ERRORS[Number(x.code)]?.retry ? { retry: true } : {}) })) }
     }) }
@@ -1793,9 +1838,15 @@ wa.get('/api/admin/whatsapp/messages', async (c) => {
   else if (st) { where.push('m.status = ?'); args.push(st) }
   if (batch) { where.push('m.batch_id = ?'); args.push(batch) }
   if (q) { where.push('(m.name LIKE ? OR m.wa_number LIKE ?)'); args.push('%' + q + '%', '%' + q.replace(/\D/g, '') + '%') }
-  const rows = await all(c, `SELECT m.id, m.kind, m.wa_number, m.name, m.template, m.status, m.error, m.test, m.own, m.batch_id, m.created_at, m.sent_at, m.delivered_at, m.read_at, m.clicked_at, m.price_category, m.created_by
+  const rows = await all(c, `SELECT m.id, m.kind, m.wa_number, m.name, m.template, m.status, m.error, m.test, m.own, m.batch_id, m.created_at, m.sent_at, m.delivered_at, m.read_at, m.clicked_at, m.price_category, m.created_by, m.person
      FROM wa_messages m WHERE ${where.join(' AND ')} ORDER BY m.id DESC LIMIT 200`, ...args)
-  return c.json({ rows: rows.map(r => ({ ...r, number: shownNumber(String(r.wa_number)) })) })
+  // A photos message: did they look at their photos, and save any, after it went?
+  const marks = await photoMarks(c, rows.filter(r => r.kind === 'photos' && r.person).map(r => String(r.person)))
+  return c.json({ rows: rows.map(r => {
+    const m = r.kind === 'photos' ? marks.get(String(r.person || '')) : undefined, sent = r.sent_at || r.created_at
+    const { person: _p, ...rest } = r
+    return { ...rest, number: shownNumber(String(r.wa_number)), ...(m ? { looked_after: afterSend(m.looked_last, sent), saved: m.saved, saved_after: afterSend(m.saved_last, sent) } : {}) }
+  }) })
 })
 
 // Replies: everyone who has written to us, newest first.

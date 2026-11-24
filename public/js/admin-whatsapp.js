@@ -65,6 +65,7 @@
     var gone = (c.sent || 0) + (c.delivered || 0) + (c.read || 0);
     return { total: Number(b.total || 0), waiting: (c.queued || 0) + (c.sending || 0), gone: gone, delivered: (c.delivered || 0) + (c.read || 0), read: c.read || 0,
       failed: c.failed || 0, left: (c.skipped || 0) + (c.cancelled || 0), taps: Number(b.taps || 0), replied: Number(b.replied || 0),
+      looked: Number(b.looked_after || 0), saved: Number(b.saved_after || 0),
       pct: b.total ? Math.round(((gone + (c.failed || 0) + (c.skipped || 0) + (c.cancelled || 0)) / b.total) * 100) : 0 };
   }
   function batchStatusWords(b) {
@@ -225,12 +226,14 @@
         + (b.status === 'paused' ? '<button class="wad-btn wad-small wad-primary" data-act="batch" data-what="resume" data-id="' + b.id + '">Carry on</button>' : '')
         + (b.status === 'running' || b.status === 'paused' ? '<button class="wad-btn wad-small" data-act="batch" data-what="cancel" data-id="' + b.id + '">Cancel the rest</button>' : '')
         + '<button class="wad-btn wad-small" data-act="batch-list" data-id="' + b.id + '">See everyone</button>';
-      var bits = [[n.waiting, 'waiting'], [n.gone, 'sent'], [n.delivered, 'delivered'], [n.read, 'read'], [n.taps, 'tapped the button'], [n.replied, 'replied'], [n.failed, 'not delivered'], [n.left, 'left out']]
+      var bits = [[n.waiting, 'waiting'], [n.gone, 'sent'], [n.delivered, 'delivered'], [n.read, 'read'], [n.taps, 'tapped the button'], [n.looked, 'looked at their photos since'], [n.saved, 'saved photos since'], [n.replied, 'replied'], [n.failed, 'not delivered'], [n.left, 'left out']]
         .filter(function (x) { return x[0] > 0; }).map(function (x) { return '<b>' + num(x[0]) + '</b> ' + x[1]; }).join(' &middot; ');
       // Out of everyone WhatsApp was asked to deliver to (sent or refused).
       var base = n.gone + n.failed;
       var rate = function (a) { return base ? Math.round((a * 100) / base) + '%' : '-'; };
-      var rates = base ? '<div class="wad-rates">' + [[n.delivered, 'delivered'], [n.read, 'read'], [n.taps, 'tapped the button'], [n.replied, 'replied'], [n.failed, 'not delivered']]
+      var rateList = [[n.delivered, 'delivered'], [n.read, 'read'], [n.taps, 'tapped the button']]
+        .concat(b.kind === 'photos' ? [[n.looked, 'looked at their photos'], [n.saved, 'saved photos']] : []).concat([[n.replied, 'replied'], [n.failed, 'not delivered']]);
+      var rates = base ? '<div class="wad-rates">' + rateList
         .map(function (x) { return '<span><b>' + rate(x[0]) + '</b>' + x[1] + '</span>'; }).join('') + '</div>' : '';
       var reasons = (b.reasons || []).length ? '<details class="wad-reasons"><summary>Why ' + num(n.failed) + ' did not arrive</summary><ul>'
         + b.reasons.map(function (r) {
@@ -336,7 +339,9 @@
       var last = r.read_at || r.delivered_at || r.sent_at || r.created_at;
       return '<tr><td><b>' + esc(r.name || 'No name') + '</b><small>' + esc(r.number) + '</small></td>'
         + '<td>' + esc(kindWords(r.kind)) + (r.test ? ' <span class="wad-sub">(test)</span>' : '') + (r.own ? ' <span class="wad-sub">(own WhatsApp)</span>' : '') + '</td>'
-        + '<td>' + statusChip(r.status) + (r.clicked_at ? ' ' + chip(['Tapped', 'good']) : '') + (r.error ? '<small class="wad-bad">' + esc(r.error) + '</small>' : '') + '</td>'
+        + '<td>' + statusChip(r.status) + (r.clicked_at ? ' ' + chip(['Tapped', 'good']) : '')
+        + (r.looked_after ? ' ' + chip(['Looked at their photos', 'good']) : '') + (r.saved_after ? ' ' + chip(['Saved ' + num(r.saved) + ' photo' + (r.saved === 1 ? '' : 's'), 'good']) : '')
+        + (r.error ? '<small class="wad-bad">' + esc(r.error) + '</small>' : '') + '</td>'
         + '<td><small>' + esc(when(last)) + '</small></td></tr>';
     }).join('') + '</tbody></table></div><p class="wad-sub">The newest 200 are shown.</p></div>';
   }

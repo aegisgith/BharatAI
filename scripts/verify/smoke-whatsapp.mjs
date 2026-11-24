@@ -740,6 +740,17 @@ check('AImailPilot: a yes given on our form counts as their yes; no yes, no prom
 await as('POST', '/api/admin/whatsapp/aimailpilot', { on: false });
 check('AImailPilot: switched off, it can do nothing', (await amp('GET', '/api/external/whatsapp/status')).status === 403 && (await amp('POST', '/api/external/whatsapp/send', { template: MK?.name, people: ppl, dry: true })).status === 403, '');
 
+// ---------- did they look at their photos, and save any, after the WhatsApp? (24 Nov 2026) ----------
+db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail) VALUES ('visitor', 'public', 'photos.visited', 'photo_album', ?, ?)", [keys[0], JSON.stringify({ n: 2, last: '2099-01-01 10:00:00' })]);
+db.run("INSERT INTO admin_audit (actor, actor_kind, action, entity, entity_id, detail) VALUES ('visitor', 'public', 'photos.visited', 'photo_album', ?, ?)", [keys[1], JSON.stringify({ n: 1, last: '2026-01-01 10:00:00' })]);
+db.run("INSERT INTO photo_downloads (person, photo_id, first_at, last_at, times) VALUES (?, 1, '2099-01-01 10:01:00', '2099-01-01 10:01:00', 1), (?, 2, '2099-01-01 10:02:00', '2099-01-01 10:02:00', 3)", [keys[0], keys[0]]);
+r = await as('GET', '/api/admin/whatsapp/messages?batch=' + batch1);
+const ashaRow = (r.json?.rows || []).find(x => x.name === 'Dr. Asha Mehta'), raviRow = (r.json?.rows || []).find(x => x.name === 'Ravi Kumar');
+check('the Sent list says who looked at their photos and saved how many after the WhatsApp (a look from before it does not count)', ashaRow?.looked_after === true && ashaRow.saved === 2 && ashaRow.saved_after === true
+  && raviRow?.looked_after === false && !('person' in (ashaRow || {})), JSON.stringify([ashaRow && { l: ashaRow.looked_after, s: ashaRow.saved, sa: ashaRow.saved_after }, raviRow && { l: raviRow.looked_after }]));
+const b1 = (await as('GET', '/api/admin/whatsapp')).json?.batches?.find(b => b.id === batch1);
+check('the photos send counts how many looked and saved since', b1?.looked_after === 1 && b1.saved_after === 1, JSON.stringify(b1 && { l: b1.looked_after, s: b1.saved_after }));
+
 // ---------- the lists, and nothing leaking ----------
 r = await as('GET', '/api/admin/whatsapp/messages?status=failed');
 const ov = (await as('GET', '/api/admin/whatsapp')).json;
