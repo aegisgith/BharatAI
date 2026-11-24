@@ -21,36 +21,6 @@
    "w": 144,
    "h": 144
   },
-  "k-k-singh": {
-   "src": "images/sched/k-k-singh.webp?v=eb198d1c",
-   "w": 144,
-   "h": 144
-  },
-  "praveen-pardeshi": {
-   "src": "images/sched/praveen-pardeshi.webp?v=59c4c43f",
-   "w": 144,
-   "h": 144
-  },
-  "sudeep-shrivastava": {
-   "src": "images/sched/sudeep-shrivastava.webp?v=2ec4d7d9",
-   "w": 144,
-   "h": 144
-  },
-  "kaustubh-dhavse": {
-   "src": "images/sched/kaustubh-dhavse.webp?v=16c303c1",
-   "w": 144,
-   "h": 144
-  },
-  "vivek-khandekar": {
-   "src": "images/sched/vivek-khandekar.webp?v=23fbcca4",
-   "w": 144,
-   "h": 144
-  },
-  "suhas-mapari": {
-   "src": "images/sched/suhas-mapari.webp?v=234f291c",
-   "w": 144,
-   "h": 144
-  },
   "akshay-yadava": {
    "src": "images/sched/akshay-yadava.webp?v=d9f95b37",
    "w": 144,
@@ -58,6 +28,11 @@
   },
   "sachin-itkar": {
    "src": "images/sched/sachin-itkar.webp?v=d019a875",
+   "w": 144,
+   "h": 144
+  },
+  "arun-menon": {
+   "src": "images/sched/arun-menon.webp?v=9acf79b3",
    "w": 144,
    "h": 144
   },
@@ -226,11 +201,6 @@
    "w": 144,
    "h": 144
   },
-  "arun-menon": {
-   "src": "images/sched/arun-menon.webp?v=9acf79b3",
-   "w": 144,
-   "h": 144
-  },
   "sushil-vishwakarma": {
    "src": "images/sched/sushil-vishwakarma.webp?v=e195c676",
    "w": 144,
@@ -263,11 +233,6 @@
   },
   "pushkar-patwardhan": {
    "src": "images/sched/pushkar-patwardhan.webp?v=caf068d2",
-   "w": 144,
-   "h": 144
-  },
-  "abhay-sharma": {
-   "src": "images/sched/abhay-sharma.webp?v=a7ff92a7",
    "w": 144,
    "h": 144
   },
@@ -681,8 +646,38 @@
    "w": 144,
    "h": 144
   },
+  "k-k-singh": {
+   "src": "images/sched/k-k-singh.webp?v=eb198d1c",
+   "w": 144,
+   "h": 144
+  },
+  "praveen-pardeshi": {
+   "src": "images/sched/praveen-pardeshi.webp?v=59c4c43f",
+   "w": 144,
+   "h": 144
+  },
+  "sudeep-shrivastava": {
+   "src": "images/sched/sudeep-shrivastava.webp?v=2ec4d7d9",
+   "w": 144,
+   "h": 144
+  },
+  "kaustubh-dhavse": {
+   "src": "images/sched/kaustubh-dhavse.webp?v=16c303c1",
+   "w": 144,
+   "h": 144
+  },
+  "suhas-mapari": {
+   "src": "images/sched/suhas-mapari.webp?v=234f291c",
+   "w": 144,
+   "h": 144
+  },
   "prakash-kumar": {
    "src": "images/sched/prakash-kumar.webp?v=6f1b4a1b",
+   "w": 144,
+   "h": 144
+  },
+  "vivek-khandekar": {
+   "src": "images/sched/vivek-khandekar.webp?v=23fbcca4",
    "w": 144,
    "h": 144
   },
@@ -693,6 +688,11 @@
   },
   "pravin-kumar": {
    "src": "images/sched/pravin-kumar.webp?v=754ec915",
+   "w": 144,
+   "h": 144
+  },
+  "abhay-sharma": {
+   "src": "images/sched/abhay-sharma.webp?v=a7ff92a7",
    "w": 144,
    "h": 144
   },
@@ -790,27 +790,6 @@
    "h": 70,
    "lw": 71,
    "lh": 27
-  },
-  "images/logo-meity.webp": {
-   "src": "images/sched/logo-meity.webp?v=de849fcb",
-   "w": 184,
-   "h": 60,
-   "lw": 78,
-   "lh": 26
-  },
-  "images/logo-mitra.webp": {
-   "src": "images/sched/logo-mitra.webp?v=436a5e58",
-   "w": 83,
-   "h": 72,
-   "lw": 44,
-   "lh": 38
-  },
-  "images/logo-maharashtra-forest.webp": {
-   "src": "images/sched/logo-maharashtra-forest.webp?v=8a8b8a64",
-   "w": 80,
-   "h": 80,
-   "lw": 40,
-   "lh": 40
   },
   "images/org-logos/uidai.webp": {
    "src": "images/sched/logo-uidai.webp?v=e7f73569",
@@ -1007,13 +986,6 @@
    "h": 35,
    "lw": 85,
    "lh": 24
-  },
-  "images/org-logos/favicon-nobroker.in.png": {
-   "src": "images/sched/logo-nobroker-in.webp?v=3d717e1d",
-   "w": 62,
-   "h": 62,
-   "lw": 40,
-   "lh": 40
   },
   "images/org-logos/favicon-capgemini.com.png": {
    "src": "images/sched/logo-capgemini-com.webp?v=853d6815",
@@ -1330,11 +1302,39 @@
    "lw": 73,
    "lh": 27
   },
+  "images/logo-meity.webp": {
+   "src": "images/sched/logo-meity.webp?v=de849fcb",
+   "w": 184,
+   "h": 60,
+   "lw": 78,
+   "lh": 26
+  },
+  "images/logo-mitra.webp": {
+   "src": "images/sched/logo-mitra.webp?v=436a5e58",
+   "w": 83,
+   "h": 72,
+   "lw": 44,
+   "lh": 38
+  },
+  "images/logo-maharashtra-forest.webp": {
+   "src": "images/sched/logo-maharashtra-forest.webp?v=8a8b8a64",
+   "w": 80,
+   "h": 80,
+   "lw": 40,
+   "lh": 40
+  },
   "images/org-logos/favicon-npci.org.in.png": {
    "src": "images/sched/logo-npci-org-in.webp?v=329dffc1",
    "w": 31,
    "h": 43,
    "lw": 29,
+   "lh": 40
+  },
+  "images/org-logos/favicon-nobroker.in.png": {
+   "src": "images/sched/logo-nobroker-in.webp?v=3d717e1d",
+   "w": 62,
+   "h": 62,
+   "lw": 40,
    "lh": 40
   },
   "images/org-logos/favicon-myvi.in.png": {

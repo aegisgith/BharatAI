@@ -1,5 +1,5 @@
 {
-  "source": "the app (Admin → Conference), 2026-11-24T04:13:18.600Z",
+  "source": "the app (Admin → Conference), 2026-11-24T07:38:03.365Z",
   "days": [
     "2026-11-20",
     "2026-11-21"
@@ -85,7 +85,7 @@
       "hall": "aryabhata",
       "day": 1,
       "start": "09:30",
-      "end": "11:30",
+      "end": "10:40",
       "type": "elsewhere",
       "label": "Inauguration",
       "title": "Inauguration and keynotes in Homi J. Bhabha Hall",
@@ -95,7 +95,7 @@
       "hall": "raman",
       "day": 1,
       "start": "09:30",
-      "end": "11:30",
+      "end": "10:40",
       "type": "elsewhere",
       "label": "Inauguration",
       "title": "Inauguration and keynotes in Homi J. Bhabha Hall",
@@ -177,22 +177,6 @@
       }
     },
     {
-      "hall": "bhabha",
-      "day": 1,
-      "start": "10:50",
-      "end": "11:00",
-      "type": "keynote",
-      "label": "Keynote",
-      "id": 119,
-      "speaker": {
-        "name": "Shri. K.K. Singh",
-        "role": "Joint Secretary, MeitY",
-        "org": "Ministry of Electronics & Information Technology, Govt of India",
-        "photo": "/images/speaker-kk-singh-v2.jpg",
-        "listed": true
-      }
-    },
-    {
       "hall": "kalam",
       "day": 1,
       "start": "10:50",
@@ -207,54 +191,6 @@
     {
       "hall": "bhabha",
       "day": 1,
-      "start": "11:00",
-      "end": "11:10",
-      "type": "keynote",
-      "label": "Keynote",
-      "id": 120,
-      "speaker": {
-        "name": "Shri Praveen Pardeshi",
-        "role": "CEO, MITRA | Chief Economic Advisor to CM Maharashtra",
-        "org": "Maharashtra Institution for Transformation, Govt of Maharashtra",
-        "photo": "/images/speaker-praveen-pardeshi.webp",
-        "listed": true
-      }
-    },
-    {
-      "hall": "bhabha",
-      "day": 1,
-      "start": "11:10",
-      "end": "11:20",
-      "type": "keynote",
-      "label": "Keynote",
-      "id": 121,
-      "speaker": {
-        "name": "Shri Sudeep Shrivastava",
-        "role": "Joint Secretary, MeitY; COO, IndiaAI Mission",
-        "org": "Ministry of Electronics & Information Technology, Government of India",
-        "photo": "/images/speaker-sudeep-shrivastava-sq.webp",
-        "listed": true
-      }
-    },
-    {
-      "hall": "bhabha",
-      "day": 1,
-      "start": "11:20",
-      "end": "11:30",
-      "type": "keynote",
-      "label": "Keynote",
-      "id": 122,
-      "speaker": {
-        "name": "Shri Kaustubh Dhavse",
-        "role": "Chief Advisor to the Chief Minister",
-        "org": "Investments, Infrastructure, Technology & Strategy, Government of Maharashtra",
-        "photo": "/images/speaker-kaustubh-dhavse-sq.webp",
-        "listed": true
-      }
-    },
-    {
-      "hall": "bhabha",
-      "day": 1,
       "start": "11:30",
       "end": "12:30",
       "type": "panel",
@@ -263,48 +199,6 @@
       "track": "Government & Public Sector AI",
       "title": "AI for Viksit Bharat: Igniting 1.4 Billion Dreams and Transforming Governance",
       "panel": [
-        {
-          "name": "Shri Vivek Khandekar (IFS)",
-          "org": "Maharashtra Forest Department",
-          "role": "Principal Chief Conservator of Forests (Social Forestry)",
-          "photo": "/images/speaker-vivek-khandekar-sq.webp",
-          "listed": true
-        },
-        {
-          "name": "Shri. K.K. Singh",
-          "org": "Ministry of Electronics & Information Technology, Govt of India",
-          "role": "Joint Secretary, MeitY",
-          "photo": "/images/speaker-kk-singh-v2.jpg",
-          "listed": true
-        },
-        {
-          "name": "Shri Sudeep Shrivastava",
-          "org": "Ministry of Electronics & Information Technology, Government of India",
-          "role": "Joint Secretary, MeitY; COO, IndiaAI Mission",
-          "photo": "/images/speaker-sudeep-shrivastava-sq.webp",
-          "listed": true
-        },
-        {
-          "name": "Shri Suhas Mapari",
-          "org": "Additional CEO, Vision Management Unit for Viksit Maharashtra 2047, Government of Maharashtra",
-          "role": "Joint Secretary, Chief Minister's Secretariat",
-          "photo": "/images/speaker-suhas-mapari-sq.webp",
-          "listed": true
-        },
-        {
-          "name": "Shri Praveen Pardeshi",
-          "org": "Maharashtra Institution for Transformation, Govt of Maharashtra",
-          "role": "CEO, MITRA | Chief Economic Advisor to CM Maharashtra",
-          "photo": "/images/speaker-praveen-pardeshi.webp",
-          "listed": true
-        },
-        {
-          "name": "Shri Kaustubh Dhavse",
-          "org": "Investments, Infrastructure, Technology & Strategy, Government of Maharashtra",
-          "role": "Chief Advisor to the Chief Minister",
-          "photo": "/images/speaker-kaustubh-dhavse-sq.webp",
-          "listed": true
-        },
         {
           "name": "Akshay Yadava",
           "org": "Unique Identification Authority of India (UIDAI)",
@@ -323,6 +217,13 @@
           "org": "Maharashtra Economic Development Council (MEDC)",
           "role": "Vice President",
           "photo": "/images/speaker-sachin-itkar-sq.webp",
+          "listed": true
+        },
+        {
+          "name": "Arun Menon",
+          "org": "Jade Global",
+          "role": "Chief Operating Officer and Chief Technology & Strategy Officer",
+          "photo": "/images/speaker-arun-menon-sq.webp",
           "listed": true
         }
       ],
@@ -567,24 +468,6 @@
         "topic": "Reimagining Marketplaces in the era of AI Agents",
         "photo": "/images/talks/akhil-gupta.webp",
         "hall": "Aryabhata Theatre"
-      }
-    },
-    {
-      "hall": "bhabha",
-      "day": 1,
-      "start": "12:45",
-      "end": "13:00",
-      "type": "talk",
-      "label": "Innovation Talk",
-      "id": 152,
-      "track": "Government & Public Sector AI",
-      "title": "GeoAI Forest Encroachment Monitoring",
-      "speaker": {
-        "name": "Shri Vivek Khandekar (IFS)",
-        "role": "Principal Chief Conservator of Forests (Social Forestry)",
-        "org": "Maharashtra Forest Department",
-        "photo": "/images/speaker-vivek-khandekar-sq.webp",
-        "listed": true
       }
     },
     {
@@ -1077,24 +960,6 @@
       "title": "Hi-Tea Break"
     },
     {
-      "hall": "bhabha",
-      "day": 1,
-      "start": "16:15",
-      "end": "16:30",
-      "type": "talk",
-      "label": "Innovation Talk",
-      "id": 129,
-      "track": "Government & Public Sector AI",
-      "title": "Ganesh Kavach App",
-      "speaker": {
-        "name": "Shri Vivek Khandekar (IFS)",
-        "role": "Principal Chief Conservator of Forests (Social Forestry)",
-        "org": "Maharashtra Forest Department",
-        "photo": "/images/speaker-vivek-khandekar-sq.webp",
-        "listed": true
-      }
-    },
-    {
       "hall": "kalam",
       "day": 1,
       "start": "16:20",
@@ -1118,20 +983,6 @@
       "poweredBy": "EXENI",
       "title": "Human × AI: The Partnership Powering the Autonomous Enterprise",
       "panel": [
-        {
-          "name": "Abhay Sharma",
-          "org": "IBM",
-          "role": "Partner & Practice Leader",
-          "photo": "/images/speaker-abhay-sharma.webp",
-          "listed": true
-        },
-        {
-          "name": "Akhil Gupta",
-          "org": "NoBroker.com",
-          "role": "Founder",
-          "photo": "/images/speaker-akhil-gupta.webp",
-          "listed": true
-        },
         {
           "name": "Raveesh Dewan",
           "org": "Joget Inc.",
@@ -1590,13 +1441,6 @@
           "listed": true
         },
         {
-          "name": "Shreenivas Chetlapalli",
-          "org": "Jade Global",
-          "role": "VP",
-          "photo": "/images/speakers/shreenivas-chetlapalli.webp",
-          "listed": true
-        },
-        {
           "name": "Rajib Lochan Mahalik",
           "org": "Technocracy Private Limited",
           "role": "Managing Director",
@@ -1605,10 +1449,10 @@
         }
       ],
       "moderator": {
-        "name": "Bhupesh Daheria",
-        "org": "Trustee, Aegis Knowledge Trust",
-        "role": "CEO, Aegis School of Data Science & AI",
-        "photo": "/images/speaker-bhupesh-daheria.jpg",
+        "name": "Shreenivas Chetlapalli",
+        "org": "Jade Global",
+        "role": "VP",
+        "photo": "/images/speakers/shreenivas-chetlapalli.webp",
         "listed": true
       }
     },
@@ -2418,7 +2262,14 @@
           "photo": "/images/speaker-madhvendra-singh-panel.webp",
           "listed": true
         }
-      ]
+      ],
+      "moderator": {
+        "name": "Bhupesh Daheria",
+        "org": "Trustee, Aegis Knowledge Trust",
+        "role": "CEO, Aegis School of Data Science & AI",
+        "photo": "/images/speaker-bhupesh-daheria.jpg",
+        "listed": true
+      }
     },
     {
       "hall": "kalam",
