@@ -27,7 +27,33 @@
   var booths = null;
   var more = null;
   var marks = null;
+  var waPh = null;
   var busy = false;
+
+  // Their photos on WhatsApp (24 Nov 2026, routes/whatsapp.ts): one of their photos and a
+  // button to their page, from the event's own number, next to the email on each row.
+  var WA_WORDS = { queued: 'waiting to go', sending: 'sending', sent: 'sent', delivered: 'delivered', read: 'read', failed: 'did not arrive' };
+  function waLine(key) {
+    if (!waPh || !waPh.ready) return '';
+    var p = waPh.people && waPh.people[key];
+    if (!p) return '<div class="afd-sub afd-wa-line">WhatsApp: not sent</div>';
+    var word = p.own ? 'sent from a team member&rsquo;s phone' : esc(WA_WORDS[p.status] || p.status);
+    return '<div class="afd-wa-line ' + (p.status === 'failed' ? 'afd-bad' : 'afd-ok') + '">WhatsApp: ' + word + (p.at && p.status !== 'queued' ? ' ' + esc(when(p.at)) : '') + '</div>'
+      + (p.error ? '<div class="afd-sub">' + esc(p.error) + '</div>' : '')
+      + (p.clicked_at ? '<div class="afd-sub">Opened their photos from it ' + esc(when(p.clicked_at)) + '</div>' : '');
+  }
+  function waBtn(key, can) {
+    var on = waPh && waPh.ready && waPh.connected && waPh.approved;
+    var why = !waPh || !waPh.ready ? 'WhatsApp is not set up yet (Admin, WhatsApp).' : !waPh.connected ? 'WhatsApp is not connected (Admin, WhatsApp, Setup).' : !waPh.approved ? 'Meta has not approved the photos message yet (Admin, WhatsApp, Messages).' : 'Send their photos on WhatsApp';
+    var sent = waPh && waPh.people && waPh.people[key] && waPh.people[key].status !== 'failed';
+    return '<button type="button" class="afd-btn afd-small afd-wa" data-act="wa-ph" data-id="' + esc(key) + '" title="' + esc(why) + '"' + (can && on ? '' : ' disabled') + '>'
+      + '<i class="fas fa-comment-dots" aria-hidden="true"></i> ' + (sent ? 'WhatsApp again' : 'WhatsApp') + '</button>';
+  }
+  function rowByKey(key) {
+    var all = ((photos && photos.rows) || []).concat((attendees && attendees.rows) || []);
+    for (var i = 0; i < all.length; i++) if (String(all[i].key) === String(key)) return all[i];
+    return null;
+  }
 
   // Opened, visited, saved for each photos email (23 Nov 2026, routes/photo-tracking.ts).
   function when(s) {
@@ -221,9 +247,10 @@
       var canSend = r.count > 0 && !!r.email;
       var word = r.sent_count ? 'Send again' : (r.protocol ? 'Send anyway' : 'Send');
       return '<tr><td><b>' + esc(r.name) + '</b><div class="afd-sub">' + esc([r.org].concat(r.kinds || []).filter(Boolean).join(' · ')) + '</div></td>'
-        + '<td>' + pics + '</td><td>' + mail + '</td><td>' + st + '</td>'
+        + '<td>' + pics + '</td><td>' + mail + '</td><td>' + st + waLine(r.key) + '</td>'
         + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small" data-act="preview-ph" data-id="' + esc(r.key) + '"' + (r.count ? '' : ' disabled') + '>Preview</button>'
-        + '<button type="button" class="afd-btn afd-small" data-act="send-ph" data-id="' + esc(r.key) + '"' + (canSend ? '' : ' disabled') + '>' + word + '</button></td></tr>';
+        + '<button type="button" class="afd-btn afd-small" data-act="send-ph" data-id="' + esc(r.key) + '"' + (canSend ? '' : ' disabled') + '>' + word + '</button>'
+        + waBtn(r.key, r.count > 0 && r.status !== 'panel') + '</td></tr>';
     }).join('');
     return '<section class="afd-card">' + head + stats + marksSummary(rows) + panelsHtml() + actions
       + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Person</th><th>Photos</th><th>Email</th><th>Photos email</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>'
@@ -280,9 +307,10 @@
       var can = r.count > 0 && ['ready', 'check', 'sent'].indexOf(r.status) >= 0;
       return '<tr><td><b>' + esc(r.name) + '</b><div class="afd-sub">' + esc([r.pass, r.company].filter(Boolean).join(' · ')) + (r.came ? '' : ' · not scanned at the desk') + '</div></td>'
         + '<td>' + esc(r.group_name) + '</td><td><b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div><a class="afd-sub" href="' + esc(adminPage(r.page)) + '" target="_blank" rel="noopener">Open their page</a></td>'
-        + '<td>' + (r.email ? esc(r.email) : '<span class="afd-bad">No email</span>') + '</td><td>' + st + '</td>'
+        + '<td>' + (r.email ? esc(r.email) : '<span class="afd-bad">No email</span>') + '</td><td>' + st + waLine(r.key) + '</td>'
         + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small" data-act="preview-att" data-id="' + esc(r.key) + '">Preview</button>'
-        + '<button type="button" class="afd-btn afd-small" data-act="send-att" data-id="' + esc(r.key) + '"' + (can ? '' : ' disabled') + '>' + (r.sent_count ? 'Send again' : 'Send') + '</button></td></tr>';
+        + '<button type="button" class="afd-btn afd-small" data-act="send-att" data-id="' + esc(r.key) + '"' + (can ? '' : ' disabled') + '>' + (r.sent_count ? 'Send again' : 'Send') + '</button>'
+        + waBtn(r.key, r.count > 0 && ['unsubscribed', 'opted-out', 'no-photos'].indexOf(r.status) < 0) + '</td></tr>';
     }).join('');
     return '<section class="afd-card">' + head
       + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Group</th><th class="afd-n">Found</th><th class="afd-n">Ready</th><th class="afd-n">Look first</th><th class="afd-n">Sent</th><th class="afd-n">No email or opted out</th><th><span class="afd-sr">Send</span></th></tr></thead><tbody>' + groups + '</tbody></table></div>'
@@ -472,6 +500,22 @@
         }
         toast(gok + ' sent' + (gfail.length ? ', ' + gfail.length + ' did not send: ' + gfail.slice(0, 3).join('; ') : '.'), gfail.length ? 'error' : 'success');
         await refresh();
+      } else if (act === 'wa-ph') {
+        var wr = rowByKey(id);
+        if (!wr) return;
+        busy = true; b.disabled = true;
+        var info = await opts.api.post('/api/admin/whatsapp/photos-one', { key: id, email: wr.email || '', dry: true });
+        var lastWords = !info.last ? '' : info.last.waiting ? ' Their photos are already waiting in a WhatsApp send; this sends them now instead.'
+          : ' They were ALREADY SENT their photos on WhatsApp' + (info.last.own ? ' from a team member’s phone' : '') + ' on ' + when(info.last.at) + '.';
+        var typed = '';
+        if (!info.number) {
+          typed = (w.prompt('There is no mobile number for ' + info.name + '.' + lastWords + ' Type their WhatsApp number to send their ' + info.count + ' photos:', '') || '').trim();
+          if (!typed) return;
+        } else if (!w.confirm('Send ' + info.name + ' their ' + info.count + ' photos on WhatsApp, to ' + info.number + ' (the number in ' + info.source + ')?' + lastWords)) return;
+        var waRes = await opts.api.post('/api/admin/whatsapp/photos-one', { key: id, email: wr.email || '', number: typed, again: !!info.last });
+        toast('Sent on WhatsApp to ' + waRes.to + ', ' + waRes.number + '.');
+        waPh = await opts.api.get('/api/admin/whatsapp/photo-status').catch(function () { return waPh; });
+        draw();
       } else if (act === 'panel-ok') {
         busy = true; b.disabled = true;
         await opts.api.post('/api/admin/speaker-photos/panels/' + encodeURIComponent(id) + '/ok', { fp: b.getAttribute('data-fp') });
@@ -594,8 +638,10 @@
       opts.api.get('/api/admin/find-photos').catch(function (e) { return { error: e.message }; }),
       opts.api.get('/api/admin/booth-photos').catch(function (e) { return { error: e.message, rows: [] }; }),
       opts.api.get('/api/admin/photo-tracking').catch(function (e) { return { error: e.message }; }),
-      opts.api.get('/api/admin/more-photos').catch(function (e) { return { error: e.message, rows: [] }; })
+      opts.api.get('/api/admin/more-photos').catch(function (e) { return { error: e.message, rows: [] }; }),
+      opts.api.get('/api/admin/whatsapp/photo-status').catch(function () { return null; })
     ]);
+    waPh = out[8] || null;
     booths = out[5] || { rows: [] };
     more = out[7] || { rows: [] };
     marks = out[6] && !out[6].error && out[6].people ? out[6] : { error: (out[6] && out[6].error) || 'no answer' };

@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { titledName } from '../lib/greet'
 import { whatsappNumber, shownNumber, isNoEmail } from './team-guests'
-import { pageUrl, hiddenPhotos, NOT_ME, OPT_OUT } from './photos'
+import { pageUrl, hiddenPhotos, personFor as albumFor, NOT_ME, OPT_OUT } from './photos'
 import { photoLink } from './photo-store'
 import ATTENDEES from '../data/attendee-photos.json'
 
@@ -811,6 +811,120 @@ wa.post('/api/admin/whatsapp/auto', async (c) => {
   await saveSetting(c, AUTO_KEY, JSON.stringify(st))
   await note(c, 'whatsapp.auto', rule.key, { on })
   return c.json({ success: true, ...(await overview(c)) })
+})
+
+// ---------- one person's photos, from After the Event and Attendees ----------
+//
+// The organiser, 24 Nov 2026: "give option of sending pictures whatsapp msg beside the
+// registered users details". For an attendee (album a<id>) and for a speaker, Innovation
+// Talk speaker or guest (their album key in routes/photos.ts). The number: the one typed
+// on the screen, else the speaker list, else their own registration (found by the email
+// shown on their row). { dry: true } says who, how many photos and which number, and sends
+// nothing. Their "Not me" photos, hidden photos and "don't match my photos" are respected.
+export const PHOTO_TPL = 'bhai_event_photos_v1'
+type PhotoWho = { error?: string; status?: number; field?: string; name: string; count: number; number: string; source: string; attendee_id: number | null; pick: string[] }
+async function photoPerson(c: any, key: string, hint: string, typed: string): Promise<PhotoWho> {
+  const who: PhotoWho = { name: '', count: 0, number: '', source: '', attendee_id: null, pick: [] }
+  const fail = (status: number, error: string, field = '') => ({ ...who, status, error, field })
+  let mobile = '', photos: string[] = [], best: string[] = []
+  if (/^a\d{1,9}$/.test(key)) {
+    const al = ATT.albums[key]
+    if (!al) return fail(404, 'No photos of this person were found.')
+    const cols = hooks.columns ? await hooks.columns(c).catch(() => new Set<string>()) : new Set<string>()
+    const has = (col: string) => !cols.size || cols.has(col)
+    const consent = (has('unsubscribed_at') ? ', unsubscribed_at' : '') + (has('marketing_consent') ? ', marketing_consent' : '')
+    const a = await one(c, `SELECT id, name, mobile${consent} FROM attendees WHERE id = ?`, Number(key.slice(1)))
+    if (!a) return fail(404, 'This person is not registered any more.')
+    who.name = String(a.name || ''); who.attendee_id = Number(a.id)
+    if (a.unsubscribed_at || String(a.marketing_consent ?? '') === '0') return fail(409, who.name + ' unsubscribed from our updates, so nothing is sent to them.')
+    mobile = String(a.mobile || '').trim(); if (mobile) who.source = 'their registration'
+    photos = al.photos || []; best = al.best || []
+  } else {
+    const p = albumFor(key)
+    if (!p || p.key !== key) return fail(404, 'That person is not on the list any more.')
+    photos = p.photos || []; best = p.best || []
+    const ids = (p.speakers || []).map(Number).filter(n => n > 0), tids = (p.talks || []).map(Number).filter(n => n > 0)
+    const sp = ids.length ? await all(c, `SELECT id, name, email, phone FROM speakers WHERE id IN (${ids.map(() => '?').join(',')}) ORDER BY id`, ...ids).catch(() => [] as any[]) : []
+    const tk = tids.length ? await all(c, `SELECT speaker_name FROM innovation_talks WHERE id IN (${tids.map(() => '?').join(',')}) ORDER BY id`, ...tids).catch(() => [] as any[]) : []
+    who.name = String(sp[0]?.name || tk[0]?.speaker_name || p.guest?.name || p.name || '')
+    const ph = sp.map(s => String(s.phone || '').trim()).find(Boolean)
+    if (ph) { mobile = ph; who.source = 'the speaker list' }
+    const emails = [...new Set([...sp.map(s => s.email), p.guest?.email, hint].map(e => String(e || '').trim().toLowerCase()).filter(e => /^[^\s@]+@[^\s@]+$/.test(e)))]
+    if (emails.length) {
+      const a = await one(c, `SELECT id, mobile FROM attendees WHERE lower(email) IN (${emails.map(() => '?').join(',')}) ORDER BY (COALESCE(mobile, '') = ''), id DESC LIMIT 1`, ...emails).catch(() => null)
+      if (a) { who.attendee_id = Number(a.id); if (!mobile && String(a.mobile || '').trim()) { mobile = String(a.mobile).trim(); who.source = 'their registration' } }
+    }
+  }
+  // What they said on their page: "Not me" on a photo, or "don't match my photos".
+  const notMe = new Set<string>()
+  try {
+    for (const r of await all(c, 'SELECT action, detail FROM admin_audit WHERE action IN (?, ?) AND entity_id = ?', NOT_ME, OPT_OUT, key)) {
+      if (r.action === OPT_OUT) return fail(409, who.name + ' asked us not to match their photos.')
+      try { const d = JSON.parse(r.detail || '{}'); if (d.photo) notMe.add(String(d.photo)) } catch { /* not JSON */ }
+    }
+  } catch { /* no audit table */ }
+  const hidden = await hiddenPhotos(c)
+  const keep = (d: string) => !notMe.has(d) && !(hidden && hidden.has(d))
+  const mine = photos.filter(keep)
+  if (!mine.length) return fail(409, 'No photos of ' + (who.name || 'this person') + ' were found.')
+  who.count = mine.length
+  who.pick = [...best.filter(keep), ...mine].slice(0, 6)
+  if (typed.trim()) { mobile = typed.trim(); who.source = 'typed' }
+  if (mobile) {
+    who.number = whatsappNumber(mobile)
+    if (!who.number) return fail(400, 'That mobile number is not complete: ' + oneLine(mobile, 30), 'number')
+  }
+  return who
+}
+const PHOTO_LAST = `SELECT id, status, own, created_at, sent_at, read_at, clicked_at FROM wa_messages
+   WHERE direction = 'out' AND test = 0 AND kind = 'photos' AND person = ? AND status NOT IN ('failed', 'skipped', 'cancelled') ORDER BY id DESC LIMIT 1`
+wa.post('/api/admin/whatsapp/photos-one', async (c) => {
+  if (!(await ready(c))) return notReady(c)
+  const b = await c.req.json().catch(() => ({})) as any
+  const key = oneLine(b.key, 40)
+  const who = await photoPerson(c, key, String(b.email || ''), String(b.number || ''))
+  if (who.error) return c.json({ error: who.error, ...(who.field ? { field: who.field } : {}) }, (who.status || 400) as any)
+  if (who.number && (await stoppedNumbers(c)).has(who.number)) return c.json({ error: who.name + ' asked us to stop on WhatsApp, so nothing is sent to them.' }, 409)
+  const last = await one(c, PHOTO_LAST, key)
+  const lastOut = last ? { at: String(last.sent_at || last.created_at || ''), status: String(last.status), waiting: last.status === 'queued', own: Number(last.own) === 1 } : null
+  const shown = who.number ? shownNumber(who.number) : ''
+  if (b.dry) return c.json({ name: who.name, count: who.count, number: shown, source: who.source, last: lastOut })
+  if (!who.number) return c.json({ error: 'There is no mobile number for ' + who.name + '. Type it to send.', field: 'number' }, 400)
+  const got = await templateBy(c, PHOTO_TPL)
+  const cfg = await loadCfg(c)
+  const no = refuseSend(cfg, got?.row)
+  if (no || !got) return c.json({ error: no || 'The photos message is missing.' }, 409)
+  if (lastOut && !b.again) return c.json({ error: lastOut.waiting ? who.name + '’s photos are already waiting in a send that is going out.' : who.name + ' was already sent their photos on WhatsApp.', already: true, last: lastOut }, 409)
+  // The picture on top: one of their photos from our own store, signed for them.
+  const pid = new Map<string, string>()
+  try {
+    for (const r of await all(c, `SELECT pid, drive_id FROM event_photos WHERE event_id = 1 AND hidden = 0 AND drive_id IN (${who.pick.map(() => '?').join(',')})`, ...who.pick)) pid.set(String(r.drive_id), String(r.pid))
+  } catch { /* no photo store */ }
+  const d = who.pick.find(q => pid.has(q))
+  if (!d) return c.json({ error: 'None of ' + who.name + '’s photos is in the photo store yet, so there is no picture to send.' }, 409)
+  const image = await photoLink(c, pid.get(d)!, 'm', key)
+  const target = await pageUrl(c, key)
+  if (!image || !/[?&]k=[0-9a-f]+/.test(target)) return c.json({ error: 'Photo links cannot be signed on this server.' }, 503)
+  // Their row still waiting in a bulk send would send it a second time: this one goes instead.
+  if (b.again) await run(c, "UPDATE wa_messages SET status = 'skipped', error = 'Sent by hand instead', updated_at = datetime('now') WHERE direction = 'out' AND kind = 'photos' AND person = ? AND status = 'queued'", key)
+  const params = [blank(titledName(who.name) || 'there', 60), photoWords(who.count)]
+  const p: Person = { attendee_id: who.attendee_id, person: key, name: who.name, number: who.number, params, image, target, text: fill(got.tpl.text, params) }
+  const sent = await sendNow(c, cfg, rowFor(p, { kind: 'photos', event: 1 }, got.tpl, actorOf(c)))
+  if (!sent.ok) return c.json({ error: sent.error }, 502)
+  await note(c, 'whatsapp.send.photos_one', sent.id, { key, again: !!b.again, number_from: who.source })
+  return c.json({ success: true, to: who.name, number: shown })
+})
+// Every album's last photos message on WhatsApp, for the rows on those two screens.
+wa.get('/api/admin/whatsapp/photo-status', async (c) => {
+  if (!(await ready(c))) return c.json({ ready: false, people: {} })
+  const cfg = await loadCfg(c)
+  const t = await one(c, 'SELECT status FROM wa_templates WHERE name = ?', PHOTO_TPL).catch(() => null)
+  const people: Record<string, any> = {}
+  for (const r of await all(c, `SELECT person, status, own, error, created_at, sent_at, read_at, clicked_at FROM wa_messages
+     WHERE direction = 'out' AND test = 0 AND kind = 'photos' AND person <> '' AND status NOT IN ('skipped', 'cancelled') ORDER BY id`)) {
+    people[String(r.person)] = { status: String(r.status), own: Number(r.own) === 1, error: r.status === 'failed' ? String(r.error || '') : '', at: String(r.sent_at || r.created_at || ''), read_at: r.read_at || '', clicked_at: r.clicked_at || '' }
+  }
+  return c.json({ ready: true, connected: connected(cfg), approved: String(t?.status || '') === 'APPROVED', people })
 })
 
 // ---------- Meta calls us: delivered, read, failed, and replies ----------

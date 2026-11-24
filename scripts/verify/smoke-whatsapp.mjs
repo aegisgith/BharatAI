@@ -581,6 +581,51 @@ db.run("UPDATE wa_templates SET status = 'APPROVED' WHERE name = 'bhai_auto_delh
 t = await tick();
 check('automatic: …and goes once Meta approves it again', msgs("name = 'Paused Payer' AND kind = 'auto'").length === 1 && t?.auto?.delhi_paid === 1, JSON.stringify(t?.auto));
 
+// ---------- one person's photos, from After the Event and Attendees (24 Nov 2026) ----------
+const one1 = (body) => as('POST', '/api/admin/whatsapp/photos-one', body);
+sb = sends().length;
+r = await one1({ key: keys[0], dry: true });
+check('photos to one: the check says who, how many photos, the number from their registration, and that they had them already', r.status === 200 && r.json?.name === 'Dr. Asha Mehta' && r.json.count === ATT.albums[keys[0]].photos.length
+  && r.json.number === '+91 98765 43210' && r.json.source === 'their registration' && !!r.json.last && sends().length === sb, r.text.slice(0, 300));
+sb = sends().length;
+r = await one1({ key: keys[0] });
+check('photos to one: already sent, so it asks before sending again', r.status === 409 && r.json?.already === true && sends().length === sb, r.text.slice(0, 200));
+r = await one1({ key: keys[0], again: true });
+const p1 = sends()[sb]?.body;
+const p1row = msgs("kind = 'photos' AND person = ?", [keys[0]]).pop();
+g = p1 ? await get('/w/' + codeOf(p1), { 'User-Agent': 'Mozilla/5.0 (iPhone)' }) : null;
+check('photos to one: sent again at once: one of their photos on top, their count, and the button opens their own album', r.status === 200 && p1?.to === '919876543210' && p1.template.name === 'bhai_event_photos_v1'
+  && /\/m\.jpg\?u=a\d+/.test(p1.template.components[0]?.parameters?.[0]?.image?.link || '') && bodyOf(p1)[1] === nPhotos(keys[0]) && p1row?.batch_id === null && p1row.created_by
+  && /\/photos\/a\d+\?k=[0-9a-f]+/.test(g?.headers.get('location') || ''), JSON.stringify(p1?.template).slice(0, 400) + ' ' + g?.headers.get('location'));
+r = await one1({ key: keys[4], dry: true });
+check('photos to one: someone who unsubscribed is refused in plain words', r.status === 409 && /unsubscribed/.test(r.json?.error || ''), r.json?.error);
+r = await one1({ key: keys[5], dry: true });
+check('photos to one: someone who asked not to be matched is refused', r.status === 409 && /not to match/.test(r.json?.error || ''), r.json?.error);
+r = await one1({ key: keys[1], number: '12345', dry: true });
+check('photos to one: a typed number that is not complete is caught', r.status === 400 && r.json?.field === 'number', r.json?.error);
+r = await one1({ key: 'a999999999', dry: true });
+check('photos to one: someone with no photos', r.status === 404 && /No photos/.test(r.json?.error || ''), r.json?.error);
+// A speaker: their album key, their number from their own registration (the email on their row).
+const SPK = 's108';
+person(990201, 'Abhishek Talwar', '98200 31313', { email: 'abhishek.t@example.com' });
+r = await one1({ key: SPK, email: 'Abhishek.T@example.com', dry: true });
+check('photos to one: a speaker’s number is found from their registration by the email on their row', r.status === 200 && r.json?.name === 'Abhishek Talwar' && r.json.number === '+91 98200 31313' && r.json.source === 'their registration' && !r.json.last && r.json.count > 0, r.text.slice(0, 300));
+r = await one1({ key: SPK, email: 'abhishek.t@example.com' });
+check('photos to one: with none of their photos in the store yet, it says so instead of sending without a picture', r.status === 409 && /photo store/.test(r.json?.error || ''), r.json?.error);
+const spBest = JSON.parse(read('src/data/speaker-photos.json')).people.find(x => x.key === SPK).best[0];
+db.run("INSERT OR IGNORE INTO event_photos (event_id, pid, drive_id, title, day) VALUES (1, 'SPK108abcdef', ?, 'S.JPG', '2026-11-20')", [spBest]);
+sb = sends().length;
+r = await one1({ key: SPK, email: 'abhishek.t@example.com', number: '+91 98200 47474' });
+const p2 = sends()[sb]?.body;
+g = p2 ? await get('/w/' + codeOf(p2), { 'User-Agent': 'Mozilla/5.0 (iPhone)' }) : null;
+check('photos to one: a speaker, to a number typed on the screen: their photos page behind the button', r.status === 200 && p2?.to === '919820047474' && /Abhishek/.test(bodyOf(p2)[0]) && /\/photos\/s108\?k=[0-9a-f]+/.test(g?.headers.get('location') || ''), (g?.headers.get('location') || '') + ' ' + r.text.slice(0, 200));
+db.run("INSERT INTO wa_contacts (wa_number, opted_out_at, opted_out_by) VALUES ('919820031313', datetime('now'), 'reply')");
+r = await one1({ key: SPK, email: 'abhishek.t@example.com', dry: true });
+check('photos to one: a number that said STOP is refused', r.status === 409 && /stop/i.test(r.json?.error || ''), r.json?.error);
+r = await as('GET', '/api/admin/whatsapp/photo-status');
+check('photos to one: the rows on the screens learn who was sent their photos on WhatsApp', r.status === 200 && r.json?.approved === true && r.json.people[keys[0]]?.status === 'sent' && r.json.people[SPK]?.status === 'sent', JSON.stringify(r.json?.people?.[keys[0]]));
+check('photos to one: both routes need an admin', (await hit('POST', '/api/admin/whatsapp/photos-one', { key: keys[0], dry: true })).status === 401 && (await hit('GET', '/api/admin/whatsapp/photo-status')).status === 401, '');
+
 // ---------- the lists, and nothing leaking ----------
 r = await as('GET', '/api/admin/whatsapp/messages?status=failed');
 const ov = (await as('GET', '/api/admin/whatsapp')).json;

@@ -42701,7 +42701,7 @@ function adminPageScript(): string {
     // After the Event: the feedback survey and each exhibitor's results live in
     // /js/admin-after.js (one global, AfterDesk) with their own stylesheet, loaded the
     // first time the section opens. Bump AFTER_DESK_VERSION on any change to either.
-    var AFTER_DESK_VERSION = '20261123more';
+    var AFTER_DESK_VERSION = '20261124wa';
     var afterDeskAssets = null;
     function afterDeskLoadAssets() {
       if (window.AfterDesk) return Promise.resolve();
@@ -45455,6 +45455,7 @@ function adminPageScript(): string {
                     <button onclick='adminDownloadSocialCard(\${JSON.stringify({id:a.id,name:a.name,email:a.email,company:a.company||"",job_title:a.job_title||"",badge_type:a.badge_type||"Visitor Pass",payment_status:a.payment_status||"",avatar_url:a.avatar_url||"",role:a.role||"",website_url:a.website_url||""}).replace(/&/g,"&amp;").replace(/'/g,"&#39;")})' class="px-2 py-1 rounded text-xs bg-violet-500/20 text-violet-300 hover:bg-violet-500/30" title="Download their &quot;I&#39;m attending&quot; social card"><i class="fas fa-share-alt"></i></button>
                     <button onclick="adminCertFor(\${a.id})" class="px-2 py-1 rounded text-xs bg-orange-500/20 text-orange-300 hover:bg-orange-500/30" title="Their certificates: see, and whether the app gives them"><i class="fas fa-award"></i></button>
                     <button onclick="notifyAttendeeById(\${a.id})" class="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" title="Send notification email"><i class="fas fa-envelope"></i></button>
+                    \${a.mobile ? '<button onclick="waPhotosFor(' + Number(a.id) + ')" class="px-2 py-1 rounded text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30" title="Send their event photos on WhatsApp"><i class="fas fa-comment-dots"></i></button>' : ''}
                     \${a.checked_in_at ? '<button onclick="resetCheckin(' + Number(a.id) + ')" class="px-2 py-1 rounded text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30" title="Checked in ' + escH(a.checked_in_at) + (a.checked_in_by ? ' by ' + escH(a.checked_in_by) : '') + '. Click to reset the check-in so they can be admitted again."><i class="fas fa-door-open"></i></button>' : ''}
                     <button onclick="deleteAttendee(\${a.id})" class="px-2 py-1 rounded text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30" title="Delete"><i class="fas fa-trash"></i></button>
                   </td>
@@ -47331,6 +47332,29 @@ function adminPageScript(): string {
       if (!a) { toast('Could not find that attendee - refresh and try again.', 'error'); return; }
       // The exact mail first; Send is in the same window.
       return openNotifyPreview({ id: a.id, name: a.name, email: a.email });
+    }
+    // Their event photos on WhatsApp (24 Nov 2026, routes/whatsapp.ts): one of their photos
+    // and a button to their own album page, from the event's own number. It asks first, and
+    // says why when it cannot (no photos of them, unsubscribed, said STOP).
+    function waWhen(s) {
+      var d = new Date(String(s || '').replace(' ', 'T') + 'Z');
+      return isNaN(d.getTime()) ? String(s || '') : d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    }
+    async function waPhotosFor(id) {
+      try {
+        var info = await api.post('/api/admin/whatsapp/photos-one', { key: 'a' + id, dry: true });
+        var lastWords = !info.last ? '' : info.last.waiting ? ' Their photos are already waiting in a WhatsApp send; this sends them now instead.'
+          : ' They were ALREADY SENT their photos on WhatsApp on ' + waWhen(info.last.at) + '.';
+        var typed = '';
+        if (!info.number) {
+          typed = (prompt('There is no mobile number for ' + info.name + '.' + lastWords + ' Type their WhatsApp number to send their ' + info.count + ' photos:', '') || '').trim();
+          if (!typed) return;
+        } else if (!confirm('Send ' + info.name + ' their ' + info.count + ' photos on WhatsApp, to ' + info.number + '?' + lastWords)) return;
+        var r = await api.post('/api/admin/whatsapp/photos-one', { key: 'a' + id, number: typed, again: !!info.last });
+        toast('Photos sent on WhatsApp to ' + r.to + ', ' + r.number + '.');
+      } catch (e) {
+        toast((e && e.message) || 'That did not work. Please try again.', 'error');
+      }
     }
     async function notifyAttendee(id, name, email, previewed) {
       if (!previewed && !confirm(\`Send notification email to \${name} (\${email})?\`)) return;

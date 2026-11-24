@@ -70,6 +70,10 @@
 .afd-table .afd-n { text-align: right; font-variant-numeric: tabular-nums; }
 .afd-row-actions { white-space: nowrap; text-align: right; }
 .afd-row-actions .afd-btn + .afd-btn { margin-left: 6px; }
+/* Their photos on WhatsApp: its own line under Preview and Send, in WhatsApp's green. */
+.afd-row-actions .afd-btn.afd-wa { display: flex; width: max-content; margin: 6px 0 0 auto; background: #ecfdf3; border-color: #9ee2b8; color: var(--af-good); }
+.afd-row-actions .afd-btn.afd-wa:hover:not([disabled]) { border-color: #25a55a; }
+.afd-wa-line { margin-top: 6px; }
 .afd-comments { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
 .afd-comments li { background: var(--af-soft); border-radius: 10px; padding: 10px 12px; }
 .afd-comments p { margin: 0 0 4px; white-space: pre-wrap; max-width: 80ch; }
