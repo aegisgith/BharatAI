@@ -401,6 +401,15 @@
     .sticky-cta .btn { flex: none; width: auto !important; padding: 0.7rem 1.15rem; min-height: 46px; font-size: 0.92rem; }
     @media (prefers-reduced-motion: reduce) { .sticky-cta, .sticky-cta.is-on { transition: none; } }
     @media print { .sticky-cta { display: none; } }
+    /* Mumbai 2026 in photos (24 Nov 2026) */
+    .gv-photos { background: #fff; }
+    .gv-ph-grid { display: grid; gap: 1rem; margin-top: 2rem; }
+    .gv-ph { margin: 0; background: var(--off-white); border: 1px solid #E3E6F6; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
+    .gv-ph img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; }
+    .gv-ph figcaption { padding: 0.85rem 1rem 1rem; font-size: 0.92rem; line-height: 1.55; color: var(--charcoal); text-wrap: pretty; }
+    .gv-ph-kind { display: block; margin-bottom: 0.3rem; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--saffron); }
+    @media (min-width: 640px) { .gv-ph-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .gv-ph--wide { grid-column: 1 / -1; } }
+    @media (min-width: 1000px) { .gv-ph-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; } .gv-ph--wide { grid-column: span 2; } }
     </style>
 </head>
 <body>
@@ -567,6 +576,57 @@
                 </article>
             </div>
             <p class="gv-see-all"><a href="/mumbai">See what happened at Mumbai 2026 <i class="fas fa-arrow-right" aria-hidden="true"></i></a></p>
+        </div>
+    </section>
+
+    <!-- ===== MUMBAI 2026 IN PHOTOS (24 Nov 2026): government speakers, panels and a special guest. Each
+         person was matched by face and checked by eye against their own photo. Files from the event's
+         photographers, 2,000 px copies, in images/government/mumbai-2026/. ===== -->
+    <section class="gv-photos gv-sec" id="photos">
+        <div class="container">
+            <div class="section-header reveal">
+                <h2 class="section-title">Government at Mumbai 2026, <span class="accent">in pictures</span></h2>
+                <p class="section-subtitle">Officials from central ministries, Government of India institutions and Maharashtra showed their AI work on stage at World Trade Center Mumbai, 20 and 21 November 2026.</p>
+            </div>
+            <div class="gv-ph-grid">
+                <figure class="gv-ph gv-ph--wide">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/governance-panel-720.webp" srcset="images/government/mumbai-2026/governance-panel-720.webp 720w, images/government/mumbai-2026/governance-panel.webp 1200w" sizes="(min-width: 900px) 66vw, 100vw" alt="The governance panel seated on the main stage under its title, AI for Viksit Bharat">
+                    <figcaption><span class="gv-ph-kind">Panel</span>AI for Viksit Bharat: Igniting 1.4 Billion Dreams and Transforming Governance. On the panel: Shri Ganesh Nagarajan (Ministry of Tribal Affairs), Shri Ravi Ranjan Singh (Department of Agriculture &amp; Farmers Welfare) and Shri Akshay Yadava (UIDAI), with industry leaders.</figcaption>
+                </figure>
+                <figure class="gv-ph">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/tribal-affairs-ganesh-nagarajan-720.webp" srcset="images/government/mumbai-2026/tribal-affairs-ganesh-nagarajan-720.webp 720w, images/government/mumbai-2026/tribal-affairs-ganesh-nagarajan.webp 1200w" sizes="(min-width: 900px) 33vw, 100vw" alt="Shri Ganesh Nagarajan speaking at the lectern on the Innovation Talks stage">
+                    <figcaption><span class="gv-ph-kind">Innovation Talk</span>Shri Ganesh Nagarajan, Deputy Secretary, Ministry of Tribal Affairs, Government of India, presents Adi Vaani: India’s tribal languages, with AI.</figcaption>
+                </figure>
+                <figure class="gv-ph">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/midc-kunal-khemnar-720.webp" srcset="images/government/mumbai-2026/midc-kunal-khemnar-720.webp 720w, images/government/mumbai-2026/midc-kunal-khemnar.webp 1200w" sizes="(min-width: 900px) 33vw, 100vw" alt="Dr. Kunal Khemnar at the lectern beside a screen titled AI Uses Cases">
+                    <figcaption><span class="gv-ph-kind">Innovation Talk</span>Dr. Kunal Khemnar (IAS), Joint CEO, Maharashtra Industrial Development Corporation (MIDC), on MIDC’s AI use cases.</figcaption>
+                </figure>
+                <figure class="gv-ph">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/agriculture-ravi-ranjan-singh-720.webp" srcset="images/government/mumbai-2026/agriculture-ravi-ranjan-singh-720.webp 720w, images/government/mumbai-2026/agriculture-ravi-ranjan-singh.webp 1200w" sizes="(min-width: 900px) 33vw, 100vw" alt="Shri Ravi Ranjan Singh speaking into a microphone on the governance panel">
+                    <figcaption><span class="gv-ph-kind">Panel</span>Shri Ravi Ranjan Singh, Director, Digital, Department of Agriculture &amp; Farmers Welfare, Government of India, on the governance panel.</figcaption>
+                </figure>
+                <figure class="gv-ph">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/icmr-vishal-deo-720.webp" srcset="images/government/mumbai-2026/icmr-vishal-deo-720.webp 720w, images/government/mumbai-2026/icmr-vishal-deo.webp 1200w" sizes="(min-width: 900px) 33vw, 100vw" alt="Dr. Vishal Deo presenting beside a slide on health research in India">
+                    <figcaption><span class="gv-ph-kind">Innovation Talk</span>Dr. Vishal Deo, Scientist-C, ICMR-National Institute for Research in Digital Health, on a DEPA framework for health research.</figcaption>
+                </figure>
+                <figure class="gv-ph gv-ph--wide">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/agriculture-panel-720.webp" srcset="images/government/mumbai-2026/agriculture-panel-720.webp 720w, images/government/mumbai-2026/agriculture-panel.webp 1200w" sizes="(min-width: 900px) 66vw, 100vw" alt="The agriculture panel seated on stage under its title, Transforming Indian Agriculture with AI">
+                    <figcaption><span class="gv-ph-kind">Panel</span>Transforming Indian Agriculture with AI: Doubling Farmer Income. On the panel: Dr. Vivek Mohanrao Bhoite (KVK Baramati, ICAR-ATARI), with agritech and industry leaders.</figcaption>
+                </figure>
+                <figure class="gv-ph">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/uidai-akshay-yadava-720.webp" srcset="images/government/mumbai-2026/uidai-akshay-yadava-720.webp 720w, images/government/mumbai-2026/uidai-akshay-yadava.webp 1200w" sizes="(min-width: 900px) 33vw, 100vw" alt="Shri Akshay Yadava, on the left, listening on the governance panel">
+                    <figcaption><span class="gv-ph-kind">Panel</span>Shri Akshay Yadava (left), Director, Unique Identification Authority of India (UIDAI), on the governance panel.</figcaption>
+                </figure>
+                <figure class="gv-ph">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/psa-srinivas-kancharla-720.webp" srcset="images/government/mumbai-2026/psa-srinivas-kancharla-720.webp 720w, images/government/mumbai-2026/psa-srinivas-kancharla.webp 1200w" sizes="(min-width: 900px) 33vw, 100vw" alt="Shri Srinivas Kancharla speaking on stage in front of the Office of the Principal Scientific Adviser slide">
+                    <figcaption><span class="gv-ph-kind">Innovation Talk</span>Shri Srinivas Kancharla, Program Specialist, Office of the Principal Scientific Adviser to the Government of India, on MANTHAN and UTTHAN.</figcaption>
+                </figure>
+                <figure class="gv-ph gv-ph--wide">
+                    <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/special-guest-kapil-patil-720.webp" srcset="images/government/mumbai-2026/special-guest-kapil-patil-720.webp 720w, images/government/mumbai-2026/special-guest-kapil-patil.webp 1200w" sizes="(min-width: 900px) 66vw, 100vw" alt="Shri Kapil Moreshwar Patil being welcomed at the entrance under the AI for Bharat banner">
+                    <figcaption><span class="gv-ph-kind">Special guest</span>Shri Kapil Moreshwar Patil, former Union Minister of State for Panchayati Raj, arrives as a special guest.</figcaption>
+                </figure>
+            </div>
+            <p class="gv-see-all"><a href="/gallery">See more photos from Mumbai 2026 <i class="fas fa-arrow-right" aria-hidden="true"></i></a></p>
         </div>
     </section>
 
