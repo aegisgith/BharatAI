@@ -349,17 +349,28 @@
       var st = r.sent_count ? '<div class="afd-ok">Sent ' + esc(when(r.sent_at)) + '</div>' + (r.email ? '<div class="afd-sub">to ' + esc(r.email) + '</div>' : '') + (r.sent_count > 1 ? '<div class="afd-sub">' + num(r.sent_count) + ' times</div>' : '')
         : '<div class="afd-bad">Not sent yet</div>' + (r.status === 'ready' ? '' : '<div class="afd-sub">' + esc(BOOTH_STATUS[r.status] || r.status) + '</div>');
       var can = r.count > 0 && emailOk(r.email);
+      if (r.team_sent) st += '<div class="afd-sub">Team: ' + num(r.team_sent) + ' more emailed the link</div>';
       return '<tr><td><b>' + esc(r.company) + '</b>' + (r.booth ? '<div class="afd-sub">Booth ' + esc(r.booth) + '</div>' : '') + '</td>'
         + '<td><b>' + num(r.count) + '</b><div class="afd-thumbs">' + thumbs + '</div></td>'
         + '<td>' + (emailOk(r.email) ? esc(r.email) : '<span class="afd-bad">No contact email</span>') + '</td><td>' + st + '</td>'
         + '<td class="afd-row-actions"><button type="button" class="afd-btn afd-small" data-act="preview-booth" data-id="' + esc(r.key) + '">Preview</button>'
-        + '<button type="button" class="afd-btn afd-small" data-act="send-booth" data-id="' + esc(r.key) + '"' + (can ? '' : ' disabled') + '>' + (r.sent_count ? 'Send again' : 'Send') + '</button></td></tr>';
+        + '<button type="button" class="afd-btn afd-small" data-act="send-booth" data-id="' + esc(r.key) + '"' + (can ? '' : ' disabled') + '>' + (r.sent_count ? 'Send again' : 'Send') + '</button>'
+        + '<button type="button" class="afd-btn afd-small" data-act="team-booth" data-id="' + esc(r.key) + '">Team</button></td></tr>';
     }).join('');
+    // Everyone at each company (24 Nov 2026, the organiser: "build send all"): two emails,
+    // each to every person once. Both buttons count first and ask before anything goes.
+    var team = '<div class="afd-team"><h3>Everyone at each company</h3>'
+      + '<p class="afd-note">Not only the booth contact: also the dashboard accounts, the team list, and people registered at the company&rsquo;s email domain or under its name. Each person gets each email once. Anyone who unsubscribed is left out. &ldquo;Team&rdquo; on a row shows who they are.</p>'
+      + '<div class="afd-actions"><button type="button" class="afd-btn afd-primary" data-act="send-all-team" data-kind="team"' + (list.length ? '' : ' disabled') + '>'
+      + '<i class="fas fa-paper-plane" aria-hidden="true"></i> Send the photos link to every team</button>'
+      + '<button type="button" class="afd-btn afd-primary" data-act="send-all-team" data-kind="account"' + (list.length ? '' : ' disabled') + '>'
+      + '<i class="fas fa-paper-plane" aria-hidden="true"></i> Send &ldquo;Your photos are in your account&rdquo; to every team</button>'
+      + '<span class="afd-note" id="afd-team-progress" aria-live="polite"></span></div></div>';
     return '<section class="afd-card">' + head
       + '<p class="afd-note">' + num(list.length) + ' companies, ' + num(booths.photos) + ' photos.</p>'
       + '<div class="afd-actions"><button type="button" class="afd-btn afd-primary" data-act="send-all-booth"' + (ready.length ? '' : ' disabled') + '>'
       + '<i class="fas fa-paper-plane" aria-hidden="true"></i> Send to all not yet sent (' + num(ready.length) + ')</button>'
-      + '<span class="afd-note" id="afd-booth-progress" aria-live="polite"></span></div>'
+      + '<span class="afd-note" id="afd-booth-progress" aria-live="polite"></span></div>' + team
       + '<div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Exhibitor</th><th>Photos</th><th>Booth contact</th><th>Booth photos email</th><th><span class="afd-sr">Actions</span></th></tr></thead><tbody>' + rows + '</tbody></table></div></section>';
   }
 
@@ -415,6 +426,142 @@
 
   async function sendOne(id, again) {
     return opts.api.post('/api/admin/exhibitor-results/' + encodeURIComponent(id) + '/send', { again: !!again });
+  }
+
+  // ---- Everyone at a company: the two team emails (src/routes/exhibitor-photos.ts) ----
+  // team: the photos link, which opens with no sign-in (send-team). account: "Your photos are
+  // in your account" (send-account). Both answer { dry: true } with who it would go to, and
+  // take { only: [emails] } so exactly the people shown are the people sent to.
+  var TEAM_MAIL = {
+    team: { path: 'send-team', words: 'the photos link email', short: 'photos link' },
+    account: { path: 'send-account', words: 'the "Your photos are in your account" email', short: 'account email' }
+  };
+  function ppl(n) { return num(n) + (n === 1 ? ' person' : ' people'); }
+  function cos(n) { return num(n) + (n === 1 ? ' company' : ' companies'); }
+  function notHad(n) { return n === 1 ? 'the 1 person who has not had it' : 'the ' + num(n) + ' people who have not had it'; }
+  function teamUrl(key, kind) { return '/api/admin/booth-photos/' + encodeURIComponent(key) + '/' + TEAM_MAIL[kind].path; }
+  // Who has not had this email, company by company, four companies at a time. A company with
+  // no photos answers with an error: it has nothing to send, so it is left out.
+  async function countTeams(kind, list, say) {
+    var found = [], people = 0, done = 0, next = 0;
+    async function worker() {
+      while (next < list.length) {
+        var row = list[next++];
+        try {
+          var d = await opts.api.post(teamUrl(row.key, kind), { dry: true });
+          var emails = (d.would || []).map(function (p) { return p.email; });
+          if (emails.length) { found.push({ row: row, emails: emails }); people += emails.length; }
+        } catch (err) { /* nothing to send for this company */ }
+        done++;
+        say('Checking who has not had it: ' + done + ' of ' + list.length + ' companies...');
+      }
+    }
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    found.sort(function (a, b) { return a.row.company.localeCompare(b.row.company); });
+    return { companies: found, people: people };
+  }
+  async function sendTeams(kind, companies, say) {
+    var sent = 0, failed = [];
+    for (var i = 0; i < companies.length; i++) {
+      say('Sending to company ' + (i + 1) + ' of ' + companies.length + ' (' + companies[i].row.company + ')...');
+      try {
+        var r = await opts.api.post(teamUrl(companies[i].row.key, kind), { only: companies[i].emails });
+        sent += (r.sent || []).length;
+        (r.failed || []).forEach(function (f) { failed.push(f.email + ': ' + (f.error || 'not sent')); });
+      } catch (err) { failed.push(companies[i].row.company + ': ' + ((err && err.message) || 'failed')); }
+    }
+    return { sent: sent, failed: failed };
+  }
+  async function sendAllTeams(kind, btn) {
+    var list = (booths && booths.rows) || [];
+    if (!list.length) return;
+    var say = function (t) { var el = document.getElementById('afd-team-progress'); if (el) el.textContent = t; };
+    busy = true; btn.disabled = true;
+    var c = await countTeams(kind, list, say);
+    if (!c.people) { say(''); toast('Everyone we found has already had ' + TEAM_MAIL[kind].words + '.'); return; }
+    say(ppl(c.people) + ' at ' + cos(c.companies.length) + (c.people === 1 ? ' has' : ' have') + ' not had it.');
+    var names = c.companies.slice(0, 6).map(function (x) { return x.row.company + ' (' + x.emails.length + ')'; }).join(', ') + (c.companies.length > 6 ? ', and ' + (c.companies.length - 6) + ' more' : '');
+    if (!w.confirm('Send ' + TEAM_MAIL[kind].words + ' to ' + ppl(c.people) + ' at ' + cos(c.companies.length) + ', one email each?\n\n' + names + '\n\nAnyone who has already had it, or who unsubscribed, is left out.')) { say(''); return; }
+    var r = await sendTeams(kind, c.companies, say);
+    say('');
+    toast(r.sent + ' sent' + (r.failed.length ? ', ' + r.failed.length + ' did not send: ' + r.failed.slice(0, 3).join('; ') : '.'), r.failed.length ? 'error' : 'success');
+    await refresh();
+  }
+
+  // "Team" on a row: who represents the company, how each was found, and which of the two
+  // emails each has had; send either email to those who have not, or look at it first.
+  async function teamBox(key) {
+    var row = ((booths && booths.rows) || []).find(function (x) { return String(x.key) === String(key); }) || { key: key, company: key };
+    var people = await opts.api.get('/api/admin/booth-photos/' + encodeURIComponent(key) + '/people');
+    var acct = await opts.api.post(teamUrl(key, 'account'), { dry: true }).catch(function (e) { return { error: (e && e.message) || 'no answer', would: [] }; });
+    var needAcct = {};
+    (acct.would || []).forEach(function (p) { needAcct[p.email] = true; });
+    var list = (people.people || []).slice().sort(function (a, b) { return String(a.name || a.email).localeCompare(String(b.name || b.email)); });
+    var needLink = list.filter(function (p) { return !p.sent && !p.unsubscribed; });
+    var needAccount = list.filter(function (p) { return needAcct[p.email]; });
+    var yes = '<span class="afd-ok">Sent</span>', no = '<span class="afd-bad">Not yet</span>', un = '<span class="afd-sub">Unsubscribed</span>';
+    var rows = list.map(function (p) {
+      return '<tr><td><b>' + esc(p.name || 'No name') + '</b><div class="afd-sub">' + esc(p.email) + (p.mobile ? ' &middot; ' + esc(p.mobile) : '') + '</div></td>'
+        + '<td>' + esc((p.why || []).join(', ')) + '</td>'
+        + '<td>' + (p.unsubscribed ? un : p.sent ? yes : no) + '</td>'
+        + '<td>' + (p.unsubscribed ? un : acct.error ? '<span class="afd-sub">-</span>' : needAcct[p.email] ? no : yes) + '</td></tr>';
+    }).join('');
+    var old = document.getElementById('afd-preview');
+    if (old) old.remove();
+    var box = document.createElement('div');
+    box.id = 'afd-preview';
+    box.className = 'afd-modal';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', 'Everyone at ' + row.company);
+    box.innerHTML = '<div class="afd-modal-card"><div class="afd-modal-head"><div><b>Everyone at ' + esc(people.company || row.company) + '</b>'
+      + '<div class="afd-sub">' + num(list.length) + ' people found' + (people.page ? ' &middot; <a href="' + esc(people.page) + '" target="_blank" rel="noopener">Open their photos page</a>' : '') + '</div></div>'
+      + '<button type="button" class="afd-btn afd-small" data-close>Close</button></div>'
+      + '<div class="afd-modal-body">'
+      + (list.length ? '<table class="afd-table"><thead><tr><th>Who</th><th>Found by</th><th>Photos link</th><th>Account email</th></tr></thead><tbody>' + rows + '</tbody></table>'
+        : '<p class="afd-note">We found nobody for this company: no contact email, no dashboard account, nobody on its team list and nobody registered under its name. Add the booth contact in Exhibitors.</p>')
+      + (acct.error ? '<p class="afd-note">The account email: ' + esc(acct.error) + '</p>' : '')
+      + '<div class="afd-actions afd-team-actions">'
+      + '<button type="button" class="afd-btn afd-primary" data-team-send="team"' + (needLink.length ? '' : ' disabled') + '>Send the photos link to ' + notHad(needLink.length) + '</button>'
+      + '<button type="button" class="afd-btn afd-primary" data-team-send="account"' + (needAccount.length ? '' : ' disabled') + '>Send the account email to ' + notHad(needAccount.length) + '</button>'
+      + '<button type="button" class="afd-btn" data-team-preview' + (needAccount.length ? '' : ' disabled') + '>Look at the account email</button>'
+      + '<span class="afd-note" data-team-say aria-live="polite"></span></div></div></div>';
+    document.body.appendChild(box);
+    var close = function () { box.remove(); document.removeEventListener('keydown', onKey); };
+    var onKey = function (e) { if (e.key === 'Escape') close(); };
+    var working = false;
+    box.addEventListener('click', async function (e) {
+      if (e.target === box || e.target.hasAttribute('data-close')) { close(); return; }
+      var t = e.target.closest('[data-team-send], [data-team-preview]');
+      if (!t || t.disabled || working) return;
+      var sayEl = box.querySelector('[data-team-say]');
+      try {
+        if (t.hasAttribute('data-team-preview')) {
+          working = true;
+          var pv = await opts.api.post(teamUrl(key, 'account'), { dry: true, html: true });
+          close();
+          preview('Your photos are in your account', (pv.would && pv.would[0] && pv.would[0].email) || '', pv.subject || '', pv.html || '');
+          return;
+        }
+        var kind = t.getAttribute('data-team-send') === 'account' ? 'account' : 'team';
+        var to = (kind === 'account' ? needAccount : needLink).map(function (p) { return p.email; });
+        if (!to.length) return;
+        if (!w.confirm('Send ' + TEAM_MAIL[kind].words + ' to ' + ppl(to.length) + ' at ' + (people.company || row.company) + ', one email each?')) return;
+        working = true; t.disabled = true;
+        if (sayEl) sayEl.textContent = 'Sending...';
+        var r = await opts.api.post(teamUrl(key, kind), { only: to });
+        var bad = (r.failed || []).length;
+        toast((r.sent || []).length + ' sent' + (bad ? ', ' + bad + ' did not send: ' + r.failed.slice(0, 3).map(function (f) { return f.email + ' (' + (f.error || 'not sent') + ')'; }).join('; ') : '.'), bad ? 'error' : 'success');
+        close();
+        await refresh();
+        await teamBox(key);
+      } catch (err) {
+        if (sayEl) sayEl.textContent = '';
+        toast((err && err.message) || 'That did not work. Please try again.', 'error');
+      } finally { working = false; }
+    });
+    document.addEventListener('keydown', onKey);
+    box.querySelector('[data-close]').focus();
   }
 
   async function onClick(e) {
@@ -567,6 +714,11 @@
         await opts.api.post('/api/admin/booth-photos/' + encodeURIComponent(br.key) + '/send', { again: !!br.sent_count });
         toast('Booth photos sent to ' + br.company + '.');
         await refresh();
+      } else if (act === 'team-booth') {
+        busy = true; b.disabled = true;
+        await teamBox(id);
+      } else if (act === 'send-all-team') {
+        await sendAllTeams(b.getAttribute('data-kind') === 'account' ? 'account' : 'team', b);
       } else if (act === 'preview-more') {
         var mv = await opts.api.get('/api/admin/more-photos/' + encodeURIComponent(id) + '/preview');
         preview('More photos email', mv.to, mv.subject, mv.html);
