@@ -243,8 +243,13 @@ export async function representativesOf(c: any, co: Company): Promise<{ people: 
   for (const r of await all(c, `SELECT first_name, last_name, email, mobile, attendee_id FROM exhibitor_team WHERE exhibitor_id IN (${q})`, ...ids).catch(() => [] as any[])) {
     add(r.email, [r.first_name, r.last_name].map(x => String(x || '').trim()).filter(Boolean).join(' '), 'team list', r.attendee_id, r.mobile)
   }
-  // The company's own domains, from the addresses above.
-  const domains = [...new Set([...map.keys()].map(domainOf).filter(d => !FREE_MAIL.has(d) && !SHARED_DOMAIN.test(d)))].slice(0, 20)
+  // The company's own domains: the booth contact's and its dashboard accounts', and a domain
+  // at least two people on its team list share. One team member at another company's address
+  // (a guest, a partner) must not bring that whole company in.
+  const teamDomains = new Map<string, number>()
+  for (const r of map.values()) if (r.why.includes('team list')) teamDomains.set(domainOf(r.email), (teamDomains.get(domainOf(r.email)) || 0) + 1)
+  const domains = [...new Set([...map.values()].filter(r => r.why.includes('booth contact') || r.why.includes('dashboard account') || (teamDomains.get(domainOf(r.email)) || 0) >= 2).map(r => domainOf(r.email))
+    .filter(d => !FREE_MAIL.has(d) && !SHARED_DOMAIN.test(d)))].slice(0, 20)
   const names = new Set([co.name, ...ex.map(r => r.company_name)].map(companyWords).filter(n => n.length >= 3))
   // The longest word of the company's name narrows the name search; the full name decides.
   const word = ([co.name, ...ex.map(r => r.company_name)].join(' ').toLowerCase().match(/[a-z0-9]{3,}/g) || [])

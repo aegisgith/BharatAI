@@ -193,6 +193,10 @@ check('who represents the company: the booth contact, the account, the team list
   r.status === 200 && who['spoc@excorp.test']?.why.includes('booth contact') && who['spoc@excorp.test']?.why.includes('dashboard account') && who['bina@exteam.test']?.why.includes('team list')
   && who['dev@excorp.test']?.why.includes('same email domain') && who['nina@gmail.com']?.why.includes('company name') && !who['stranger@gmail.com'] && !who['delhi-person@excorp.test']
   && !who['other-address@exteam.test'], JSON.stringify(Object.keys(who)));
+db.run("INSERT INTO exhibitor_team (event_id, exhibitor_id, first_name, last_name, email) VALUES (1, ?, 'Gus', 'Guest', 'gus@bigco.test')", [EX]);
+db.run("INSERT INTO attendees (id, event_id, name, email, company) VALUES (880007, 1, 'Big Co Person', 'someone@bigco.test', 'Big Co')");
+{ const r2 = await as('GET', `/api/admin/booth-photos/${KEY}/people`); const w2 = Object.fromEntries((r2.json?.people || []).map(q => [q.email, q]));
+  check('...one team member at another company\'s address is found, but does not bring that company\'s people in', !!w2['gus@bigco.test'] && !w2['someone@bigco.test'] && !(r2.json?.domains || []).includes('bigco.test'), JSON.stringify(r2.json?.domains)); }
 check('...a free-mail address never makes its whole domain the company\'s', !(r.json?.domains || []).includes('gmail.com') && (r.json?.domains || []).includes('excorp.test'), JSON.stringify(r.json?.domains));
 check('...who has had it already, and who unsubscribed, are marked', who['spoc@excorp.test'] && who['una@excorp.test']?.unsubscribed === true && who['bina@exteam.test']?.sent === false, JSON.stringify(who['una@excorp.test']));
 const before = sent.length;
