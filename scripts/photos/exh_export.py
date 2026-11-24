@@ -42,6 +42,7 @@ for key, rows in m.items():
     if len(best) % 2: best = best[:-1] if len(best) > 1 else best
     rest = sorted((r[0] for r in rows if r[0] not in best), key=lambda p: (meta(p)[0], when(p) or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)))
     companies[key] = {'name': names[key]['name'], 'ids': names[key]['ids'], 'photos': best + rest, 'best': best}
+    if names[key].get('aka'): companies[key]['aka'] = names[key]['aka']   # other names it goes by: the app finds its people by them
     for p in best + rest: photos[p] = meta(p)
 json.dump({'rule': 'company name read in the photo (OCR): 6%+ of the photo for a booth or a row of booths, 20%+ where the stage logo wall or a session backdrop shows; '
                    'plus burst shots of the same booth seconds apart, and booths checked by eye (scripts/photos/booth-checked.json)', 'companies': companies, 'photos': photos},

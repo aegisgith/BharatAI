@@ -56,6 +56,14 @@ function put(list: Rep[], r: Partial<Rep>, by: string): void {
   if (!hit.by.includes(by)) hit.by.push(by)
 }
 
+// "Mr. Sarosh Amaria" and "Sarosh Amaria" are one person: titles and case are left out. The
+// Sent list uses it so that a copy that went to the person's own address is not listed as
+// someone looking after them.
+export const sameName = (a: unknown, b: unknown): boolean => {
+  const n = (v: unknown) => String(v ?? '').toLowerCase().replace(/\b(mr|mrs|ms|dr|shri|sri|smt|prof)\b\.?/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim()
+  return !!n(a) && n(a) === n(b)
+}
+
 // Everyone who looks after each of these albums, by album key.
 export async function repsFor(c: any, keys: string[]): Promise<Map<string, Rep[]>> {
   const ks = [...new Set(keys.map(k => String(k || '')).filter(k => KEY_RE.test(k)))]

@@ -3,6 +3,7 @@ import DATA from '../data/exhibitor-photos.json'
 import * as store from './photo-store'
 import { MUMBAI_WORDS } from './conference'
 import { dearName } from './talk-brief'
+import { isNoEmail } from './team-guests'
 import { albumPageHTML, albumPeople, addPhotoDays, pageUrl, photoSig } from './photos'
 
 // ==================== BOOTH PHOTOS FOR EXHIBITORS (23 Nov 2026) ====================
@@ -38,7 +39,11 @@ import { albumPageHTML, albumPeople, addPhotoDays, pageUrl, photoSig } from './p
 // public/static/booth-photos.js), and the company's photo page. The photos come from R2 with
 // links signed for this company ('x<first exhibitor id>').
 
-type Company = { name: string; ids: number[]; photos: string[]; best: string[] }
+// aka: other names the company goes by ("Aegis" for Aegis School of Data Science & AI), so
+// people registered under any of them are found. ids: every exhibitors row of the company;
+// a stand with no exhibitors row (Aegis Super Intelligence Lab) carries a made-up id, 900001
+// and up, that only makes its page key.
+type Company = { name: string; ids: number[]; photos: string[]; best: string[]; aka?: string[] }
 type Hooks = {
   sendEmail?: (c: any, to: string, subject: string, html: string, opts?: any) => Promise<any>
   emailHeader?: (title: string, subtitle: string) => string
@@ -98,7 +103,7 @@ async function exhibitorRows(c: any, co: Company) {
 // name on the talk. Drive ids, in album order.
 async function talkPhotosOf(c: any, co: Company): Promise<string[]> {
   const ids = new Set((co.ids || []).map(Number))
-  const names = new Set([co.name, ...(await exhibitorRows(c, co)).map(r => r.company_name)].map(companyWords).filter(n => n.length >= 3))
+  const names = new Set([co.name, ...(await exhibitorRows(c, co)).map(r => r.company_name), ...(co.aka || [])].map(companyWords).filter(n => n.length >= 3))
   const rs = await all(c, 'SELECT id, exhibitor_id, company FROM innovation_talks WHERE event_id = 1')
     .catch(() => all(c, 'SELECT id, NULL AS exhibitor_id, company FROM innovation_talks WHERE event_id = 1').catch(() => [] as any[]))
   const talks = new Set(rs.filter(r => ids.has(Number(r.exhibitor_id)) || names.has(companyWords(r.company))).map(r => Number(r.id)))
@@ -215,6 +220,9 @@ async function mailFor(c: any, co: Company) {
 const FREE_MAIL = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.in', 'yahoo.in', 'ymail.com', 'rediffmail.com', 'rediff.com', 'hotmail.com', 'hotmail.co.in',
   'outlook.com', 'outlook.in', 'live.com', 'live.in', 'msn.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'proton.me', 'protonmail.com', 'zoho.com', 'zohomail.in', 'zohomail.com',
   'mail.com', 'gmx.com', 'gmx.net', 'yandex.com', 'inbox.com', 'tutanota.com', 'fastmail.com', 'hey.com', 'example.com'])
+// Our own addresses are people like anyone else (the organiser, 24 Nov 2026: "dont skip
+// assessfy and aegis and aegis super intelligence lab"), but never a company's domain: one
+// of our team on an exhibitor's list must not bring every Aegis address in.
 const OUR_DOMAINS = new Set(['bharataiinnovation.com', 'aegis.edu.in'])
 const SHARED_DOMAIN = /(\.|^)(ac\.[a-z]{2}|edu(\.[a-z]{2})?|gov(\.[a-z]{2})?|nic\.in|res\.in|org\.in)$/
 const DOMAIN_CAP = 25
@@ -228,7 +236,8 @@ export async function representativesOf(c: any, co: Company): Promise<{ people: 
   const map = new Map<string, Representative>()
   const add = (email: any, name: any, why: string, attendeeId: any = null, mobile: any = '') => {
     const e = String(email || '').trim().toLowerCase()
-    if (!EMAIL_OK.test(e) || OUR_DOMAINS.has(domainOf(e))) return
+    // A guest registered with a mobile only has a stand-in address: nothing can be mailed to it.
+    if (!EMAIL_OK.test(e) || isNoEmail(e)) return
     const r = map.get(e) || { email: e, name: '', why: [], attendee_id: null, mobile: '' }
     if (!r.name && String(name || '').trim()) r.name = String(name).trim()
     if (!r.why.includes(why)) r.why.push(why)
@@ -249,12 +258,13 @@ export async function representativesOf(c: any, co: Company): Promise<{ people: 
   const teamDomains = new Map<string, number>()
   for (const r of map.values()) if (r.why.includes('team list')) teamDomains.set(domainOf(r.email), (teamDomains.get(domainOf(r.email)) || 0) + 1)
   const domains = [...new Set([...map.values()].filter(r => r.why.includes('booth contact') || r.why.includes('dashboard account') || (teamDomains.get(domainOf(r.email)) || 0) >= 2).map(r => domainOf(r.email))
-    .filter(d => !FREE_MAIL.has(d) && !SHARED_DOMAIN.test(d)))].slice(0, 20)
-  const names = new Set([co.name, ...ex.map(r => r.company_name)].map(companyWords).filter(n => n.length >= 3))
-  // The longest word of the company's name narrows the name search; the full name decides.
-  const word = ([co.name, ...ex.map(r => r.company_name)].join(' ').toLowerCase().match(/[a-z0-9]{3,}/g) || [])
-    .filter(x => !['pvt', 'private', 'ltd', 'limited', 'llp', 'inc', 'the', 'and', 'technologies', 'solutions', 'services', 'india'].includes(x))
-    .sort((a, b) => b.length - a.length)[0] || ''
+    .filter(d => !FREE_MAIL.has(d) && !SHARED_DOMAIN.test(d) && !OUR_DOMAINS.has(d)))].slice(0, 20)
+  // Every name the company goes by. The first real word of each narrows the search (a short
+  // name like "Aegis" has no other); the full name, compared as words only, decides.
+  const allNames = [co.name, ...ex.map(r => r.company_name), ...(co.aka || [])].map(n => String(n || '').trim()).filter(Boolean)
+  const names = new Set(allNames.map(companyWords).filter(n => n.length >= 3))
+  const PLAIN = ['pvt', 'private', 'ltd', 'limited', 'llp', 'inc', 'the', 'and', 'technologies', 'solutions', 'services', 'india']
+  const words = [...new Set(allNames.map(n => (n.toLowerCase().match(/[a-z0-9]{3,}/g) || []).find(x => !PLAIN.includes(x)) || '').filter(Boolean))].slice(0, 6)
   const shared: string[] = []
   const cols = 'id, name, email, mobile, company'
   let found: any[] = []
@@ -263,7 +273,7 @@ export async function representativesOf(c: any, co: Company): Promise<{ people: 
   for (const r of found) perDomain.set(domainOf(String(r.email || '')), (perDomain.get(domainOf(String(r.email || ''))) || 0) + 1)
   for (const [d, n] of perDomain) if (n > DOMAIN_CAP) shared.push(d)
   for (const r of found) if (!shared.includes(domainOf(String(r.email || '')))) add(r.email, r.name, 'same email domain', r.id, r.mobile)
-  if (word && names.size) {
+  for (const word of names.size ? words : []) {
     for (const r of await all(c, `SELECT ${cols} FROM attendees WHERE event_id = 1 AND lower(company) LIKE ?`, '%' + word + '%').catch(() => [] as any[])) {
       if (names.has(companyWords(r.company))) add(r.email, r.name, 'company name', r.id, r.mobile)
     }

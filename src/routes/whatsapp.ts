@@ -4,7 +4,7 @@ import { whatsappNumber, shownNumber, isNoEmail } from './team-guests'
 import { pageUrl, hiddenPhotos, personFor as albumFor, NOT_ME, OPT_OUT, ATT_SENT, AUDIT_ACTION } from './photos'
 import { photoLink } from './photo-store'
 import { boothAlbumOf } from './exhibitor-photos'
-import { repsFor, saveRep } from './photo-reps'
+import { repsFor, saveRep, sameName } from './photo-reps'
 import ATTENDEES from '../data/attendee-photos.json'
 import PHOTO_CHECKS from '../data/photo-checks.json'
 
@@ -2087,7 +2087,8 @@ wa.get('/api/admin/whatsapp/messages', async (c) => {
     const seen = new Set<string>(), list: any[] = []
     for (const p of repKeys(r).flatMap(k => repMap.get(k) || [])) {
       const id = p.number || p.email
-      if (seen.has(id)) continue
+      // A copy that went to the person's own address is not someone looking after them.
+      if (seen.has(id) || sameName(p.name, r.name)) continue
       seen.add(id)
       list.push({ name: p.name, title: p.title, email: p.email, mobile: p.mobile, here: !!p.number && p.number === String(r.wa_number) })
     }

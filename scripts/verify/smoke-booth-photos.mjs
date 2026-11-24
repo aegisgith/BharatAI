@@ -212,5 +212,23 @@ check('the send: one email each, by name, with the same page button; recorded on
   && rows("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'booth_photos.team' AND entity_id = ?", [KEY])[0].n === wouldN, r.status + ' ' + JSON.stringify(r.json).slice(0, 300));
 r = await as('POST', `/api/admin/booth-photos/${KEY}/send-team`, {});
 check('pressed again, nobody gets it twice', r.status === 200 && r.json?.sent.length === 0 && sent.length === before + wouldN, JSON.stringify(r.json?.sent));
+// ---- our own stands (24 Nov 2026: "dont skip assessfy and aegis and aegis super intelligence lab") ----
+const AEGIS = DATA.companies.aegis, SIL = DATA.companies['aegis-sil'];
+check('the two Aegis stands are albums of their own, picked by eye, each with the names it goes by', !!AEGIS && !!SIL && AEGIS.photos.length >= 20 && SIL.photos.length >= 4
+  && AEGIS.aka.includes('Aegis') && !AEGIS.photos.some(p => SIL.photos.includes(p)), [AEGIS?.photos.length, SIL?.photos.length]);
+db.run("INSERT INTO attendees (id, event_id, name, email, company) VALUES (880010, 1, 'Asha Aegis', 'asha@aegis.edu.in', 'AEGIS')");
+db.run("INSERT INTO attendees (id, event_id, name, email, company) VALUES (880011, 1, 'Sunil Lab', 'sunil.lab@gmail.com', 'Aegis Superintelligence Lab')");
+db.run("INSERT INTO attendees (id, event_id, name, email, company) VALUES (880012, 1, 'Awards Person', 'awards@gmail.com', 'Aegis Graham Bell Awards')");
+db.run("INSERT INTO attendees (id, event_id, name, email, company) VALUES (880013, 1, 'Other Aegis Mail', 'someone.else@aegis.edu.in', 'A Different Company')");
+r = await as('GET', '/api/admin/booth-photos/aegis/people');
+const ag = Object.fromEntries((r.json?.people || []).map(q => [q.email, q]));
+check('a company is found by any name it goes by, our own addresses included; a longer name that only starts the same is someone else', r.status === 200 && ag['asha@aegis.edu.in']?.why.includes('company name')
+  && !ag['sunil.lab@gmail.com'] && !ag['awards@gmail.com'], JSON.stringify(Object.keys(ag)));
+check('...but our own domain is never a company\'s domain', !(r.json?.domains || []).includes('aegis.edu.in') && !ag['someone.else@aegis.edu.in'], JSON.stringify(r.json?.domains));
+r = await as('GET', '/api/admin/booth-photos/aegis-sil/people');
+check('a stand with no exhibitors row finds its people by name ("Superintelligence" or "Super Intelligence")', r.status === 200 && r.json?.people.length === 1 && r.json.people[0].email === 'sunil.lab@gmail.com'
+  && /\/photos\/x900001\?k=[0-9a-f]{32}$/.test(r.json?.page || ''), JSON.stringify(r.json?.people?.map(q => q.email)));
+const silPage = await fetchRaw(new Request(r.json.page));
+check('...and has its own photo page', silPage.status === 200 && (await silPage.text()).includes('Photos of Aegis Super Intelligence Lab'), silPage.status);
 check('the team send needs admin', (await hit('POST', `/api/admin/booth-photos/${KEY}/send-team`, {})).status === 401, '');
 done();
