@@ -217,7 +217,7 @@ export const SHARE_TAGS = '#BharatAIInnovation @bharataiinnovation.ai'
 // WhatsApp and its status), the caption copied too; on a computer, the caption and links.
 export function albumPageHTML(a: { name: string; org: string; ids: string[]; focus?: Record<string, [number, number]>; got?: Got;
     lineup?: string; names?: Record<string, [string, string, string, number][]>;
-    me?: { key: string; k: string; order: string[] }; pinned?: string[]; panels?: { title: string; ids: string[] }[] }): string {
+    me?: { key: string; k: string; order: string[] }; pinned?: string[]; panels?: { title: string; ids: string[] }[]; sections?: { title: string; ids: string[] }[] }): string {
   const got = a.got || {}
   const names = a.names || {}
   const me = a.me || null
@@ -228,7 +228,11 @@ export function albumPageHTML(a: { name: string; org: string; ids: string[]; foc
   const top = perPanel.length > 1
     ? perPanel.map(g => ({ day: '', words: 'All together: ' + g.title, ids: g.ids }))
     : pinned.length ? [{ day: '', words: 'Your panel, all together', ids: pinned }] : []
-  const groups = [...top, ...byDay(a.ids.filter(id => !pinned.includes(id)))]
+  // sections: a company's page (routes/exhibitor-photos.ts) names its own groups: the booth,
+  // the talk, each speaker, each person on the team. Square thumbnails, as the day groups.
+  const groups = a.sections
+    ? a.sections.map(s => ({ day: 'section', words: s.title, ids: s.ids.filter(id => a.ids.includes(id)) })).filter(g => g.ids.length)
+    : [...top, ...byDay(a.ids.filter(id => !pinned.includes(id)))]
   const total = groups.reduce((n, g) => n + g.ids.length, 0)
   const flat = groups.flatMap(g => g.ids)
   let i = 0

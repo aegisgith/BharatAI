@@ -58,11 +58,91 @@ sidebarItems.forEach(i => i.addEventListener('click', () => { const s = i.getAtt
 document.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => switchSection(b.getAttribute('data-goto'))))
 if (sidebarToggle) sidebarToggle.addEventListener('click', () => sidebar.classList.toggle('dash-sidebar-open'))
 
+// Sign in with a 6-digit code (24 Nov 2026). The photos email's button opens
+// /marketplace/dashboard?email=<their address>#photos: the address is filled in here and
+// taken out of the address bar. Nothing is sent until they tap "Email me a code", so a mail
+// scanner opening the link sends nothing. After the code, the page reloads signed in and
+// lands where the link pointed (#photos). Server: routes/marketplace.ts /api/mp/auth/code.
+const showCodeSignIn = () => {
+  const q = new URLSearchParams(location.search)
+  const pre = (q.get('email') || '').trim()
+  if (q.has('email')) { q.delete('email'); try { history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash) } catch {} }
+  const photos = location.hash === '#photos'
+  main.innerHTML = `<section class="dash-section"><div class="dash-login-required dash-code-box">
+    <i class="fas fa-lock" aria-hidden="true"></i>
+    <h2>${photos ? 'Sign in to see your photos' : 'Sign in to your account'}</h2>
+    <p>No password needed. We email you a 6-digit code.</p>
+    <form id="code-ask" class="dash-code-form" novalidate>
+      <label for="code-email">Your email address</label>
+      <input id="code-email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" required value="${esc(pre)}" placeholder="name@company.com">
+      <button type="submit" class="dash-btn-primary">Email me a code</button>
+    </form>
+    <form id="code-enter" class="dash-code-form" novalidate hidden>
+      <p id="code-sent" class="dash-code-note" role="status"></p>
+      <label for="code-digits">The 6-digit code</label>
+      <input id="code-digits" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" required placeholder="123456">
+      <button type="submit" class="dash-btn-primary">Sign in</button>
+      <button type="button" id="code-again" class="dash-code-link">Send a new code</button>
+      <button type="button" id="code-other" class="dash-code-link">Use another email address</button>
+    </form>
+    <p id="code-error" class="dash-code-error" role="alert" hidden></p>
+    <p class="dash-code-help">No code after 2 minutes? Look in your spam folder. Still nothing? Write to <a href="mailto:register@bharataiinnovation.com">register@bharataiinnovation.com</a>.</p>
+    <p class="dash-code-help">Have a password? <a href="/marketplace?signin=1">Sign in with your password</a>.</p>
+  </div></section>`
+  if (!document.getElementById('dash-code-css')) {
+    const st = document.createElement('style'); st.id = 'dash-code-css'
+    st.textContent = '.dash-code-box{max-width:440px;margin:0 auto;text-align:left}.dash-code-box h2,.dash-code-box>p:first-of-type{text-align:center}.dash-code-box>i{display:block;text-align:center;margin:0 auto 8px}'
+      + '.dash-code-form{display:flex;flex-direction:column;gap:10px;margin:18px 0 6px}.dash-code-form[hidden]{display:none}'
+      + '.dash-code-form label{font-weight:600;font-size:15px}'
+      + '.dash-code-form input{min-height:48px;font-size:17px;padding:10px 14px;border-radius:10px;border:1px solid #C9CEE0;background:#fff;color:#1E2140}'
+      + '#code-digits{font-size:24px;letter-spacing:6px;text-align:center}'
+      + '.dash-code-form .dash-btn-primary{min-height:48px;justify-content:center;font-size:16px;width:100%}'
+      + '.dash-code-link{min-height:44px;background:none;border:0;color:#C84F00;font-weight:600;font-size:15px;cursor:pointer;text-decoration:underline}'
+      + '.dash-code-note{margin:0;font-size:15px;line-height:1.55}.dash-code-error{color:#B42318;font-weight:600;font-size:15px;margin:8px 0}'
+      + '.dash-code-help{font-size:14px;line-height:1.55;color:#5A6080;margin:10px 0 0}.dash-code-help a{color:#C84F00;font-weight:600;text-decoration:underline}'
+    document.head.appendChild(st)
+  }
+  const ask = document.getElementById('code-ask'), enter = document.getElementById('code-enter')
+  const emailIn = document.getElementById('code-email'), digits = document.getElementById('code-digits')
+  const err = document.getElementById('code-error'), note = document.getElementById('code-sent')
+  const fail = (m) => { err.textContent = m; err.hidden = !m }
+  const busy = (form, on, label) => { const b = form.querySelector('.dash-btn-primary'); b.disabled = on; if (label) b.textContent = label }
+  const send = async () => {
+    const email = emailIn.value.trim()
+    fail('')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { fail('Please type your email address, for example name@company.com.'); emailIn.focus(); return }
+    busy(ask, true, 'Sending...')
+    try {
+      await api('/api/mp/auth/code', { method: 'POST', body: JSON.stringify({ email }) })
+      note.innerHTML = `We have emailed a 6-digit code to <strong>${esc(email)}</strong>. Type it below.`
+      ask.hidden = true; enter.hidden = false; digits.value = ''; digits.focus()
+    } catch (e) { fail(e.message || 'The code did not go. Please try again.') }
+    busy(ask, false, 'Email me a code')
+  }
+  ask.addEventListener('submit', (e) => { e.preventDefault(); send() })
+  document.getElementById('code-again').addEventListener('click', () => { ask.hidden = false; enter.hidden = true; send() })
+  document.getElementById('code-other').addEventListener('click', () => { ask.hidden = false; enter.hidden = true; fail(''); emailIn.select(); emailIn.focus() })
+  digits.addEventListener('input', () => { digits.value = digits.value.replace(/\D/g, '').slice(0, 6) })
+  enter.addEventListener('submit', async (e) => {
+    e.preventDefault(); fail('')
+    const code = digits.value.replace(/\D/g, '')
+    if (code.length !== 6) { fail('Please type the 6 numbers from the email.'); digits.focus(); return }
+    busy(enter, true, 'Signing in...')
+    try {
+      await api('/api/mp/auth/code/verify', { method: 'POST', body: JSON.stringify({ email: emailIn.value.trim(), code }) })
+      location.reload()
+      return
+    } catch (x) { fail(x.message || 'That did not work. Please try again.') }
+    busy(enter, false, 'Sign in')
+  })
+  if (!pre) emailIn.focus()
+}
+
 const initDashboard = async () => {
   try {
     const d = await api('/api/mp/auth/me')
     if (!d.user) {
-      main.innerHTML = `<section class="dash-section"><div class="dash-login-required"><i class="fas fa-lock"></i><h2>Sign in to see your dashboard</h2><p>Exhibitors: use <strong>Email me a sign-in link</strong> with the email from your booth booking. No password needed.</p><a href="/marketplace?signin=1" class="dash-btn-primary">Sign in</a></div></section>`
+      showCodeSignIn()
       return
     }
     if (d.user.role === 'admin') { window.location.href = '/marketplace/admin'; return }

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { organiserTeam, cleanOwnerName, teamMemberNamed } from '../lib/team'
 import { titledName } from '../lib/greet'
 import { defaultAppPartners, poweredByForApp } from '../lib/partners'
+import { companyOfPerson } from './exhibitor-photos'
 
 type Bindings = {
   DB: D1Database
@@ -633,18 +634,112 @@ mp.post('/api/mp/auth/link', async (c) => {
   if (!EMAIL_RE.test(email)) return c.json({ error: 'Enter a valid email address' }, 400)
   const reply = () => c.json({ success: true, message: 'If that address has a marketplace account or a booth booking, a sign-in link is on its way.' })
 
+  // An exhibitor's representative with no account gets one (accountForCode, 24 Nov 2026).
   let company = await c.env.DB.prepare('SELECT id, company_name, role FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(email).first() as any
   if (!company) {
-    const ex = await findExhibitorByEmail(c, email)
-    if (ex) {
-      const id = await ensureExhibitorAccount(c, { id: ex.id, company_name: ex.company_name, contact_email: email })
-      if (id) company = { id, company_name: ex.company_name, role: 'company' }
-    }
+    const made = await accountForCode(c, email).catch(() => null)
+    if (made) company = { ...made, role: 'company' }
   }
   // The admin account keeps its password; a mailed link would make its inbox the key.
   if (!company || company.role === 'admin') return reply()
   await mailSignInLink(c, company, email)
   return reply()
+})
+
+// ── Sign in with a 6-digit code (24 Nov 2026) ──
+// The organiser, sending every exhibitor's representatives their photos: "make sure the
+// email access does generate otp code and they are able to login". Until now the dashboard
+// could only email a link, and only to an address that already had an account or was the
+// booth contact: a team member asking got nothing (Envista's social media person waited four
+// days). Now anyone who represents a Mumbai exhibitor (routes/exhibitor-photos.ts
+// companyOfPerson: the booth contact, a dashboard account, the team list, a registration at
+// the company's own email domain or under its name) asks here and gets a code, with the
+// one-tap link in the same email. Someone with no account gets one of their own: no
+// password, no booth (exhibitor_id stays empty, so no listing, team or leads rights); the
+// dashboard shows them their company's photos (dashboardCompanyOf there).
+// Codes live in login_tokens, the event app's table (only hashes), under event_id
+// MP_CODE_EVENT, which is no event, so an app sign-in never reads them. Every code works
+// for its own 30 minutes; five wrong tries across all live codes retire them all; four
+// codes per address in 15 minutes.
+const MP_CODE_EVENT = -7
+const MP_CODE_MINUTES = 30, MP_CODE_TRIES = 5, MP_CODE_RATE = 4
+const sha256Hex = async (v: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(v)))).map(b => b.toString(16).padStart(2, '0')).join('')
+const sixDigits = (): string => {
+  const a = new Uint32Array(1); let v: number
+  do { crypto.getRandomValues(a); v = a[0] } while (v >= 4294000000)
+  return String(v % 1000000).padStart(6, '0')
+}
+// The account a code signs in to, made when needed. null: not an address we know.
+const accountForCode = async (c: any, email: string): Promise<{ id: number; company_name: string } | null> => {
+  const acct = await c.env.DB.prepare('SELECT id, company_name, role FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(email).first() as any
+  if (acct) return acct.role === 'admin' ? null : { id: Number(acct.id), company_name: String(acct.company_name || '') }
+  const ex = await findExhibitorByEmail(c, email)
+  if (ex) {
+    const id = await ensureExhibitorAccount(c, { id: ex.id, company_name: ex.company_name, contact_email: email })
+    if (id) return { id, company_name: ex.company_name }
+  }
+  const rep = await companyOfPerson(c, email).catch(() => null)
+  if (!rep) return null
+  const reg = await c.env.DB.prepare('SELECT id FROM attendees WHERE event_id = 1 AND lower(email) = ? ORDER BY id LIMIT 1').bind(email).first().catch(() => null) as any
+  try {
+    await c.env.DB.prepare("INSERT INTO mp_companies (company_name, email, password_hash, attendee_id) VALUES (?, ?, '', ?)")
+      .bind(String(rep.name || 'Exhibitor').trim().slice(0, 150), email, reg ? Number(reg.id) : null).run()
+  } catch { /* made in the same instant by a second tap: read it back */ }
+  const made = await c.env.DB.prepare('SELECT id, company_name FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(email).first() as any
+  return made ? { id: Number(made.id), company_name: String(made.company_name || '') } : null
+}
+
+mp.post('/api/mp/auth/code', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const email = String(body.email || '').trim().toLowerCase()
+  if (!EMAIL_RE.test(email)) return c.json({ error: 'Please type your email address, for example name@company.com.' }, 400)
+  // The same answer whether or not the address is known, so this cannot tell anyone who has an account.
+  const reply = () => c.json({ success: true, message: `If ${email} belongs to an exhibitor or a marketplace account, a 6-digit code is on its way. It works for ${MP_CODE_MINUTES} minutes.` })
+  const acct = await accountForCode(c, email).catch(() => null)
+  if (!acct) return reply()
+  const recent = Number(((await c.env.DB.prepare("SELECT COUNT(*) AS n FROM login_tokens WHERE event_id = ? AND email = ? AND created_at > datetime('now', '-15 minutes')")
+    .bind(MP_CODE_EVENT, email).first().catch(() => null)) as any)?.n || 0)
+  if (recent >= MP_CODE_RATE) return reply()
+  const code = sixDigits()
+  await c.env.DB.prepare("INSERT INTO login_tokens (event_id, email, token_hash, code_hash, expires_at) VALUES (?, ?, ?, ?, datetime('now', ?))")
+    .bind(MP_CODE_EVENT, email, await sha256Hex(crypto.randomUUID()), await sha256Hex(code), `+${MP_CODE_MINUTES} minutes`).run()
+  const link = await signInLink(c, acct.id, 'photos')
+  const html = emailShell('Your sign-in code', `<p style="margin:0 0 12px;font-size:15px;line-height:1.6">Your code to sign in to your Bharat AI Innovation exhibitor account:</p>
+    <p style="margin:0 0 14px;font-size:32px;font-weight:bold;letter-spacing:6px;color:#1e2140">${code}</p>
+    <p style="margin:0 0 14px;font-size:14px;line-height:1.6">Type it in where you asked for it. It works for ${MP_CODE_MINUTES} minutes. Or tap the button to sign in straight away:</p>
+    ${emailButton(link, 'Sign in to my account')}
+    <p style="margin:16px 0 0;font-size:12px;color:#888">If you did not ask for this, you can ignore this email.</p>`)
+  inBackground(c, async () => {
+    const ok = await sendMail(c, 'signin-code', email, `${code} is your Bharat AI Innovation sign-in code`, html)
+    try { await hooks.audit?.(c, ok ? 'marketplace.signin-code' : 'marketplace.signin-code-failed', 'mp_company', acct.id, undefined, { actor: 'marketplace', kind: 'system' }) } catch { /* the send stands either way */ }
+  })
+  return reply()
+})
+
+mp.post('/api/mp/auth/code/verify', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as any
+  const email = String(body.email || '').trim().toLowerCase()
+  const code = String(body.code || '').replace(/\D/g, '')
+  if (!EMAIL_RE.test(email) || code.length !== 6) return c.json({ error: 'Please type the 6 numbers from the email.' }, 400)
+  const live = ((await c.env.DB.prepare("SELECT id, code_hash, attempts FROM login_tokens WHERE event_id = ? AND email = ? AND used_at IS NULL AND expires_at > datetime('now') ORDER BY id DESC LIMIT 20")
+    .bind(MP_CODE_EVENT, email).all()).results || []) as any[]
+  if (!live.length) return c.json({ error: 'That code has run out. Tap "Send a new code".' }, 400)
+  const retireAll = () => c.env.DB.prepare(`UPDATE login_tokens SET used_at = datetime('now') WHERE id IN (${live.map(() => '?').join(',')})`).bind(...live.map(r => r.id)).run()
+  if (live.reduce((n, r) => n + (Number(r.attempts) || 0), 0) >= MP_CODE_TRIES) {
+    await retireAll()
+    return c.json({ error: 'Too many wrong tries. Tap "Send a new code".' }, 429)
+  }
+  const typed = await sha256Hex(code)
+  if (!live.some(r => safeEqual(typed, String(r.code_hash || '')))) {
+    await c.env.DB.prepare('UPDATE login_tokens SET attempts = attempts + 1 WHERE id = ?').bind(live[0].id).run()
+    return c.json({ error: 'That code is not right. Please check the 6 numbers in the newest email.' }, 400)
+  }
+  await retireAll()
+  const acct = await c.env.DB.prepare('SELECT id, company_name, role FROM mp_companies WHERE lower(email) = ? ORDER BY id LIMIT 1').bind(email).first() as any
+  if (!acct || acct.role === 'admin') return c.json({ error: 'We could not open your account. Please write to register@bharataiinnovation.com.' }, 400)
+  c.header('Set-Cookie', mpSessionCookie(await signSession(c, acct.id)))
+  try { await hooks.audit?.(c, SIGNED_IN, 'mp_company', acct.id, { by: 'code' }, { actor: 'marketplace', kind: 'system' }) } catch { /* the sign-in stands either way */ }
+  return c.json({ success: true, user: { id: acct.id, company_name: acct.company_name, email } })
 })
 
 // Where a sign-in link lands. A bad or expired link goes back to the marketplace
@@ -662,7 +757,8 @@ mp.get('/marketplace/signin', async (c) => {
   // The "add your team" email lands on the Team screen.
   if (c.req.query('go') === 'team' && company.exhibitor_id) return c.redirect('/marketplace/dashboard#team')
   if (c.req.query('go') === 'leads' && company.exhibitor_id) return c.redirect('/marketplace/dashboard#leads')
-  if (c.req.query('go') === 'photos' && company.exhibitor_id) return c.redirect('/marketplace/dashboard#photos')
+  // Photos: an exhibitor's representative with an account of their own (no booth) too.
+  if (c.req.query('go') === 'photos') return c.redirect('/marketplace/dashboard#photos')
   // An exhibitor with a stage slot has two things to do, the listing and the talk, and
   // the dashboard's to-do list shows both. Anyone else goes straight to the listing
   // form until they have a listing.

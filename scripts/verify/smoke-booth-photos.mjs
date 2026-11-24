@@ -106,7 +106,8 @@ check('a Mumbai exhibitor in no photo gets no ZIP', z.status === 404, z.status);
 check('the list needs admin', (await hit('GET', '/api/admin/booth-photos')).status === 401, '');
 r = await as('GET', '/api/admin/booth-photos');
 const row = (r.json?.rows || []).find(x => x.key === KEY), row2 = (r.json?.rows || []).find(x => x.key === KEY2);
-check('the list: one row a company, its photos in the store, the booth contact, ready', r.status === 200 && r.json?.rows.length === Object.keys(DATA.companies).length
+// 24 Nov 2026: every Mumbai exhibitor has a row, the one in no booth photo (990600) too.
+check('the list: one row a company, its photos in the store, the booth contact, ready', r.status === 200 && r.json?.rows.length === Object.keys(DATA.companies).length + 1 && (r.json?.rows || []).some(x => x.key === 'x990600' && x.status === 'no-photos')
   && row && row.count === 2 && row.email === 'spoc@ex.test' && row.booth === '21' && row.status === 'ready' && row.thumbs.length === 2, JSON.stringify(row));
 check('a company with none of its photos in the store yet waits: no photos', row2 && row2.count === 0 && row2.status === 'no-photos', JSON.stringify(row2));
 
@@ -231,4 +232,123 @@ check('a stand with no exhibitors row finds its people by name ("Superintelligen
 const silPage = await fetchRaw(new Request(r.json.page));
 check('...and has its own photo page', silPage.status === 200 && (await silPage.text()).includes('Photos of Aegis Super Intelligence Lab'), silPage.status);
 check('the team send needs admin', (await hit('POST', `/api/admin/booth-photos/${KEY}/send-team`, {})).status === 401, '');
+// ---- 24 Nov 2026: every representative's, speaker's and talk's photos, in the company's account ----
+// "put photos of all representatives, booths, speakers, innovation talk related any exhibitor in
+// their respective account", "send them email that they can find photos in their respective
+// accounts, and make sure the email access does generate otp code and they are able to login".
+const ATTD = JSON.parse(read('src/data/attendee-photos.json'));
+const [teamKey, teamAl] = Object.entries(ATTD.albums).find(([, a]) => !a.check && a.photos.length >= 2 && a.photos.every(id => !CO.photos.includes(id)));
+const [checkKey, checkAl] = Object.entries(ATTD.albums).find(([k, a]) => a.check && a.photos.length >= 1 && k !== teamKey);
+const [outKey, outAl] = Object.entries(ATTD.albums).find(([k, a]) => !a.check && a.photos.length >= 1 && k !== teamKey && k !== checkKey);
+const SPK = ALB.people.find(q => /^s\d+$/.test(q.key) && (q.speakers || []).length && q.photos.length >= 2 && !q.photos.some(id => CO.photos.includes(id) || teamAl.photos.includes(id)));
+const teamId = Number(teamKey.slice(1)), checkId = Number(checkKey.slice(1)), outId = Number(outKey.slice(1)), spkId = SPK.speakers[0];
+const putAtt = (id, name, email, company) => { db.run('DELETE FROM attendees WHERE id = ?', [id]); db.run("INSERT INTO attendees (id, event_id, name, email, company, mobile) VALUES (?, 1, ?, ?, ?, '')", [id, name, email, company]); };
+putAtt(teamId, 'Tara Team', 'tara@excorp.test', 'Somewhere');        // the company's own domain
+putAtt(checkId, 'Cheku Check', 'cheku@excorp.test', 'Somewhere');    // a lookalike match ("check")
+putAtt(outId, 'Opal Out', 'opal@excorp.test', 'Somewhere');          // said "Don't match my photos"
+db.run("INSERT INTO admin_audit (action, entity, entity_id, detail) VALUES ('photos.opt_out', 'photo_album', ?, '{}')", [outKey]);
+db.run("INSERT INTO admin_audit (action, entity, entity_id, detail) VALUES ('photos.not_me', 'photo_album', ?, ?)", [teamKey, JSON.stringify({ photo: teamAl.photos[1] })]);
+db.run('DELETE FROM speakers WHERE id = ?', [spkId]);
+db.run("INSERT INTO speakers (id, event_id, slug, name, organisation, is_published) VALUES (?, 1, 'spk-test', 'Sam Speaker', ?, 1)", [spkId, CO.name + ' Pvt Ltd']);
+let pn = 0;
+const stored = (drive) => { const pid = 'PeoplePho' + String(pn++).padStart(3, '0'); db.run("INSERT INTO event_photos (event_id, pid, drive_id, title, day, taken_at, camera, hall, width, height, bytes, raw, hidden) VALUES (1, ?, ?, 'P.JPG', '2026-11-20', '', 'Cam 1', '', 6000, 4000, 4000, 0, 0)", [pid, drive]); bucket.set('event-photos/1/' + pid + '/o.jpg', new Uint8Array(4000)); return pid; };
+[...teamAl.photos.slice(0, 2), checkAl.photos[0], outAl.photos[0], SPK.photos[0], SPK.photos[1]].forEach(stored);
+
+r = await hit('GET', API, undefined, mpAs(7001));
+const secs = [...new Set((r.json?.photos || []).map(p => p.section))];
+const ids = (r.json?.photos || []).map(p => p.id);
+check('the dashboard: booth, then talk, then the speaker on stage, then each team member, each under its own heading',
+  JSON.stringify(secs) === JSON.stringify(['Your booth', 'Your Innovation Talk on stage', 'Sam Speaker on stage', 'Tara Team']) && JSON.stringify(r.json?.kinds) === JSON.stringify(['booth', 'talk', 'speaker', 'team']), JSON.stringify(secs));
+check('...the speaker\'s photos and the team member\'s own photos are there, a "Not me" photo is not',
+  ids.includes(SPK.photos[0]) && ids.includes(SPK.photos[1]) && ids.includes(teamAl.photos[0]) && !ids.includes(teamAl.photos[1]), ids.length);
+check('...a lookalike match ("check") and someone who said "Don\'t match my photos" are left out', !ids.includes(checkAl.photos[0]) && !ids.includes(outAl.photos[0]), '');
+check('...every photo once, signed for the company', new Set(ids).size === ids.length && (r.json?.photos || []).every(p => p.s.includes('u=x' + EX + '&')), '');
+const pageAll = await (await fetchRaw(new Request(link))).text();
+check('the company\'s photo page has the same sections', /<h2>Your booth <span>2<\/span>/.test(pageAll) && /<h2>Sam Speaker on stage <span>2<\/span>/.test(pageAll) && /<h2>Tara Team <span>1<\/span>/.test(pageAll) && pageAll.includes('Save all ' + ids.length + ' photos'), pageAll.match(/<h2>[^<]*/g));
+
+// ---- every exhibitor is a company, with or without booth photos ----
+db.run("INSERT INTO exhibitors (id, event_id, company_name, contact_email, contact_phone) VALUES (990700, 1, 'Plain Sponsor Pvt Ltd', 'ceo@plainsponsor.test', '')");
+db.run("INSERT INTO attendees (id, event_id, name, email, company, mobile) VALUES (880020, 1, 'Pia Plain', 'pia@plainsponsor.test', 'Plain Sponsor', '9822222222')");
+db.run("INSERT INTO exhibitors (id, event_id, company_name, contact_email) VALUES (990701, 1, ?, '')", [CO.name.toUpperCase() + ' Technologies Private Limited']);
+r = await as('GET', '/api/admin/booth-photos');
+const plain = (r.json?.rows || []).find(x => x.key === 'x990700');
+check('Admin\'s list has every Mumbai exhibitor, the ones in no booth photo too', !!plain && plain.count === 0 && !(r.json?.rows || []).some(x => x.key === 'x990701'), JSON.stringify(plain));
+r = await as('GET', `/api/admin/booth-photos/${KEY}/people`);
+check('a second exhibitors row with the same name (less "Technologies Private Limited") joins the company', r.status === 200, r.status);
+
+// ---- sign in with a 6-digit code ----
+const tick = () => new Promise(res => setTimeout(res, 30));
+const codeOf = (m) => (/(\d{6}) is your/.exec(m?.Content?.Subject || '') || [])[1];
+let n0 = sent.length;
+r = await hit('POST', '/api/mp/auth/code', { email: 'TARA@excorp.test ' });
+await tick();
+const tMail = sent.slice(n0).find(m => m.Recipients.To[0] === 'tara@excorp.test');
+check('a representative with no account asks: a code by email, with a sign-in button, and an account of their own (no booth rights)', r.status === 200 && /6-digit code/.test(r.json?.message || '') && !!codeOf(tMail)
+  && /\/marketplace\/signin\?t=[^"&]+&amp;go=photos|\/marketplace\/signin\?t=[^"]+go=photos/.test(tMail.Content.Body[0].Content)
+  && rows("SELECT exhibitor_id FROM mp_companies WHERE email = 'tara@excorp.test'")[0]?.exhibitor_id == null, r.text + ' ' + JSON.stringify(tMail?.Content?.Subject));
+n0 = sent.length;
+r = await hit('POST', '/api/mp/auth/code', { email: 'nobody@unknown.test' });
+await tick();
+check('an address we do not know: the same answer, nothing sent, no account made', r.status === 200 && /6-digit code/.test(r.json?.message || '') && sent.length === n0 && !rows("SELECT id FROM mp_companies WHERE email = 'nobody@unknown.test'").length, r.text);
+const verify = async (email, code) => { const res = await fetchRaw(new Request('https://bharataiinnovation.com/api/mp/auth/code/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code }) })); return { status: res.status, cookie: res.headers.get('Set-Cookie') || '', json: await res.json().catch(() => null) }; };
+const good = codeOf(tMail), wrong = good === '000000' ? '111111' : '000000';
+let v = await verify('tara@excorp.test', wrong);
+check('a wrong code: refused in words, no sign-in', v.status === 400 && /not right/.test(v.json?.error || '') && !/mp_session=\d/.test(v.cookie), v.status + ' ' + JSON.stringify(v.json));
+v = await verify('tara@excorp.test', good);
+const tCookie = (/mp_session=[^;]+/.exec(v.cookie) || [''])[0];
+check('the right code signs them in', v.status === 200 && !!tCookie, v.status + ' ' + JSON.stringify(v.json));
+r = await hit('GET', API, undefined, { Cookie: tCookie });
+check('...and their dashboard shows the company\'s photos, their own among them', r.status === 200 && r.json?.eligible === true && r.json?.photos.length === ids.length && r.json.photos.some(p => p.id === teamAl.photos[0]), r.status + ' ' + r.text.slice(0, 160));
+v = await verify('tara@excorp.test', good);
+check('a code works once', v.status === 400, v.status);
+for (let i = 0; i < 5; i++) await hit('POST', '/api/mp/auth/code', { email: 'pia@plainsponsor.test' });
+await tick();
+check('four codes an address in 15 minutes, then the same answer and nothing more', sent.filter(m => m.Recipients.To[0] === 'pia@plainsponsor.test').length === 4, sent.filter(m => m.Recipients.To[0] === 'pia@plainsponsor.test').length);
+const piaCode = codeOf(sent.filter(m => m.Recipients.To[0] === 'pia@plainsponsor.test')[0]);
+for (let i = 0; i < 5; i++) await verify('pia@plainsponsor.test', piaCode === '000000' ? '111111' : '000000');
+v = await verify('pia@plainsponsor.test', piaCode);
+check('five wrong tries retire every live code', v.status !== 200, v.status);
+db.run("INSERT INTO mp_companies (id, company_name, email, password_hash, role) VALUES (7099, 'Marketplace admin', 'mpadmin@ex.test', 'x', 'admin')");
+n0 = sent.length;
+await hit('POST', '/api/mp/auth/code', { email: 'mpadmin@ex.test' });
+await tick();
+check('the marketplace admin account never gets a code', sent.length === n0, '');
+check('an app sign-in never reads these codes (they sit under no event)', rows("SELECT COUNT(*) AS n FROM login_tokens WHERE event_id = 1")[0].n === 0 && rows("SELECT COUNT(*) AS n FROM login_tokens WHERE event_id = -7")[0].n >= 5, '');
+r = await hit('GET', '/marketplace/dashboard?email=tara%40excorp.test');
+check('the dashboard page loads its code sign-in script', r.status === 200 && /marketplace-dashboard\.js\?v=14/.test(r.text) && /fa-images"><\/i> Photos<\/button>/.test(r.text), r.status);
+{ const js = read('public/static/marketplace-dashboard.js');
+  check('...which asks for the email, then the code, and never sends one by itself', /\/api\/mp\/auth\/code'/.test(js) && /\/api\/mp\/auth\/code\/verify'/.test(js) && /autocomplete="one-time-code"/.test(js) && !/showCodeSignIn\(\)[\s\S]{0,80}send\(\)/.test(js), ''); }
+
+// ---- "Your photos are in your account": the email to every representative ----
+check('the account email needs admin', (await hit('POST', `/api/admin/booth-photos/${KEY}/send-account`, { dry: true })).status === 401, '');
+n0 = sent.length;
+r = await as('POST', `/api/admin/booth-photos/${KEY}/send-account`, { dry: true, html: true });
+const would = (r.json?.would || []).map(q => q.email);
+check('a dry run: every representative, nobody unsubscribed, nothing sent', r.status === 200 && sent.length === n0 && would.includes('tara@excorp.test') && would.includes('bina@exteam.test') && !would.includes('una@excorp.test') && r.json?.count === ids.length, JSON.stringify(would));
+check('...the email: their photos, in their account, the button fills in their address, the four steps, and the no-sign-in page as a way in', /your Bharat AI Innovation 2026[^<]*photos are in your account|photos are in your account/.test(r.json?.subject || '')
+  && /\/marketplace\/dashboard\?email=[^"#]+#photos/.test(r.json?.html || '') && /Email me a code/.test(r.json?.html || '') && /6-digit code/.test(r.json?.html || '') && (r.json?.html || '').includes(link.replace(/&/g, '&amp;'))
+  && /your speakers on stage/.test(r.json?.html || '') && !/\/o\.jpg/.test(r.json?.html || ''), r.json?.subject);
+r = await as('POST', `/api/admin/booth-photos/${KEY}/send-account`, {});
+const accMails = sent.slice(n0);
+check('the send: one each, their own address in their button, recorded one row a person', r.status === 200 && r.json?.sent.length === would.length && accMails.length === would.length
+  && accMails.every(m => m.Content.Body[0].Content.includes('email=' + encodeURIComponent(m.Recipients.To[0])))
+  && rows("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'booth_photos.account' AND entity_id = ?", [KEY])[0].n === would.length, JSON.stringify(r.json).slice(0, 200));
+r = await as('POST', `/api/admin/booth-photos/${KEY}/send-account`, {});
+check('pressed again, nobody gets it twice', r.status === 200 && r.json?.sent.length === 0, JSON.stringify(r.json?.sent));
+r = await as('POST', '/api/admin/booth-photos/x990700/send-account', { dry: true });
+check('an exhibitor with no photos at all: refused in words', r.status === 400 && /No photos/.test(r.json?.error || ''), r.status + ' ' + r.text);
+
+// ---- booth contacts with no email or no mobile, for the organising team ----
+r = await as('GET', '/api/admin/booth-contact-gaps');
+const gaps = Object.fromEntries((r.json?.rows || []).map(g => [g.key, g]));
+check('contact gaps: a company with no contact email is listed, so is one whose contact has no mobile anywhere', r.status === 200 && gaps[KEY2]?.missing.includes('email') && gaps.x990700?.missing.join() === 'mobile' && gaps.x990700?.email === 'ceo@plainsponsor.test', JSON.stringify(Object.keys(gaps)));
+check('...the others found at the company are listed beside it', (gaps.x990700?.others || []).some(o => o.email === 'pia@plainsponsor.test' && o.mobile === '9822222222'), JSON.stringify(gaps.x990700?.others));
+db.run("INSERT INTO attendees (id, event_id, name, email, company, badge_type) VALUES (880030, 1, 'Anita Ram', 'anita.r@team.test', 'Aegis', 'Organiser')");
+r = await as('POST', '/api/admin/booth-contact-gaps/send', { to: ['anita.r@team.test', 'stranger@gmail.com'] });
+check('the list goes only to the organising team (an Organiser pass)', r.status === 400 && /stranger@gmail\.com/.test(r.json?.error || ''), r.text);
+n0 = sent.length;
+r = await as('POST', '/api/admin/booth-contact-gaps/send', { to: ['anita.r@team.test'] });
+const gMail = sent.slice(n0)[0];
+check('...to them: by name, every company with what is missing and where to fill it in', r.status === 200 && r.json?.sent.length === 1 && /Dear Anita/.test(gMail?.Content?.Body[0].Content || '')
+  && (gMail?.Content?.Body[0].Content || '').includes('Plain Sponsor') && /Contact Phone/.test(gMail?.Content?.Body[0].Content || ''), r.text.slice(0, 200));
 done();

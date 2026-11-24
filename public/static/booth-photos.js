@@ -2,7 +2,8 @@
  *
  * The event photos their company's name or logo is in (the booth fascia, standees,
  * screens, their own talk slide), found by reading the text in every photo on the
- * organiser's computer (scripts/photos/exh_match.py). The server is
+ * organiser's computer (scripts/photos/exh_match.py). Since 24 Nov 2026 also its
+ * Innovation Talk, its speakers on stage and each of its team, under their own headings. The server is
  * src/routes/exhibitor-photos.ts: /api/mp/dashboard/booth-photos gives this company's
  * photos with links signed for it; "Save all" is one ZIP. Loaded after
  * marketplace-dashboard.js, whose esc(), api(), showToast() and switchSection() it uses.
@@ -37,23 +38,35 @@
     document.head.appendChild(s);
   }
 
-  function fileName(p, i) { return 'bharat-ai-innovation-2026-booth-' + String(i + 1).padStart(2, '0') + '.jpg'; }
+  function fileName(p, i) { return 'bharat-ai-innovation-2026-' + String(i + 1).padStart(2, '0') + '.jpg'; }
+
+  // What the photos are, in words, from the kinds of section the company has (24 Nov 2026:
+  // the booth, its Innovation Talk, its speakers on stage, its team).
+  var WORDS = { booth: 'your booth', talk: 'your Innovation Talk on stage', speaker: 'your speakers on stage', team: 'your team at the event' };
+  function listWords(xs) { return xs.length <= 1 ? (xs[0] || '') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]; }
 
   function draw(d) {
     photos = d.photos || [];
     if (!photos.length) {
-      card.innerHTML = '<p class="text-sm" style="line-height:1.6;margin:0">We have not found ' + esc(d.company || 'your company') + ' in the event photos yet. We read the names on the booths and screens in every photo, and we are still going through them. If you would like us to look again, write to <a href="mailto:register@bharataiinnovation.com">register@bharataiinnovation.com</a> with your booth number.</p>';
+      card.innerHTML = '<p class="text-sm" style="line-height:1.6;margin:0">We have not found ' + esc(d.company || 'your company') + ' in the event photos yet. We read the names on the booths and screens in every photo, and we match the faces of your team and speakers. If you would like us to look again, write to <a href="mailto:register@bharataiinnovation.com">register@bharataiinnovation.com</a> with your booth number.</p>';
       grid.innerHTML = '';
       return;
     }
-    card.innerHTML = '<p class="text-sm" style="line-height:1.6;margin:0 0 12px">We found <strong>' + esc(d.company) + '</strong> in <strong>' + photos.length + '</strong> of the event photos: your booth, your banner and your team at work. They are yours to use on LinkedIn, your website and your newsletters. Please tag <strong>#BharatAIInnovation</strong>.</p>'
-      + '<div class="team-form-actions">' + (d.zip ? '<a href="' + esc(d.zip) + '" class="mp-btn-primary" download><i class="fas fa-download mr-1"></i> Save all ' + photos.length + ' photos (ZIP)</a>' : '') + '</div>'
+    var what = listWords((d.kinds || ['booth']).map(function (k) { return WORDS[k]; }).filter(Boolean));
+    var parts = Number(d.parts) || 1, per = Number(d.per_part) || photos.length, zips = '';
+    if (d.zip) {
+      if (parts <= 1) zips = '<a href="' + esc(d.zip) + '" class="mp-btn-primary" download><i class="fas fa-download mr-1"></i> Save all ' + photos.length + ' photos (ZIP)</a>';
+      else for (var n = 1; n <= parts; n++) zips += '<a href="' + esc(d.zip) + '?n=' + n + '" class="mp-btn-primary" download style="margin:0 8px 8px 0"><i class="fas fa-download mr-1"></i> Save photos ' + ((n - 1) * per + 1) + ' to ' + Math.min(n * per, photos.length) + ' (ZIP)</a>';
+    }
+    card.innerHTML = '<p class="text-sm" style="line-height:1.6;margin:0 0 12px">We found <strong>' + esc(d.company) + '</strong> in <strong>' + photos.length + '</strong> of the event photos' + (what ? ': ' + esc(what) : '') + '. They are yours to use on LinkedIn, your website and your newsletters. Please tag <strong>#BharatAIInnovation</strong>.</p>'
+      + '<div class="team-form-actions" style="flex-wrap:wrap">' + zips + '</div>'
       + '<p class="text-xs text-slate-500" style="margin:10px 0 0">Tap a photo to see it large. &ldquo;Save&rdquo; gives you the full-size photo.</p>';
-    var html = '', last = '';
+    var html = '', last = null;
     photos.forEach(function (p, i) {
-      if (p.day !== last) { last = p.day; html += '<h3 class="booth-day">' + esc(DAYS[p.day] || p.day || '') + '</h3>'; }
-      html += '<figure class="booth-photo" style="margin:0"><button type="button" data-booth-view="' + i + '" aria-label="See photo ' + (i + 1) + ' large"><img src="' + esc(p.s) + '" alt="Your booth at Bharat AI Innovation 2026, photo ' + (i + 1) + '" loading="lazy"></button>'
-        + '<figcaption class="booth-photo-bar"><span>' + esc(p.time || '') + '</span><a href="' + esc(p.o) + '" download="' + esc(fileName(p, i)) + '"><i class="fas fa-download"></i> Save</a></figcaption></figure>';
+      var head = p.section || DAYS[p.day] || p.day || '';
+      if (head !== last) { last = head; html += '<h3 class="booth-day">' + esc(head) + '</h3>'; }
+      html += '<figure class="booth-photo" style="margin:0"><button type="button" data-booth-view="' + i + '" aria-label="See photo ' + (i + 1) + ' large"><img src="' + esc(p.s) + '" alt="' + esc(head) + ', photo ' + (i + 1) + '" loading="lazy"></button>'
+        + '<figcaption class="booth-photo-bar"><span>' + esc([DAYS[p.day] ? DAYS[p.day].split(' ')[0] : '', p.time || ''].filter(Boolean).join(', ')) + '</span><a href="' + esc(p.o) + '" download="' + esc(fileName(p, i)) + '"><i class="fas fa-download"></i> Save</a></figcaption></figure>';
     });
     grid.innerHTML = html;
   }
@@ -66,7 +79,7 @@
     box.setAttribute('role', 'dialog');
     box.setAttribute('aria-modal', 'true');
     box.setAttribute('aria-label', 'Photo ' + (i + 1) + ' of ' + photos.length);
-    box.innerHTML = '<img src="' + esc(p.m) + '" alt="Your booth, photo ' + (i + 1) + '">'
+    box.innerHTML = '<img src="' + esc(p.m) + '" alt="' + esc(p.section || 'Your photo') + ', photo ' + (i + 1) + '">'
       + '<div class="booth-view-bar"><button type="button" data-booth-prev' + (i ? '' : ' disabled') + '>Previous</button>'
       + '<a href="' + esc(p.o) + '" download="' + esc(fileName(p, i)) + '"><i class="fas fa-download"></i> Save full size</a>'
       + '<button type="button" data-booth-next' + (i < photos.length - 1 ? '' : ' disabled') + '>Next</button>'
@@ -103,7 +116,7 @@
       if (location.hash === '#photos' && typeof switchSection === 'function') switchSection('photos');
     } catch (err) {
       // Not an exhibitor (a marketplace-only company) or not signed in: no tab.
-      if (err && err.status && err.status !== 401) showToast(err.message || 'Your booth photos did not load.', true);
+      if (err && err.status && err.status !== 401) showToast(err.message || 'Your photos did not load.', true);
     }
   }
   load();
