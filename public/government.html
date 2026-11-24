@@ -420,6 +420,12 @@
     /* the department's own logo under the words, on white: several logos are dark on clear */
     .gv-ph-logos { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: auto; padding-top: 0.85rem; }
     .gv-ph-logos img { display: block; box-sizing: border-box; height: 64px; width: auto; max-width: 100%; object-fit: contain; padding: 6px 10px; background: #fff; border: 1px solid #E3E6F6; border-radius: 10px; }
+    /* Union Ministers' keynotes at Data Science Congress, under the Mumbai photos */
+    .gv-sub.gv-sub--keynotes { margin-top: 2.75rem; margin-bottom: 0.35rem; }
+    .gv-keynotes-say { margin: 0 0 1.1rem; text-align: center; color: var(--dark-grey); }
+    .gv-ph-grid--two { margin-top: 0; }
+    .gv-ph-grid--two .gv-ph > img { aspect-ratio: 5 / 4; }
+    @media (min-width: 640px) { .gv-ph-grid.gv-ph-grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .gv-ph-kind { display: block; margin-bottom: 0.3rem; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--saffron); }
     @media (min-width: 640px) { .gv-ph-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .gv-ph--wide { grid-column: 1 / -1; } }
     @media (min-width: 1000px) { .gv-ph-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; } .gv-ph--wide { grid-column: span 2; } }
@@ -623,6 +629,18 @@
                 <figure class="gv-ph gv-ph--wide">
                     <img width="1200" height="800" loading="lazy" decoding="async" src="images/government/mumbai-2026/special-guest-kapil-patil-720.webp" srcset="images/government/mumbai-2026/special-guest-kapil-patil-720.webp 720w, images/government/mumbai-2026/special-guest-kapil-patil.webp 1200w" sizes="(min-width: 900px) 66vw, 100vw" alt="Shri Kapil Moreshwar Patil being welcomed at the entrance under the AI for Bharat banner">
                     <figcaption><span class="gv-ph-kind">Special guest</span>Shri Kapil Moreshwar Patil, former Union Minister of State for Panchayati Raj, arrives as a special guest.</figcaption>
+                </figure>
+            </div>
+            <h3 class="gv-sub gv-sub--keynotes reveal">Union Ministers at our keynotes</h3>
+            <p class="gv-keynotes-say">At Data Science Congress, the predecessor to Bharat AI Innovation.</p>
+            <div class="gv-ph-grid gv-ph-grid--two">
+                <figure class="gv-ph">
+                    <img width="970" height="776" loading="lazy" decoding="async" src="images/government/data-science-congress/vijay-goel-720.webp" srcset="images/government/data-science-congress/vijay-goel-720.webp 720w, images/government/data-science-congress/vijay-goel.webp 970w" sizes="(min-width: 640px) 50vw, 100vw" alt="Shri Vijay Goel giving a keynote at the Data Science Congress lectern">
+                    <figcaption><span class="gv-ph-kind">Keynote</span>Hon’ble Minister Shri Vijay Goel, then Minister of State for Statistics and Programme Implementation, Government of India.</figcaption>
+                </figure>
+                <figure class="gv-ph">
+                    <img width="1200" height="960" loading="lazy" decoding="async" src="images/government/data-science-congress/ys-chowdary-720.webp" srcset="images/government/data-science-congress/ys-chowdary-720.webp 720w, images/government/data-science-congress/ys-chowdary.webp 1200w" sizes="(min-width: 640px) 50vw, 100vw" alt="Shri Y. S. Chowdary at the lectern, his name and title on the screen behind him">
+                    <figcaption><span class="gv-ph-kind">Keynote</span>Hon’ble Minister Shri Y. S. Chowdary, then Minister of State for Science &amp; Technology, Government of India.</figcaption>
                 </figure>
             </div>
             <p class="gv-see-all"><a href="/gallery">See more photos from Mumbai 2026 <i class="fas fa-arrow-right" aria-hidden="true"></i></a></p>
