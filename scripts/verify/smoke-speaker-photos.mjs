@@ -77,6 +77,18 @@ s = await as('POST', `/api/admin/speaker-photos/${A.key}/send`, { again: true })
 check('sent again on purpose', s.status === 200 && sent.length === 2, s.status);
 s = await as('POST', `/api/admin/speaker-photos/${B.key}/send`, {});
 check('no email: refused, nothing sent', s.status === 409 && sent.length === 2, s.status);
+// A copy to the person who looks after them (their PR), the organiser, 24 Nov 2026.
+s = await as('POST', `/api/admin/speaker-photos/${B.key}/send`, { to: 'not-an-address' });
+check('a copy to an incomplete address is refused', s.status === 400 && sent.length === 2, s.status);
+s = await as('POST', `/api/admin/speaker-photos/${B.key}/send`, { to: 'PR.Person@Example.com' });
+const copy = sent[2];
+check('a copy goes to their PR as the "please pass this on" email, with their page and no original',
+  s.status === 200 && s.json?.copy === true && sent.length === 3 && JSON.stringify(copy?.Recipients?.To) === JSON.stringify(['pr.person@example.com'])
+  && /^Photos of /.test(copy?.Content?.Subject || '') && /Please pass this email on/.test(copy?.Content?.Body?.[0]?.Content || '')
+  && (copy?.Content?.Body?.[0]?.Content || '').includes(`/photos/${B.key}?k=${sig(B.key)}`) && !/\/o\.jpg/.test(copy?.Content?.Body?.[0]?.Content || ''), s.status + ' ' + JSON.stringify(s.json));
+l = await as('GET', '/api/admin/speaker-photos');
+check('...recorded as a copy, and their own photos email still counts as not sent',
+  rows("SELECT 1 FROM admin_audit WHERE action = 'speaker.photos_copy' AND entity_id = ?", [B.key]).length === 1 && row(B.key)?.status === 'no-email' && !row(B.key)?.sent_count, row(B.key)?.status);
 
 // ---- a weaker match: looked at before sending, not in "send to all" ----
 if (weak) {

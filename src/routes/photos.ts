@@ -991,23 +991,31 @@ ph.post('/api/admin/speaker-photos/:key/send', async (c) => {
   const b = await c.req.json().catch(() => ({})) as any
   const key = c.req.param('key')
   const st = await panelState(c)
-  const r = (await rowsFor(c, 1, st.waiting, st.hidden)).find(x => x.key === key)
-  if (!r) return c.json({ error: 'That person is not on the list any more.' }, 404)
+  const found = (await rowsFor(c, 1, st.waiting, st.hidden)).find(x => x.key === key)
+  if (!found) return c.json({ error: 'That person is not on the list any more.' }, 404)
+  // To the person who looks after them (their PR or office) instead, the organiser, 24 Nov 2026:
+  // "she is pr of tarun chug send her photos of tarun chug". That copy is the "please pass this
+  // on" email, not one written to them, and it does not count as their own photos email going.
+  const to = String(b.to || '').trim().toLowerCase()
+  if (to && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return c.json({ error: 'That email address is not complete.' }, 400)
+  const r = to ? { ...found, email: to, for_speaker: false } : found
   if (!r.count) return c.json({ error: 'No photos of ' + r.name + ' were found.' }, 409)
   if (r.status === 'panel') return c.json({ error: 'Check the line-up of ' + r.name + '’s session first (Panels to check, above), so the email names the right people.', panel: true }, 409)
   if (!r.email) return c.json({ error: 'There is no email address for ' + r.name + '.' }, 409)
   if (r.protocol && !b.anyway) return c.json({ error: r.name + ' is a government official: their office handles protocol. Send anyway from their row if you are sure.' }, 409)
-  if (r.sent_count && !b.again) return c.json({ error: r.name + ' was already sent their photos on ' + r.sent_at + '.', already: true }, 409)
+  if (!to && r.sent_count && !b.again) return c.json({ error: r.name + ' was already sent their photos on ' + r.sent_at + '.', already: true }, 409)
   if (!secretOf(c)) return c.json({ error: 'Photo links cannot be signed on this server.' }, 503)
   if (!hooks.sendEmail) return c.json({ error: 'Email is not set up on this server.' }, 503)
   const mail = await mailFor(c, r, st.live, st.hidden)
   const sent = await hooks.sendEmail(c, r.email, mail.subject, mail.html)
   if (!sent.ok) return c.json({ error: sent.error || 'The email did not go.' }, 502)
   if (hooks.audit) {
-    try { await hooks.audit(c, AUDIT_ACTION, 'photo_album', r.key, { name: r.name, to: r.email, source: r.email_source, count: r.count, again: !!b.again }) }
-    catch { /* the audit log never fails a send */ }
+    try {
+      if (to) await hooks.audit(c, AUDIT_ACTION + '_copy', 'photo_album', r.key, { name: r.name, to, count: r.count })
+      else await hooks.audit(c, AUDIT_ACTION, 'photo_album', r.key, { name: r.name, to: r.email, source: r.email_source, count: r.count, again: !!b.again })
+    } catch { /* the audit log never fails a send */ }
   }
-  return c.json({ success: true, to: r.email, count: r.count })
+  return c.json({ success: true, to: r.email, count: r.count, copy: !!to })
 })
 
 // ---------- "Your panel": the line-up and group shots the 23 Nov emails were missing ----------
