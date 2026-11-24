@@ -2234,9 +2234,11 @@ async function audienceTeaser(c: any): Promise<string> {
 
 function emailBrandHeader(title: string, subtitle: string): string {
   const SAFFRON = '#FF9933', WHITE = '#FFFFFF', GREEN = '#138808'
+  // The logo carries its size as width/height attributes too: a mail app that ignores CSS
+  // drew the 900 x 373 file at full size and cut it off on a phone (a speaker, 24 Nov 2026).
   return `
     <div style="background-color:#0f2557;background:linear-gradient(135deg,#0b1b3f 0%,#12306e 55%,#1a4fa0 100%);padding:30px 24px;text-align:center;">
-      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" style="height:58px;width:auto;background:#ffffff;border-radius:12px;padding:8px 12px;display:inline-block;">
+      <img src="https://bharataiinnovation.com/images/Bharat%20AI%20Innovation%20Logo.png" alt="Bharat AI Innovation" width="140" height="58" style="width:140px;height:58px;max-width:100%;background:#ffffff;border-radius:12px;padding:8px 12px;display:inline-block;border:0;">
       <div style="margin:16px 0 0;font-size:27px;line-height:1.2;font-weight:bold;font-family:Arial,Helvetica,sans-serif;letter-spacing:0.3px;">
         <span style="color:${SAFFRON};">Bharat</span> <span style="color:${WHITE};">AI</span> <span style="color:${GREEN};">Innovation</span>
       </div>
