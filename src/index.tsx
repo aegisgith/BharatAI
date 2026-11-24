@@ -27479,9 +27479,9 @@ function sharedNavHTML(activePage: string): string {
       <div class="hidden md:flex items-center gap-0.5 flex-1 justify-center flex-wrap">
         ${pill('/app', 'Home', 'home')}
         ${pill('/app#schedule', 'Conference Schedule', 'schedule')}
-        ${pill('/passes', 'Passes', 'passes')}
-        ${pill('/register', 'Register', 'register')}
-        ${pill('/inquiry', 'Book Booth', 'inquiry')}
+        ${pill(mumbaiIsOver() ? '/delhi-register' : '/passes', 'Passes', 'passes')}
+        ${pill(mumbaiIsOver() ? '/delhi-register' : '/register', 'Register', 'register')}
+        ${pill(mumbaiIsOver() ? '/delhi-exhibit' : '/inquiry', 'Book Booth', 'inquiry')}
         ${pill('/marketplace', 'AI Market', 'marketplace')}
         ${pill('/contact', 'Contact', 'contact')}
         <a href="https://bharataiinnovation.com" target="_blank" class="px-3.5 py-1.5 rounded-full text-xs font-medium text-gray-300 hover:text-white hover:bg-white/8 transition-all no-underline hidden lg:inline-flex">Main Site</a>
@@ -27492,7 +27492,7 @@ function sharedNavHTML(activePage: string): string {
         <a href="/app#login" class="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold text-gray-200 hover:text-white transition-all no-underline border border-white/15 hover:bg-white/8">
           <i class="fas fa-sign-in-alt text-[11px]"></i> Log In
         </a>
-        <a href="/register" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
+        <a href="${mumbaiIsOver() ? '/delhi-register' : '/register'}" class="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold text-white transition-all hover:opacity-90 no-underline" style="background:linear-gradient(135deg,#FF6B00,#FF8C38);box-shadow:0 4px 15px rgba(255,107,0,0.35);">
           Register <i class="fas fa-arrow-right text-[10px]"></i>
         </a>
       </div>
