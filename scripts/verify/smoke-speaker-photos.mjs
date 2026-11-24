@@ -165,6 +165,25 @@ if (pair) {
   sx = await as('POST', '/api/admin/speaker-photos/panels/s9001/ok', { fp: panel.fp });
   l = await as('GET', '/api/admin/speaker-photos');
   check('once confirmed, they are ready to send', sx.status === 200 && row(X.key)?.status === 'ready', row(X.key)?.status);
+  // "Your panel": the line-up and group shots for those whose photos email went before the
+  // line-up fix (24 Nov 2026). X's photos email "went" on 23 Nov; Y's goes now, with a line-up.
+  db.run("INSERT INTO admin_audit (actor, action, entity, entity_id, detail, created_at) VALUES ('test', 'speaker.photos', 'photo_album', ?, '{}', '2026-11-23 10:00:00')", [X.key]);
+  db.run("INSERT INTO admin_audit (actor, action, entity, entity_id, detail, created_at) VALUES ('test', 'speaker.photos', 'photo_album', ?, '{}', '2026-11-24 05:00:00')", [Y.key]);
+  let pn = await as('GET', '/api/admin/panel-note');
+  const pnRow = (k) => (pn.json?.rows || []).find(r => r.key === k);
+  check('the panel email list: the one emailed before the fix is ready, the one emailed after had the line-up already', pnRow(X.key)?.status === 'ready' && pnRow(Y.key)?.status === 'had-lineup', pn.json?.rows);
+  const pnv = await as('GET', `/api/admin/panel-note/${X.key}/preview`);
+  const pnh = pnv.json?.html || '';
+  check('its preview: the line-up with designations and LinkedIn, the group shots, no email or phone of anyone, no original-size link',
+    pnv.status === 200 && pnh.includes('Test panel on AI') && pnh.includes('Chief Executive, Org Y') && pnh.includes('https://www.linkedin.com/in/y-test')
+    && pinned.every(id => pnh.includes(id)) && !pnh.includes('y.speaker@example.com') && !/\/o\.jpg/.test(pnh), pnv.status);
+  const beforeNote = sent.length;
+  let pns = await as('POST', `/api/admin/panel-note/${X.key}/send`, {});
+  check('sent once, and recorded', pns.status === 200 && sent.length === beforeNote + 1 && rows("SELECT 1 FROM admin_audit WHERE action = 'photos.panel_note' AND entity_id = ?", [X.key]).length === 1, pns.status);
+  pns = await as('POST', `/api/admin/panel-note/${X.key}/send`, {});
+  const pny = await as('POST', `/api/admin/panel-note/${Y.key}/send`, {});
+  check('never twice, and not to someone whose photos email had the line-up', pns.status === 409 && pns.json?.already === true && pny.status === 409 && sent.length === beforeNote + 1, [pns.status, pny.status]);
+  db.run("DELETE FROM admin_audit WHERE action IN ('speaker.photos', 'photos.panel_note') AND entity_id IN (?, ?)", [X.key, Y.key]);
   db.run("INSERT INTO session_speakers (session_id, speaker_id, role, sort_order) VALUES (9001, ?, 'panellist', 4)", [A.speakers[0]]);
   l = await as('GET', '/api/admin/speaker-photos');
   check('a change to the line-up after it was confirmed asks again', row(X.key)?.status === 'panel', row(X.key)?.status);

@@ -760,7 +760,7 @@ export function checkSession(s: LiveSession, live: Live): PanelCheck {
 
 // The panel's own group shots (the organiser, 23 Nov 2026: "give all panelist speakers two
 // to three entire panel photo ... which have photos of all the speakers including him/her").
-// From the session's time (and 20 minutes after, for the photo at the end), the photos in
+// From the session's time (and 30 minutes after, for the photo at the end), the photos in
 // which the most of its current line-up are recognised, at least half of them; landscape
 // first, one a minute (not three of one burst). Every panellist gets the same ones.
 // owner: whose album it is for. First the one photo with the most of the panel (often the
@@ -770,7 +770,9 @@ export function panelShots(s: LiveSession, max = 3, owner = ''): string[] {
   const keys = new Set(s.people.map(p => p.key).filter(Boolean) as string[])
   if (s.talk || keys.size < 2) return []
   const need = Math.max(2, Math.ceil(keys.size / 2))
-  const cand = PHOTO_TIMES.filter(([, d, t]) => d === s.day && t >= 0 && t >= mins(s.start) - PAD && t <= mins(s.end) + 20)
+  // 30 minutes after the end: panels ran late, and the group photo comes last (session 145's
+  // was 28 minutes after its programme end). At least half the panel must be in it.
+  const cand = PHOTO_TIMES.filter(([, d, t]) => d === s.day && t >= 0 && t >= mins(s.start) - PAD && t <= mins(s.end) + 30)
     .map(([id, , t]) => ({ id, t, n: new Set(WHO(id).filter(w => keys.has(w[0]) && w[2] < 80).map(w => w[0])).size, wide: META[id] && !META[id][2] ? 1 : 0,
       me: !!owner && WHO(id).some(w => w[0] === owner) }))
     .filter(x => x.n >= need)
@@ -988,6 +990,102 @@ ph.post('/api/admin/speaker-photos/:key/send', async (c) => {
     catch { /* the audit log never fails a send */ }
   }
   return c.json({ success: true, to: r.email, count: r.count })
+})
+
+// ---------- "Your panel": the line-up and group shots the 23 Nov emails were missing ----------
+//
+// Until c90df31 (24 Nov 2026, about 9:30 am IST) the live programme came back empty, so every
+// photos email sent before then had no line-up and no group shots. The organiser, 24 Nov: send
+// panellists "a short second email with their panel line-up and group photos". It goes once,
+// only to someone whose photos email went before the fix and who is on a session of two or
+// more people; a flagged line-up waits for the organiser, as the photos email does.
+export const PANEL_NOTE = 'photos.panel_note'
+export const LINEUP_FIXED_AT = '2026-11-24 04:00:00' // UTC, as admin_audit.created_at is
+export function panelNoteHTML(a: { name: string; sessions: LiveSession[]; shots: string[]; got?: Got; href: string; header: string }): { subject: string; html: string } {
+  const words = MUMBAI_WORDS
+  const many = a.sessions.length > 1
+  const subject = `Your panel${many ? 's' : ''} at ${words.name}: who was on ${many ? 'them' : 'it'}, and photos of you together`
+  const pics = a.shots.slice(0, 4)
+  const cell = (id: string) => `<td width="50%" style="padding:3px;vertical-align:top"><a href="${escH(a.href)}"><img src="${escH(a.got?.[id]?.s || wideUrl(id, 560))}" width="268" alt="Your panel together" style="display:block;width:100%;max-width:268px;height:auto;border:0;border-radius:8px"></a></td>`
+  const rows: string[] = []
+  for (let i = 0; i < pics.length; i += 2) rows.push('<tr>' + pics.slice(i, i + 2).map(cell).join('') + (pics.length - i === 1 ? '<td width="50%"></td>' : '') + '</tr>')
+  const grid = pics.length ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 18px">${rows.join('')}</table>` : ''
+  const html = `<!DOCTYPE html><html><body style="margin:0;background:#f6f7fb;padding:24px;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e2140">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e7e9f5">
+    ${a.header}
+    <div style="padding:26px 26px 8px">
+      <p style="font-size:15px;line-height:1.65;margin:0 0 14px">${escH('Dear ' + dearName(a.name) + ',')}</p>
+      <p style="font-size:15px;line-height:1.65;margin:0 0 18px">Our email with your photos should also have said who was on your panel${many ? 's' : ''}, with photos of you together. It did not, so here ${many ? 'they are' : 'it is'}: ready for a LinkedIn post that names everyone.</p>
+      ${grid}
+      ${lineupHTML(a.sessions, true)}
+      <p style="margin:4px 0 20px;text-align:center"><a href="${escH(a.href)}" style="display:inline-block;padding:13px 26px;background:#C84F00;color:#fff;text-decoration:none;border-radius:10px;font-weight:bold;font-size:15px">See all your photos</a></p>
+      <p style="font-size:14px;line-height:1.65;margin:0 0 12px">When you post, please tag your fellow panellists and add <b>${escH(SHARE_TAGS)}</b> so people can find the event.</p>
+      <p style="font-size:14px;line-height:1.65;margin:16px 0 0">See you at Bharat AI Innovation, New Delhi: 28 and 29 July 2027 at Bharat Mandapam. <a href="${SITE}/delhi" style="color:#C84F00;font-weight:bold">See the Delhi edition</a></p>
+      <p style="margin:22px 0 24px;font-size:14px;color:#555">Team Bharat AI Innovation<br>
+        <span style="color:#888">${escH(words.line).replace(' · ', ' &middot; ')}</span></p>
+    </div>
+  </div></body></html>`
+  return { subject, html }
+}
+type NoteRow = { key: string; name: string; email: string; status: string; photos_sent_at: string; note_sent_at: string; sessions: string[]; shots: number }
+async function panelNoteRows(c: any) {
+  const st = await panelState(c)
+  const rows = await rowsFor(c, 1, st.waiting, st.hidden)
+  const firstSent = new Map<string, string>(), noted = new Map<string, string>()
+  try {
+    for (const r of await all(c, 'SELECT action, entity_id, created_at FROM admin_audit WHERE action IN (?, ?) ORDER BY id', AUDIT_ACTION, PANEL_NOTE)) {
+      const k = String(r.entity_id)
+      if (r.action === AUDIT_ACTION) { if (!firstSent.has(k)) firstSent.set(k, String(r.created_at || '')) } else noted.set(k, String(r.created_at || ''))
+    }
+  } catch { /* no audit table */ }
+  const out: NoteRow[] = []
+  for (const r of rows) {
+    const sessions = (st.live.byKey.get(r.key) || []).filter(s => !s.talk && s.people.length + s.typed.length >= 2)
+    const sent = firstSent.get(r.key) || ''
+    if (!sessions.length || !sent) continue
+    const flagged = sessions.some(s => { const k = st.checks.get(s.id); return !!k && k.flagged && st.ok.get(k.id) !== k.fp })
+    const status = noted.has(r.key) ? 'sent' : sent >= LINEUP_FIXED_AT ? 'had-lineup' : !r.email ? 'no-email' : flagged ? 'panel' : r.protocol ? 'protocol' : 'ready'
+    out.push({ key: r.key, name: r.name, email: r.email, status, photos_sent_at: sent, note_sent_at: noted.get(r.key) || '', sessions: sessions.map(s => s.title), shots: panelShotsFor(r.key, st.live).filter(id => !(st.hidden && st.hidden.has(id))).length })
+  }
+  return { st, rows: out }
+}
+async function panelNoteMail(c: any, key: string, name: string, st: any) {
+  const sessions = (st.live.byKey.get(key) || []).filter((s: LiveSession) => !s.talk && s.people.length + s.typed.length >= 2)
+  const shots = panelShotsFor(key, st.live, 4).filter(id => !(st.hidden && st.hidden.has(id)))
+  const got = shots.length ? await linksForDrive(c, key, shots) : {}
+  const header = hooks.emailHeader ? hooks.emailHeader('Your panel', MUMBAI_WORDS.line) : ''
+  return panelNoteHTML({ name, sessions, shots: shown(shots, got, st.hidden !== null), got, href: await pageUrl(c, key), header })
+}
+ph.get('/api/admin/panel-note', async (c) => {
+  const { rows } = await panelNoteRows(c)
+  const counts: Record<string, number> = {}
+  for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1
+  return c.json({ rows, counts })
+})
+ph.get('/api/admin/panel-note/:key/preview', async (c) => {
+  const { st, rows } = await panelNoteRows(c)
+  const r = rows.find(x => x.key === c.req.param('key'))
+  if (!r) return c.json({ error: 'That person was not on a panel, or was not sent their photos.' }, 404)
+  const mail = await panelNoteMail(c, r.key, r.name, st)
+  return c.json({ to: r.email, subject: mail.subject, html: mail.html, status: r.status })
+})
+ph.post('/api/admin/panel-note/:key/send', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const { st, rows } = await panelNoteRows(c)
+  const r = rows.find(x => x.key === c.req.param('key'))
+  if (!r) return c.json({ error: 'That person was not on a panel, or was not sent their photos.' }, 404)
+  if (r.status === 'sent') return c.json({ error: r.name + ' was already sent their panel email on ' + r.note_sent_at + '.', already: true }, 409)
+  if (r.status === 'had-lineup') return c.json({ error: r.name + '’s photos email already had the line-up.', already: true }, 409)
+  if (r.status === 'panel') return c.json({ error: 'Check the line-up of ' + r.name + '’s session first (Panels to check), so the email names the right people.', panel: true }, 409)
+  if (!r.email) return c.json({ error: 'There is no email address for ' + r.name + '.' }, 409)
+  if (r.status === 'protocol' && !b.anyway) return c.json({ error: r.name + ' is a government official: their office handles protocol. Send anyway if you are sure.' }, 409)
+  if (!secretOf(c)) return c.json({ error: 'Photo links cannot be signed on this server.' }, 503)
+  if (!hooks.sendEmail) return c.json({ error: 'Email is not set up on this server.' }, 503)
+  const mail = await panelNoteMail(c, r.key, r.name, st)
+  const sent = await hooks.sendEmail(c, r.email, mail.subject, mail.html)
+  if (!sent.ok) return c.json({ error: sent.error || 'The email did not go.' }, 502)
+  if (hooks.audit) { try { await hooks.audit(c, PANEL_NOTE, 'photo_album', r.key, { name: r.name, to: r.email, sessions: r.sessions, shots: r.shots }) } catch { /* never fails a send */ } }
+  return c.json({ success: true, to: r.email, shots: r.shots })
 })
 
 // The organiser confirms a session's line-up as it is now (fp = its fingerprint then). If
