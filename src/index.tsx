@@ -14488,7 +14488,7 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
   let workshop: any = null
   try {
     if (await workshopsReady(c)) {
-      const ws = await c.env.DB.prepare('SELECT w.title, w.speaker, w.starts_at, w.ends_at FROM workshop_seats s JOIN workshops w ON w.id = s.workshop_id WHERE s.attendee_id = ? ORDER BY s.id LIMIT 1').bind(id).first() as any
+      const ws = await c.env.DB.prepare('SELECT w.id, w.title, w.speaker, w.starts_at, w.ends_at FROM workshop_seats s JOIN workshops w ON w.id = s.workshop_id WHERE s.attendee_id = ? ORDER BY s.id LIMIT 1').bind(id).first() as any
       if (ws) {
         const day = String(ws.starts_at || '').slice(0, 10)
         const over = workshopIsOver(ws, row.end_date)
@@ -14501,12 +14501,17 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
           reason: over && there ? '' : over ? 'The workshop certificate is for people who were checked in at the venue on the day of the workshop.'
             : 'Your workshop certificate unlocks after the workshop, once you have been checked in at the venue that day.',
         }
+        // The QR on the certificate (24 Nov 2026): signed only for a certificate we
+        // issue, the person's own once it unlocks, or any for Admin, whose preview can
+        // download a locked one to send by hand. See /certificate/:code.
+        if (workshop.eligible || isAdminRequest(c)) workshop.verify = await certVerifyUrl(c, 'W', id, ws.id)
       }
     }
   } catch { workshop = null }
 
+  const eligible = attended && started
   return c.json({
-    eligible: attended && started,
+    eligible,
     attended, started,
     checked_in_at: row.checked_in_at || null,
     starts: start || null,
@@ -14515,13 +14520,179 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
     workshop,
     // The pass the certificate names (organiser, 12 Nov 2026): a paid tier not paid for
     // reads as the Visitor Pass, as at the desk.
-    pass: (() => {
-      const b = String(row.badge_type || '').trim()
-      if (!b || FREE_BADGE_RE.test(b)) return 'Visitor Pass'
-      return PAID_TIERS.includes(b) && ['pending', 'refunded'].includes(String(row.payment_status || '').trim().toLowerCase()) ? 'Visitor Pass' : b
-    })(),
+    pass: certPassLabel(row.badge_type, row.payment_status),
+    ...(eligible || isAdminRequest(c) ? { verify: await certVerifyUrl(c, 'C', id) } : {}),
   })
 })
+
+// ==================== CERTIFICATE CHECK: /certificate/<code> (24 Nov 2026) ====================
+//
+// The organiser: "put qr code of candidate on top of it so no one can copy it and fake
+// it". Every certificate carries a QR to /certificate/<code>. The code is signed, so
+// nobody can make one up for an attendee number, and the page reads the holder's name
+// and what they earned from the database, never from the code. A real code pasted onto
+// an edited certificate therefore shows the real holder's name, and the difference is
+// what gives the fake away.
+//
+// A code is signed only for a certificate we issue (the eligibility answer above, and
+// /panels for a claimed campus panel), so a valid signature is the proof of issue: the
+// page does not re-run the attendance rule, which would turn a certificate the
+// organisers sent by hand into a "fake". It shows a name, the certificate and its
+// date, nothing else about the person.
+//   C<attendee>               certificate of participation (the conference)
+//   W<attendee>-<workshop id> workshop certificate
+//   P<attendee>-<panel slug>  campus-panel certificate
+// then '.' and 16 hex characters of HMAC under the 'cert:' prefix.
+//
+// The key is CERT_SECRET when set, else the pass key (in production today that is
+// ADMIN_SECRET). A certificate is kept for years: set CERT_SECRET to the current value
+// BEFORE rotating ADMIN_SECRET, or every certificate's QR stops checking out.
+const CERT_SITE = 'https://bharataiinnovation.com'
+const certSecret = (c: any): string => c.env.CERT_SECRET || passTokenSecret(c)
+
+function certPassLabel(badge: any, payment: any): string {
+  const b = String(badge || '').trim()
+  if (!b || FREE_BADGE_RE.test(b)) return 'Visitor Pass'
+  return PAID_TIERS.includes(b) && ['pending', 'refunded'].includes(String(payment || '').trim().toLowerCase()) ? 'Visitor Pass' : b
+}
+
+async function certVerifyUrl(c: any, kind: 'C' | 'W' | 'P', attendeeId: any, ref?: any): Promise<string> {
+  const secret = certSecret(c)
+  const n = parseInt(String(attendeeId), 10)
+  if (!secret || !Number.isFinite(n)) return ''
+  const body = kind + n + (kind === 'C' ? '' : '-' + String(ref ?? '').toLowerCase())
+  return CERT_SITE + '/certificate/' + body + '.' + (await hmacHexA(secret, 'cert:' + body)).slice(0, 16)
+}
+
+async function readCertCode(c: any, code: string): Promise<{ kind: string, id: number, ref: string } | null> {
+  const m = /^([CWP])(\d{1,9})(?:-([a-z0-9-]{1,40}))?\.([0-9a-f]{16})$/.exec(String(code || ''))
+  if (!m || (m[1] === 'C') !== (m[3] === undefined)) return null
+  const secret = certSecret(c)
+  if (!secret) return null
+  const body = m[1] + m[2] + (m[3] === undefined ? '' : '-' + m[3])
+  if (!safeEqualA(m[4], (await hmacHexA(secret, 'cert:' + body)).slice(0, 16))) return null
+  return { kind: m[1], id: Number(m[2]), ref: m[3] || '' }
+}
+
+const CERT_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const certDay = (iso: any): string => {
+  const p = String(iso || '').slice(0, 10).split('-')
+  return p.length === 3 && CERT_MONTHS[Number(p[1]) - 1] ? Number(p[2]) + ' ' + CERT_MONTHS[Number(p[1]) - 1] + ' ' + p[0] : ''
+}
+
+app.get('/certificate/:code', async (c) => {
+  c.header('X-Robots-Tag', 'noindex, nofollow')
+  c.header('Cache-Control', 'no-store')
+  const raw = c.req.param('code')
+  if (raw === 'sample') return c.html(certCheckPageHTML({ state: 'sample' }))
+  const v = await readCertCode(c, raw)
+  if (!v) return c.html(certCheckPageHTML({ state: 'bad' }), 404)
+  const DEAN = 'Dr. Abhijit Gangopadhyay, Dean, Aegis School of Data Science and AI'
+  const COMMITTEE = 'Organizing Committee, Bharat AI Innovation 2026'
+  try {
+    const a = await c.env.DB.prepare('SELECT id, name, badge_type, payment_status FROM attendees WHERE id = ?').bind(v.id).first() as any
+    if (!a) return c.html(certCheckPageHTML({ state: 'gone' }), 404)
+    const pad = (w: number) => String(a.id).padStart(w, '0')
+    if (v.kind === 'W') {
+      const w = await c.env.DB.prepare('SELECT title, speaker, starts_at FROM workshops WHERE id = ?').bind(Number(v.ref)).first() as any
+      if (!w) return c.html(certCheckPageHTML({ state: 'gone' }), 404)
+      const fac = String(w.speaker || '').split(',')[0].trim()
+      return c.html(certCheckPageHTML({
+        state: 'ok', name: a.name, what: 'Workshop certificate', lead: 'took part in the workshop', title: w.title,
+        lines: [[certDay(w.starts_at) || '20 to 21 November 2026', 'Bharat AI Innovation 2026', 'World Trade Center, Mumbai'].join(' · ')],
+        signers: [fac ? fac + ', Workshop Facilitator' : COMMITTEE, DEAN], certId: 'BHAI-WS-' + pad(4),
+      }))
+    }
+    if (v.kind === 'P') {
+      const p = CAMPUS_PANELS[v.ref]
+      if (!p) return c.html(certCheckPageHTML({ state: 'gone' }), 404)
+      let claimed = ''
+      try {
+        const r = await c.env.DB.prepare('SELECT claimed_at FROM panel_registrations WHERE attendee_id = ? AND panel_slug = ?').bind(a.id, p.slug).first() as any
+        claimed = r && r.claimed_at ? certDay(istDate(r.claimed_at)) : ''
+      } catch { /* the certificate still checks out; only this line is left off */ }
+      return c.html(certCheckPageHTML({
+        state: 'ok', name: a.name, what: 'Campus Series certificate', lead: 'took part in the pre-event panel discussion',
+        title: p.titleShort + (p.subtitle ? ': ' + p.subtitle : ''),
+        lines: ['Hosted at ' + [p.host, p.city].filter(Boolean).join(', '), p.dateLabel + ' · ' + p.timeLabel].concat(claimed ? ['Attendance confirmed on ' + claimed] : []),
+        signers: [COMMITTEE, DEAN],
+        certId: 'BHAI-CS-' + String(p.slug).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + '-' + pad(5),
+      }))
+    }
+    return c.html(certCheckPageHTML({
+      state: 'ok', name: a.name, what: 'Certificate of participation', lead: 'took part in', title: 'Bharat AI Innovation 2026',
+      lines: ['India’s B2B AI Conference & Exhibition', '20 to 21 November 2026 · World Trade Center, Mumbai', 'Pass: ' + certPassLabel(a.badge_type, a.payment_status)],
+      signers: [COMMITTEE, DEAN], certId: 'BHAI-CERT-' + pad(4),
+    }))
+  } catch {
+    return c.html(certCheckPageHTML({ state: 'down' }), 503)
+  }
+})
+
+// The page the QR opens. Phone first: it is read on the phone that scanned it.
+function certCheckPageHTML(o: any): string {
+  const esc = (v: any) => String(v ?? '').replace(/[&<>"']/g, ch =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string))
+  const MAIL = '<a href="mailto:register@bharataiinnovation.com">register@bharataiinnovation.com</a>'
+  const states: Record<string, { tone: string, mark: string, head: string, body: string }> = {
+    ok: { tone: 'ok', mark: '&#10003;', head: 'Genuine certificate', body: '' },
+    sample: { tone: 'info', mark: 'i', head: 'Sample certificate',
+      body: '<p>This QR is on the sample in the organisers&rsquo; preview, so there is no certificate behind it.</p><p>The QR on a real certificate opens this page with the holder&rsquo;s name and what they took part in.</p>' },
+    bad: { tone: 'bad', mark: '!', head: 'We could not confirm this certificate',
+      body: '<p>This code is not one we issued, or part of it is missing.</p><ul><li>Scan the QR on the certificate again.</li><li>Still seeing this? Send a photo of the certificate to ' + MAIL + ' and we will check it for you.</li></ul>' },
+    gone: { tone: 'bad', mark: '!', head: 'We could not find this certificate',
+      body: '<p>The code is ours, but the record behind it is no longer on our list.</p><ul><li>Send a photo of the certificate to ' + MAIL + ' and we will check it by hand.</li></ul>' },
+    down: { tone: 'info', mark: '&hellip;', head: 'Please try again in a minute',
+      body: '<p>We could not reach our records just now. Scan the QR again in a minute.</p>' },
+  }
+  const s = states[o.state] || states.bad
+  const okBody = o.state !== 'ok' ? '' : `
+    <p class="lead">Bharat AI Innovation issued this ${esc(String(o.what || 'certificate').toLowerCase())} to</p>
+    <h1>${esc(o.name)}</h1>
+    <div class="bar"><i></i><i></i></div>
+    <p class="lead">who ${esc(o.lead)}</p>
+    <h2>${esc(o.title)}</h2>
+    ${(o.lines || []).map((l: string) => `<p class="line">${esc(l)}</p>`).join('')}
+    <div class="meta">
+      <div><span>Signed by</span>${(o.signers || []).map((x: string) => `<b>${esc(x)}</b>`).join('')}</div>
+      <div><span>Certificate ID</span><b>${esc(o.certId)}</b></div>
+    </div>
+    <div class="note"><b>Check it against the certificate in front of you.</b> The name and details there must match this page exactly. If anything differs, the certificate was changed after we issued it.</div>
+    <p class="help">Questions: ${MAIL}</p>`
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>${esc(s.head)} · Bharat AI Innovation</title>
+<link rel="stylesheet" href="/css/fonts-app.css?v=1">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#F4F1EA;color:#0E1430;font-family:Manrope,Arial,sans-serif;-webkit-text-size-adjust:100%}
+.top{background:linear-gradient(#141C42,#090D22);padding:26px 20px 20px;text-align:center}
+.top img{width:230px;max-width:70%;height:auto;display:block;margin:0 auto}
+.hi{font-family:Mukta,'Nirmala UI',sans-serif;font-weight:700;font-size:22px;margin-top:8px;letter-spacing:.5px}
+.hi .s{color:#FF9933}.hi .w{color:#fff}.hi .g{color:#1FA015}
+.tri{height:6px;background:linear-gradient(90deg,#FF9933 0 33.3%,#fff 33.3% 66.6%,#138808 66.6%)}
+main{max-width:560px;margin:0 auto;padding:22px 18px 40px}
+.card{background:#fff;border-radius:18px;padding:24px 22px;box-shadow:0 1px 2px rgba(14,20,48,.06),0 10px 30px rgba(14,20,48,.06)}
+.st{display:flex;align-items:center;gap:12px;font-weight:800;font-size:19px;margin-bottom:16px}
+.st .m{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:21px;flex:none;color:#fff}
+.ok .m{background:#138808}.ok{color:#0B6A06}.bad .m{background:#B42318}.bad{color:#B42318}.info .m{background:#5B6275}.info{color:#2A3150}
+.lead{color:#5B6275;margin:0;font-size:16px}
+h1{font-family:'Playfair Display',Georgia,serif;font-size:34px;line-height:1.15;margin:6px 0 10px;overflow-wrap:anywhere}
+h2{font-family:Montserrat,Arial,sans-serif;font-size:20px;line-height:1.3;margin:4px 0 10px}
+.bar{display:flex;margin:0 0 16px}.bar i{display:block;height:4px;width:64px;background:#FF9933}.bar i+i{width:22px;background:#138808}
+.line{margin:4px 0;color:#2A3150;font-size:15px}
+.meta{border-top:1px solid #ECE7DC;margin-top:18px;padding-top:14px;display:grid;gap:12px;font-size:14px}
+.meta span{display:block;color:#8A8F9C;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;font-weight:700;margin-bottom:3px}
+.meta b{display:block;font-weight:600}
+.note{margin-top:18px;background:#FFF6EC;border-left:4px solid #FF9933;border-radius:10px;padding:12px 14px;font-size:14.5px;line-height:1.5}
+.card p,.card li{font-size:15.5px;line-height:1.55}.card ul{padding-left:20px;margin:8px 0 0}
+.help{color:#5B6275;font-size:14px;margin:16px 0 0}a{color:#B4520A;font-weight:600}
+.foot{text-align:center;margin-top:22px;color:#8A8F9C;font-size:13px}.foot img{width:150px;height:auto;display:block;margin:0 auto 8px}
+</style></head><body>
+<div class="top"><img src="/images/cert/bharat-on-dark.png" alt="Bharat AI Innovation"><div class="hi"><span class="s">भारत</span> <span class="w">एआई</span> <span class="g">इनोवेशन</span></div></div>
+<div class="tri"></div>
+<main><div class="card"><div class="st ${s.tone}"><span class="m">${s.mark}</span>${esc(s.head)}</div>${s.body}${okBody}</div>
+<div class="foot"><img src="/images/cert/aegis.png" alt="Aegis School of Data Science and AI">Certificates are issued by Bharat AI Innovation with Aegis School of Data Science and AI.</div></main>
+</body></html>`
+}
 
 // ==================== CAMPUS SERIES — THE PANEL, FROM THE REGISTRANT'S SIDE ====================
 //
@@ -14751,8 +14922,15 @@ app.get('/api/attendees/:id/panels', async (c) => {
   const id = c.req.param('id')
   const denied = await requireSelf(c, id); if (denied) return denied
   const rows = await panelRows(c, id)
-  const out = rows.map((r: any) => { const p = CAMPUS_PANELS[r.panel_slug]; return p ? panelView(p, r) : null }).filter(Boolean)
-  return c.json(out)
+  // A claimed panel's certificate carries a QR to /certificate/<code> (24 Nov 2026).
+  const out = await Promise.all(rows.map(async (r: any) => {
+    const p = CAMPUS_PANELS[r.panel_slug]
+    if (!p) return null
+    const v: any = panelView(p, r)
+    if (v.claimed_at) v.verify = await certVerifyUrl(c, 'P', id, p.slug)
+    return v
+  }))
+  return c.json(out.filter(Boolean))
 })
 
 // ==================== MAIN-EVENT CONSENT (0041) ====================
@@ -30067,7 +30245,7 @@ function mainPageHTML(): string {
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
-  <script src="/js/cert-render.js?v=2026112402" defer></script>
+  <script src="/js/cert-render.js?v=2026112403" defer></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261102"></script>
@@ -38980,11 +39158,13 @@ function mainPageScript(): string {
       // Drawn by /js/cert-render.js (23 Nov 2026), the same file Admin previews with,
       // so the organisers check exactly what the attendee downloads.
       if (!window.BhaiCert) { showToast('Your certificate could not be drawn. Please reload the page and try again.', 'error'); return; }
+      // verifyUrl: the signed QR the server hands out with a certificate it grants (24 Nov 2026).
       const canvas = await BhaiCert.draw({
         id: user.id, name: user.name || '',
-        workshop: ws ? { title: ws.title, speaker: ws.speaker } : null,
+        workshop: ws ? { title: ws.title, speaker: ws.speaker, day: ws.day } : null,
         pass: gate && gate.pass,
         workshopAttended: !ws && gate && gate.workshop && gate.workshop.eligible ? String(gate.workshop.title || '') : '',
+        verifyUrl: (ws ? ws.verify : gate && gate.verify) || '',
       });
       // Download
       const how = await deliverImage(canvas.toDataURL('image/png'), BhaiCert.filename(!!ws), { title: ws ? 'Your workshop certificate' : 'Your certificate' });
@@ -39726,63 +39906,17 @@ function mainPageScript(): string {
       var p = (await fetchMyPanels()).filter(function (x) { return x.slug === slug; })[0];
       if (!p) { showToast('You are not on the list for this panel.', 'error'); return; }
       if (!p.claimed_at) { showToast('Enter the code from the closing slide first.', 'error'); return; }
+      // Drawn by /js/cert-render.js since 24 Nov 2026, in the same design as the workshop
+      // and conference certificates (the host college's logo beside Aegis), with the
+      // signed QR that /panels hands out for a claimed panel.
+      if (!window.BhaiCert) { showToast('Your certificate could not be drawn. Please reload the page and try again.', 'error'); return; }
       showToast('Generating your certificate…', 'info');
-      var W = 1600, H = 1130;
-      var canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
-      var ctx = canvas.getContext('2d');
-      var bg = ctx.createLinearGradient(0, 0, W, H);
-      bg.addColorStop(0, '#0b0d1a'); bg.addColorStop(1, '#141730');
-      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
-      var glow = ctx.createRadialGradient(W * 0.85, H * 0.1, 40, W * 0.85, H * 0.1, 700);
-      glow.addColorStop(0, 'rgba(255,107,0,0.22)'); glow.addColorStop(1, 'rgba(255,107,0,0)');
-      ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-      ctx.strokeStyle = 'rgba(255,107,0,0.55)'; ctx.lineWidth = 4; ctx.strokeRect(40, 40, W - 80, H - 80);
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1.5; ctx.strokeRect(58, 58, W - 116, H - 116);
-      // Marks on white chips: ours, Aegis School of Data Science and AI (every
-      // certificate carries it since 24 Nov 2026), then the host college's.
-      var chips = [];
-      try { chips.push(await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png')); } catch (e) {}
-      try { chips.push(await loadImage('/images/passes/aegis.png')); } catch (e) {}
-      if (p.hostLogo) { try { chips.push(await loadImage(p.hostLogo)); } catch (e) {} }
-      var chipH = 116, pad = 16, gap = 28;
-      var widths = chips.map(function (im) { return im.width * (chipH / im.height); });
-      var total = widths.reduce(function (a, b) { return a + b + pad * 2; }, 0) + gap * Math.max(0, chips.length - 1);
-      var x = (W - total) / 2, top = 96;
-      chips.forEach(function (im, i) {
-        ctx.fillStyle = '#FFFFFF'; roundRect(ctx, x, top, widths[i] + pad * 2, chipH + pad * 2, 16); ctx.fill();
-        ctx.drawImage(im, x + pad, top + pad, widths[i], chipH);
-        x += widths[i] + pad * 2 + gap;
+      var canvas = await BhaiCert.draw({
+        id: user.id, name: user.name || '',
+        panel: { slug: p.slug, title: p.title, titleShort: p.titleShort, subtitle: p.subtitle, host: p.host, hostShort: p.hostShort,
+          city: p.city, dateLabel: p.dateLabel, timeLabel: p.timeLabel, hostLogo: p.hostLogo || '', claimed: panelWhen(p.claimed_at) },
+        verifyUrl: p.verify || '',
       });
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ff9a52'; ctx.font = '600 26px Montserrat, Arial'; ctx.fillText('CERTIFICATE OF PARTICIPATION', W / 2, 318);
-      ctx.fillStyle = '#c8c9d6'; ctx.font = '400 22px Manrope, Arial'; ctx.fillText('This is proudly presented to', W / 2, 390);
-      ctx.fillStyle = '#ffffff'; ctx.font = '700 64px Georgia, serif'; ctx.fillText(user.name || 'Attendee', W / 2, 478);
-      var uw = Math.min(560, (user.name || '').length * 34 + 120);
-      var ug = ctx.createLinearGradient(W / 2 - uw / 2, 0, W / 2 + uw / 2, 0);
-      ug.addColorStop(0, 'rgba(255,107,0,0)'); ug.addColorStop(0.5, 'rgba(255,107,0,0.9)'); ug.addColorStop(1, 'rgba(255,107,0,0)');
-      ctx.fillStyle = ug; ctx.fillRect(W / 2 - uw / 2, 504, uw, 3);
-      ctx.fillStyle = '#c8c9d6'; ctx.font = '400 22px Manrope, Arial';
-      ctx.fillText('for participating in the pre-event panel discussion', W / 2, 568);
-      ctx.fillStyle = '#ffffff'; ctx.font = '700 40px Montserrat, Arial'; ctx.fillText((p.titleShort || p.title) + (p.subtitle ? ':' : ''), W / 2, 628);
-      ctx.fillStyle = '#dfe2f0'; ctx.font = '500 26px Manrope, Arial'; ctx.fillText(p.subtitle || '', W / 2, 670);
-      ctx.fillStyle = '#ff9a52'; ctx.font = '600 20px Montserrat, Arial'; ctx.fillText('BHARAT AI INNOVATION  ·  PRE-EVENT PANEL DISCUSSION', W / 2, 730);
-      ctx.fillStyle = '#9698ac'; ctx.font = '400 22px Manrope, Arial';
-      ctx.fillText('Hosted at ' + [p.host, p.city].filter(Boolean).join(', '), W / 2, 776);
-      ctx.fillText(p.dateLabel + '  ·  ' + p.timeLabel, W / 2, 812);
-      // Signed by two people, as every certificate is: the Organizing Committee
-      // and the Dean of Aegis School of Data Science and AI (names in cert-render.js).
-      var idY = 1008;
-      if (window.BhaiCert && BhaiCert.signoff) {
-        BhaiCert.signoff(ctx, W, 890, [BhaiCert.COMMITTEE, BhaiCert.DEAN], 'Manrope, Arial');
-        idY = 1032;
-      } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fillRect(W / 2 - 150, 918, 300, 2);
-        ctx.fillStyle = '#9698ac'; ctx.font = '400 18px Manrope, Arial'; ctx.fillText('Organizing Committee · Aegis Knowledge Trust', W / 2, 953);
-      }
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#6b6a63'; ctx.font = '400 15px Manrope, Arial';
-      var certId = 'BHAI-CS-' + String(p.slug).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6) + '-' + String(user.id).padStart(5, '0');
-      ctx.fillText('Certificate ID: ' + certId + '  ·  Attendance confirmed ' + panelWhen(p.claimed_at), W / 2, idY);
       var how = await deliverImage(canvas.toDataURL('image/png'),
         'BharatAI-CampusSeries-' + String(p.hostShort || 'Panel').replace(/[^A-Za-z0-9]+/g, '') + '-Certificate.png',
         { title: 'Your certificate' });
@@ -41726,7 +41860,7 @@ function adminPageHTML(): string {
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
-  <script src="/js/cert-render.js?v=2026112402" defer></script>
+  <script src="/js/cert-render.js?v=2026112403" defer></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
@@ -43192,8 +43326,9 @@ function adminPageScript(): string {
       if (!w) return;
       if (!window.BhaiCert) { toast('The certificate drawing did not load. Reload the page and try again.', 'error'); return; }
       try {
-        var cv = await BhaiCert.draw({ id: 0, name: 'Attendee Name', workshop: { title: w.title, speaker: w.speaker } });
-        adminCertOpen('Workshop certificate', 'A sample. Each person&rsquo;s own copy carries their name and their number (BHAI-WS- and their attendee number).',
+        var cv = await BhaiCert.draw({ id: 0, name: 'Attendee Name', workshop: { title: w.title, speaker: w.speaker, day: w.starts_at },
+          verifyUrl: BhaiCert.SAMPLE_VERIFY_URL });
+        adminCertOpen('Workshop certificate', 'A sample. Each person&rsquo;s own copy carries their name, their number (BHAI-WS- and their attendee number) and their own QR, which opens a page on our site confirming the certificate. This sample&rsquo;s QR opens a page saying it is a sample.',
           [{ sample: true, label: w.title, url: cv.toDataURL('image/png'), file: adminCertFile('sample', true) }]);
       } catch (e) { toast('Could not draw the certificate: ' + (e.message || e), 'error'); }
     }
@@ -43208,12 +43343,13 @@ function adminPageScript(): string {
         var bad = bodyError(g);
         if (bad) { toast(bad, 'error'); return; }
         var items = [];
-        var conf = await BhaiCert.draw({ id: id, name: name, pass: g.pass,
+        var conf = await BhaiCert.draw({ id: id, name: name, pass: g.pass, verifyUrl: g.verify || '',
           workshopAttended: g.workshop && g.workshop.eligible ? String(g.workshop.title || '') : '' });
         items.push({ who: name, label: 'Certificate of participation', ok: !!g.eligible, reason: g.reason || '',
           url: conf.toDataURL('image/png'), file: adminCertFile(name, false) });
         if (g.workshop) {
-          var wc = await BhaiCert.draw({ id: id, name: name, workshop: { title: g.workshop.title, speaker: g.workshop.speaker } });
+          var wc = await BhaiCert.draw({ id: id, name: name, workshop: { title: g.workshop.title, speaker: g.workshop.speaker, day: g.workshop.day },
+            verifyUrl: g.workshop.verify || '' });
           var wItem = { who: name, label: 'Workshop certificate: ' + String(g.workshop.title || ''), ok: !!g.workshop.eligible,
             reason: g.workshop.reason || '', url: wc.toDataURL('image/png'), file: adminCertFile(name, true) };
           if (first === 'workshop') items.unshift(wItem); else items.push(wItem);
