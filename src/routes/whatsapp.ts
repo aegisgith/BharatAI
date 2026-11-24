@@ -1,9 +1,26 @@
 import { Hono } from 'hono'
 import { titledName } from '../lib/greet'
 import { whatsappNumber, shownNumber, isNoEmail } from './team-guests'
-import { pageUrl, hiddenPhotos, personFor as albumFor, NOT_ME, OPT_OUT } from './photos'
+import { pageUrl, hiddenPhotos, personFor as albumFor, NOT_ME, OPT_OUT, ATT_SENT } from './photos'
 import { photoLink } from './photo-store'
 import ATTENDEES from '../data/attendee-photos.json'
+import PHOTO_CHECKS from '../data/photo-checks.json'
+
+// Weaker face matches (check: true) go on WhatsApp only once someone has looked: the album
+// was emailed (the email asks "have you checked?") or is on the eye-checked list. Albums on
+// the hold list never go (24 Nov 2026: a3552 is someone else, the rest unsure).
+const PHOTO_OK = new Set<string>((PHOTO_CHECKS as any).ok || [])
+const PHOTO_HOLD = new Set<string>((PHOTO_CHECKS as any).hold || [])
+async function emailedAlbums(c: any): Promise<Set<string>> {
+  try { return new Set((await all(c, 'SELECT DISTINCT entity_id FROM admin_audit WHERE action = ?', ATT_SENT)).map((r: any) => String(r.entity_id))) } catch { return new Set() }
+}
+// Why an attendee album may not go on WhatsApp now, or ''.
+function photoHeld(key: string, emailed: Set<string>): string {
+  if (PHOTO_HOLD.has(key)) return 'held'
+  const al = (ATTENDEES as any).albums?.[key]
+  if (al && al.check && !PHOTO_OK.has(key) && !emailed.has(key)) return 'check'
+  return ''
+}
 
 // ==================== WHATSAPP (23 Nov 2026) ====================
 //
@@ -450,7 +467,8 @@ type Person = { attendee_id: number | null; person: string; name: string; number
 type Built = { people: Person[]; skipped: Record<string, number>; error?: string }
 export type Spec = { kind: string; template?: string; event?: number; audience?: string; list?: string; only_new?: boolean; attendee_id?: number; number?: string; name?: string }
 const SKIP_WORDS: Record<string, string> = { no_mobile: 'have no mobile number', bad_number: 'have a mobile number that is not complete', stopped: 'asked us to stop on WhatsApp',
-  unsubscribed: 'unsubscribed from our updates', already: 'were already sent this', no_photo: 'have no photo left to show', photo_no: 'asked us not to match their photos', twice: 'share a number with someone above' }
+  unsubscribed: 'unsubscribed from our updates', already: 'were already sent this', no_photo: 'have no photo left to show', photo_no: 'asked us not to match their photos', twice: 'share a number with someone above',
+  held: 'have albums the team is not sure are them (held back)', check: 'are weaker matches nobody has looked at yet (send them from After the Event once checked)' }
 
 async function sentAlready(c: any, spec: Spec, tpl: Tpl): Promise<Set<string>> {
   try {
@@ -510,11 +528,14 @@ async function build(c: any, spec: Spec, tpl: Tpl, links = true): Promise<Built>
       }
     } catch { /* no audit table */ }
     const hidden = await hiddenPhotos(c)
+    const emailed = await emailedAlbums(c)
     const chosen: { p: Person; pick: string[] }[] = []
     for (const id of ids) {
       const key = 'a' + id, al = ATT.albums[key], a = rowsById.get(id)
       if (!a || !al) continue // no longer registered
       if (out.has(key)) { skip('photo_no'); continue }
+      const held = photoHeld(key, emailed)
+      if (held) { skip(held); continue }
       const no = notMe.get(key)
       const keep = (d: string) => !(no && no.has(d)) && !(hidden && hidden.has(d))
       const mine = (al.photos || []).filter(keep)
@@ -657,6 +678,9 @@ export async function whatsappTick(c: any, o: { budgetMs?: number } = {}): Promi
      WHERE m.direction = 'out' AND m.status = 'queued' AND (m.batch_id IS NULL OR b.status = 'running')
      ORDER BY (m.batch_id IS NOT NULL), m.id LIMIT ?`, perMinute + 10)
   const stopped = rows.length ? await stoppedNumbers(c) : new Set<string>()
+  // A photos row already waiting in a bulk send is checked again here, so an album held
+  // back after the send was started never goes.
+  const emailed = rows.some(r => r.kind === 'photos' && r.batch_id != null) ? await emailedAlbums(c) : new Set<string>()
   const fails = new Map<number, number>()
   for (const row of rows) {
     if (Date.now() - started > budget) break
@@ -669,6 +693,12 @@ export async function whatsappTick(c: any, o: { budgetMs?: number } = {}): Promi
     if (changed(await run(c, "UPDATE wa_messages SET status = 'sending', updated_at = datetime('now') WHERE id = ? AND status = 'queued'", row.id)) !== 1) continue
     if (stopped.has(String(row.wa_number))) {
       await run(c, "UPDATE wa_messages SET status = 'skipped', error = 'Asked us to stop on WhatsApp', updated_at = datetime('now') WHERE id = ?", row.id)
+      out.skipped++; continue
+    }
+    const held = bulk && row.kind === 'photos' ? photoHeld(String(row.person || ''), emailed) : ''
+    if (held) {
+      await run(c, "UPDATE wa_messages SET status = 'skipped', error = ?, updated_at = datetime('now') WHERE id = ?",
+        held === 'held' ? 'Held back: the team is not sure these photos are them' : 'Held back: a weaker match nobody has looked at yet', row.id)
       out.skipped++; continue
     }
     const r = await deliver(c, cfg, row)
@@ -830,6 +860,7 @@ async function photoPerson(c: any, key: string, hint: string, typed: string): Pr
   if (/^a\d{1,9}$/.test(key)) {
     const al = ATT.albums[key]
     if (!al) return fail(404, 'No photos of this person were found.')
+    if (PHOTO_HOLD.has(key)) return fail(409, 'The team is not sure these photos are this person, so they are held back. Check the album in After the Event first.')
     const cols = hooks.columns ? await hooks.columns(c).catch(() => new Set<string>()) : new Set<string>()
     const has = (col: string) => !cols.size || cols.has(col)
     const consent = (has('unsubscribed_at') ? ', unsubscribed_at' : '') + (has('marketing_consent') ? ', marketing_consent' : '')

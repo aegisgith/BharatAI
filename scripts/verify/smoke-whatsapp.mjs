@@ -77,7 +77,9 @@ const get = (path, headers = {}) => W.fetchRaw(new Request(SITE + path, { redire
 db.exec(read('migrations/0051_leads_and_daily_checkins.sql'));
 db.exec(read('migrations/0064_event_photos.sql'));
 const ATT = JSON.parse(read('src/data/attendee-photos.json'));
-const keys = Object.keys(ATT.albums).slice(0, 7);
+// Strong matches only: a weaker match (check) goes only once looked at (src/data/photo-checks.json).
+const keys = Object.keys(ATT.albums).filter(k => !ATT.albums[k].check).slice(0, 7);
+const CHECKS = JSON.parse(read('src/data/photo-checks.json'));
 const idOf = (k) => Number(k.slice(1));
 const person = (id, name, mobile, extra = {}) => {
   const row = { id, event_id: 1, name, email: `p${id}@example.com`, mobile, badge_type: 'Visitor Pass', payment_status: 'paid', ...extra };
@@ -330,7 +332,7 @@ check('one typed number', (await n('one', { number: '90000 22222', name: 'Meera'
 // ---------- the pass ----------
 r = await as('POST', '/api/admin/whatsapp/audience', { kind: 'pass', event: 1 });
 // Five album people with a good mobile (one of them unsubscribed) + 990001, 990002, 990004, 990005; never 990003 or 990006 (still to pay).
-check('the pass goes to confirmed passes only (not one waiting for payment), even to someone off the mailing list', r.json?.sample && r.json.count === 9 && /^Hello Dr\. Asha, your Visitor Pass for Bharat AI Innovation 2026 is ready/.test(r.json.preview.text), r.json?.count + ' ' + r.json?.preview?.text);
+check('the pass goes to confirmed passes only (not one waiting for payment), even to someone off the mailing list', r.json?.sample && r.json.count === 9 && /^Hello (Dr\. Asha|Ravi), your Visitor Pass for Bharat AI Innovation 2026 is ready/.test(r.json.preview.text), r.json?.count + ' ' + r.json?.preview?.text);
 r = await as('POST', '/api/admin/whatsapp/send', { kind: 'pass', event: 1, attendee_id: 990001 });
 const passRow = msgs("kind = 'pass' AND attendee_id = 990001")[0];
 check('one person’s pass goes at once; its button is kept as their app link', r.status === 200 && r.json?.sent === 1 && passRow.status === 'sent' && passRow.batch_id === null && /\/app\?email=p990001%40example\.com&action=download-pass$/.test(passRow.target_url), JSON.stringify(passRow));
@@ -581,6 +583,24 @@ db.run("UPDATE wa_templates SET status = 'APPROVED' WHERE name = 'bhai_auto_delh
 t = await tick();
 check('automatic: …and goes once Meta approves it again', msgs("name = 'Paused Payer' AND kind = 'auto'").length === 1 && t?.auto?.delhi_paid === 1, JSON.stringify(t?.auto));
 
+// ---------- weaker matches and held albums (24 Nov 2026) ----------
+const HELD = CHECKS.hold[0], OKD = CHECKS.ok.find(k => ATT.albums[k]), UNSEEN = Object.keys(ATT.albums).find(k => ATT.albums[k].check && !CHECKS.ok.includes(k) && !CHECKS.hold.includes(k));
+person(idOf(HELD), 'Held Album', '98200 60001'); person(idOf(OKD), 'Looked At', '98200 60002'); person(idOf(UNSEEN), 'Not Looked At', '98200 60003');
+for (const [i, k] of [HELD, OKD, UNSEEN].entries()) db.run('INSERT OR IGNORE INTO event_photos (event_id, pid, drive_id, title, day) VALUES (1, ?, ?, ?, ?)', ['H' + i + 'abcdefghijk'.slice(0, 11), (ATT.albums[k].best || ATT.albums[k].photos)[0], 'H' + i + '.JPG', '2026-11-20']);
+r = await as('POST', '/api/admin/whatsapp/audience', { kind: 'photos' });
+check('a photos send leaves out a held album and a weaker match nobody looked at, and takes one the team looked at', r.json?.skipped?.some(s => s.why === 'held') && r.json.skipped.some(s => s.why === 'check')
+  && !(r.json.sample || []).some(x => /Held Album|Not Looked At/.test(x.name)), JSON.stringify(r.json?.skipped));
+r = await as('POST', '/api/admin/whatsapp/send', { kind: 'photos', expect: r.json?.count, only_new: true });
+const heldBatch = r.json?.batch;
+check('the send made from it has nobody held back in it', !!heldBatch && !msgs('batch_id = ? AND person IN (?, ?)', [heldBatch, HELD, UNSEEN]).length && msgs('batch_id = ? AND person = ?', [heldBatch, OKD]).length === 1, r.text.slice(0, 200));
+// Someone held back AFTER their row joined a send is still not sent.
+db.run("INSERT INTO wa_messages (event_id, direction, kind, wa_number, attendee_id, person, name, template, payload, target_url, status, batch_id, created_by) VALUES (1, 'out', 'photos', '919820060001', ?, ?, 'Held Album', 'bhai_event_photos_v1', '{}', '', 'queued', ?, 'test')", [idOf(HELD), HELD, heldBatch]);
+sb = sends().length;
+t = await tick();
+check('a held album already waiting in a send is skipped by the clock, never sent', msgs("person = ? AND batch_id = ?", [HELD, heldBatch])[0]?.status === 'skipped' && /Held back/.test(msgs("person = ? AND batch_id = ?", [HELD, heldBatch])[0]?.error || '') && !sends().slice(sb).some(x => x.body.to === '919820060001'), JSON.stringify(msgs("person = ?", [HELD])));
+r = await as('POST', '/api/admin/whatsapp/photos-one', { key: HELD, dry: true });
+check('a held album cannot be sent to one person either', r.status === 409 && /not sure/.test(r.json?.error || ''), r.json?.error);
+
 // ---------- one person's photos, from After the Event and Attendees (24 Nov 2026) ----------
 const one1 = (body) => as('POST', '/api/admin/whatsapp/photos-one', body);
 sb = sends().length;
@@ -630,7 +650,7 @@ check('photos to one: both routes need an admin', (await hit('POST', '/api/admin
 r = await as('GET', '/api/admin/whatsapp/messages?status=failed');
 const ov = (await as('GET', '/api/admin/whatsapp')).json;
 check('the Sent list filters by state, and the overview counts every send with its numbers', r.json?.rows.length >= 6 && r.json.rows.every(x => x.status === 'failed' && /^\+91 /.test(x.number))
-  && ov.batches.length === 5 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
+  && ov.batches.length === 6 && ov.batches.find(b => b.id === batch1).counts.read === 1 && ov.batches.find(b => b.id === batch1).taps === 1 && ov.batches.find(b => b.id === batch1).replied === 3 /* Ravi, Sunita, and Asha asking about Delhi */ && ov.totals.taps >= 2, JSON.stringify(ov.batches.find(b => b.id === batch1)));
 check('no answer from any admin route ever carried the access key or the app secret', answers.length > 60 && answers.every(a => !a.includes(TOKEN) && !a.includes(SECRET)), answers.length);
 // ---------- registering our number (Meta answers 133010 until it is) ----------
 const registers = () => calls.filter(c => c.path === `${PHONE}/register`);
