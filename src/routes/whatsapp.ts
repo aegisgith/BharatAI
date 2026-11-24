@@ -3,7 +3,6 @@ import { titledName } from '../lib/greet'
 import { whatsappNumber, shownNumber, isNoEmail } from './team-guests'
 import { pageUrl, hiddenPhotos, personFor as albumFor, NOT_ME, OPT_OUT, ATT_SENT } from './photos'
 import { photoLink } from './photo-store'
-import { boothAlbumOf } from './exhibitor-photos'
 import ATTENDEES from '../data/attendee-photos.json'
 import PHOTO_CHECKS from '../data/photo-checks.json'
 
@@ -894,13 +893,6 @@ async function photoPerson(c: any, key: string, hint: string, typed: string): Pr
     if (a.unsubscribed_at || String(a.marketing_consent ?? '') === '0') return fail(409, who.name + ' unsubscribed from our updates, so nothing is sent to them.')
     mobile = String(a.mobile || '').trim(); if (mobile) who.source = 'their registration'
     photos = al.photos || []; best = al.best || []
-  } else if (/^x\d{1,9}$/.test(key)) {
-    // A company's photos (its booth and its stage talk, routes/exhibitor-photos.ts), to a
-    // number the team types: a company has no mobile of its own.
-    const al = await boothAlbumOf(c, key)
-    if (!al) return fail(404, 'No booth photos were found for that company.')
-    who.name = al.name
-    photos = al.photos; best = al.best
   } else {
     const p = albumFor(key)
     if (!p || p.key !== key) return fail(404, 'That person is not on the list any more.')
@@ -1001,9 +993,7 @@ wa.post('/api/admin/whatsapp/photos-one', async (c) => {
   if (!image || !/[?&]k=[0-9a-f]+/.test(target)) return c.json({ error: 'Photo links cannot be signed on this server.' }, 503)
   // Their row still waiting in a bulk send would send it a second time: this one goes instead.
   if (b.again) await run(c, "UPDATE wa_messages SET status = 'skipped', error = 'Sent by hand instead', updated_at = datetime('now') WHERE direction = 'out' AND kind = 'photos' AND person = ? AND status = 'queued'", key)
-  // A company's photos greet the person they go to (b.name, typed), or the company's team.
-  const hello = /^x\d/.test(key) ? (titledName(oneLine(b.name, 60)) || who.name + ' team') : (titledName(who.name) || 'there')
-  const params = [blank(hello, 60), photoWords(who.count)]
+  const params = [blank(titledName(who.name) || 'there', 60), photoWords(who.count)]
   const p: Person = { attendee_id: who.attendee_id, person: key, name: who.name, number: who.number, params, image, target, text: fill(got.tpl.text, params) }
   const sent = await sendNow(c, cfg, rowFor(p, { kind: 'photos', event: 1 }, got.tpl, actorOf(c)))
   if (!sent.ok) return c.json({ error: sent.error }, 502)
