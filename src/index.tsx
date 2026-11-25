@@ -14640,7 +14640,7 @@ app.get('/certificate/:code', async (c) => {
     try { d = await certDrawData(c, v.kind, v.id, v.ref) } catch { return c.html(certCheckPageHTML({ state: 'down' }), 503) }
     if (download) {
       if (d) await audit(c, 'certificate.opened', 'certificate', raw).catch(() => {})
-      return c.html(certDownloadPageHTML({ data: d, state: !d ? 'bad' : d.photo ? 'ok' : 'no-photo', code: raw }), d ? 200 : 404)
+      return c.html(certDownloadPageHTML({ data: d, state: !d ? 'bad' : d.photo || d.group === 'speakers' ? 'ok' : 'no-photo', code: raw }), d ? 200 : 404)
     }
     if (!d) return c.html(certCheckPageHTML({ state: 'gone' }), 404)
     if (v.kind === 'S') {
@@ -43003,7 +43003,7 @@ function adminPageScript(): string {
     }
     // Certificates by email (24 Nov 2026) sit above the desk in their own box, drawn by
     // /js/admin-certs.js (one global, CertDesk) with the desk's stylesheet.
-    var CERT_DESK_VERSION = '20261124c';
+    var CERT_DESK_VERSION = '20261124d';
     function certDeskLoad() {
       if (window.CertDesk) return Promise.resolve();
       return new Promise(function (resolve, reject) {

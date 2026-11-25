@@ -257,6 +257,10 @@ export async function certAudienceRows(c: any, kind: string, group: CertGroup, a
       .map(a => ({ id: a.id, name: a.name, email: String(a.email).trim() }))
   }
   const list = byAddress(group === 'speakers' ? await speakerRows(c) : await stageRows(c))
+  // Every speaker gets the certificate, with the seal where there is no photo (organiser, 25 Nov
+  // 2026: "leave this, speakers with no photo, reply with a photo, and send to all"); no
+  // photo requests to speakers any more.
+  if (group === 'speakers') return wantPhoto ? list.filter(g => !done.has(g.email)).map(g => ({ id: null, name: g.name, email: g.email })) : []
   return list.filter(g => g.photo === wantPhoto && !done.has(g.email)).map(g => ({ id: null, name: g.name, email: g.email }))
 }
 
@@ -316,7 +320,7 @@ const p = (html: string, extra = '') => `<p style="font-size:15px;line-height:1.
 
 export function certEmailHTML(o: {
   variant: 'ready' | 'photo'; group: CertGroup; name: string; header: string
-  items: { label: string; href: string }[]; photoHref?: string; check?: boolean
+  items: { label: string; href: string }[]; photoHref?: string; check?: boolean; noPhoto?: boolean
 }): { subject: string; html: string } {
   // A volunteer waiting for a face check: a photo, then we confirm and send it. No certificate link.
   if (o.check) {
@@ -343,7 +347,9 @@ export function certEmailHTML(o: {
       : o.group === 'volunteers' ? 'Thank you for volunteering: your Bharat AI Innovation 2026 certificate'
       : 'Thank you for presenting: your Bharat AI Innovation 2026 certificate'
     body = p(escH(thanks))
-      + p(many ? `Your ${what}s are ready, one for each session, with your photo and your name:` : `Your ${what} is ready, with your photo and your name.`)
+      + p(o.noPhoto
+        ? (many ? `Your ${what}s are ready, one for each session:` : `Your ${what} is ready.`)
+        : (many ? `Your ${what}s are ready, one for each session, with your photo and your name:` : `Your ${what} is ready, with your photo and your name.`))
       + (many
         ? `<ul style="margin:0 0 18px;padding-left:20px">${o.items.map(i => `<li style="font-size:15px;line-height:1.6;margin:0 0 8px"><a href="${escH(i.href)}" style="color:#C84F00;font-weight:bold">${escH(i.label)}</a></li>`).join('')}</ul>`
         : `<p style="margin:0 0 20px;text-align:center">${btn(o.items[0]?.href || SITE, 'Download my certificate')}</p>`)
@@ -388,7 +394,7 @@ function certEmailShell(name: string, header: string, body: string): string {
 
 // The email for one recipient, as it would go. preview: links that go nowhere. check: a
 // volunteer waiting for a face check.
-async function mailFor(c: any, variant: 'ready' | 'photo', group: CertGroup, who: { name: string; email: string; items: { kind: string; id: number; ref?: any; label: string }[] }, preview = false, check = false) {
+async function mailFor(c: any, variant: 'ready' | 'photo', group: CertGroup, who: { name: string; email: string; items: { kind: string; id: number; ref?: any; label: string }[]; noPhoto?: boolean }, preview = false, check = false) {
   const header = hooks.emailHeader ? hooks.emailHeader(group === 'participants' ? 'Your certificate' : 'Thank you', '20-21 November 2026 · World Trade Center, Mumbai') : ''
   const items: { label: string; href: string }[] = []
   for (const i of who.items) {
@@ -398,7 +404,7 @@ async function mailFor(c: any, variant: 'ready' | 'photo', group: CertGroup, who
   const photoHref = byAttendee(group)
     ? (preview ? '#preview' : hooks.profileLink ? await hooks.profileLink(c, 1, lc(who.email)) : SITE + '/app')
     : ''
-  return certEmailHTML({ variant, group, name: who.name, header, items, photoHref, check })
+  return certEmailHTML({ variant, group, name: who.name, header, items, photoHref, check, noPhoto: !!who.noPhoto })
 }
 
 const speakerItem = (r: any) => ({ kind: 'S', id: Number(r.speaker_id), ref: r.session_id, label: roleWord(r.srole, r.session_type) + ': ' + clean(r.title) })
@@ -430,9 +436,11 @@ cr.post('/api/admin/certificates/send', async (c) => {
     const rows = group === 'speakers' ? await speakerRows(c, ' AND LOWER(TRIM(sp.email)) = ?', [email]) : (await stageRows(c)).filter(t => t.email === email)
     if (!rows.length) return c.json({ skipped: true, reason: group === 'speakers' ? 'No longer on the programme' : 'No talk on the Innovation Stage at this address' })
     const allPhotos = rows.every(r => !!r.photo)
-    if (variant === 'ready' && !allPhotos) return c.json({ skipped: true, reason: 'No photo on record: the photo request covers them' })
+    const spk = group === 'speakers'
+    if (spk && variant === 'photo') return c.json({ skipped: true, reason: 'Speakers get their certificate without a photo now' })
+    if (!spk && variant === 'ready' && !allPhotos) return c.json({ skipped: true, reason: 'No photo on record: the photo request covers them' })
     if (variant === 'photo' && allPhotos) return c.json({ skipped: true, reason: 'Has a photo now: the next certificate run sends theirs' })
-    who = { name: rows[0].name, email, items: rows.map(group === 'speakers' ? speakerItem : stageItem) }
+    who = { name: rows[0].name, email, items: rows.map(spk ? speakerItem : stageItem), noPhoto: !allPhotos }
   }
   const mail = await mailFor(c, variant, group, who, false, check)
   const sent = await hooks.sendEmail(c, who.email, mail.subject, mail.html)

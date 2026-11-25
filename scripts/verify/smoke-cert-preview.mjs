@@ -243,10 +243,15 @@ check('nobody gets the same email twice: a second run finds nobody', again.statu
 sent.length = 0;
 const sr = await runCert('cert_ready', 2), sp = await runCert('cert_photo', 2);
 const asha = byTo('asha@example.test')[0], ravi = byTo('ravi@example.test')[0];
-check('speakers: one email per person with a link per session; no photo, a request to reply with one; a draft session gets nothing',
-  sr.total === 1 && sp.total === 1 && (asha?.html.match(/\/certificate\/S40-\d+\.[0-9a-f]{16}\?download=1/g) || []).length === 2 && /Moderator: AI for Viksit Bharat/.test(asha?.html || '')
-  && /Dear Dr\. Asha/.test(asha?.html || '') && /reply to this email with a clear photo/i.test(ravi?.html || '') && !byTo('gone@example.test').length,
+const raviCode = ((ravi?.html || '').match(/\/certificate\/(S41-124\.[0-9a-f]{16})\?download=1/) || [])[1];
+check('speakers: one email per person with a link per session; every speaker gets the certificate, the one with no photo too (25 Nov 2026), and no photo request; a draft session gets nothing',
+  sr.total === 2 && sp.total === 0 && (asha?.html.match(/\/certificate\/S40-\d+\.[0-9a-f]{16}\?download=1/g) || []).length === 2 && /Moderator: AI for Viksit Bharat/.test(asha?.html || '')
+  && /Dear Dr\. Asha/.test(asha?.html || '') && /Thank you for speaking/.test(ravi?.subject || '') && !!raviCode && /certificate of appreciation is ready\./.test(ravi?.html || '')
+  && !/with your photo/.test(ravi?.html || '') && !/reply to this email with a clear photo/i.test(ravi?.html || '') && !byTo('gone@example.test').length,
   JSON.stringify({ sr, sp, to: sent.map(m => m.to) }));
+const rdp = await hit('GET', '/certificate/' + raviCode + '?download=1');
+check("a speaker with no photo: the download page draws the certificate (the seal in the circle), never \"add your photo first\"",
+  rdp.status === 200 && /BhaiCert\.draw/.test(rdp.text) && !/Add your photo first/.test(rdp.text) && !/var d = null/.test(rdp.text), rdp.status);
 sent.length = 0;
 const tr = await runCert('cert_ready', 3);
 check('stage: a talk with a time, to the speaker or else the booth contact; the talk never given a time gets nothing',

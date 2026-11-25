@@ -51,7 +51,8 @@
     return list.filter(function (r) {
       if (!emailOk(r.email)) return false;
       if (g.key === 'participants' && passOn && !passOn[r.pass]) return false;
-      var has = g.key === 'participants' ? !!r.photo : !!r.photo;
+      // Speakers: every one gets the certificate, the seal where there is no photo (25 Nov 2026).
+      var has = g.key === 'speakers' ? variant === 'ready' : !!r.photo;
       if (variant === 'ready') return has && r.sent !== 'certificate';
       return !has && r.sent !== 'photo request' && r.sent !== 'certificate';
     });
@@ -102,7 +103,7 @@
     }).join('');
     return '<section class="afd-panel" data-group="' + g.key + '">'
       + '<h3>' + esc(g.title) + '</h3>'
-      + '<p class="afd-note">' + esc(g.who) + ' ' + esc(g.what) + ' Without a photo on record they get an email asking for one instead' + (att ? ' (they add it in the app).' : ' (they reply with it; add it in Conference or Innovation Talks, then run the certificates again).') + '</p>'
+      + '<p class="afd-note">' + esc(g.who) + ' ' + esc(g.what) + (g.key === 'speakers' ? ' Without a photo on record the certificate carries the event seal instead.' : ' Without a photo on record they get an email asking for one instead' + (att ? ' (they add it in the app).' : ' (they reply with it; add it in Innovation Talks, then run the certificates again).')) + '</p>'
       + '<p>' + facts + '</p>' + passes + vols + warn
       + '<div class="afd-actions">'
       + '<button type="button" class="afd-btn afd-small" data-act="cert-preview" data-g="' + g.key + '" data-v="ready">Preview the certificate email</button>'
