@@ -295,6 +295,7 @@ check('the volunteer certificate: appreciation, VOLUNTEER, blue, its own number,
   kVol.kind === 'volunteer' && kVol.eyebrow === 'CERTIFICATE OF APPRECIATION' && kVol.pill === 'VOLUNTEER' && kVol.ring === '#4C7FE8' && kVol.certId === 'BHAI-VOL-0050'
   && kVol.designation === 'Student, Pillai University' && /volunteering/.test(kVol.lead) && BC.styleOf({ volunteer: {} }) === 'event'
   && BC.filename(false, true) === 'BharatAI-2026-Volunteer-Certificate.png' && BC.filename(false) === 'BharatAI-2026-Certificate.png', JSON.stringify(kVol));
+check('the background: charcoal for the volunteer only, midnight blue for participation, speakers and the stage', kVol.bg?.[0] === '#2B2D33' && kConf.bg?.[0] === '#18235A' && kSp.bg?.[0] === '#18235A' && kSt.bg?.[0] === '#18235A', JSON.stringify([kVol.bg, kConf.bg]));
 const e50 = await mine(50);
 check("the volunteer's own answer: eligible, the volunteer certificate, the college", e50.eligible === true && e50.volunteer?.designation === 'Student, Pillai University' && e50.designation === 'Student, Pillai University' && /\/certificate\/C50\./.test(e50.verify || ''), e50);
 check('the app and Admin draw the volunteer certificate for a volunteer', /volunteer: vol,/.test(appJs) && /BhaiCert\.filename\(!!ws, !!vol\)/.test(appJs) && /volunteer: g\.volunteer \|\| null/.test(adminJs), '');

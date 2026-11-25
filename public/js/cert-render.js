@@ -279,6 +279,8 @@
     k.pillText = k.pillText || INK;
     k.glow = k.glow || '#FFB36B';
     k.eventSubs = k.eventSubs || k.subs;
+    // The event style's background: midnight blue, the volunteer's charcoal.
+    k.bg = k.bg || ['#18235A', '#070A18'];
     // Designation and company under the name (organiser, 24 Nov 2026), when we have them.
     k.designation = String(o.designation || k.designation || '').replace(/\s+/g, ' ').trim();
     k.pill = String(k.pill || '').toUpperCase();
@@ -297,6 +299,9 @@
         when: '20–21 NOVEMBER 2026', where: 'World Trade Center, Mumbai',
         left: COMMITTEE, certId: 'BHAI-VOL-' + pad(o.id, 4), foot: '',
         accent: VOL, ring: VOL_RING, glow: '#A9C4FF', pillText: '#FFFFFF', pill: 'Volunteer',
+        // Charcoal black, the volunteer's only (organiser, 25 Nov 2026: picked from seven
+        // backgrounds, then "yes" to keeping blue on the other certificates).
+        bg: ['#2B2D33', '#0A0A0C'],
         designation: String(vo.designation || ''),
         eventSubs: [['India’s B2B AI Conference & Exhibition'], ['20–21 November 2026 · World Trade Center, Mumbai']],
       };
@@ -500,9 +505,7 @@
   function paintEvent(ctx, o, k, name, im) {
     var CX = W / 2, BAND = 878, maxW = 1240;
     var bg = ctx.createRadialGradient(CX, 470, 60, CX, 520, 1000);
-    // Charcoal black (organiser, 25 Nov 2026, picked from seven backgrounds: "this is good
-    // colour"); it was midnight blue, #18235A to #070A18.
-    bg.addColorStop(0, '#2B2D33'); bg.addColorStop(1, '#0A0A0C');
+    bg.addColorStop(0, k.bg[0]); bg.addColorStop(1, k.bg[1]);
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
     guilloche(ctx, 52, 22, 24, '#FFB15C', 0.06, 0, W);
     rosette(ctx, CX, 470, 340, '#FFB15C', 0.05);
