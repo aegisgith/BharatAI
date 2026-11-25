@@ -30333,7 +30333,7 @@ function mainPageHTML(): string {
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
-  <script src="/js/cert-render.js?v=2026112405" defer></script>
+  <script src="/js/cert-render.js?v=2026112406" defer></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261102"></script>
@@ -41962,7 +41962,7 @@ function adminPageHTML(): string {
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
-  <script src="/js/cert-render.js?v=2026112405" defer></script>
+  <script src="/js/cert-render.js?v=2026112406" defer></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker

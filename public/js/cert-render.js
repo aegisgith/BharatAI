@@ -500,7 +500,9 @@
   function paintEvent(ctx, o, k, name, im) {
     var CX = W / 2, BAND = 878, maxW = 1240;
     var bg = ctx.createRadialGradient(CX, 470, 60, CX, 520, 1000);
-    bg.addColorStop(0, '#18235A'); bg.addColorStop(1, '#070A18');
+    // Charcoal black (organiser, 25 Nov 2026, picked from seven backgrounds: "this is good
+    // colour"); it was midnight blue, #18235A to #070A18.
+    bg.addColorStop(0, '#2B2D33'); bg.addColorStop(1, '#0A0A0C');
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
     guilloche(ctx, 52, 22, 24, '#FFB15C', 0.06, 0, W);
     rosette(ctx, CX, 470, 340, '#FFB15C', 0.05);
