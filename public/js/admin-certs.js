@@ -46,7 +46,9 @@
   // Who a run would go to now, as the server counts it (it checks again on every send).
   function due(g, variant) {
     var d = (data && data.groups && data.groups[g.key]) || {};
-    return (d.rows || []).filter(function (r) {
+    // A volunteer photo request also goes to those waiting for a face check.
+    var list = (d.rows || []).concat(g.key === 'volunteers' && variant === 'photo' ? (d.checking || []) : []);
+    return list.filter(function (r) {
       if (!emailOk(r.email)) return false;
       if (g.key === 'participants' && passOn && !passOn[r.pass]) return false;
       var has = g.key === 'participants' ? !!r.photo : !!r.photo;
@@ -73,6 +75,16 @@
       }).join('') + '</fieldset><div class="afd-actions"><button type="button" class="afd-btn afd-small" data-act="vol-save" data-g="volunteers"' + (volDirty || !d.saved ? '' : ' disabled') + '>Save the list</button>'
       + (volDirty ? ' <span class="afd-warn">Not saved: save the list before you email anyone.</span>' : '') + '</div>';
     if (g.key === 'volunteers' && volDirty) { ready = []; photo = []; }
+    var chk = g.key === 'volunteers' ? (d.checking || []) : [];
+    if (chk.length) {
+      vols += '<p class="afd-note"><b>Waiting for a face check: ' + num(chk.length) + '</b> (never scanned in at the badge desk; '
+        + num(chk.filter(function (r) { return r.photo; }).length) + ' have added a photo). The photo request asks them for a photo and says we will match it with the event photos. '
+        + 'Whoever is found: tick them above, save, then email the certificates. '
+        + '<button type="button" class="afd-btn afd-small" data-act="cert-preview" data-g="volunteers" data-v="check">Preview their email</button></p>'
+        + '<details><summary>Waiting for a face check (' + num(chk.length) + ')</summary><div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Person</th><th>Email</th><th>Photo</th><th>Emailed</th></tr></thead><tbody>'
+        + chk.map(function (r) { return '<tr><td>' + esc(r.name) + '</td><td>' + esc(r.email || '') + '</td><td>' + (r.photo ? 'Yes' : '<b>No</b>') + '</td><td>' + esc(r.sent || 'Not yet') + '</td></tr>'; }).join('')
+        + '</tbody></table></div></details>';
+    }
     var passes = g.key !== 'participants' ? '' : '<fieldset class="cd-passes"><legend>Passes that get it</legend>' + (d.passes || []).map(function (p) {
       var on = !passOn || passOn[p.pass];
       return '<label><input type="checkbox" data-pass="' + esc(p.pass) + '"' + (on ? ' checked' : '') + '> ' + esc(p.pass)
@@ -142,7 +154,7 @@
     try {
       if (act === 'cert-preview') {
         var m = data.emails[g.key][variant];
-        var box = preview(g.title + ': ' + (variant === 'ready' ? 'certificate email' : 'photo request'), m.subject, m.html);
+        var box = preview(g.title + ': ' + (variant === 'ready' ? 'certificate email' : variant === 'check' ? 'photo request, waiting for a face check' : 'photo request'), m.subject, m.html);
         box.querySelector('[data-test]').addEventListener('click', async function () {
           var to = ((document.getElementById('cd-test-to') || {}).value || '').trim() || (w.prompt('Send the test to which address?') || '').trim();
           if (!emailOk(to)) { toast('Type the address to send the test to.', 'error'); return; }
@@ -160,9 +172,10 @@
       } else if (act === 'cert-run') {
         var list = due(g, variant);
         if (!list.length) return;
+        var nChk = list.filter(function (r) { return (data.groups.volunteers && data.groups.volunteers.checking || []).indexOf(r) >= 0; }).length;
         var words = variant === 'ready'
           ? 'Email ' + list.length + ' ' + g.title.toLowerCase() + ' their certificate? One email each, about 30 a minute.'
-          : 'Email ' + list.length + ' ' + g.title.toLowerCase() + ' asking for a photo for their certificate? One email each, about 30 a minute.';
+          : 'Email ' + list.length + ' ' + g.title.toLowerCase() + ' asking for a photo for their certificate' + (nChk ? ' (' + nChk + ' of them waiting for a face check)' : '') + '? One email each, about 30 a minute.';
         if (!w.confirm(words + '\n\nThis cannot be taken back once it starts (you can pause it under Settings, Bulk email).')) return;
         busy = true; b.disabled = true;
         var audience = 'all';

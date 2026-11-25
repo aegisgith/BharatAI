@@ -281,13 +281,15 @@ orgIns(51, 'v51@student.pillai.edu.in', '2026-11-20 03:00:00', '', '');
 orgIns(52, 'v52@student.pillai.edu.in', null, '/api/uploads/v52.jpg', '');
 orgIns(53, 'team53@example.test', '2026-11-20 03:00:00', '/api/uploads/t53.jpg', 'Innovation Evangelist');
 orgIns(54, 'v54@gmail.example', '2026-11-20 03:00:00', '', '');
+orgIns(55, 'v55@student.pillai.edu.in', null, '', '');
 let VG = ((await hit('GET', '/api/admin/certificates', undefined, admin)).json || {}).groups || {};
 const volIds = (VG.volunteers?.rows || []).map(r => r.id).join(',');
 check('volunteers to start with: Organiser passes checked in with a Pillai student address or no title and company; never the team, never one not scanned in',
-  volIds === '50,51,54' && VG.volunteers?.with_photo === 1 && VG.volunteers?.saved === false && (VG.volunteers?.choices || []).length === 5
+  volIds === '50,51,54' && VG.volunteers?.with_photo === 1 && VG.volunteers?.saved === false && (VG.volunteers?.choices || []).length === 6
   && VG.volunteers.choices.find(p => p.id === 52)?.on === false && VG.volunteers.choices.find(p => p.id === 53)?.on === false
   && VG.volunteers.rows.find(r => r.id === 50)?.designation === 'Student, Pillai University' && VG.volunteers.rows.find(r => r.id === 54)?.designation === '',
   JSON.stringify({ volIds, v: VG.volunteers }));
+check('never scanned in: waiting for a face check, not a volunteer yet (52 with a photo, 55 without)', (VG.volunteers?.checking || []).map(x => x.id).join(',') === '52,55' && VG.volunteers.choices.find(p => p.id === 55)?.checking === true && !!certInfo.emails?.volunteers?.photo, JSON.stringify(VG.volunteers?.checking));
 const partIds = (VG.participants?.rows || []).map(r => r.id);
 check('a volunteer is not a participant as well; the team member is', partIds.includes(53) && ![50, 51, 54].some(n => partIds.includes(n)), partIds.join(','));
 const kVol = BC.content({ id: 50, volunteer: { designation: 'Student, Pillai University' } });
@@ -304,9 +306,13 @@ const vr = await runCert('cert_ready', 4), vp = await runCert('cert_photo', 4), 
 const v50 = byTo('v50@student.pillai.edu.in')[0], v51 = byTo('v51@student.pillai.edu.in')[0];
 const c50 = (v50?.html.match(/\/certificate\/(C50\.[0-9a-f]{16})\?download=1/) || [])[1];
 check('volunteers: the one with a photo gets "Thank you for volunteering"; the two without are asked to add one in the app; the participation run takes only the team member',
-  vr.total === 1 && vp.total === 2 && /Thank you for volunteering/.test(v50?.subject || '') && !!c50 && /volunteer certificate is ready: add your photo/.test(v51?.subject || '') && /action=complete-profile/.test(v51?.html || '')
+  vr.total === 1 && vp.total === 3 && /Thank you for volunteering/.test(v50?.subject || '') && !!c50 && /volunteer certificate is ready: add your photo/.test(v51?.subject || '') && /action=complete-profile/.test(v51?.html || '')
   && byTo('v54@gmail.example').length === 1 && pr2.total === 1 && byTo('team53@example.test').length === 1 && !byTo('v52@student.pillai.edu.in').length,
   JSON.stringify({ vr, vp, pr2, subjects: sent.map(m => m.to + ': ' + m.subject) }));
+const v55 = byTo('v55@student.pillai.edu.in')[0], e55 = await mine(55);
+check('the face-check email asks for a photo, says we will match it with the event photos, and carries no certificate link; the app says the same',
+  /Add your photo for your Bharat AI Innovation 2026 volunteer certificate/.test(v55?.subject || '') && /match your photo with the photos taken at the event/.test(v55?.html || '') && !(v55?.html || '').includes('/certificate/') && /action=complete-profile/.test(v55?.html || '')
+  && e55.eligible === false && /match it with the photos taken at the event/.test(e55.reason || '') && !e55.volunteer, JSON.stringify({ s: v55?.subject, e55 }));
 dp = await hit('GET', '/certificate/' + c50 + '?download=1');
 check('the volunteer download page draws the volunteer certificate with the photo', dp.status === 200 && /"volunteer":\{"designation":"Student, Pillai University"\}/.test(dp.text) && /v50\.jpg/.test(dp.text) && /BharatAI-2026-Volunteer-Certificate\.png/.test(dp.text), dp.status);
 pg = await hit('GET', '/certificate/' + c50);
@@ -317,7 +323,7 @@ r = await hit('POST', '/api/admin/certificates/volunteers', { ids: [50, 52, 9999
 VG = ((await hit('GET', '/api/admin/certificates', undefined, admin)).json || {}).groups || {};
 const e52 = await mine(52);
 check('a saved list wins: unknown ids dropped, a ticked volunteer never scanned in still gets theirs, an unticked one goes back to participants, and it is audited',
-  r.json?.count === 2 && VG.volunteers?.saved === true && (VG.volunteers?.rows || []).map(x => x.id).join(',') === '50,52' && VG.volunteers?.not_checked_in === 1
+  r.json?.count === 2 && r.json?.checking === 1 && (VG.volunteers?.checking || []).map(x => x.id).join(',') === '55' && VG.volunteers?.saved === true && (VG.volunteers?.rows || []).map(x => x.id).join(',') === '50,52' && VG.volunteers?.not_checked_in === 1
   && e52.eligible === true && !!e52.volunteer && (VG.participants?.rows || []).some(x => x.id === 51)
   && rows("SELECT COUNT(*) AS n FROM admin_audit WHERE action = 'certificates.volunteers'", [])[0].n === 1, JSON.stringify({ r: r.json, v: VG.volunteers?.rows?.map(x => x.id), e52 }));
 const desk = readFileSync(new URL('../../public/js/admin-certs.js', import.meta.url), 'utf8');

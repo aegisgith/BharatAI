@@ -12,7 +12,7 @@ import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/t
 import speakerPhotos, { configurePhotos } from './routes/photos'
 import photoTracking, { photoPageBeacon, withOpenPixel } from './routes/photo-tracking'
 import findPhotos, { configureFindPhotos, findPhotosWhereSql } from './routes/find-photos'
-import certificates, { configureCertificates, certAudienceRows, certDrawData, certDownloadPageHTML, certGroupOfRef, certVolunteerOf, CERT_GROUP_REF, CERT_KINDS, CERT_RENDER_V } from './routes/certificates'
+import certificates, { configureCertificates, certAudienceRows, certDrawData, certDownloadPageHTML, certGroupOfRef, certVolunteerOf, certVolunteerCheckOf, CERT_GROUP_REF, CERT_KINDS, CERT_RENDER_V } from './routes/certificates'
 import exhibitorPhotos, { configureExhibitorPhotos, boothAlbum } from './routes/exhibitor-photos'
 import morePhotos, { configureMorePhotos } from './routes/more-photos'
 import myPhotos, { configureMyPhotos } from './routes/my-photos'
@@ -14500,6 +14500,8 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
   // volunteer certificate, scanned in at the badge desk or not.
   let volunteer: { designation: string } | null = null
   try { volunteer = await certVolunteerOf(c, Number(id)) } catch { volunteer = null }
+  // A volunteer the desk never scanned in waits for a face check against the event photos.
+  const checking = !attended && !volunteer ? await certVolunteerCheckOf(c, Number(id)) : false
 
   const months = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December']
@@ -14507,6 +14509,7 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
   const startLabel = parts.length === 3 ? Number(parts[2]) + ' ' + months[Number(parts[1]) - 1] : ''
 
   const reason = (attended || volunteer) && started ? ''
+    : checking ? 'Add a clear photo of your face to your profile. We will match it with the photos taken at the event and email your volunteer certificate as soon as we find you.'
     : started
       ? 'Your certificate unlocks the moment the badge desk scans you in at the venue.'
       : 'Certificates go to the people who turn up. Yours unlocks when you check in at the badge desk'
@@ -43000,7 +43003,7 @@ function adminPageScript(): string {
     }
     // Certificates by email (24 Nov 2026) sit above the desk in their own box, drawn by
     // /js/admin-certs.js (one global, CertDesk) with the desk's stylesheet.
-    var CERT_DESK_VERSION = '20261124b';
+    var CERT_DESK_VERSION = '20261124c';
     function certDeskLoad() {
       if (window.CertDesk) return Promise.resolve();
       return new Promise(function (resolve, reject) {
