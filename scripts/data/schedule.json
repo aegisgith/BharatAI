@@ -1,5 +1,5 @@
 {
-  "source": "the app (Admin → Conference), 2026-11-24T07:38:03.365Z",
+  "source": "the app (Admin → Conference), 2026-11-25T05:08:08.894Z",
   "days": [
     "2026-11-20",
     "2026-11-21"
@@ -200,6 +200,13 @@
       "title": "AI for Viksit Bharat: Igniting 1.4 Billion Dreams and Transforming Governance",
       "panel": [
         {
+          "name": "Shri Ravi Ranjan Singh",
+          "org": "Department of Agriculture & Farmers Welfare, Government of India",
+          "role": "Director, Digital",
+          "photo": "/images/speaker-ravi-ranjan-singh-sq.webp",
+          "listed": true
+        },
+        {
           "name": "Akshay Yadava",
           "org": "Unique Identification Authority of India (UIDAI)",
           "role": "Director",
@@ -208,9 +215,10 @@
         },
         {
           "name": "Shri Ganesh Nagarajan",
-          "org": "Ministry of Tribal Affairs",
-          "role": "",
-          "photo": ""
+          "org": "Ministry of Tribal Affairs, Government of India",
+          "role": "Deputy Secretary",
+          "photo": "/images/talks/ganesh-nagarajan.webp",
+          "listed": true
         },
         {
           "name": "Shri Sachin Itkar",
@@ -553,20 +561,6 @@
           "org": "Bajaj Life Insurance Company",
           "role": "MD & CEO",
           "photo": "/images/speaker-tarun-chugh.webp",
-          "listed": true
-        },
-        {
-          "name": "Nilesh Shah",
-          "org": "Kotak Mahindra Asset Management",
-          "role": "Managing Director",
-          "photo": "/images/speaker-nilesh-shah-sq.webp",
-          "listed": true
-        },
-        {
-          "name": "Ratan Kumar Kesh",
-          "org": "Bandhan Bank",
-          "role": "Executive Director & COO",
-          "photo": "/images/speaker-ratan-kumar-kesh-bandhan.webp",
           "listed": true
         },
         {
@@ -1143,13 +1137,22 @@
       "id": 131,
       "track": "Healthcare & Life Sciences AI",
       "title": "PrAImaan",
-      "speaker": {
-        "name": "Vishal Deo",
-        "role": "Scientist",
-        "org": "Indian Council of Medical Research -",
-        "photo": "/images/speakers/vishal-deo.webp",
-        "listed": true
-      }
+      "panel": [
+        {
+          "name": "Vishal Deo",
+          "org": "Indian Council of Medical Research -",
+          "role": "Scientist",
+          "photo": "/images/speakers/vishal-deo.webp",
+          "listed": true
+        },
+        {
+          "name": "Rajib Lochan Mahalik",
+          "org": "Technocracy Private Limited",
+          "role": "Managing Director",
+          "photo": "/images/speakers/rajib-lochan-mahalik.webp",
+          "listed": true
+        }
+      ]
     },
     {
       "hall": "kalam",
@@ -1441,10 +1444,17 @@
           "listed": true
         },
         {
-          "name": "Rajib Lochan Mahalik",
-          "org": "Technocracy Private Limited",
-          "role": "Managing Director",
-          "photo": "/images/speakers/rajib-lochan-mahalik.webp",
+          "name": "Ms. Surbhi Gupta",
+          "org": "Birla Opus Paints",
+          "role": "Chief Digital Officer",
+          "photo": "/images/speakers/surbhi-gupta.webp",
+          "listed": true
+        },
+        {
+          "name": "Dr. Alexey Gvintovkin",
+          "org": "EXENI",
+          "role": "EXENI Founder",
+          "photo": "/images/speaker-alexey-gvintovkin-v2-sq.webp",
           "listed": true
         }
       ],
@@ -1564,13 +1574,6 @@
           "org": "AI & Agritech Innovation Center, Govt of Maharashtra",
           "role": "Chief Technology Officer",
           "photo": "/images/speaker-parag-dabhade.jpg",
-          "listed": true
-        },
-        {
-          "name": "Shri Ravi Ranjan Singh",
-          "org": "Department of Agriculture & Farmers Welfare, Government of India",
-          "role": "Director, Digital",
-          "photo": "/images/speaker-ravi-ranjan-singh-sq.webp",
           "listed": true
         },
         {

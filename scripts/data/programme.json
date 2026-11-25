@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-11-24T07:38:03.365Z",
+ "generated_at": "2026-11-25T05:08:08.894Z",
  "live": true,
  "event": {
   "id": 1,
@@ -195,15 +195,22 @@
    "room": "Aryabhata Theatre",
    "start_time": "2026-11-20 10:25",
    "end_time": "2026-11-20 10:50",
-   "speaker_name": "Ganesh Nagarajan",
-   "speaker_title": "Deputy Secretary, Ministry of Tribal Affairs",
-   "links": [],
+   "speaker_name": "Shri Ganesh Nagarajan",
+   "speaker_title": "Deputy Secretary, Ministry of Tribal Affairs, Government of India",
+   "links": [
+    {
+     "speaker_id": 177,
+     "role": "speaker"
+    }
+   ],
    "people": [
     {
-     "speaker_id": null,
-     "name": "Ganesh Nagarajan",
-     "info": "",
-     "part": ""
+     "speaker_id": 177,
+     "name": "Shri Ganesh Nagarajan",
+     "role": "Deputy Secretary",
+     "organisation": "Ministry of Tribal Affairs, Government of India",
+     "photo_url": "/images/talks/ganesh-nagarajan.webp",
+     "part": "speaker"
     }
    ]
   },
@@ -230,11 +237,19 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-20 11:30",
    "end_time": "2026-11-20 12:30",
-   "speaker_name": "Shri Akshay Yadava (UIDAI), Shri Ganesh Nagarajan (Ministry of Tribal Affairs), Shri Sachin Itkar (MEDC), Arun Menon (Jade Global), Mr. Bhupesh Daheria (Moderator)",
+   "speaker_name": "Shri Ravi Ranjan Singh (Department of Agriculture & Farmers Welfare), Akshay Yadava (Unique Identification Authority of India), Shri Ganesh Nagarajan (Ministry of Tribal Affairs), Shri Sachin Itkar (Maharashtra Economic Development Council), Arun Menon (Jade Global), Bhupesh Daheria (Moderator)",
    "speaker_title": "",
    "links": [
     {
+     "speaker_id": 122,
+     "role": "panellist"
+    },
+    {
      "speaker_id": 74,
+     "role": "panellist"
+    },
+    {
+     "speaker_id": 177,
      "role": "panellist"
     },
     {
@@ -252,6 +267,14 @@
    ],
    "people": [
     {
+     "speaker_id": 122,
+     "name": "Shri Ravi Ranjan Singh",
+     "role": "Director, Digital",
+     "organisation": "Department of Agriculture & Farmers Welfare, Government of India",
+     "photo_url": "/images/speaker-ravi-ranjan-singh-sq.webp",
+     "part": "panellist"
+    },
+    {
      "speaker_id": 74,
      "name": "Akshay Yadava",
      "role": "Director",
@@ -260,10 +283,12 @@
      "part": "panellist"
     },
     {
-     "speaker_id": null,
+     "speaker_id": 177,
      "name": "Shri Ganesh Nagarajan",
-     "info": "Ministry of Tribal Affairs",
-     "part": ""
+     "role": "Deputy Secretary",
+     "organisation": "Ministry of Tribal Affairs, Government of India",
+     "photo_url": "/images/talks/ganesh-nagarajan.webp",
+     "part": "panellist"
     },
     {
      "speaker_id": 86,
@@ -689,19 +714,11 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-20 14:00",
    "end_time": "2026-11-20 15:00",
-   "speaker_name": "Tarun Chugh (Bajaj Life Insurance Company), Nilesh Shah (Kotak Mahindra Asset Management), Ratan Kumar Kesh (Bandhan Bank), Mr. Sarosh Amaria (Tata Capital Housing Finance Limited), Mayur Kapur (TransUnion), Abhay Tewari (Star Union Dai-ichi Life Insurance), Shailesh Dhuri (Moderator), Kiran Nambiar (MyFi)",
+   "speaker_name": "Tarun Chugh (Bajaj Life Insurance Company), Mr. Sarosh Amaria (Tata Capital Housing Finance Limited), Mayur Kapur (TransUnion), Abhay Tewari (Star Union Dai-ichi Life Insurance), Shailesh Dhuri (Moderator), Kiran Nambiar (MyFi)",
    "speaker_title": "",
    "links": [
     {
      "speaker_id": 26,
-     "role": "panellist"
-    },
-    {
-     "speaker_id": 7,
-     "role": "panellist"
-    },
-    {
-     "speaker_id": 18,
      "role": "panellist"
     },
     {
@@ -732,22 +749,6 @@
      "role": "MD & CEO",
      "organisation": "Bajaj Life Insurance Company",
      "photo_url": "/images/speaker-tarun-chugh.webp",
-     "part": "panellist"
-    },
-    {
-     "speaker_id": 7,
-     "name": "Nilesh Shah",
-     "role": "Managing Director",
-     "organisation": "Kotak Mahindra Asset Management",
-     "photo_url": "/images/speaker-nilesh-shah-sq.webp",
-     "part": "panellist"
-    },
-    {
-     "speaker_id": 18,
-     "name": "Ratan Kumar Kesh",
-     "role": "Executive Director & COO",
-     "organisation": "Bandhan Bank",
-     "photo_url": "/images/speaker-ratan-kumar-kesh-bandhan.webp",
      "part": "panellist"
     },
     {
@@ -1484,11 +1485,15 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-20 17:30",
    "end_time": "2026-11-20 17:45",
-   "speaker_name": "Dr. Vishal Deo",
-   "speaker_title": "Scientist-C, ICMR-NIRDH",
+   "speaker_name": "Vishal Deo (Indian Council of Medical Research -), Rajib Lochan Mahalik (Technocracy Private Limited)",
+   "speaker_title": "",
    "links": [
     {
      "speaker_id": 110,
+     "role": "speaker"
+    },
+    {
+     "speaker_id": 171,
      "role": "speaker"
     }
    ],
@@ -1499,6 +1504,14 @@
      "role": "Scientist",
      "organisation": "Indian Council of Medical Research -",
      "photo_url": "/images/speakers/vishal-deo.webp",
+     "part": "speaker"
+    },
+    {
+     "speaker_id": 171,
+     "name": "Rajib Lochan Mahalik",
+     "role": "Managing Director",
+     "organisation": "Technocracy Private Limited",
+     "photo_url": "/images/speakers/rajib-lochan-mahalik.webp",
      "part": "speaker"
     }
    ]
@@ -1817,7 +1830,7 @@
    "room": "Homi J. Bhabha Hall",
    "start_time": "2026-11-21 10:20",
    "end_time": "2026-11-21 11:20",
-   "speaker_name": "Dr. Ashish Tendulkar (Google), Sudhir Kumar Rai (Trellix), Mahalakshmi AV (AWS), Shreenivas Chetlapalli (Moderator), Rajib Lochan Mahalik (Technocracy Private Limited)",
+   "speaker_name": "Dr. Ashish Tendulkar (Google), Sudhir Kumar Rai (Trellix), Mahalakshmi AV (AWS), Ms. Surbhi Gupta (Birla Opus Paints), Shreenivas Chetlapalli (Moderator), Dr. Alexey Gvintovkin (EXENI)",
    "speaker_title": "",
    "links": [
     {
@@ -1833,11 +1846,15 @@
      "role": "panellist"
     },
     {
+     "speaker_id": 90,
+     "role": "panellist"
+    },
+    {
      "speaker_id": 169,
      "role": "moderator"
     },
     {
-     "speaker_id": 171,
+     "speaker_id": 172,
      "role": "panellist"
     }
    ],
@@ -1867,6 +1884,14 @@
      "part": "panellist"
     },
     {
+     "speaker_id": 90,
+     "name": "Ms. Surbhi Gupta",
+     "role": "Chief Digital Officer",
+     "organisation": "Birla Opus Paints",
+     "photo_url": "/images/speakers/surbhi-gupta.webp",
+     "part": "panellist"
+    },
+    {
      "speaker_id": 169,
      "name": "Shreenivas Chetlapalli",
      "role": "VP",
@@ -1875,11 +1900,11 @@
      "part": "moderator"
     },
     {
-     "speaker_id": 171,
-     "name": "Rajib Lochan Mahalik",
-     "role": "Managing Director",
-     "organisation": "Technocracy Private Limited",
-     "photo_url": "/images/speakers/rajib-lochan-mahalik.webp",
+     "speaker_id": 172,
+     "name": "Dr. Alexey Gvintovkin",
+     "role": "EXENI Founder",
+     "organisation": "EXENI",
+     "photo_url": "/images/speaker-alexey-gvintovkin-v2-sq.webp",
      "part": "panellist"
     }
    ]
@@ -1998,7 +2023,7 @@
    "room": "Kalam Theatre",
    "start_time": "2026-11-21 11:00",
    "end_time": "2026-11-21 12:00",
-   "speaker_name": "Dr. Vivek Mohanrao Bhoite (ICAR-ATARI), Parag Dabhade (AI & Agritech Innovation Center), Dr. Santosh Vyas (Moderator), Shri Ravi Ranjan Singh (Department of Agriculture & Farmers Welfare), Mr. Manish K. Prahlad (Verdant Impact), Dr. Omprakash Mandge (MET), Manish P. Daga (Cotton Guru)",
+   "speaker_name": "Dr. Vivek Mohanrao Bhoite (ICAR-ATARI), Parag Dabhade (AI & Agritech Innovation Center), Dr. Santosh Vyas (Moderator), Mr. Manish K. Prahlad (Verdant Impact), Dr. Omprakash Mandge (MET), Manish P. Daga (Cotton Guru)",
    "speaker_title": "",
    "links": [
     {
@@ -2012,10 +2037,6 @@
     {
      "speaker_id": 112,
      "role": "moderator"
-    },
-    {
-     "speaker_id": 122,
-     "role": "panellist"
     },
     {
      "speaker_id": 148,
@@ -2054,14 +2075,6 @@
      "organisation": "Kemin Industries South Asia Pvt Ltd",
      "photo_url": "/images/speaker-santosh-vyas-sq.webp",
      "part": "moderator"
-    },
-    {
-     "speaker_id": 122,
-     "name": "Shri Ravi Ranjan Singh",
-     "role": "Director, Digital",
-     "organisation": "Department of Agriculture & Farmers Welfare, Government of India",
-     "photo_url": "/images/speaker-ravi-ranjan-singh-sq.webp",
-     "part": "panellist"
     },
     {
      "speaker_id": 148,
@@ -3282,6 +3295,20 @@
    "organisation": "IndiaAI Mission",
    "topic": "AI Policy",
    "photo_url": "/images/speaker-prakash-kumar-sq.webp",
+   "bio": "",
+   "linkedin_url": "",
+   "is_featured": 0,
+   "is_published": 1,
+   "sort_order": 19
+  },
+  {
+   "id": 177,
+   "slug": "ganesh-nagarajan",
+   "name": "Shri Ganesh Nagarajan",
+   "role": "Deputy Secretary",
+   "organisation": "Ministry of Tribal Affairs, Government of India",
+   "topic": "",
+   "photo_url": "/images/talks/ganesh-nagarajan.webp",
    "bio": "",
    "linkedin_url": "",
    "is_featured": 0,

@@ -80,6 +80,7 @@ All prices exclude 18% GST. 93 booths total across 8 industry zones.
 - **Shri Ravi Ranjan Singh** — Director, Digital, Department of Agriculture & Farmers Welfare, Government of India (AI in Agriculture)
 - **Akshay Yadava** — Director, Unique Identification Authority of India (UIDAI) (Digital Identity)
 - **Shri Prakash Kumar** — Additional Director, Ministry of Electronics & Information Technology, Government of India, IndiaAI Mission (AI Policy)
+- **Shri Ganesh Nagarajan** — Deputy Secretary, Ministry of Tribal Affairs, Government of India
 - **Dr. Abhijit Gangopadhyay** — Dean, Aegis School of Data Science & AI; Former Dean, IIM & TISS (AI Education)
 - **Bhupesh Daheria** — CEO, Aegis School of Data Science & AI, Trustee, Aegis Knowledge Trust (AI Talent)
 - **Shri Sachin Itkar** — Vice President, Maharashtra Economic Development Council (MEDC)
@@ -183,12 +184,10 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 
 - Actin Technologies
 - Aegis School of Data Science & AI
+- Aegis Super Intelligence Lab
 - AI Products Factory
-- Ai Vie Insights
 - AlgoAnalytics
-- Amnex Infotechnologies
 - Aria Telecom
-- Ary-Soft
 - Ary-Soft
 - Asmadiya Technologies
 - Assessfy
@@ -205,21 +204,18 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - Gupshup.ai
 - Harrier Information Systems
 - Image Infosystems
-- Indigloo Software
 - Info Science Labs
 - Intangles
 - Jade Global
 - Joget
 - JoyVibe
 - Kadeep.ai
-- Kapil
 - Kavion.ai
 - Kirusa
-- Lenixvision
 - LightMetrics
+- MANOTR TECHLABS
 - Ministry of Tribal Affairs
 - NoBroker
-- Nu10 Technologies
 - Nu10 Technologies
 - OliAI
 - OneVio
@@ -228,12 +224,11 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - P99Soft
 - Paisani Technology Services
 - Phoebetal Technologies
-- Pramaana Labs
-- Qapitol AI
 - RedFerns Tech
 - Rightangle Technologies
 - Saranyu Technologies
 - Seem Fintech & Sustainability
+- Sequretek IT Solutions
 - Teenage Works
 - Trust3 AI
 - ValuEnable
@@ -242,7 +237,6 @@ Companies and organisations exhibiting at Bharat AI Innovation 2026 (list update
 - Wyn Labs
 - Xtant Tech
 - Yarnit
-- Yarnit Innovations
 - Zanopy AI
 
 Digital media partner: The Mainstream.

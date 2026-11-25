@@ -21,6 +21,11 @@
    "w": 144,
    "h": 144
   },
+  "ravi-ranjan-singh": {
+   "src": "images/sched/ravi-ranjan-singh.webp?v=bb339657",
+   "w": 144,
+   "h": 144
+  },
   "akshay-yadava": {
    "src": "images/sched/akshay-yadava.webp?v=d9f95b37",
    "w": 144,
@@ -113,16 +118,6 @@
   },
   "tarun-chugh": {
    "src": "images/sched/tarun-chugh.webp?v=7609c92c",
-   "w": 144,
-   "h": 144
-  },
-  "nilesh-shah": {
-   "src": "images/sched/nilesh-shah.webp?v=91e9905f",
-   "w": 144,
-   "h": 144
-  },
-  "ratan-kumar-kesh": {
-   "src": "images/sched/ratan-kumar-kesh.webp?v=0e2514e3",
    "w": 144,
    "h": 144
   },
@@ -356,6 +351,11 @@
    "w": 144,
    "h": 144
   },
+  "surbhi-gupta": {
+   "src": "images/sched/surbhi-gupta.webp?v=ba779361",
+   "w": 144,
+   "h": 144
+  },
   "shreenivas-chetlapalli": {
    "src": "images/sched/shreenivas-chetlapalli.webp?v=85e04c98",
    "w": 144,
@@ -388,11 +388,6 @@
   },
   "parag-dabhade": {
    "src": "images/sched/parag-dabhade.webp?v=13c37dd4",
-   "w": 144,
-   "h": 144
-  },
-  "ravi-ranjan-singh": {
-   "src": "images/sched/ravi-ranjan-singh.webp?v=bb339657",
    "w": 144,
    "h": 144
   },
@@ -686,6 +681,11 @@
    "w": 144,
    "h": 144
   },
+  "ratan-kumar-kesh": {
+   "src": "images/sched/ratan-kumar-kesh.webp?v=0e2514e3",
+   "w": 144,
+   "h": 144
+  },
   "pravin-kumar": {
    "src": "images/sched/pravin-kumar.webp?v=754ec915",
    "w": 144,
@@ -698,11 +698,6 @@
   },
   "jagbir-singh": {
    "src": "images/sched/jagbir-singh.webp?v=901662b1",
-   "w": 144,
-   "h": 144
-  },
-  "surbhi-gupta": {
-   "src": "images/sched/surbhi-gupta.webp?v=ba779361",
    "w": 144,
    "h": 144
   },
@@ -723,6 +718,11 @@
   },
   "devendra-fadnavis": {
    "src": "images/sched/devendra-fadnavis.webp?v=c9485428",
+   "w": 144,
+   "h": 144
+  },
+  "nilesh-shah": {
+   "src": "images/sched/nilesh-shah.webp?v=91e9905f",
    "w": 144,
    "h": 144
   },
@@ -790,6 +790,13 @@
    "h": 70,
    "lw": 71,
    "lh": 27
+  },
+  "images/logo-agriculture-goi.webp": {
+   "src": "images/sched/logo-agriculture-goi.webp?v=6c0563de",
+   "w": 179,
+   "h": 80,
+   "lw": 65,
+   "lh": 29
   },
   "images/org-logos/uidai.webp": {
    "src": "images/sched/logo-uidai.webp?v=e7f73569",
@@ -895,13 +902,6 @@
    "h": 62,
    "lw": 51,
    "lh": 34
-  },
-  "images/logo-bandhan.webp": {
-   "src": "images/sched/logo-bandhan.webp?v=7ba62583",
-   "w": 184,
-   "h": 55,
-   "lw": 83,
-   "lh": 25
   },
   "images/org-logos/transunion.webp": {
    "src": "images/sched/logo-transunion.webp?v=fd3f00ab",
@@ -1120,13 +1120,6 @@
    "lw": 69,
    "lh": 28
   },
-  "images/logo-agriculture-goi.webp": {
-   "src": "images/sched/logo-agriculture-goi.webp?v=6c0563de",
-   "w": 179,
-   "h": 80,
-   "lw": 65,
-   "lh": 29
-  },
   "images/org-logos/verdant-impact.webp": {
    "src": "images/sched/logo-verdant-impact.webp?v=d7cf6613",
    "w": 84,
@@ -1322,6 +1315,13 @@
    "h": 80,
    "lw": 40,
    "lh": 40
+  },
+  "images/logo-bandhan.webp": {
+   "src": "images/sched/logo-bandhan.webp?v=7ba62583",
+   "w": 184,
+   "h": 55,
+   "lw": 83,
+   "lh": 25
   },
   "images/org-logos/favicon-npci.org.in.png": {
    "src": "images/sched/logo-npci-org-in.webp?v=329dffc1",
