@@ -199,8 +199,9 @@ const kSt = BC.content({ id: 26, stage: { id: 26, topic: 'Reimagining Marketplac
 check('a speaker: appreciation, gold, MODERATOR; a stage talk: appreciation, green, their title and company under the name',
   kSp.eyebrow === 'CERTIFICATE OF APPRECIATION' && kSp.pill === 'MODERATOR' && kSp.certId === 'BHAI-SPK-0009' && kSp.when === '20 NOVEMBER 2026'
   && kSt.eyebrow === 'CERTIFICATE OF APPRECIATION' && kSt.pill === 'INNOVATION STAGE' && kSt.certId === 'BHAI-IT-0026' && kSt.designation === 'Founder, NoBroker', JSON.stringify([kSp.pill, kSt.designation]));
-check('the app asks for a photo before the certificate of participation, and draws it with the photo and designation',
-  /Your certificate carries your photo/.test(appJs) && /photo: ws \? '' : myPhoto/.test(appJs), '');
+check('the app asks for a photo before every certificate, the workshop one too (25 Nov 2026), and draws each with the photo',
+  /Your certificate carries your photo/.test(appJs) && /if \(!myPhoto\) \{/.test(appJs) && /photo: myPhoto,/.test(appJs) && !/photo: ws \? '' : myPhoto/.test(appJs)
+  && /verifyUrl: g\.workshop\.verify \|\| '', photo: g\.photo \|\| ''/.test(adminJs), '');
 
 // The people: 3 participants checked in (2 with a photo), 1 not checked in; 2 speakers on a
 // published session (one with no photo, one on two sessions), 1 on a draft session; stage talks

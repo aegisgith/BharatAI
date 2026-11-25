@@ -39244,10 +39244,11 @@ function mainPageScript(): string {
       }
       // The certificate of participation carries the person's photo (organiser, 24 Nov 2026:
       // "in case no photo on record don't send, ... update photo for getting the participation
-      // certificate"), as the one emailed does. The workshop certificate does not.
+      // certificate"), as the one emailed does. So does the workshop certificate since 25 Nov 2026
+      // ("put photograph of person attended workshop"), with the same ask when there is none.
       const myPhoto = String((gate && gate.photo) || user.avatar_url || '').trim();
-      if (!ws && !myPhoto) {
-        showToast('Your certificate carries your photo. Add a clear photo of yourself to your profile, then tap Certificate again.', 'info');
+      if (!myPhoto) {
+        showToast('Your certificate carries your photo. Add a clear photo of yourself to your profile, then tap ' + (ws ? 'Workshop certificate' : 'Certificate') + ' again.', 'info');
         if (typeof openEditProfile === 'function') openEditProfile();
         return;
       }
@@ -39263,7 +39264,7 @@ function mainPageScript(): string {
         workshop: ws ? { title: ws.title, speaker: ws.speaker, day: ws.day } : null,
         volunteer: vol,
         pass: gate && gate.pass,
-        photo: ws ? '' : myPhoto,
+        photo: myPhoto,
         designation: ws ? '' : ((gate && gate.designation) || [user.job_title, user.company].map(function (s) { return String(s || '').trim(); }).filter(Boolean).join(', ')),
         verifyUrl: (ws ? ws.verify : gate && gate.verify) || '',
       });
@@ -43447,7 +43448,7 @@ function adminPageScript(): string {
       try {
         var cv = await BhaiCert.draw({ id: 0, name: 'Attendee Name', workshop: { title: w.title, speaker: w.speaker, day: w.starts_at },
           verifyUrl: BhaiCert.SAMPLE_VERIFY_URL });
-        adminCertOpen('Workshop certificate', 'A sample. Each person&rsquo;s own copy carries their name, their number (BHAI-WS- and their attendee number) and their own QR, which opens a page on our site confirming the certificate. This sample&rsquo;s QR opens a page saying it is a sample.',
+        adminCertOpen('Workshop certificate', 'A sample. Each person&rsquo;s own copy carries their photo in the circle, their name, their number (BHAI-WS- and their attendee number) and their own QR, which opens a page on our site confirming the certificate. This sample&rsquo;s QR opens a page saying it is a sample.',
           [{ sample: true, label: w.title, url: cv.toDataURL('image/png'), file: adminCertFile('sample', true) }]);
       } catch (e) { toast('Could not draw the certificate: ' + (e.message || e), 'error'); }
     }
@@ -43469,9 +43470,10 @@ function adminPageScript(): string {
         items.push({ who: name, label: (g.volunteer ? 'Volunteer certificate' : 'Certificate of participation') + (g.photo ? '' : ' (no photo yet: the app asks them to add one first)'), ok: !!g.eligible, reason: g.reason || '',
           url: conf.toDataURL('image/png'), file: adminCertFile(name, false) });
         if (g.workshop) {
+          // With their photo, as in the app (25 Nov 2026).
           var wc = await BhaiCert.draw({ id: id, name: name, workshop: { title: g.workshop.title, speaker: g.workshop.speaker, day: g.workshop.day },
-            verifyUrl: g.workshop.verify || '' });
-          var wItem = { who: name, label: 'Workshop certificate: ' + String(g.workshop.title || ''), ok: !!g.workshop.eligible,
+            verifyUrl: g.workshop.verify || '', photo: g.photo || '' });
+          var wItem = { who: name, label: 'Workshop certificate: ' + String(g.workshop.title || '') + (g.photo ? '' : ' (no photo yet: the app asks them to add one first)'), ok: !!g.workshop.eligible,
             reason: g.workshop.reason || '', url: wc.toDataURL('image/png'), file: adminCertFile(name, true) };
           if (first === 'workshop') items.unshift(wItem); else items.push(wItem);
         }
