@@ -27,6 +27,12 @@ import { dearName } from './talk-brief'
 //
 // The email's button opens /certificate/<code>?download=1 (index.tsx), which draws the
 // certificate in the browser and saves it; the same code is the certificate's QR.
+//
+// A fourth group the same day, the organiser: "Pillai students who volunteered, we need to
+// make their certificate with photo":
+//   volunteers    the people ticked as volunteers (ref_id 4), who get a certificate of
+//                 appreciation for volunteering (blue) instead of the participation one, on
+//                 the same C<attendee> code. See VOLUNTEERS below.
 
 type Hooks = {
   sendEmail?: (c: any, to: string, subject: string, html: string) => Promise<{ ok: boolean; error?: string }>
@@ -43,16 +49,19 @@ export function configureCertificates(h: Hooks) { hooks = { ...hooks, ...h } }
 const cr = new Hono<{ Bindings: any }>()
 const SITE = 'https://bharataiinnovation.com'
 // Bump with the ?v= on /app and /admin (index.tsx) whenever cert-render.js changes.
-export const CERT_RENDER_V = '2026112404'
+export const CERT_RENDER_V = '2026112405'
 const escH = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 const clean = (v: any) => String(v ?? '').replace(/\s+/g, ' ').trim()
 const emailOk = (e: any) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim()) && !/@no-email\.invalid$/i.test(String(e || ''))
 const lc = (e: any) => String(e || '').trim().toLowerCase()
 
-export type CertGroup = 'participants' | 'speakers' | 'stage'
-export const CERT_GROUP_REF: Record<CertGroup, number> = { participants: 1, speakers: 2, stage: 3 }
-export const certGroupOfRef = (ref: any): CertGroup => (Number(ref) === 2 ? 'speakers' : Number(ref) === 3 ? 'stage' : 'participants')
+export type CertGroup = 'participants' | 'speakers' | 'stage' | 'volunteers'
+export const CERT_GROUP_REF: Record<CertGroup, number> = { participants: 1, speakers: 2, stage: 3, volunteers: 4 }
+export const certGroupOfRef = (ref: any): CertGroup => (Number(ref) === 2 ? 'speakers' : Number(ref) === 3 ? 'stage' : Number(ref) === 4 ? 'volunteers' : 'participants')
 export const CERT_KINDS = ['cert_ready', 'cert_photo']
+const GROUPS: CertGroup[] = ['participants', 'speakers', 'stage', 'volunteers']
+// Participants and volunteers are attendees, who add their own photo in the app.
+const byAttendee = (g: CertGroup) => g === 'participants' || g === 'volunteers'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const dayOf = (iso: any): string => {
@@ -64,14 +73,68 @@ const roleWord = (role: any, type: any) => (String(type || '').toLowerCase() ===
 
 // ---------- who ----------
 
-// Everyone checked in at the venue with an address. The pass is the one the certificate
-// names (a paid tier not paid for reads as the Visitor Pass, as at the desk).
+// VOLUNTEERS. The 33 Pillai University students who helped at the venue hold Organiser
+// passes (one Admin import, 19 Nov 2026), as the organising team does, so who volunteered
+// is a list: app_settings 'cert_volunteers' = {"ids":[attendee ids]}, ticked in Admin ->
+// After the Event -> Certificates. Until it is first saved, the list is the Organiser pass
+// holders checked in at the venue who have a Pillai student address, or no designation and
+// no company (the import left both blank; every team member has a title). A ticked person
+// gets the volunteer certificate whether or not the badge desk scanned them, and never the
+// participation one as well.
+const VOL_KEY = 'cert_volunteers'
+const PILLAI_STUDENT = /@student\.pillai\.edu\.in$/i
+const ATT_COLS = 'id, name, email, badge_type, payment_status, job_title, company, avatar_url, unsubscribed_at, checked_in_at'
+
+async function savedVolunteerIds(c: any): Promise<number[] | null> {
+  try {
+    const r = await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(VOL_KEY).first() as any
+    if (!r) return null
+    const ids = JSON.parse(String(r.value || '{}')).ids
+    return Array.isArray(ids) ? ids.map(Number).filter((n: number) => Number.isInteger(n) && n > 0) : null
+  } catch { return null }
+}
+async function organiserRows(c: any): Promise<any[]> {
+  const { results } = await c.env.DB.prepare(`SELECT ${ATT_COLS} FROM attendees WHERE event_id = 1 AND badge_type = 'Organiser' ORDER BY id`).all()
+  return (results as any[]) || []
+}
+const volunteerByDefault = (a: any) => !!a.checked_in_at
+  && (PILLAI_STUDENT.test(String(a.email || '').trim()) || (!clean(a.job_title) && !clean(a.company)))
+
+export async function volunteerIdSet(c: any): Promise<Set<number>> {
+  const saved = await savedVolunteerIds(c)
+  if (saved) return new Set(saved)
+  try { return new Set((await organiserRows(c)).filter(volunteerByDefault).map(a => Number(a.id))) } catch { return new Set() }
+}
+// What the certificate says under a volunteer's name: their own designation if they have
+// one, else their college for a Pillai student address.
+const volunteerDesignation = (a: any) => [clean(a.job_title), clean(a.company)].filter(Boolean).join(', ')
+  || (PILLAI_STUDENT.test(String(a.email || '').trim()) ? 'Student, Pillai University' : '')
+
+// The volunteers (one bound value: the ids go in as JSON, never a growing IN list).
+async function volunteerRows(c: any, where = '', binds: any[] = []): Promise<any[]> {
+  const ids = [...await volunteerIdSet(c)]
+  if (!ids.length) return []
+  const { results } = await c.env.DB.prepare(
+    `SELECT ${ATT_COLS} FROM attendees
+      WHERE event_id = 1 AND id IN (SELECT CAST(value AS INTEGER) FROM json_each(?))${where} ORDER BY id`
+  ).bind(JSON.stringify(ids), ...binds).all()
+  return ((results as any[]) || []).map(a => ({ ...a, photo: clean(a.avatar_url), designation: volunteerDesignation(a) }))
+}
+
+// For index.tsx (the app's certificate button and Admin): a volunteer's certificate, or null.
+export async function certVolunteerOf(c: any, id: number): Promise<{ designation: string } | null> {
+  const a = (await volunteerRows(c, ' AND id = ?', [Number(id)]))[0]
+  return a ? { designation: a.designation } : null
+}
+
+// Everyone checked in at the venue with an address, volunteers apart. The pass is the one
+// the certificate names (a paid tier not paid for reads as the Visitor Pass, as at the desk).
 async function participantRows(c: any, where = '', binds: any[] = []): Promise<any[]> {
   const { results } = await c.env.DB.prepare(
-    `SELECT id, name, email, badge_type, payment_status, job_title, company, avatar_url, unsubscribed_at
-       FROM attendees WHERE event_id = 1 AND checked_in_at IS NOT NULL${where} ORDER BY id`
+    `SELECT ${ATT_COLS} FROM attendees WHERE event_id = 1 AND checked_in_at IS NOT NULL${where} ORDER BY id`
   ).bind(...binds).all()
-  return ((results as any[]) || []).map(a => ({
+  const vol = await volunteerIdSet(c)
+  return ((results as any[]) || []).filter(a => !vol.has(Number(a.id))).map(a => ({
     ...a, pass: hooks.passLabel ? hooks.passLabel(a.badge_type, a.payment_status) : clean(a.badge_type) || 'Visitor Pass',
     photo: clean(a.avatar_url), designation: [clean(a.job_title), clean(a.company)].filter(Boolean).join(', '),
   }))
@@ -149,9 +212,9 @@ async function alreadySet(c: any, kind: string, group: CertGroup): Promise<Set<s
 export async function certAudienceRows(c: any, kind: string, group: CertGroup, audience: string): Promise<any[]> {
   const wantPhoto = kind === 'cert_ready'
   const done = await alreadySet(c, kind, group)
-  if (group === 'participants') {
-    const only = audience.startsWith('only:') ? new Set(audience.slice(5).split('|').map(clean).filter(Boolean)) : null
-    return (await participantRows(c))
+  if (byAttendee(group)) {
+    const only = group === 'participants' && audience.startsWith('only:') ? new Set(audience.slice(5).split('|').map(clean).filter(Boolean)) : null
+    return (group === 'volunteers' ? await volunteerRows(c) : await participantRows(c))
       .filter(a => emailOk(a.email) && !a.unsubscribed_at && (!!a.photo === wantPhoto) && (!only || only.has(a.pass)))
       .filter(a => !done.has('a' + a.id) && !done.has(lc(a.email)))
       .map(a => ({ id: a.id, name: a.name, email: String(a.email).trim() }))
@@ -166,6 +229,15 @@ export async function certAudienceRows(c: any, kind: string, group: CertGroup, a
 export async function certDrawData(c: any, kind: string, id: number, ref: string): Promise<any | null> {
   const verify = hooks.certVerifyUrl ? await hooks.certVerifyUrl(c, kind as any, id, ref || undefined) : ''
   if (kind === 'C') {
+    // A volunteer's C code is their volunteer certificate.
+    const v = (await volunteerRows(c, ' AND id = ?', [id]))[0]
+    if (v) {
+      return {
+        group: 'volunteers', name: v.name, photo: v.photo, designation: v.designation, certId: 'BHAI-VOL-' + String(id).padStart(4, '0'),
+        certName: 'Volunteer, Bharat AI Innovation 2026', file: 'BharatAI-2026-Volunteer-Certificate.png',
+        draw: { id, name: v.name, designation: v.designation, photo: v.photo, verifyUrl: verify, volunteer: { designation: v.designation } },
+      }
+    }
     const a = (await participantRows(c, ' AND id = ?', [id]))[0]
     if (!a) return null
     return {
@@ -209,15 +281,17 @@ export function certEmailHTML(o: {
   variant: 'ready' | 'photo'; group: CertGroup; name: string; header: string
   items: { label: string; href: string }[]; photoHref?: string
 }): { subject: string; html: string } {
-  const what = o.group === 'speakers' ? 'certificate of appreciation' : o.group === 'stage' ? 'certificate of appreciation' : 'certificate of participation'
+  const what = o.group === 'participants' ? 'certificate of participation' : 'certificate of appreciation'
   const thanks = o.group === 'speakers' ? 'Thank you for speaking at Bharat AI Innovation 2026 at World Trade Center, Mumbai, on 20 and 21 November.'
     : o.group === 'stage' ? 'Thank you for presenting on the Innovation Stage at Bharat AI Innovation 2026 at World Trade Center, Mumbai, on 20 and 21 November.'
+    : o.group === 'volunteers' ? 'Thank you for volunteering at Bharat AI Innovation 2026 at World Trade Center, Mumbai, on 20 and 21 November. Your help at the desks and in the halls made the two days work.'
     : 'Thank you for coming to Bharat AI Innovation 2026 at World Trade Center, Mumbai, on 20 and 21 November.'
   const many = o.items.length > 1
   let subject: string, body: string
   if (o.variant === 'ready') {
     subject = o.group === 'participants' ? 'Your certificate: Bharat AI Innovation 2026, Mumbai'
       : o.group === 'speakers' ? 'Thank you for speaking: your Bharat AI Innovation 2026 certificate'
+      : o.group === 'volunteers' ? 'Thank you for volunteering: your Bharat AI Innovation 2026 certificate'
       : 'Thank you for presenting: your Bharat AI Innovation 2026 certificate'
     body = p(escH(thanks))
       + p(many ? `Your ${what}s are ready, one for each session, with your photo and your name:` : `Your ${what} is ready, with your photo and your name.`)
@@ -228,14 +302,20 @@ export function certEmailHTML(o: {
       + p('Every certificate carries a QR code. Scanning it opens a page on our website that confirms the certificate is genuine.', ';color:#555;font-size:14px')
   } else {
     subject = o.group === 'participants' ? 'Add your photo to get your Bharat AI Innovation 2026 certificate'
+      : o.group === 'volunteers' ? 'Your Bharat AI Innovation 2026 volunteer certificate is ready: add your photo to download it'
       : 'A photo for your Bharat AI Innovation 2026 certificate'
+    // A volunteer's is ready the moment they add a photo (organiser, 25 Nov 2026: "send Pillai
+    // volunteers that their certificate is ready, they need to update their photos and they can
+    // download the certificate").
     body = p(escH(thanks))
-      + p(`Your ${what} carries your photo, and we do not have one on record for you yet.`)
-      + (o.group === 'participants'
+      + (o.group === 'volunteers'
+        ? p(`Your ${what} for volunteering is ready. It carries your photo, and we do not have one on record for you yet, so add it first and then download your certificate.`)
+        : p(`Your ${what} carries your photo, and we do not have one on record for you yet.`))
+      + (byAttendee(o.group)
         ? `<ol style="margin:0 0 18px;padding-left:20px;font-size:15px;line-height:1.65">
              <li style="margin:0 0 6px">Tap <b>Add my photo</b>. It signs you in to the event app, at your profile.</li>
              <li style="margin:0 0 6px">Add a clear photo of your face and save.</li>
-             <li>Then open your certificate: <a href="${escH(o.items[0]?.href || SITE)}" style="color:#C84F00;font-weight:bold">My certificate</a>.</li></ol>
+             <li>Then ${o.group === 'volunteers' ? 'download your certificate' : 'open your certificate'}: <a href="${escH(o.items[0]?.href || SITE)}" style="color:#C84F00;font-weight:bold">${o.group === 'volunteers' ? 'Download my certificate' : 'My certificate'}</a>.</li></ol>
            <p style="margin:0 0 20px;text-align:center">${btn(o.photoHref || SITE + '/app', 'Add my photo')}</p>`
         : p('Please reply to this email with a clear photo of yourself. A head and shoulders photo works best. We will add it and send your certificate.'))
   }
@@ -261,7 +341,7 @@ async function mailFor(c: any, variant: 'ready' | 'photo', group: CertGroup, who
     const v = preview ? '#preview' : hooks.certVerifyUrl ? await hooks.certVerifyUrl(c, i.kind as any, i.id, i.ref) : ''
     items.push({ label: i.label, href: v && v !== '#preview' ? v + '?download=1' : v || SITE })
   }
-  const photoHref = group === 'participants'
+  const photoHref = byAttendee(group)
     ? (preview ? '#preview' : hooks.profileLink ? await hooks.profileLink(c, 1, lc(who.email)) : SITE + '/app')
     : ''
   return certEmailHTML({ variant, group, name: who.name, header, items, photoHref })
@@ -273,18 +353,19 @@ const stageItem = (t: any) => ({ kind: 'T', id: Number(t.id), label: 'Innovation
 // One recipient (the campaign's send route). Skips, never fails, anyone who no longer fits.
 cr.post('/api/admin/certificates/send', async (c) => {
   const variant = c.req.query('variant') === 'photo' ? 'photo' : 'ready'
-  const group = (['participants', 'speakers', 'stage'].includes(String(c.req.query('group'))) ? c.req.query('group') : '') as CertGroup
+  const group = (GROUPS.includes(String(c.req.query('group')) as CertGroup) ? c.req.query('group') : '') as CertGroup
   if (!group) return c.json({ error: 'Unknown certificate group.' }, 400)
   if (!hooks.sendEmail) return c.json({ error: 'Email is not set up on this server.' }, 503)
   let who: any = null
-  if (group === 'participants') {
-    const a = (await participantRows(c, ' AND id = ?', [Number(c.req.query('attendee'))]))[0]
-    if (!a) return c.json({ skipped: true, reason: 'Not checked in at the venue, or no longer registered' })
+  if (byAttendee(group)) {
+    const vol = group === 'volunteers'
+    const a = (await (vol ? volunteerRows : participantRows)(c, ' AND id = ?', [Number(c.req.query('attendee'))]))[0]
+    if (!a) return c.json({ skipped: true, reason: vol ? 'No longer on the volunteers list' : 'Not checked in at the venue, on the volunteers list, or no longer registered' })
     if (!emailOk(a.email)) return c.json({ skipped: true, reason: 'No email address' })
     if (a.unsubscribed_at) return c.json({ skipped: true, reason: 'Unsubscribed' })
     if (variant === 'ready' && !a.photo) return c.json({ skipped: true, reason: 'No photo now: the photo request covers them' })
     if (variant === 'photo' && a.photo) return c.json({ skipped: true, reason: 'Has a photo now: the next certificate run sends theirs' })
-    who = { name: a.name, email: String(a.email).trim(), items: [{ kind: 'C', id: Number(a.id), label: 'Certificate of participation' }] }
+    who = { name: a.name, email: String(a.email).trim(), items: [{ kind: 'C', id: Number(a.id), label: vol ? 'Volunteer certificate' : 'Certificate of participation' }] }
   } else {
     const email = lc(c.req.query('email'))
     if (!emailOk(email)) return c.json({ skipped: true, reason: 'No email address' })
@@ -345,14 +426,32 @@ cr.get('/api/admin/certificates', async (c) => {
         sent: d.ready.has(g.email) ? 'certificate' : d.photo.has(g.email) ? 'photo request' : '' })),
     }
   } catch (e: any) { out.groups.stage = { error: String(e?.message || e).slice(0, 200) } }
+  try {
+    const vols = await volunteerRows(c)
+    const d = await doneOf('volunteers')
+    const on = new Set(vols.map(a => Number(a.id)))
+    // Who can be ticked: every Organiser pass holder, and anyone already on the list.
+    const orgs = await organiserRows(c)
+    const choices = [...orgs, ...vols.filter(v => !orgs.some(o => Number(o.id) === Number(v.id)))]
+    out.groups.volunteers = {
+      total: vols.length, with_photo: vols.filter(a => a.photo).length, no_photo: vols.filter(a => !a.photo).length,
+      no_email: vols.filter(a => !emailOk(a.email)).length, unsubscribed: vols.filter(a => a.unsubscribed_at).length,
+      not_checked_in: vols.filter(a => !a.checked_in_at).length, saved: !!(await savedVolunteerIds(c)),
+      rows: vols.map(a => ({ id: a.id, name: a.name, email: a.email, designation: a.designation, photo: a.photo, checked_in: !!a.checked_in_at,
+        sent: d.ready.has('a' + a.id) ? 'certificate' : d.photo.has('a' + a.id) ? 'photo request' : '' })),
+      choices: choices.map(a => ({ id: a.id, name: a.name, email: a.email, title: [clean(a.job_title), clean(a.company)].filter(Boolean).join(', '),
+        checked_in: !!a.checked_in_at, photo: !!clean(a.avatar_url), on: on.has(Number(a.id)) })),
+    }
+  } catch (e: any) { out.groups.volunteers = { error: String(e?.message || e).slice(0, 200) } }
   // Each email as it would go, to a made-up person.
   const sample: Record<CertGroup, any> = {
     participants: { name: 'Asha Kumar', email: 'preview@example.com', items: [{ kind: 'C', id: 0, label: 'Certificate of participation' }] },
     speakers: { name: 'Dr. Asha Kumar', email: 'preview@example.com', items: [{ kind: 'S', id: 0, ref: 0, label: 'Panellist: AI for Viksit Bharat' }, { kind: 'S', id: 0, ref: 0, label: 'Moderator: Improving Learning Outcomes with AI' }] },
     stage: { name: 'Asha Kumar', email: 'preview@example.com', items: [{ kind: 'T', id: 0, label: 'Innovation Stage: Reimagining Marketplaces in the era of AI Agents' }] },
+    volunteers: { name: 'Asha Kumar', email: 'preview@example.com', items: [{ kind: 'C', id: 0, label: 'Volunteer certificate' }] },
   }
   out.emails = {}
-  for (const g of ['participants', 'speakers', 'stage'] as CertGroup[]) {
+  for (const g of GROUPS) {
     out.emails[g] = { ready: await mailFor(c, 'ready', g, sample[g], true), photo: await mailFor(c, 'photo', g, sample[g], true) }
   }
   return c.json(out)
@@ -363,13 +462,38 @@ cr.post('/api/admin/certificates/test', async (c) => {
   const b = await c.req.json().catch(() => ({})) as any
   const to = String(b.to || '').trim()
   if (!emailOk(to)) return c.json({ error: 'Type the address to send the test to.' }, 400)
-  const group = (['participants', 'speakers', 'stage'].includes(String(b.group)) ? b.group : 'participants') as CertGroup
+  const group = (GROUPS.includes(String(b.group) as CertGroup) ? b.group : 'participants') as CertGroup
   const variant = b.variant === 'photo' ? 'photo' : 'ready'
   if (!hooks.sendEmail) return c.json({ error: 'Email is not set up on this server.' }, 503)
   const mail = await mailFor(c, variant, group, { name: 'Asha Kumar', email: to, items: [{ kind: group === 'speakers' ? 'S' : group === 'stage' ? 'T' : 'C', id: 0, ref: 0, label: 'Your certificate' }] }, true)
   const sent = await hooks.sendEmail(c, to, '[Test] ' + mail.subject, mail.html)
   if (!sent.ok) return c.json({ error: sent.error || 'The email did not go.' }, 502)
   return c.json({ success: true })
+})
+
+// Who volunteered, as ticked in Admin: the whole list each time (attendees of the event only).
+cr.post('/api/admin/certificates/volunteers', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  if (!Array.isArray(b.ids)) return c.json({ error: 'Send the list of volunteers.' }, 400)
+  const want = [...new Set(b.ids.map((v: any) => parseInt(String(v), 10)).filter((n: number) => Number.isInteger(n) && n > 0))].slice(0, 1000) as number[]
+  let ids: number[] = []
+  if (want.length) {
+    const { results } = await c.env.DB.prepare(
+      'SELECT id FROM attendees WHERE event_id = 1 AND id IN (SELECT CAST(value AS INTEGER) FROM json_each(?)) ORDER BY id'
+    ).bind(JSON.stringify(want)).all()
+    ids = ((results as any[]) || []).map(r => Number(r.id))
+  }
+  const before = await volunteerIdSet(c)
+  await c.env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at"
+  ).bind(VOL_KEY, JSON.stringify({ ids })).run()
+  const after = new Set(ids)
+  try {
+    if (hooks.audit) await hooks.audit(c, 'certificates.volunteers', 'app_settings', VOL_KEY, {
+      count: ids.length, added: ids.filter(n => !before.has(n)), removed: [...before].filter(n => !after.has(n)),
+    })
+  } catch { /* the list is saved; the audit row is a record only */ }
+  return c.json({ success: true, count: ids.length })
 })
 
 // ---------- the page the email opens: /certificate/<code>?download=1 ----------
@@ -383,7 +507,7 @@ export function certDownloadPageHTML(o: { data: any | null; state: 'ok' | 'no-ph
     body = `<h1>We could not find this certificate</h1><p>The link is not complete, or the certificate is no longer on our list. Write to ${MAIL} and we will send it to you.</p>`
   } else if (o.state === 'no-photo') {
     body = `<h1>Add your photo first</h1><p>Your certificate carries your photo, and we do not have one on record for you yet.</p>`
-      + (d.group === 'participants'
+      + (byAttendee(d.group)
         ? `<ol><li>Tap <b>Add my photo</b> and sign in to the event app.</li><li>Add a clear photo of your face and save.</li><li>Open this link again: your certificate will be here.</li></ol><p class="c"><a class="btn" href="/app?action=complete-profile">Add my photo</a></p>`
         : `<p>Please send a clear photo of yourself to ${MAIL}. We will add it and send your certificate.</p>`)
   } else {

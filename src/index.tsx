@@ -12,7 +12,7 @@ import talkBrief, { configureTalkBrief, saturdayTalkReminders } from './routes/t
 import speakerPhotos, { configurePhotos } from './routes/photos'
 import photoTracking, { photoPageBeacon, withOpenPixel } from './routes/photo-tracking'
 import findPhotos, { configureFindPhotos, findPhotosWhereSql } from './routes/find-photos'
-import certificates, { configureCertificates, certAudienceRows, certDrawData, certDownloadPageHTML, certGroupOfRef, CERT_GROUP_REF, CERT_KINDS, CERT_RENDER_V } from './routes/certificates'
+import certificates, { configureCertificates, certAudienceRows, certDrawData, certDownloadPageHTML, certGroupOfRef, certVolunteerOf, CERT_GROUP_REF, CERT_KINDS, CERT_RENDER_V } from './routes/certificates'
 import exhibitorPhotos, { configureExhibitorPhotos, boothAlbum } from './routes/exhibitor-photos'
 import morePhotos, { configureMorePhotos } from './routes/more-photos'
 import myPhotos, { configureMyPhotos } from './routes/my-photos'
@@ -14496,13 +14496,17 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
   const start = String(row.start_date || '')
   const started = !!start && todayIst >= start
   const attended = !!row.checked_in_at
+  // A volunteer, ticked by the organisers (routes/certificates.ts, 24 Nov 2026), gets the
+  // volunteer certificate, scanned in at the badge desk or not.
+  let volunteer: { designation: string } | null = null
+  try { volunteer = await certVolunteerOf(c, Number(id)) } catch { volunteer = null }
 
   const months = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December']
   const parts = start.split('-')
   const startLabel = parts.length === 3 ? Number(parts[2]) + ' ' + months[Number(parts[1]) - 1] : ''
 
-  const reason = attended && started ? ''
+  const reason = (attended || volunteer) && started ? ''
     : started
       ? 'Your certificate unlocks the moment the badge desk scans you in at the venue.'
       : 'Certificates go to the people who turn up. Yours unlocks when you check in at the badge desk'
@@ -14536,10 +14540,11 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
     }
   } catch { workshop = null }
 
-  const eligible = attended && started
+  const eligible = (attended || !!volunteer) && started
   return c.json({
     eligible,
     attended, started,
+    volunteer,
     checked_in_at: row.checked_in_at || null,
     starts: start || null,
     ends: row.end_date || null,
@@ -14551,7 +14556,7 @@ app.get('/api/attendees/:id/certificate-eligibility', async (c) => {
     // The certificate of participation carries their photo and designation (24 Nov 2026);
     // without a photo the app asks for one first.
     photo: String(row.avatar_url || '').trim(),
-    designation: [row.job_title, row.company].map((s: any) => String(s || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join(', '),
+    designation: volunteer ? volunteer.designation : [row.job_title, row.company].map((s: any) => String(s || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join(', '),
     ...(eligible || isAdminRequest(c) ? { verify: await certVerifyUrl(c, 'C', id) } : {}),
   })
 })
@@ -14645,6 +14650,14 @@ app.get('/certificate/:code', async (c) => {
       return c.html(certCheckPageHTML({
         state: 'ok', name: d.name, what: 'Certificate of appreciation', lead: 'presented on the Innovation Stage', title: d.topic,
         lines: [d.company ? 'For ' + d.company : '', ['Aryabhata Theatre', d.day].filter(Boolean).join(' · '), 'Bharat AI Innovation 2026 · World Trade Center, Mumbai'].filter(Boolean),
+        signers: [], certId: d.certId,
+      }))
+    }
+    // A volunteer's C code (routes/certificates.ts, 24 Nov 2026).
+    if (v.kind === 'C' && d.group === 'volunteers') {
+      return c.html(certCheckPageHTML({
+        state: 'ok', name: d.name, what: 'Certificate of appreciation', lead: 'volunteered at', title: 'Bharat AI Innovation 2026',
+        lines: [d.designation || '', 'India’s B2B AI Conference & Exhibition', '20 to 21 November 2026 · World Trade Center, Mumbai'].filter(Boolean),
         signers: [], certId: d.certId,
       }))
     }
@@ -21162,10 +21175,10 @@ app.post('/api/admin/campaigns', async (c) => {
   if (!kind) return c.json({ error: 'Unknown campaign type.' }, 400)
   const audience = String(body.audience || 'all')
   let refId = body.ref_id ? parseInt(String(body.ref_id), 10) : null
-  // Certificates (routes/certificates.ts): ref_id is the group, 1 participants, 2 speakers, 3 stage.
+  // Certificates (routes/certificates.ts): ref_id is the group, 1 participants, 2 speakers, 3 stage, 4 volunteers.
   if (CERT_KINDS.includes(kind)) {
-    const g = String(body.group || ([1, 2, 3].includes(Number(refId)) ? certGroupOfRef(refId) : '')) as keyof typeof CERT_GROUP_REF
-    if (!CERT_GROUP_REF[g]) return c.json({ error: 'A certificate run is for participants, speakers or stage.' }, 400)
+    const g = String(body.group || ([1, 2, 3, 4].includes(Number(refId)) ? certGroupOfRef(refId) : '')) as keyof typeof CERT_GROUP_REF
+    if (!CERT_GROUP_REF[g]) return c.json({ error: 'A certificate run is for participants, speakers, stage or volunteers.' }, 400)
     refId = CERT_GROUP_REF[g]
   }
   if (kind === 'upgrade') {
@@ -30320,7 +30333,7 @@ function mainPageHTML(): string {
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
-  <script src="/js/cert-render.js?v=2026112404" defer></script>
+  <script src="/js/cert-render.js?v=2026112405" defer></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
   <script src="/js/social-card.js?v=20261102"></script>
@@ -39243,16 +39256,19 @@ function mainPageScript(): string {
       // so the organisers check exactly what the attendee downloads.
       if (!window.BhaiCert) { showToast('Your certificate could not be drawn. Please reload the page and try again.', 'error'); return; }
       // verifyUrl: the signed QR the server hands out with a certificate it grants (24 Nov 2026).
+      // A volunteer gets the volunteer certificate in place of the participation one.
+      const vol = ws ? null : ((gate && gate.volunteer) || null);
       const canvas = await BhaiCert.draw({
         id: user.id, name: user.name || '',
         workshop: ws ? { title: ws.title, speaker: ws.speaker, day: ws.day } : null,
+        volunteer: vol,
         pass: gate && gate.pass,
         photo: ws ? '' : myPhoto,
         designation: ws ? '' : ((gate && gate.designation) || [user.job_title, user.company].map(function (s) { return String(s || '').trim(); }).filter(Boolean).join(', ')),
         verifyUrl: (ws ? ws.verify : gate && gate.verify) || '',
       });
       // Download
-      const how = await deliverImage(canvas.toDataURL('image/png'), BhaiCert.filename(!!ws), { title: ws ? 'Your workshop certificate' : 'Your certificate' });
+      const how = await deliverImage(canvas.toDataURL('image/png'), BhaiCert.filename(!!ws, !!vol), { title: ws ? 'Your workshop certificate' : vol ? 'Your volunteer certificate' : 'Your certificate' });
       if (how === 'downloaded') showToast('Certificate downloaded', 'success');
     }
 
@@ -41945,7 +41961,7 @@ function adminPageHTML(): string {
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
   <script src="/js/pass-render.js?v=20261114"></script>
-  <script src="/js/cert-render.js?v=2026112404" defer></script>
+  <script src="/js/cert-render.js?v=2026112405" defer></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>
   <!-- Same renderer the delegate's own app uses, so a card the desk sends a speaker
@@ -42983,7 +42999,7 @@ function adminPageScript(): string {
     }
     // Certificates by email (24 Nov 2026) sit above the desk in their own box, drawn by
     // /js/admin-certs.js (one global, CertDesk) with the desk's stylesheet.
-    var CERT_DESK_VERSION = '20261124a';
+    var CERT_DESK_VERSION = '20261124b';
     function certDeskLoad() {
       if (window.CertDesk) return Promise.resolve();
       return new Promise(function (resolve, reject) {
@@ -43449,8 +43465,8 @@ function adminPageScript(): string {
         // Event style with their photo (24 Nov 2026). Without one, Admin still shows it (with the
         // seal), and says the app asks them for a photo first.
         var conf = await BhaiCert.draw({ id: id, name: name, pass: g.pass, verifyUrl: g.verify || '',
-          photo: g.photo || '', designation: g.designation || '' });
-        items.push({ who: name, label: 'Certificate of participation' + (g.photo ? '' : ' (no photo yet: the app asks them to add one first)'), ok: !!g.eligible, reason: g.reason || '',
+          photo: g.photo || '', designation: g.designation || '', volunteer: g.volunteer || null });
+        items.push({ who: name, label: (g.volunteer ? 'Volunteer certificate' : 'Certificate of participation') + (g.photo ? '' : ' (no photo yet: the app asks them to add one first)'), ok: !!g.eligible, reason: g.reason || '',
           url: conf.toDataURL('image/png'), file: adminCertFile(name, false) });
         if (g.workshop) {
           var wc = await BhaiCert.draw({ id: id, name: name, workshop: { title: g.workshop.title, speaker: g.workshop.speaker, day: g.workshop.day },

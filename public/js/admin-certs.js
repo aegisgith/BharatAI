@@ -11,6 +11,10 @@
  * cert_photo, sent by the minute clock at about 30 a minute; nobody gets the same email
  * twice). Server: src/routes/certificates.ts. Styles: admin-after.css (the afd- classes).
  *
+ * Volunteers (same day: "Pillai students who volunteered, we need to make their certificate
+ * with photo"): the organisers tick who volunteered among the Organiser pass holders and
+ * save the list; they get the volunteer certificate instead of the participation one.
+ *
  *   CertDesk.mount(element, { api, toast, startCampaign })
  */
 (function (w) {
@@ -18,9 +22,12 @@
 
   var opts = null, host = null, data = null, busy = false;
   var passOn = null;   // the passes ticked for participants
+  var volOn = null, volDirty = false;   // who is ticked as a volunteer, and whether that is unsaved
   var GROUPS = [
     { key: 'participants', ref: 1, title: 'Participants',
-      who: 'Everyone checked in at the venue.', what: 'Certificate of participation (saffron), with their pass and their photo.' },
+      who: 'Everyone checked in at the venue, volunteers apart.', what: 'Certificate of participation (saffron), with their pass and their photo.' },
+    { key: 'volunteers', ref: 4, title: 'Volunteers',
+      who: 'The people ticked below. To start with: the Pillai University students on Organiser passes who were checked in.', what: 'Certificate of appreciation for volunteering (blue), with their photo and their college. They do not get the participation one as well.' },
     { key: 'speakers', ref: 2, title: 'Speakers',
       who: 'Everyone on a published session of the programme (Conference), one certificate per session, one email per person.', what: 'Certificate of appreciation (gold), with the session, the hall and the day.' },
     { key: 'stage', ref: 3, title: 'Innovation Stage',
@@ -52,10 +59,20 @@
     var d = (data && data.groups && data.groups[g.key]) || {};
     if (d.error) return '<section class="afd-panel"><b>' + esc(g.title) + '</b><p class="afd-warn">' + esc(d.error) + '</p></section>';
     var ready = due(g, 'ready'), photo = due(g, 'photo');
-    var facts = g.key === 'participants'
-      ? num(d.total) + ' checked in: <b>' + num(d.with_photo) + '</b> with a photo, <b>' + num(d.no_photo) + '</b> without'
-        + (d.unsubscribed ? ', ' + num(d.unsubscribed) + ' unsubscribed (left out)' : '') + (d.no_email ? ', ' + num(d.no_email) + ' with no email' : '') + '.'
+    var att = g.key === 'participants' || g.key === 'volunteers';
+    var facts = att
+      ? num(d.total) + (g.key === 'volunteers' ? ' volunteers' : ' checked in') + ': <b>' + num(d.with_photo) + '</b> with a photo, <b>' + num(d.no_photo) + '</b> without'
+        + (d.unsubscribed ? ', ' + num(d.unsubscribed) + ' unsubscribed (left out)' : '') + (d.no_email ? ', ' + num(d.no_email) + ' with no email' : '')
+        + (d.not_checked_in ? ', ' + num(d.not_checked_in) + ' never scanned in at the badge desk' : '') + '.'
       : num(d.certificates) + ' certificates for ' + num(d.addresses) + ' people: <b>' + num(d.with_photo) + '</b> with a photo, <b>' + num(d.no_photo) + '</b> without.';
+    var vols = g.key !== 'volunteers' ? '' : '<fieldset class="cd-passes cd-vols"><legend>Who volunteered (Organiser pass holders)'
+      + (d.saved ? '' : ': a starting list, not saved yet') + '</legend>' + (d.choices || []).map(function (p) {
+        var on = volOn ? !!volOn[p.id] : !!p.on;
+        return '<label><input type="checkbox" data-vol="' + esc(p.id) + '"' + (on ? ' checked' : '') + '> ' + esc(p.name)
+          + ' <span class="afd-sub">' + esc([p.title, String(p.email || '').replace(/^[^@]*/, ''), p.checked_in ? 'scanned in' : 'never scanned in', p.photo ? 'photo' : 'no photo'].filter(Boolean).join(' · ')) + '</span></label>';
+      }).join('') + '</fieldset><div class="afd-actions"><button type="button" class="afd-btn afd-small" data-act="vol-save" data-g="volunteers"' + (volDirty || !d.saved ? '' : ' disabled') + '>Save the list</button>'
+      + (volDirty ? ' <span class="afd-warn">Not saved: save the list before you email anyone.</span>' : '') + '</div>';
+    if (g.key === 'volunteers' && volDirty) { ready = []; photo = []; }
     var passes = g.key !== 'participants' ? '' : '<fieldset class="cd-passes"><legend>Passes that get it</legend>' + (d.passes || []).map(function (p) {
       var on = !passOn || passOn[p.pass];
       return '<label><input type="checkbox" data-pass="' + esc(p.pass) + '"' + (on ? ' checked' : '') + '> ' + esc(p.pass)
@@ -65,15 +82,16 @@
     if ((d.no_email || []).length && g.key !== 'participants') warn += '<p class="afd-warn">No email address for: ' + d.no_email.map(function (x) { return esc(x.name); }).join(', ') + '.</p>';
     if ((d.no_time || []).length) warn += '<p class="afd-warn">' + num(d.no_time.length) + ' talks never got a time on the stage, so they get no certificate: ' + d.no_time.map(function (x) { return esc(x.name + (x.company ? ' (' + x.company + ')' : '')); }).join(', ') + '.</p>';
     var rows = (d.rows || []).map(function (r) {
-      var what = g.key === 'participants' ? esc(r.pass) : g.key === 'speakers' ? (r.sessions || []).map(esc).join('<br>') : (r.talks || []).map(esc).join('<br>');
+      var what = g.key === 'participants' ? esc(r.pass) : g.key === 'volunteers' ? (r.checked_in ? 'Yes' : '<b>No</b>')
+        : g.key === 'speakers' ? (r.sessions || []).map(esc).join('<br>') : (r.talks || []).map(esc).join('<br>');
       return '<tr><td>' + esc(r.name) + (r.designation ? '<div class="afd-sub">' + esc(r.designation) + '</div>' : '') + '</td>'
         + '<td>' + esc(r.email || '') + (r.via_booth ? '<div class="afd-sub">booth contact</div>' : '') + '</td><td>' + what + '</td>'
         + '<td>' + (r.photo ? 'Yes' : '<b>No</b>') + '</td><td>' + esc(r.sent || 'Not yet') + '</td></tr>';
     }).join('');
     return '<section class="afd-panel" data-group="' + g.key + '">'
       + '<h3>' + esc(g.title) + '</h3>'
-      + '<p class="afd-note">' + esc(g.who) + ' ' + esc(g.what) + ' Without a photo on record they get an email asking for one instead' + (g.key === 'participants' ? ' (they add it in the app).' : ' (they reply with it; add it in Conference or Innovation Talks, then run the certificates again).') + '</p>'
-      + '<p>' + facts + '</p>' + passes + warn
+      + '<p class="afd-note">' + esc(g.who) + ' ' + esc(g.what) + ' Without a photo on record they get an email asking for one instead' + (att ? ' (they add it in the app).' : ' (they reply with it; add it in Conference or Innovation Talks, then run the certificates again).') + '</p>'
+      + '<p>' + facts + '</p>' + passes + vols + warn
       + '<div class="afd-actions">'
       + '<button type="button" class="afd-btn afd-small" data-act="cert-preview" data-g="' + g.key + '" data-v="ready">Preview the certificate email</button>'
       + '<button type="button" class="afd-btn afd-small" data-act="cert-preview" data-g="' + g.key + '" data-v="photo">Preview the photo request</button>'
@@ -81,7 +99,7 @@
       + '<button type="button" class="afd-btn afd-small afd-primary" data-act="cert-run" data-g="' + g.key + '" data-v="ready"' + (ready.length ? '' : ' disabled') + '>Email ' + num(ready.length) + ' certificates</button>'
       + '<button type="button" class="afd-btn afd-small afd-primary" data-act="cert-run" data-g="' + g.key + '" data-v="photo"' + (photo.length ? '' : ' disabled') + '>Email ' + num(photo.length) + ' photo requests</button>'
       + '</div>'
-      + '<details><summary>The list (' + num((d.rows || []).length) + ')</summary><div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Person</th><th>Email</th><th>' + (g.key === 'participants' ? 'Pass' : g.key === 'speakers' ? 'Sessions' : 'Talk') + '</th><th>Photo</th><th>Emailed</th></tr></thead><tbody>' + rows + '</tbody></table></div></details>'
+      + '<details><summary>The list (' + num((d.rows || []).length) + ')</summary><div class="afd-table-wrap"><table class="afd-table"><thead><tr><th>Person</th><th>Email</th><th>' + (g.key === 'participants' ? 'Pass' : g.key === 'volunteers' ? 'Scanned in' : g.key === 'speakers' ? 'Sessions' : 'Talk') + '</th><th>Photo</th><th>Emailed</th></tr></thead><tbody>' + rows + '</tbody></table></div></details>'
       + '</section>';
   }
 
@@ -131,6 +149,14 @@
           try { await opts.api.post('/api/admin/certificates/test', { to: to, group: g.key, variant: variant }); toast('Test sent to ' + to + '.'); }
           catch (err) { toast((err && err.message) || 'The test did not go.', 'error'); }
         });
+      } else if (act === 'vol-save') {
+        var vd = (data.groups && data.groups.volunteers) || {};
+        var ids = (vd.choices || []).filter(function (p) { return volOn ? !!volOn[p.id] : !!p.on; }).map(function (p) { return p.id; });
+        busy = true; b.disabled = true;
+        var res = await opts.api.post('/api/admin/certificates/volunteers', { ids: ids });
+        toast('Saved: ' + num(res && res.count != null ? res.count : ids.length) + ' volunteers.');
+        volOn = null; volDirty = false;
+        await refresh();
       } else if (act === 'cert-run') {
         var list = due(g, variant);
         if (!list.length) return;
@@ -154,6 +180,14 @@
 
   function onChange(e) {
     var t = e.target;
+    if (t && t.hasAttribute && t.hasAttribute('data-vol')) {
+      var vd = data && data.groups && data.groups.volunteers;
+      if (!volOn) { volOn = {}; ((vd && vd.choices) || []).forEach(function (p) { volOn[p.id] = !!p.on; }); }
+      volOn[t.getAttribute('data-vol')] = !!t.checked;
+      volDirty = true;
+      draw();
+      return;
+    }
     if (!t || !t.hasAttribute || !t.hasAttribute('data-pass')) return;
     var d = data && data.groups && data.groups.participants;
     passOn = passOn || {};

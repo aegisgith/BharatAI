@@ -267,7 +267,9 @@
   // a campus panel is its own date and college. Speakers and Innovation Stage presenters
   // get a certificate of appreciation (organiser, 24 Nov 2026), each in its own colour:
   // saffron for taking part, gold for a speaker, green for the Innovation Stage.
-  var GOLD = '#8A6514', GOLD_RING = '#E0B252', STAGE = '#0B6B2E', STAGE_RING = '#2FA84F';
+  // A volunteer's is blue, after the chakra (organiser, 24 Nov 2026: "Pillai students who
+  // volunteered, we need to make their certificate with photo").
+  var GOLD = '#8A6514', GOLD_RING = '#E0B252', STAGE = '#0B6B2E', STAGE_RING = '#2FA84F', VOL = '#1E4BA8', VOL_RING = '#4C7FE8';
   function content(o) {
     var k = contentBody(o);
     k.eyebrow = k.eyebrow || 'CERTIFICATE OF PARTICIPATION';
@@ -283,7 +285,22 @@
     return k;
   }
   function contentBody(o) {
-    var ws = o.workshop || null, pn = o.panel || null, sp = o.speaker || null, st = o.stage || null;
+    var ws = o.workshop || null, pn = o.panel || null, sp = o.speaker || null, st = o.stage || null, vo = o.volunteer || null;
+    if (vo) {
+      // A volunteer at the venue, ticked by the organisers (Admin -> After the Event ->
+      // Certificates); under the name, their college ("Student, Pillai University").
+      return {
+        kind: 'volunteer', eyebrow: 'CERTIFICATE OF APPRECIATION', lead1: 'This is presented to',
+        lead: 'with thanks for volunteering at', headline: 'Bharat AI Innovation 2026', second: '',
+        subs: [['India’s B2B AI Conference & Exhibition', SLATE, '500', 21], ['20–21 November 2026 · World Trade Center, Mumbai', SLATE, '500', 21]],
+        seal: 'BHARAT AI INNOVATION · MUMBAI 2026 · VOLUNTEER · ',
+        when: '20–21 NOVEMBER 2026', where: 'World Trade Center, Mumbai',
+        left: COMMITTEE, certId: 'BHAI-VOL-' + pad(o.id, 4), foot: '',
+        accent: VOL, ring: VOL_RING, glow: '#A9C4FF', pillText: '#FFFFFF', pill: 'Volunteer',
+        designation: String(vo.designation || ''),
+        eventSubs: [['India’s B2B AI Conference & Exhibition'], ['20–21 November 2026 · World Trade Center, Mumbai']],
+      };
+    }
     if (sp) {
       // A speaker on the programme: the session they spoke in, as moderator, panellist,
       // keynote or speaker, from Admin -> Conference.
@@ -579,8 +596,8 @@
     });
   }
 
-  function filename(isWorkshop) {
-    return isWorkshop ? 'BharatAI-2026-Workshop-Certificate.png' : 'BharatAI-2026-Certificate.png';
+  function filename(isWorkshop, isVolunteer) {
+    return isWorkshop ? 'BharatAI-2026-Workshop-Certificate.png' : isVolunteer ? 'BharatAI-2026-Volunteer-Certificate.png' : 'BharatAI-2026-Certificate.png';
   }
 
   // Kept for a page still running the app code from before 24 Nov 2026, whose
