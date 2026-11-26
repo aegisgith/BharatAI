@@ -51,7 +51,9 @@
 // 23 Nov 2026 (bhai-v43): style.css?v=20261123, the 15-link menu with Gallery.
 // 24 Nov 2026 (bhai-v44): style.css?v=20261124, the phone menu scrolls inside the screen (16 links).
 // 24 Nov 2026 (bhai-v45): style.css?v=20261124b, Passes and Hotels left the menu, the menu button stays on one line.
-const VERSION = 'bhai-v45';
+// 27 Nov 2026 (bhai-v46): pass-render.js?v=20261127a: the AI Agent Summit 2027 pass (its name, day,
+// logo and address) and the Buyer Pass printed as itself.
+const VERSION = 'bhai-v46';
 const SHELL = `shell-${VERSION}`;
 const DATA = `data-${VERSION}`;
 // The badge desk's scanner page, kept so it opens with no internet (12 Nov 2026).
@@ -82,7 +84,7 @@ const PRECACHE = [
   '/images/logo-nav.webp',             // every page's header
   '/images/icon-192.png',
   '/manifest.webmanifest',
-  '/js/pass-render.js?v=20261114',
+  '/js/pass-render.js?v=20261127a',
   '/js/vendor/qrcode-generator.js?v=20261029',   // the pass draws its QR with it
   '/css/style.css?v=20261124b',        // marketing shell: /, /conference, /exhibition, ...
   '/js/main.js?v=20261112b',

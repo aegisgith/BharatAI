@@ -40,6 +40,8 @@
     // 14 Nov 2026: the paid Expo Pass (Rs 999, the exhibition floor), in place of the free Visitor Pass.
     // Deep orange: not the blue Visitor, the gold VIP or the black-and-saffron Organiser.
     expo:     { label: 'EXPO PASS',     hi: 'एक्सपो पास',          c1: '#BF360C', c2: '#9A2B09', edge: 'rgba(216,67,21,0.55)',   inner: 'rgba(216,67,21,0.30)',  top: '#2b0d04' },
+    // 27 Nov 2026: the AI Agent Summit's Buyer Pass, which printed VISITOR PASS.
+    buyer:    { label: 'BUYER PASS',    hi: 'क्रेता पास',          c1: '#3E8E7E', c2: '#2c6b5e', edge: 'rgba(62,142,126,0.50)',  inner: 'rgba(62,142,126,0.28)', top: '#0a2420' },
     investor: { label: 'INVESTOR PASS', hi: 'निवेशक पास',         c1: '#C8803E', c2: '#9c5f27', edge: 'rgba(200,128,62,0.50)',  inner: 'rgba(200,128,62,0.28)', top: '#2b1a0a' },
     startup:  { label: 'STARTUP PASS',  hi: 'स्टार्टअप पास',       c1: '#7CB342', c2: '#5a8a2c', edge: 'rgba(124,179,66,0.50)',  inner: 'rgba(124,179,66,0.28)', top: '#142408' },
     staff:    { label: 'SUPPORT STAFF', hi: 'सहायक दल',           c1: '#78909C', c2: '#546E7A', edge: 'rgba(120,144,156,0.50)', inner: 'rgba(120,144,156,0.28)', top: '#141c21' }
@@ -68,6 +70,7 @@
     if (b.indexOf('influencer') >= 0) return 'influencer';
     if (b.indexOf('media') >= 0 || b.indexOf('press') >= 0) return 'media';
     if (b.indexOf('investor') >= 0) return 'investor';
+    if (b.indexOf('buyer') >= 0) return 'buyer';
     if (b.indexOf('startup') >= 0) return 'startup';
     if (b.indexOf('staff') >= 0) return 'staff';
     return 'visitor';
@@ -129,13 +132,17 @@
     var proxy = function (u) { return '/api/image-proxy?url=' + encodeURIComponent(u); };
     function px(v) { return v * S; }
 
-    var passId = 'BHAI-2026-' + String(user.id == null ? '0' : user.id).padStart(4, '0');
+    // The AI Agent Summit 2027 (event 3, 27 Nov 2026) draws its own name, day, logo and
+    // address on the same pass; the QR and the badge desk are the same.
+    var summit = Number(user && user.event_id) === 3;
+    var passId = (summit ? 'AAS-2027-' : 'BHAI-2026-') + String(user.id == null ? '0' : user.id).padStart(4, '0');
     // Was networking.bharataiinnovation.com?email=<address> — a subdomain that 301s
     // to the homepage, and a code that handed the holder's email to anyone who
     // photographed the pass. It now points at the signed verification page.
+    var site = summit ? 'https://aiagentssummit.org' : 'https://bharataiinnovation.com';
     var qrTarget = opts.token
-      ? 'https://bharataiinnovation.com/verify/' + encodeURIComponent(opts.token)
-      : 'https://bharataiinnovation.com/app';
+      ? site + '/verify/' + encodeURIComponent(opts.token)
+      : site + '/app';
 
     var logo = null, aegis = null, agba = null, assessfy = null, qr = null, photo = null, orgLogo = null;
 
@@ -166,10 +173,12 @@
         catch (e2) { photoFailed = true; }
       }
     }
-    try { logo = await loadImage('/images/Bharat%20AI%20Innovation%20Logo.png'); } catch (e) {}
+    try { logo = await loadImage(summit ? '/ai-agent-summit/images/brand/logo-horizontal-dark.png' : '/images/Bharat%20AI%20Innovation%20Logo.png'); } catch (e) {}
     try { aegis = await loadImage('/images/passes/aegis.png'); } catch (e) {}
-    try { agba = await loadImage('/images/passes/agba.png'); } catch (e) {}
-    try { assessfy = await loadImage('/images/passes/assessfy.jpg'); } catch (e) {}
+    if (!summit) {
+      try { agba = await loadImage('/images/passes/agba.png'); } catch (e) {}
+      try { assessfy = await loadImage('/images/passes/assessfy.jpg'); } catch (e) {}
+    }
     /* The QR is drawn here, by the bundled encoder (/js/vendor/qrcode-generator.js),
      * so no third-party service sits in the path at the moment somebody asks for
      * their pass. Until 29 Oct 2026 every pass fetched its code from
@@ -253,8 +262,12 @@
       y += rh + px(18);
     }
 
-    // ---- logo on white ----
-    if (logo) {
+    // ---- logo: the summit's is drawn for a dark ground, Bharat AI's on white ----
+    if (logo && summit) {
+      var sw = px(230), sh = sw * (logo.height / logo.width);
+      ctx.drawImage(logo, mid - sw / 2, y + px(6), sw, sh);
+      y += sh + px(10);
+    } else if (logo) {
       var lw = px(120), lh = lw * (logo.height / logo.width);
       ctx.fillStyle = '#ffffff';
       roundRect(ctx, mid - lw / 2 - px(12), y, lw + px(24), lh + px(16), px(8)); ctx.fill();
@@ -264,6 +277,13 @@
 
     // ---- wordmarks ----
     y += px(36);
+    if (summit) {
+      // The logo above already says AI Agent Summit.
+      y -= px(14);
+      f('700', 15, MONT); centre('Mumbai 2027', y, '#c6ff3d');
+      y += px(21);
+      f('400', 13, INTER); centre('Live demos of agents that do real work', y, T.gold ? '#9a8a5a' : '#8892b0');
+    } else {
     f('800', 22, MONT);
     tricolour([{ t: 'Bharat', c: '#FF7A00' }, { t: 'AI', c: '#ffffff' }, { t: 'Innovation', c: '#00996C' }], y);
     y += px(21);
@@ -272,6 +292,7 @@
     y += px(20);
     f('400', 13, INTER);
     centre('Conference & Exhibition 2026', y, T.gold ? '#9a8a5a' : '#8892b0');
+    }
 
     y += px(24); divider(y, T.gold); y += px(24);
 
@@ -375,9 +396,9 @@
     y += ph + px(24); divider(y, T.gold); y += px(24);
 
     // ---- when and where ----
-    f('700', 17, MONT); centre('20–21 Nov 2026', y + px(14), '#D4A21A'); y += px(24);
+    f('700', 17, MONT); centre(summit ? 'Friday 16 April 2027' : '20–21 Nov 2026', y + px(14), summit ? '#c6ff3d' : '#D4A21A'); y += px(24);
     f('400', 13, INTER); centre('WTC Mumbai, Cuffe Parade, Mumbai', y + px(11), '#c3ccdd'); y += px(19);
-    f('400', 13, INTER); centre('9:00 AM – 6:00 PM', y + px(11), T.gold ? '#9a8a5a' : '#8892b0'); y += px(30);
+    f('400', 13, INTER); centre(summit ? 'Doors open 8:30 AM' : '9:00 AM – 6:00 PM', y + px(11), T.gold ? '#9a8a5a' : '#8892b0'); y += px(30);
 
     // ---- ticket id + QR ----
     f('400', 13, '"Courier New", monospace');
@@ -431,7 +452,7 @@
     // subdomain for the same reason (see the note above), but the printed line was
     // left behind. /app is where the app actually lives and where this pass came
     // from, so it is the one address on here worth reading.
-    centre('bharataiinnovation.com/app', y + px(9), '#4a577a');
+    centre(summit ? 'aiagentssummit.org/app' : 'bharataiinnovation.com/app', y + px(9), '#4a577a');
     y += px(30);
 
     // ---- borders, then crop to the height actually used ----
@@ -447,7 +468,7 @@
 
     return {
       dataUrl: out.toDataURL('image/png'),
-      filename: 'BHAI-2026-' + T.label.replace(/ /g, '') + '-' + String(user.name || 'attendee').replace(/[^A-Za-z0-9]+/g, '-') + '.png',
+      filename: (summit ? 'AAS-2027-' : 'BHAI-2026-') + T.label.replace(/ /g, '') + '-' + String(user.name || 'attendee').replace(/[^A-Za-z0-9]+/g, '-') + '.png',
       tier: tierKey,
       label: T.label,
       width: W,

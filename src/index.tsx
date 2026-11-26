@@ -9307,7 +9307,9 @@ app.get('/api/attendees/:id', async (c) => {
   const shutOut = await requireSignedIn(c); if (shutOut) return shutOut
   const id = c.req.param('id')
   const viewer = await directoryViewer(c)
-  const cols = isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS
+  // Your own row comes back whole, as sign-in returns it: the summit app restores a saved
+  // sign-in from it, because the summit has no register route to call (27 Nov 2026).
+  const cols = isAdminRequest(c) || (viewer.id && String(viewer.id) === String(id)) ? '*' : ATTENDEE_PUBLIC_COLS
   const attendee = await c.env.DB.prepare(`SELECT ${cols} FROM attendees WHERE id = ?`).bind(id).first() as any
   const locked = () => c.json({ error: 'Open this profile from the directory. A Delegate, Academic or VIP pass shows everyone.', locked: true }, 403)
   // Someone in another event, or at the summit someone without its app, is not there to see.
@@ -30347,8 +30349,15 @@ app.get('/admin', (c) => {
 // _routes.json exclude in vite.config.ts), so the SEO-rich brochure is the
 // front door and the app is one click in.
 app.get('/app', (c) => {
-  return c.html(mainPageHTML())
+  return c.html(mainPageHTML(appEventFor(c)))
 })
+
+// The AI Agent Summit's own domain serves this same app for event 3 (27 Nov 2026): the
+// page carries data-event="3", the client asks event 3's routes, and the cookie and the
+// saved sign-in stay on that domain, apart from Mumbai's.
+const appEventFor = (c: any): number => {
+  try { return /(^|\.)aiagentssummit\.org$/i.test(new URL(c.req.url).hostname) ? SUMMIT_EVENT_ID : 1 } catch { return 1 }
+}
 
 // GET /app.js and /admin.js: each page's own client code (mainPageScript, below
 // mainPageHTML; adminPageScript, below adminPageHTML), served as a file so a
@@ -30389,12 +30398,12 @@ const pageScriptHeaders = (c: any, page: 'app' | 'admin') => {
 app.get('/app.js', (c) => c.body(pageScript('app').text, 200, pageScriptHeaders(c, 'app')))
 app.get('/admin.js', (c) => c.body(pageScript('admin').text, 200, pageScriptHeaders(c, 'admin')))
 
-function mainPageHTML(): string {
+function mainPageHTML(ev: number = 1): string {
   // After Mumbai (organiser, 23 Nov 2026: "change app to Delhi 2027 and say Mumbai is over"):
   // the front screen thanks Mumbai and sells Delhi, Register points to Delhi. Off while
   // MUMBAI_SALES_OPEN=1 (the pre-event suites), see mumbaiIsOver().
   const after = mumbaiIsOver()
-  return `<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -30533,7 +30542,7 @@ function mainPageHTML(): string {
        document the holder downloaded. The pass draws its own QR with the
        encoder, so no third-party service is in the path. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
-  <script src="/js/pass-render.js?v=20261114"></script>
+  <script src="/js/pass-render.js?v=20261127a"></script>
   <script src="/js/cert-render.js?v=2026112408" defer></script>
   <!-- The "I'm attending" card delegates post. App only: the badge desk has no
        reason to issue one, and it carries none of the pass's verification data. -->
@@ -31198,7 +31207,7 @@ ${after ? `              <div class="ap-hero-img" role="img" aria-label="Bharat 
                 <button type="button" id="pcc-upgrade-btn" onclick="showUpgradeModal(&quot;passcard&quot;)" class="hidden px-4 mb-2 rounded-xl text-xs font-semibold text-white transition" style="min-height:44px;background:linear-gradient(135deg,#FF6B00,#FF8C38);"><i class="fas fa-arrow-up mr-1.5"></i>Upgrade my pass</button>
               </div>
             </div>
-            <div class="glass ap-card rounded-2xl p-5 border border-emerald-500/25 flex items-start gap-4">
+            <div id="pcc-social" class="glass ap-card rounded-2xl p-5 border border-emerald-500/25 flex items-start gap-4">
               <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center shrink-0">
                 <i class="fas fa-bullhorn text-xl text-emerald-400"></i>
               </div>
@@ -33263,6 +33272,112 @@ ${after ? `                <a href="/delhi-exhibit?from=app" class="px-4 py-2 ro
 
 </body>
 </html>`
+  return ev === SUMMIT_EVENT_ID ? summitAppHTML(html) : html
+}
+
+/* The same page for the AI Agent Summit 2027 (27 Nov 2026; the organiser: "extend the same
+ * app"). Mumbai's markup stays whole, so every id the client code writes to is still there;
+ * the summit's name, dates, logo and footer replace Mumbai's, its own front screen goes at
+ * the top of Home, and CSS hides what the summit does not have (the schedule, workshops,
+ * the Delhi and Mumbai cards, registering here: summit passes are sold on its own pages).
+ * smoke-app-events.mjs checks that no Mumbai date or name is left showing. */
+const SUMMIT_ICON = '/ai-agent-summit/images/brand/app-icon-512.png'
+function summitAppHTML(html: string): string {
+  const swap = (a: string | RegExp, b: string) => { html = typeof a === 'string' ? html.split(a).join(b) : html.replace(a, b) }
+  swap('<html lang="en">', '<html lang="en" data-event="3">')
+  swap(/<title>[\s\S]*?<meta name="twitter:image:alt"[^>]*>/, `<title>AI Agent Summit 2027 &mdash; the summit app</title>
+  <meta name="description" content="The AI Agent Summit 2027 app: see who is coming, ask to connect, message people, book a time to meet and keep your pass on your phone. Friday 16 April 2027, World Trade Center Mumbai.">
+  <link rel="canonical" href="https://aiagentssummit.org/app">
+  <meta name="theme-color" content="#08090c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="AI Agent Summit">
+  <link rel="apple-touch-icon" href="${SUMMIT_ICON}">
+  <link rel="icon" type="image/png" sizes="512x512" href="${SUMMIT_ICON}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="AI Agent Summit">
+  <meta property="og:url" content="https://aiagentssummit.org/app">
+  <meta property="og:title" content="The AI Agent Summit 2027 app">
+  <meta property="og:description" content="Who is coming, connections, messages, meetings on 16 April and your pass. World Trade Center Mumbai.">
+  <meta property="og:image" content="https://aiagentssummit.org/ai-agent-summit/images/og-image.png?v=20261126b">
+  <meta name="twitter:card" content="summary_large_image">`)
+  swap('src="/images/logo-nav.webp" alt="Bharat AI Innovation Logo"', 'src="/ai-agent-summit/images/brand/logo-horizontal-light.png" alt="AI Agent Summit"')
+  swap('src="/images/logo-nav.webp"', `src="${SUMMIT_ICON}"`)
+  swap('alt="BHAI"', 'alt="AI Agent Summit"')
+  swap('>Bharat AI Innovation 2026<', '>AI Agent Summit 2027<')
+  swap('<p class="text-gray-400 mt-1 text-sm">Sign in to access networking, inbox & your profile</p>',
+    '<p class="text-gray-400 mt-1 text-sm">Sign in with the email your pass is registered to. The app comes with a paid Delegate or VIP Pass, a confirmed Buyer or Investor Pass, and for exhibitors and speakers.</p>')
+  swap('<option value="2026-11-20">Fri 20 Nov</option><option value="2026-11-21">Sat 21 Nov</option>', '<option value="2027-04-16">Fri 16 Apr</option>')
+  swap('At WTC Mumbai. Times when either', 'At World Trade Center Mumbai on 16 April. Times when either')
+  swap(/<a href="\/" class="ap-foot-logo"[\s\S]*?<\/nav>/, `<a href="/ai-agent-summit/" class="ap-foot-logo" aria-label="AI Agent Summit website"><img src="/ai-agent-summit/images/brand/logo-horizontal-light.png" alt="AI Agent Summit" loading="lazy" style="height:30px;width:auto;"></a>
+              <p>Friday 16 April 2027, World Trade Center Mumbai</p>
+            </div>
+            <nav class="ap-foot-links" aria-label="The website">
+              <a href="/ai-agent-summit/">Home</a><a href="/ai-agent-summit/showcase">Showcase</a><a href="/ai-agent-summit/challenge">Challenge</a><a href="/ai-agent-summit/attend">Passes</a><a href="/ai-agent-summit/partners">Partners</a><a href="https://bharataiinnovation.com/marketplace">AI Marketplace</a>
+            </nav>`)
+  // The top bar: the summit's own pages, and Sign in in its colour.
+  swap('Log In / Register', 'Sign in')
+  swap(/href="(?:\/delhi-exhibit|\/inquiry)"([^>]*)>Book Booth</g, 'href="/ai-agent-summit/showcase"$1>Showcase<')
+  swap(/<a href="\/contact"([^>]*)>Contact<\/a>/g, '<a href="/ai-agent-summit/attend"$1>Passes</a>')
+  swap(/<a href="https:\/\/bharataiinnovation\.com" target="_blank"(?: rel="noopener")?([^>]*)>Main Site<\/a>/g, '<a href="/ai-agent-summit/"$1>Summit site</a>')
+  swap('&copy; 2026 Bharat AI Innovation. All rights reserved. | Organized by Aegis Knowledge Trust',
+    '&copy; 2027 AI Agent Summit. Organised by Aegis Knowledge Trust, the team behind Bharat AI Innovation.')
+  swap('</head>', `<style>
+    /* AI Agent Summit 2027 (event 3): see summitAppHTML(). */
+    html[data-event="3"] #tab-dashboard > :not(#summit-home):not(#pass-card-cta):not(#dash-match-rail):not(#goal-card):not(#profile-complete-card),
+    html[data-event="3"] [data-tab="schedule"], html[data-event="3"] [data-tab="workshops"],
+    html[data-event="3"] #auth-tab-register, html[data-event="3"] #register-form,
+    html[data-event="3"] #pcc-social, html[data-event="3"] #pcc-upgrade, html[data-event="3"] #pcc-upgrade-btn,
+    html[data-event="3"] #pcc-guarantee-btn, html[data-event="3"] #pcc-expo-btn, html[data-event="3"] #pcc-workshop,
+    html[data-event="3"] #my-quick-actions, html[data-event="3"] #my-booths-list, html[data-event="3"] div:has(> #my-booths-list),
+    html[data-event="3"] #tab-myprofile [onclick="switchTab('exhibition')"],
+    html[data-event="3"] #tab-myprofile [onclick="openSocialCard()"], html[data-event="3"] #cert-btn, html[data-event="3"] #ws-cert-btn { display: none !important; }
+    #summit-home { background: radial-gradient(70% 90% at 88% 0%, rgba(198,255,61,0.14), transparent 62%), #08090c; color: #f2f4f7; }
+    #summit-home .sh-in { padding-top: 40px; padding-bottom: 46px; }
+    html[data-event="3"] #app .js-signin-btn { background: #c6ff3d !important; color: #07080a !important; box-shadow: none !important; }
+    html[data-event="3"] #main-nav .ap-nav-phone .js-signin-btn, html[data-event="3"] #main-nav .ap-nav-phone .js-signin-btn i { background: transparent !important; color: #c6ff3d !important; }
+    @media (max-width: 767px) {
+      html[data-event="3"] #app-topbar .ap-top-link { display: none; }
+      html[data-event="3"] #app-topbar img { height: 34px !important; padding: 4px !important; }
+    }
+    #summit-home .sh-when { margin-top: 4px; font: 600 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.02em; color: #c6ff3d; }
+    #summit-home .sh-h1 { margin-top: 12px; font-size: clamp(2.1rem, 5vw, 3.5rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; color: #fff; text-wrap: balance; }
+    #summit-home .sh-lede { margin-top: 14px; max-width: 60ch; font-size: 1.02rem; line-height: 1.6; color: #c3cad6; }
+    #summit-home .sh-cta { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 12px; }
+    #summit-home .sh-btn { min-height: 46px; padding: 0 22px; border-radius: 999px; display: inline-flex; align-items: center; font-size: 14px; font-weight: 700; text-decoration: none; cursor: pointer; transition: transform .16s cubic-bezier(.23,1,.32,1), background-color .16s ease; }
+    #summit-home .sh-btn:active { transform: scale(0.97); }
+    #summit-home .sh-btn-primary { background: #c6ff3d; color: #07080a; border: 0; }
+    #summit-home .sh-btn-primary:hover { background: #d4ff6a; }
+    #summit-home .sh-btn-ghost { background: rgba(255,255,255,0.04); color: #fff; border: 1px solid rgba(255,255,255,0.28); }
+    #summit-home .sh-btn-ghost:hover { background: rgba(255,255,255,0.1); }
+    #summit-home .sh-who { margin-top: 18px; max-width: 62ch; font-size: 13px; line-height: 1.6; color: #98a1b1; }
+  </style>
+</head>`)
+  swap('<div id="tab-dashboard" class="tab-content">', `<div id="tab-dashboard" class="tab-content">
+        <!-- The AI Agent Summit's front screen (event 3, 27 Nov 2026). Below it: the pass, the
+             people worth meeting and the profile card, as on Mumbai's Home. -->
+        <section id="summit-home" aria-label="AI Agent Summit 2027">
+          <div class="sh-in max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <p class="sh-when">Friday 16 April 2027 &middot; World Trade Center Mumbai</p>
+            <div class="signed-out-only">
+              <h1 class="sh-h1">The summit app</h1>
+              <p class="sh-lede">See who is coming, ask to connect, message people and book a time to meet on the day. Your pass and its QR code are here too.</p>
+              <div class="sh-cta">
+                <button type="button" class="sh-btn sh-btn-primary" onclick="showRegistration()">Sign in</button>
+                <a class="sh-btn sh-btn-ghost" href="/ai-agent-summit/attend?pass=delegate#register">Get a Delegate Pass</a>
+              </div>
+              <p class="sh-who">The app comes with a paid Delegate or VIP Pass, a confirmed Buyer or Investor Pass, and for exhibitors and speakers. Sign in with the email your pass is registered to: if you registered for Bharat AI Innovation, your photo and details come with you.</p>
+            </div>
+            <div class="hidden signed-in-only">
+              <h1 class="sh-h1">Find the people worth meeting</h1>
+              <p class="sh-lede">Ask to connect before 16 April, agree a time to meet on the day, and keep your pass on your phone for the badge desk.</p>
+              <div class="sh-cta">
+                <button type="button" class="sh-btn sh-btn-primary" onclick="switchTab('networking')">See who is coming</button>
+                <button type="button" class="sh-btn sh-btn-ghost" onclick="switchTab('inbox')">My inbox</button>
+              </div>
+            </div>
+          </div>
+        </section>`)
+  return html
 }
 
 // The app's client code, until 27 Oct 2026 the inline <script> of mainPageHTML().
@@ -33273,7 +33388,11 @@ ${after ? `                <a href="/delhi-exhibit?from=app" class="px-4 py-2 ro
 // parses the whole file on every build.
 function mainPageScript(): string {
   return `    // ==================== STATE ====================
-    const EVENT_ID = 1;
+    // The AI Agent Summit 2027 (event 3) runs this same app on its own domain (27 Nov 2026):
+    // the page says which event it is (mainPageHTML), and the code below asks that event.
+    const EVENT_ID = Number(document.documentElement.getAttribute('data-event')) || 1;
+    const IS_SUMMIT = EVENT_ID === 3;
+    const SUMMIT_TABS = ['dashboard', 'networking', 'inbox', 'myprofile'];
     function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
     // Attendees supply their own LinkedIn/website URLs, and escaping does nothing
     // about javascript: - only an allowed scheme does. Anything else renders no
@@ -33974,7 +34093,10 @@ function mainPageScript(): string {
           // a word. That last one keeps them signed in; the next open asks again.
           let resp = null, user = null;
           try {
-            resp = await fetch(\`/api/events/\${EVENT_ID}/attendees/register\`, {
+            // The summit has no register route: the person's own row answers the same question.
+            resp = IS_SUMMIT
+              ? await fetch('/api/attendees/' + encodeURIComponent(was.id), { credentials: 'same-origin' })
+              : await fetch(\`/api/events/\${EVENT_ID}/attendees/register\`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ name: was.name, email: was.email, company: was.company, job_title: was.job_title })
@@ -34160,7 +34282,7 @@ function mainPageScript(): string {
       const note = document.getElementById('signin-note');
       if (!note) return;
       note.textContent = status === 404
-        ? 'There is no account for ' + email + ' yet. Check the address, or register.'
+        ? (IS_SUMMIT ? 'There is no summit pass for ' + email + ' with the app. Check the address, or see the passes at aiagentssummit.org.' : 'There is no account for ' + email + ' yet. Check the address, or register.')
         : 'This sign-in link has expired. We can email you a fresh one now.';
       // One tap, not a form to work out (16 Nov 2026: 44 expired links in a week).
       if (status !== 404 && email) {
@@ -34459,6 +34581,8 @@ function mainPageScript(): string {
     let authMode = 'signin'; // 'signin' or 'register'
 
     function switchAuthMode(mode) {
+      // Summit passes are sold on the summit's own pages, under their rules and prices.
+      if (IS_SUMMIT && mode === 'register') { location.href = '/ai-agent-summit/attend'; return; }
       authMode = mode;
       if (mode === 'signin' && typeof resetSigninStep === 'function') resetSigninStep();
       const signinTab = document.getElementById('auth-tab-signin');
@@ -34505,7 +34629,8 @@ function mainPageScript(): string {
         // Before migration 0014 it is (legacy), after it is not. Probing keeps this
         // client correct in both modes, so the code deploy and the migration do not
         // have to be coordinated.
-        if (!window._signinCodeSent) {
+        // The summit never had the address-only sign-in: straight to the code.
+        if (!window._signinCodeSent && !IS_SUMMIT) {
           const legacy = await fetch(\`/api/events/\${EVENT_ID}/attendees/signin\`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -34713,6 +34838,8 @@ function mainPageScript(): string {
     }
 
     function switchTab(tab, fromHistory) {
+      // The summit's app is Home, the people, the inbox and you; anything else goes Home.
+      if (IS_SUMMIT && SUMMIT_TABS.indexOf(tab) < 0) tab = 'dashboard';
       // Gate protected tabs behind login
       if (PROTECTED_TABS.includes(tab) && !currentUser) {
         pendingTabAfterLogin = tab;
@@ -34796,7 +34923,10 @@ function mainPageScript(): string {
         // numbers were fetched on every Home load for nobody. Skipped while hidden.
         const statsEl = document.getElementById('stats-section');
         const statsHidden = !statsEl || statsEl.classList.contains('hidden');
-        const [event, stats, announcements, sessions] = await Promise.all([
+        // The summit has no schedule or announcements in the app: its own words, nothing to fetch.
+        const [event, stats, announcements, sessions] = IS_SUMMIT
+          ? [{ title: 'AI Agent Summit 2027', venue: 'World Trade Center Mumbai', start_date: '2027-04-16', end_date: '2027-04-16', description: '' }, null, [], []]
+          : await Promise.all([
           api.get(\`/api/events/\${EVENT_ID}\`),
           statsHidden ? Promise.resolve(null) : api.get(\`/api/events/\${EVENT_ID}/stats\`),
           api.get(\`/api/events/\${EVENT_ID}/announcements\`),
@@ -35057,10 +35187,14 @@ function mainPageScript(): string {
         : satOpen ? 'Saturday 21 Nov is open to every free pass: come any time from 8:30 am. Show this pass and a government photo ID at the badge desk.'
         : slotText ? 'Your entry time: ' + slotText + '. Show this pass and a government photo ID at the badge desk in that time. Every paid pass has guaranteed entry on both days, at any time.'
         : visitor ? 'Entry on a free Visitor Pass is not guaranteed: it depends on slot availability on 20 and 21 Nov, a half-day slot or none, confirmed by email. Every paid pass has guaranteed entry on both days.'
+        : IS_SUMMIT ? 'Keep it on your phone. On 16 April the badge desk scans it, with a government photo ID.'
         : 'Keep it on your phone — the badge desk scans it to check you in.';
       el.classList.remove('hidden');
-      if (!pending && !early) loadWorkshopSeat();
-      renderPassUpgradeLine();
+      // Workshops and the upgrade prices are Mumbai's.
+      if (!IS_SUMMIT) {
+        if (!pending && !early) loadWorkshopSeat();
+        renderPassUpgradeLine();
+      }
     }
 
     // A confirmed Delegate, Premium Delegate or Academic sees the way up on the
@@ -37127,6 +37261,8 @@ function mainPageScript(): string {
     async function loadRoomCatalog() {
       const sel = document.getElementById('meeting-room');
       if (!sel) return;
+      // The WTC boardrooms were Mumbai's; the summit books none here.
+      if (IS_SUMMIT) { sel.classList.add('hidden'); return; }
       try { roomCatalog = await api.get('/api/events/' + EVENT_ID + '/rooms'); }
       catch(e) { roomCatalog = { ready: false, rooms: [] }; }
       // ready:false means migration 0029 has not been applied. Leave the select
@@ -38910,7 +39046,8 @@ function mainPageScript(): string {
     let notifTimer = null;
     async function pollNotifications(firstRun) {
       if (notifTimer) { clearTimeout(notifTimer); notifTimer = null; }
-      if (!currentUser) return;
+      // The summit has no announcements in the app (yet).
+      if (!currentUser || IS_SUMMIT) return;
       try {
         const anns = await api.get(\`/api/events/\${EVENT_ID}/announcements\`);
         _notifCache = anns || [];
@@ -41036,10 +41173,10 @@ function mainPageScript(): string {
       if (!mc || !mb) return;
       mb.innerHTML = '<form id="propose-form" class="p-6 space-y-4">'
         + '<h3 class="text-lg font-bold"><i class="fas fa-clock text-primary-400 mr-2"></i>Propose another time</h3>'
-        + '<p class="text-sm text-gray-400">Pick a time on 20 or 21 November, between 9 AM and 6 PM. They can accept or decline it.</p>'
-        + '<div class="grid grid-cols-2 gap-3"><select id="propose-day" aria-label="Day" class="px-4 py-3 rounded-xl text-sm"><option value="2026-11-20">Fri 20 Nov</option><option value="2026-11-21">Sat 21 Nov</option></select>'
+        + '<p class="text-sm text-gray-400">Pick a time on ' + (IS_SUMMIT ? '16 April' : '20 or 21 November') + ', between 9 AM and 6 PM. They can accept or decline it.</p>'
+        + '<div class="grid grid-cols-2 gap-3"><select id="propose-day" aria-label="Day" class="px-4 py-3 rounded-xl text-sm">' + (IS_SUMMIT ? '<option value="2027-04-16">Fri 16 Apr</option>' : '<option value="2026-11-20">Fri 20 Nov</option><option value="2026-11-21">Sat 21 Nov</option>') + '</select>'
         + '<select id="propose-slot" aria-label="Time" class="px-4 py-3 rounded-xl text-sm">' + meetingSlotTimes().map((t) => '<option value="' + t + '"' + (t === '11:00' ? ' selected' : '') + '>' + meetingSlotLabel(t) + '</option>').join('') + '</select></div>'
-        + '<input type="hidden" id="propose-time" value="2026-11-20T11:00">'
+        + '<input type="hidden" id="propose-time" value="' + (IS_SUMMIT ? '2027-04-16' : '2026-11-20') + 'T11:00">'
         + '<p id="propose-error" class="hidden text-sm text-red-400"></p>'
         + '<div class="flex gap-2"><button type="submit" class="flex-1 rounded-xl text-sm font-semibold bg-primary-600 hover:bg-primary-500 text-white" style="min-height:44px;">Send the new time</button>'
         + '<button type="button" onclick="document.getElementById(&quot;modal-container&quot;).classList.add(&quot;hidden&quot;)" class="px-4 rounded-xl text-sm font-medium glass hover:bg-white/10" style="min-height:44px;">Cancel</button></div>'
@@ -41396,6 +41533,7 @@ function mainPageScript(): string {
      * claiming credit for something that may not have happened. */
     async function renderEventPlan() {
       const card = document.getElementById('event-plan-card');
+      if (IS_SUMMIT) { if (card) card.classList.add('hidden'); return; }
       if (!card || !currentUser) { if (card) card.classList.add('hidden'); return; }
 
       const idFor = (p) => '/api/attendees/' + currentUser.id + p;
@@ -42162,7 +42300,7 @@ function adminPageHTML(): string {
   <!-- Shared with the app, so a pass issued at the desk is the same document the
        holder downloaded. The pass draws its own QR with the encoder. -->
   <script src="/js/vendor/qrcode-generator.js?v=20261029"></script>
-  <script src="/js/pass-render.js?v=20261114"></script>
+  <script src="/js/pass-render.js?v=20261127a"></script>
   <script src="/js/cert-render.js?v=2026112408" defer></script>
   <!-- The same photo fingerprint /app sends, for photos the team uploads. -->
   <script src="/js/photo-fingerprint.js?v=2"></script>

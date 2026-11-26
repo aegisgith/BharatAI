@@ -260,6 +260,15 @@ r = await hit('/api/staff/scan', { admin: true, method: 'POST', body: { token: t
 check('on any other day a pass checks in as before', r.status === 200 && r.json?.state === 'ok', r.text.slice(0, 160));
 fakeNow = null;
 
+// ---- the app page by host ----
+r = await hit('/app', { host: 'https://aiagentssummit.org' });
+check('aiagentssummit.org/app is the summit app (data-event 3, its title and address)', r.status === 200 && /<html lang="en" data-event="3">/.test(r.text) && /<title>AI Agent Summit 2027/.test(r.text) && /rel="canonical" href="https:\/\/aiagentssummit\.org\/app"/.test(r.text), r.status + ' ' + r.text.slice(0, 120));
+check('the summit app has its own front screen, footer and sign-in words', /id="summit-home"/.test(r.text) && /Friday 16 April 2027, World Trade Center Mumbai/.test(r.text) && !/Log In \/ Register/.test(r.text) && !/&copy; 2026 Bharat AI Innovation/.test(r.text), 'markup');
+check('the summit meeting picker offers 16 April only', /<option value="2027-04-16">Fri 16 Apr<\/option>/.test(r.text) && !/<option value="2026-11-20">/.test(r.text), 'options');
+check('the summit page never names Mumbai 2026 in its head', !/Bharat AI Innovation 2026|20–21 Nov/.test(r.text.split('</head>')[0]), r.text.split('</head>')[0].match(/Bharat AI Innovation 2026|20–21 Nov/));
+r = await hit('/app');
+check('bharataiinnovation.com/app is still Mumbai', r.status === 200 && /<html lang="en">/.test(r.text) && !/data-event="3"/.test(r.text) && /<title>Bharat AI Innovation 2026/.test(r.text) && !/id="summit-home"/.test(r.text), r.text.slice(0, 120));
+
 // ---- the networking pages of other routes: Mumbai unchanged ----
 r = await hit('/api/events/1/attendees', { as: 2 });
 check('Mumbai directory unchanged for a Mumbai Delegate', r.status === 200, r.status);
