@@ -43180,7 +43180,7 @@ function adminPageScript(): string {
     // AI Agent Summit 2027 (event 3): its own dashboard in /js/admin-summit.js (one global,
     // SummitDesk) and /css/admin-summit.css, loaded the first time the section opens.
     // Bump SUMMIT_DESK_VERSION on any change to either.
-    var SUMMIT_DESK_VERSION = '20261115a';
+    var SUMMIT_DESK_VERSION = '20261126a';
     var summitDeskAssets = null;
     function summitDeskLoadAssets() {
       if (window.SummitDesk) return Promise.resolve();
