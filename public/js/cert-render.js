@@ -232,7 +232,8 @@
   function signBlock(ctx, x, y, p, accent) {
     var maxW = 410;
     ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(14,20,48,0.4)'; ctx.fillRect(x, y, 340, 1.5);
+    // No line above the name (organiser, 26 Nov 2026: "it looks like someone has to sign
+    // it"): the names are printed, nobody signs.
     ctx.fillStyle = INK; fit(ctx, p.name, '700', 28, 18, PF, maxW); ctx.fillText(p.name, x, y + 40);
     ctx.fillStyle = accent || RUST; fit(ctx, String(p.role || '').toUpperCase(), '700', 14, 11, MS, maxW - 40);
     spaced(ctx, String(p.role || '').toUpperCase(), x, y + 68, 2.5, 'left');

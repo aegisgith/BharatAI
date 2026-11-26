@@ -49,7 +49,7 @@ export function configureCertificates(h: Hooks) { hooks = { ...hooks, ...h } }
 const cr = new Hono<{ Bindings: any }>()
 const SITE = 'https://bharataiinnovation.com'
 // Bump with the ?v= on /app and /admin (index.tsx) whenever cert-render.js changes.
-export const CERT_RENDER_V = '2026112407'
+export const CERT_RENDER_V = '2026112408'
 const escH = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 const clean = (v: any) => String(v ?? '').replace(/\s+/g, ' ').trim()
 const emailOk = (e: any) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || '').trim()) && !/@no-email\.invalid$/i.test(String(e || ''))
