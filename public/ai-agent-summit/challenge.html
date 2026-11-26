@@ -18,8 +18,8 @@
 <link rel="icon" href="/ai-agent-summit/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/ai-agent-summit/images/apple-touch-icon.png">
 <link rel="preload" href="/ai-agent-summit/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/ai-agent-summit/assets/site.css?v=20261126h">
-<script src="/ai-agent-summit/assets/site.js?v=20261126h" defer></script>
+<link rel="stylesheet" href="/ai-agent-summit/assets/site.css?v=20261126i">
+<script src="/ai-agent-summit/assets/site.js?v=20261126i" defer></script>
 </head>
 <body>
 <a href="#main" class="skip-link">Skip to content</a>
@@ -118,7 +118,7 @@
           <div class="field"><label for="c-phone">Phone</label><input id="c-phone" name="phone" type="tel" required data-msg="Enter a valid phone number." maxlength="30" autocomplete="tel"></div>
           <div class="field"><label for="c-org">College or company <span class="opt">(optional)</span></label><input id="c-org" name="org" maxlength="120" autocomplete="organization"></div>
           <div class="field"><label for="c-city">City <span class="opt">(optional)</span></label><input id="c-city" name="city" maxlength="80" autocomplete="address-level2"></div>
-          <div class="field"><label for="c-problem">A problem from the board <span class="opt">(optional)</span></label><input id="c-problem" name="problem" maxlength="200"><span class="hint">Leave it empty if you choose your own.</span></div>
+          <div class="field"><label for="c-problem">A problem from the board <span class="opt">(optional)</span></label><input id="c-problem" name="problem" maxlength="200" list="board-list"><datalist id="board-list" data-board-list></datalist><span class="hint">Leave it empty if you choose your own.</span></div>
           <div class="field full"><label for="c-idea">What will your agent do?</label><textarea id="c-idea" name="idea" required minlength="30" maxlength="700" data-msg="Tell us what your agent will do, in at least 30 characters."></textarea><span class="counter"></span></div>
           <div class="field full"><label class="check"><input type="checkbox" name="eligible" value="yes" required data-msg="The challenge is for teams that have not raised outside funding."><span>Our team has not raised outside funding.</span></label></div>
           <div class="field full consent"><label class="check"><input type="checkbox" name="consent" value="yes" required data-msg="Please agree to continue."><span>I agree to the <a href="/ai-agent-summit/terms" target="_blank">terms</a> and <a href="/ai-agent-summit/privacy" target="_blank">privacy policy</a>, and to being contacted about AI Agent Summit 2027.</span></label></div>

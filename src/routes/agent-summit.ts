@@ -21,6 +21,9 @@ import { titledName } from '../lib/greet'
 //   POST /api/agent-summit/enquire      sponsor enquiry -> inquiry 'sponsorship'
 //   POST /api/agent-summit/challenge    AI Agent Challenge team -> inquiry 'agent_challenge'
 //   POST /api/agent-summit/problem      a buyer's problem for the board -> inquiry 'agent_problem'
+//   GET  /api/agent-summit/problems     the problems the team has published on the board
+//   POST /api/agent-summit/vote-link    email my voting link; GET|POST /api/agent-summit/vote?t= the room's scores
+//   GET  /api/agent-summit/leaderboard  the hall screens (/ai-agent-summit/screen); GET /api/agent-summit/report
 //   GET  /api/admin/agent-summit/passes Admin -> Overview card "AI Agent Summit passes"
 //
 // Rules this keeps (handbook §2, §14 6 Nov): every query on attendees / payment_orders
@@ -549,6 +552,7 @@ app.post('/api/agent-summit/apply', async (c) => {
     website: text(b.website, 300), demo_url: text(b.demo_url, 300), live_demo: text(b.live_demo, 700), customers: text(b.customers, 300),
     founded_year: text(b.founded_year, 4), team_size: text(b.team_size, 20), city: text(b.city, 80), contact_role: text(b.contact_role, 100),
     heard_from: text(b.heard_from, 120), page: 'ai-agent-summit/showcase',
+    languages: (Array.isArray(b.languages) ? b.languages : b.languages ? [b.languages] : []).map(String).filter((k: string) => AGENT_LANGUAGES[k]).slice(0, 12),
   }
   const message = [
     summary,
@@ -560,6 +564,7 @@ app.post('/api/agent-summit/apply', async (c) => {
     meta.demo_url ? 'Demo link: ' + meta.demo_url : '',
     meta.website ? 'Website: ' + meta.website : '',
     meta.customers ? 'Customers or pilots: ' + meta.customers : '',
+    meta.languages.length ? 'Languages: ' + meta.languages.map((k: string) => AGENT_LANGUAGES[k]).join(', ') : '',
     [meta.founded_year && 'Founded ' + meta.founded_year, meta.team_size && 'team ' + meta.team_size, meta.city].filter(Boolean).join(', '),
     meta.contact_role ? 'Contact role: ' + meta.contact_role : '',
   ].filter((l, i) => l !== '' || i === 1).join('\n').slice(0, 4000)
@@ -696,7 +701,208 @@ app.post('/api/agent-summit/problem', async (c) => {
     subject: `AI Agent Summit 2027 · Problem: ${problem.length > 60 ? problem.slice(0, 57).trim() + '...' : problem}`, message, metadata: meta,
   })
   await h.audit(c, 'summit.problem', 'inquiry', id, { sector, show_name: showName }, { actor: 'public registration', kind: 'public' })
-  return c.json({ ok: true, reference: 'AAS27-P' + id, message: `Thank you, ${titledName(name) || name}. We read every problem before it goes on the board, and we will email you before yours is published. Your reference is AAS27-P${id}.` }, 201)
+  return c.json({ ok: true, reference: 'AAS27-P' + id, message: `Thank you, ${titledName(name) || name}. We read every problem before it goes on the board, and we will email you when yours is published. Your reference is AAS27-P${id}.` }, 201)
+})
+
+// ==================== On the day (26 Nov 2026) ====================
+// The organiser said "go ahead" to what the home page promises for 16 April:
+// - Scored by the room: after a slot, everyone with a vote scores it on their phone, through a
+//   personal link (no app needed). Who votes: Delegate, VIP, Academic, Buyer and Investor passes,
+//   paid or (Buyer and Investor) confirmed; the same passes the Attend page gives a vote.
+// - Break the agent: the team records each break a company confirms at the booth.
+// - The hall screens: /ai-agent-summit/screen reads GET /api/agent-summit/leaderboard.
+// - The problem board: the team publishes a problem from Admin; the page reads the published ones.
+// - Agents of India 2027: totals from applications and challenge teams, public only once the
+//   team switches it on (app_settings summit_report_public = '1'), on the day.
+// Tables: migrations/0067_summit_day.sql. Until it runs, these routes answer ready: false.
+const VOTER_BADGES = ['Delegate Pass', 'VIP Pass', 'Academic Pass', 'Buyer Pass', 'Investor Pass']
+const SCORE_MIN_VOTES = 5
+const REPORT_KEY = 'summit_report_public'
+const REPORT_MIN = 3
+export const AGENT_LANGUAGES: Record<string, string> = {
+  en: 'English', hi: 'Hindi', mr: 'Marathi', ta: 'Tamil', te: 'Telugu', bn: 'Bengali', kn: 'Kannada',
+  gu: 'Gujarati', ml: 'Malayalam', pa: 'Punjabi', or: 'Odia', ur: 'Urdu',
+}
+const VOTE_PAGE = 'https://aiagentssummit.org/ai-agent-summit/vote'
+const noTable = (e: any) => /no such table/i.test(String(e?.message || e))
+const firstName = (n: unknown) => String(n || '').trim().split(/\s+/)[0] || 'there'
+const SETTLED_VOTER_SQL = `a.badge_type IN ('Delegate Pass', 'VIP Pass', 'Academic Pass', 'Buyer Pass', 'Investor Pass')
+  AND ((a.badge_type IN ('Buyer Pass', 'Investor Pass') AND ${"EXISTS (SELECT 1 FROM admin_audit au WHERE au.action = 'summit.confirm' AND CAST(au.entity_id AS TEXT) = CAST(a.id AS TEXT))"})
+    OR (a.badge_type NOT IN ('Buyer Pass', 'Investor Pass') AND lower(COALESCE(a.payment_status, '')) = 'paid'))`
+
+async function voterById(c: any, id: number): Promise<any | null> {
+  if (!(id > 0)) return null
+  return await c.env.DB.prepare(
+    `SELECT a.id, a.name, a.email, a.badge_type FROM attendees a WHERE a.id = ? AND a.event_id = ? AND ${SETTLED_VOTER_SQL}`
+  ).bind(id, SUMMIT_EVENT_ID).first().catch(() => null)
+}
+async function voteToken(c: any, id: number): Promise<string> {
+  const sig = await h.sign(c, 'summit-vote:' + id)
+  return sig ? id + '.' + sig.slice(0, 32) : ''
+}
+async function voterFromToken(c: any, t: unknown): Promise<any | null> {
+  const m = /^(\d{1,9})\.([0-9a-f]{32})$/.exec(String(t || ''))
+  if (!m) return null
+  const want = await voteToken(c, Number(m[1]))
+  if (!want || want.length !== m[0].length) return null
+  let diff = 0
+  for (let i = 0; i < want.length; i++) diff |= want.charCodeAt(i) ^ m[0].charCodeAt(i)
+  return diff === 0 ? await voterById(c, Number(m[1])) : null
+}
+async function sendVoteLink(c: any, a: any): Promise<boolean> {
+  const t = await voteToken(c, Number(a.id))
+  if (!t) return false
+  const url = VOTE_PAGE + '?t=' + t
+  const esc = h.payEsc
+  const html = summitMail('Your vote on the day',
+    `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(firstName(a.name))}</strong>,</p>` +
+    P(`Your ${esc(a.badge_type)} comes with a vote. After each ten-minute slot, open this link on your phone and score the demo on three questions: did it work, would you use it, and was it clear. The room's scores go up on the stage screens and count towards Best Agent of the Summit.`) +
+    `<div style="text-align:center;margin:6px 0 18px;"><a href="${esc(url)}" style="display:inline-block;padding:13px 28px;background:#c6ff3d;color:#07080a;text-decoration:none;border-radius:4px;font-weight:bold;font-size:15px;">Open my voting page</a></div>` +
+    P('The link is yours alone, so please do not forward it. Keep this email: the same link works all day.'))
+  await h.sendEmail(c, a.email, `Your voting link: ${SUMMIT_EVENT_NAME}`, h.noAppOnPhone(html), { unsubscribe: false })
+  return true
+}
+
+// Anyone can ask; only an email with a pass that votes gets a link, and the answer is the same either way.
+app.post('/api/agent-summit/vote-link', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const email = text(b.email, 160).toLowerCase()
+  if (!EMAIL_RE.test(email)) return c.json({ ok: false, error: 'Enter the email you registered with.', errors: [{ field: 'email', message: 'Enter the email you registered with.' }] }, 400)
+  if (text(b.website_confirm, 200)) return c.json({ ok: true, message: 'Thank you.' })
+  if (await ipOver(c, 'summit.vote_link', 10)) return c.json({ ok: false, error: 'Too many requests from this connection. Please try again in an hour.' }, 429)
+  const rows = ((await c.env.DB.prepare('SELECT id FROM attendees WHERE event_id = ? AND lower(email) = ? ORDER BY id DESC LIMIT 5').bind(SUMMIT_EVENT_ID, email).all()) as any).results || []
+  let sent = false
+  for (const r of rows) {
+    const v = await voterById(c, Number(r.id))
+    if (v) { sent = await sendVoteLink(c, v).catch((e: any) => { console.error('vote link failed', e?.message); return false }); break }
+  }
+  await h.audit(c, 'summit.vote_link', 'attendee', null, { email: h.maskEmail(email), sent }, { actor: 'public registration', kind: 'public' })
+  return c.json({ ok: true, message: 'If that email has a pass that comes with a vote, your voting link is on its way. Check your inbox in a minute.' })
+})
+
+app.get('/api/agent-summit/vote', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  const v = await voterFromToken(c, c.req.query('t'))
+  if (!v) return c.json({ ok: false, error: 'This voting link is not valid. Ask for a new one with the email you registered with.' }, 403)
+  try {
+    const open = ((await c.env.DB.prepare(
+      `SELECT s.id, s.company, s.agent, sc.worked, sc.would_use, sc.clear FROM summit_slots s
+         LEFT JOIN summit_scores sc ON sc.slot_id = s.id AND sc.attendee_id = ?
+        WHERE s.state = 'open' ORDER BY s.position, s.id`
+    ).bind(v.id).all()) as any).results || []
+    const done = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM summit_scores WHERE attendee_id = ?').bind(v.id).first() as any
+    return c.json({ ok: true, ready: true, name: firstName(v.name), pass: v.badge_type, scored: Number(done?.n || 0),
+      open: open.map((s: any) => ({ id: s.id, company: s.company, agent: s.agent, mine: s.worked ? { worked: s.worked, would_use: s.would_use, clear: s.clear } : null })) })
+  } catch (e) {
+    if (noTable(e)) return c.json({ ok: true, ready: false, name: firstName(v.name), pass: v.badge_type, scored: 0, open: [] })
+    throw e
+  }
+})
+
+app.post('/api/agent-summit/vote', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const v = await voterFromToken(c, b.t)
+  if (!v) return c.json({ ok: false, error: 'This voting link is not valid. Ask for a new one with the email you registered with.' }, 403)
+  const sid = Math.floor(Number(b.slot_id) || 0)
+  const score = (x: unknown) => { const n = Math.floor(Number(x)); return n >= 1 && n <= 5 ? n : 0 }
+  const w = score(b.worked), u = score(b.would_use), cl = score(b.clear)
+  if (!w || !u || !cl) return c.json({ ok: false, error: 'Give each of the three questions a score from 1 to 5.' }, 400)
+  try {
+    const slot = await c.env.DB.prepare('SELECT id, state FROM summit_slots WHERE id = ?').bind(sid).first() as any
+    if (!slot) return c.json({ ok: false, error: 'That slot is not on the list.' }, 404)
+    if (slot.state !== 'open') return c.json({ ok: false, closed: true, error: 'Scoring for this slot has closed.' }, 409)
+    await c.env.DB.prepare(
+      `INSERT INTO summit_scores (slot_id, attendee_id, worked, would_use, clear) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(slot_id, attendee_id) DO UPDATE SET worked = excluded.worked, would_use = excluded.would_use, clear = excluded.clear, updated_at = CURRENT_TIMESTAMP`
+    ).bind(sid, v.id, w, u, cl).run()
+    return c.json({ ok: true })
+  } catch (e) {
+    if (noTable(e)) return c.json({ ok: false, error: 'Scoring is not open yet.' }, 409)
+    throw e
+  }
+})
+
+async function leaderboard(c: any) {
+  const db = c.env.DB
+  const rows = ((await db.prepare(
+    `SELECT s.id, s.company, s.agent, s.state, COUNT(sc.attendee_id) AS votes,
+            AVG(sc.worked) AS worked, AVG(sc.would_use) AS would_use, AVG(sc.clear) AS clear
+       FROM summit_slots s LEFT JOIN summit_scores sc ON sc.slot_id = s.id GROUP BY s.id`
+  ).all()) as any).results || []
+  const r1 = (x: any) => Math.round(Number(x || 0) * 10) / 10
+  const agents = rows.filter((r: any) => Number(r.votes) >= SCORE_MIN_VOTES)
+    .map((r: any) => ({ company: r.company, agent: r.agent, votes: Number(r.votes), worked: r1(r.worked), would_use: r1(r.would_use), clear: r1(r.clear),
+      score: r1((Number(r.worked) + Number(r.would_use) + Number(r.clear)) / 3) }))
+    .sort((a: any, b: any) => b.score - a.score || b.votes - a.votes).slice(0, 10)
+  const breakers = ((await db.prepare(
+    'SELECT MIN(breaker) AS breaker, COUNT(*) AS n, MIN(created_at) AS first FROM summit_breaks GROUP BY lower(trim(breaker)) ORDER BY n DESC, first ASC LIMIT 10'
+  ).all()) as any).results || []
+  const recent = ((await db.prepare('SELECT breaker, agent, what, created_at FROM summit_breaks ORDER BY id DESC LIMIT 6').all()) as any).results || []
+  const now = rows.filter((r: any) => r.state === 'open').map((r: any) => ({ company: r.company, agent: r.agent }))
+  return { agents, breakers: breakers.map((b: any) => ({ breaker: b.breaker, breaks: Number(b.n) })), recent, voting_now: now, min_votes: SCORE_MIN_VOTES }
+}
+
+app.get('/api/agent-summit/leaderboard', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  try { return c.json({ ok: true, ready: true, ...(await leaderboard(c)) }) } catch (e) {
+    if (noTable(e)) return c.json({ ok: true, ready: false, agents: [], breakers: [], recent: [], voting_now: [], min_votes: SCORE_MIN_VOTES })
+    throw e
+  }
+})
+
+app.get('/api/agent-summit/problems', async (c) => {
+  const rows = ((await c.env.DB.prepare(
+    `SELECT id, organization, metadata FROM inquiries WHERE inquiry_type = 'agent_problem' AND json_extract(metadata, '$.published_at') IS NOT NULL
+      ORDER BY json_extract(metadata, '$.published_at') DESC LIMIT 60`
+  ).all().catch(() => ({ results: [] }))) as any).results || []
+  c.header('Cache-Control', 'public, max-age=120')
+  return c.json({ ok: true, problems: rows.map((r: any) => { const m = parseMeta(r.metadata); return { id: r.id, sector: m.sector_label || '', text: m.board_text || m.problem || '', company: m.show_name ? r.organization : null } }) })
+})
+
+// Agents of India 2027: totals only. A group under REPORT_MIN is folded into "Other", and
+// "Other" is dropped if it is still that small, so no company can be picked out.
+function tally(values: string[]): { label: string; n: number }[] {
+  const by: Record<string, number> = {}
+  for (const v of values) if (v) by[v] = (by[v] || 0) + 1
+  let other = 0
+  const out: { label: string; n: number }[] = []
+  for (const [label, n] of Object.entries(by)) { if (n < REPORT_MIN || label === 'Other') other += n; else out.push({ label, n }) }
+  out.sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
+  if (other >= REPORT_MIN) out.push({ label: 'Other', n: other })
+  return out
+}
+const CITY_FIX: Record<string, string> = { bombay: 'Mumbai', 'navi mumbai': 'Mumbai', thane: 'Mumbai', bangalore: 'Bengaluru', bengaluru: 'Bengaluru', gurgaon: 'Gurugram', 'new delhi': 'Delhi', noida: 'Delhi NCR', poona: 'Pune' }
+const cityOf = (v: unknown) => { const s = String(v || '').trim().toLowerCase().replace(/\s+/g, ' '); if (!s) return ''; return CITY_FIX[s] || s.replace(/\b\w/g, (ch) => ch.toUpperCase()) }
+const teamBucket = (v: unknown) => { const n = parseInt(String(v || ''), 10); return !(n > 0) ? '' : n <= 10 ? '1 to 10 people' : n <= 50 ? '11 to 50 people' : n <= 200 ? '51 to 200 people' : 'More than 200 people' }
+const foundedBucket = (v: unknown) => { const n = parseInt(String(v || ''), 10); return !(n > 1900) ? '' : n < 2015 ? 'Before 2015' : n < 2020 ? '2015 to 2019' : n < 2023 ? '2020 to 2022' : '2023 or later' }
+
+async function reportData(c: any) {
+  const db = c.env.DB
+  const apps = ((((await db.prepare("SELECT metadata FROM inquiries WHERE inquiry_type = 'agent_showcase'").all()) as any).results || []) as any[]).map((r) => parseMeta(r.metadata))
+  const teams = ((((await db.prepare("SELECT metadata FROM inquiries WHERE inquiry_type = 'agent_challenge'").all()) as any).results || []) as any[]).map((r) => parseMeta(r.metadata))
+  return {
+    applications: apps.length,
+    teams: teams.length,
+    categories: tally(apps.map((m) => m.category_label || '')),
+    stages: tally(apps.map((m) => m.stage_label || '')),
+    languages: tally(apps.flatMap((m) => (Array.isArray(m.languages) ? m.languages : []).map((k: string) => AGENT_LANGUAGES[k] || ''))),
+    cities: tally([...apps.map((m) => cityOf(m.city)), ...teams.map((m) => cityOf(m.city))]).slice(0, 10),
+    team_sizes: tally(apps.map((m) => teamBucket(m.team_size))),
+    founded: tally(apps.map((m) => foundedBucket(m.founded_year))),
+    challenge_sizes: tally(teams.map((m) => (Number(m.members) > 0 ? Number(m.members) + (Number(m.members) === 1 ? ' person' : ' people') : ''))),
+    min_group: REPORT_MIN,
+    as_of: new Date().toISOString(),
+  }
+}
+async function reportPublic(c: any): Promise<boolean> {
+  const r = await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(REPORT_KEY).first().catch(() => null) as any
+  return String(r?.value || '') === '1'
+}
+
+app.get('/api/agent-summit/report', async (c) => {
+  c.header('Cache-Control', 'no-store')
+  if (!(await reportPublic(c))) return c.json({ ok: true, published: false })
+  return c.json({ ok: true, published: true, ...(await reportData(c)) })
 })
 
 // ---- admin (behind index.tsx's /api/admin/* guard) ----
@@ -1174,5 +1380,177 @@ async function packagePayResult(c: any, order: any) {
   return page('Payment not completed', h.payH1(order.status === 'aborted' ? 'You cancelled the payment.' : order.status === 'created' ? 'We have not heard back about this payment.' : 'The payment did not go through.') +
     h.payP('Nothing has been confirmed for this order. If money left your account, your bank returns it on its own; if it has not come back within a week, write to info@bharataiinnovation.com quoting order <strong>' + no + '</strong>.') + retry)
 }
+
+// ---- Admin, On the day (26 Nov 2026): stage slots, voting links, breaks, the board, the report ----
+const VOTE_LINKS_PER_CLICK = 40
+const MIGRATION_0067 = 'npx wrangler d1 execute bharatai-production --remote --file=migrations/0067_summit_day.sql'
+
+app.get('/api/admin/agent-summit/day', async (c) => {
+  const db = c.env.DB
+  const eligible = await db.prepare(`SELECT COUNT(*) AS n FROM attendees a WHERE a.event_id = ? AND ${SETTLED_VOTER_SQL}`).bind(SUMMIT_EVENT_ID).first().catch(() => null) as any
+  const sent = await db.prepare("SELECT COUNT(DISTINCT CAST(entity_id AS TEXT)) AS n FROM admin_audit WHERE action = 'summit.vote_link_sent'").first().catch(() => null) as any
+  const problems = ((((await db.prepare(
+    "SELECT id, created_at, name, email, organization, metadata FROM inquiries WHERE inquiry_type = 'agent_problem' ORDER BY id DESC LIMIT 300"
+  ).all()) as any).results || []) as any[]).map((r) => {
+    const m = parseMeta(r.metadata)
+    return { id: r.id, created_at: r.created_at, name: r.name, email: r.email, company: r.organization, sector: m.sector_label || '', problem: m.problem || '',
+      board_text: m.board_text || '', show_name: !!m.show_name, published_at: m.published_at || null, volume: m.volume || '' }
+  })
+  const base = { voters: { eligible: Number(eligible?.n || 0), sent: Number(sent?.n || 0), per_click: VOTE_LINKS_PER_CLICK }, problems, report: { published: await reportPublic(c) }, min_votes: SCORE_MIN_VOTES }
+  try {
+    const slots = ((await db.prepare(
+      `SELECT s.id, s.position, s.company, s.agent, s.state, s.opened_at, s.closed_at, COUNT(sc.attendee_id) AS votes,
+              ROUND((AVG(sc.worked) + AVG(sc.would_use) + AVG(sc.clear)) / 3.0, 2) AS score
+         FROM summit_slots s LEFT JOIN summit_scores sc ON sc.slot_id = s.id GROUP BY s.id ORDER BY s.position, s.id`
+    ).all()) as any).results || []
+    const breaks = ((await db.prepare('SELECT id, breaker, agent, what, created_at FROM summit_breaks ORDER BY id DESC LIMIT 300').all()) as any).results || []
+    return c.json({ ok: true, ready: true, ...base, slots, breaks })
+  } catch (e) {
+    if (noTable(e)) return c.json({ ok: true, ready: false, migration: MIGRATION_0067, ...base, slots: [], breaks: [] })
+    throw e
+  }
+})
+
+// One slot per line: "Company | Agent" (the agent part is optional). Added at the end of the running order.
+app.post('/api/admin/agent-summit/slots', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const lines = String(b.lines || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 80)
+  if (!lines.length) return c.json({ ok: false, error: 'Write one company per line, as "Company | Agent".' }, 400)
+  try {
+    const last = await c.env.DB.prepare('SELECT COALESCE(MAX(position), 0) AS p FROM summit_slots').first() as any
+    let pos = Number(last?.p || 0)
+    for (const l of lines) {
+      const [company, agent] = l.split('|').map((x) => text(x, 120))
+      if (!company) continue
+      pos += 1
+      await c.env.DB.prepare('INSERT INTO summit_slots (position, company, agent) VALUES (?, ?, ?)').bind(pos, company, agent || '').run()
+    }
+    await h.audit(c, 'summit.slots_add', 'summit_slots', null, { lines: lines.length })
+    return c.json({ ok: true, added: lines.length })
+  } catch (e) {
+    if (noTable(e)) return c.json({ ok: false, error: 'Run migration 0067 first: ' + MIGRATION_0067 }, 409)
+    throw e
+  }
+})
+
+// Open or close the room's scoring for a slot, or rename or move it.
+app.post('/api/admin/agent-summit/slots/:id', async (c) => {
+  const id = Number(c.req.param('id'))
+  const b = await c.req.json().catch(() => ({})) as any
+  try {
+    const s = await c.env.DB.prepare('SELECT * FROM summit_slots WHERE id = ?').bind(id).first() as any
+    if (!s) return c.json({ ok: false, error: 'No such slot.' }, 404)
+    if (b.delete) {
+      const v = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM summit_scores WHERE slot_id = ?').bind(id).first() as any
+      if (Number(v?.n || 0) > 0) return c.json({ ok: false, error: 'This slot has scores, so it stays. Close it instead.' }, 409)
+      await c.env.DB.prepare('DELETE FROM summit_slots WHERE id = ?').bind(id).run()
+      await h.audit(c, 'summit.slot_delete', 'summit_slots', id, { company: s.company })
+      return c.json({ ok: true, deleted: true })
+    }
+    const state = ['waiting', 'open', 'closed'].includes(String(b.state)) ? String(b.state) : s.state
+    const company = b.company !== undefined ? text(b.company, 120) || s.company : s.company
+    const agent = b.agent !== undefined ? text(b.agent, 120) : s.agent
+    const position = Number.isFinite(Number(b.position)) && b.position !== undefined ? Math.floor(Number(b.position)) : s.position
+    await c.env.DB.prepare(
+      `UPDATE summit_slots SET state = ?, company = ?, agent = ?, position = ?,
+         opened_at = CASE WHEN ? = 'open' AND state != 'open' THEN CURRENT_TIMESTAMP ELSE opened_at END,
+         closed_at = CASE WHEN ? = 'closed' AND state != 'closed' THEN CURRENT_TIMESTAMP ELSE closed_at END
+       WHERE id = ?`
+    ).bind(state, company, agent, position, state, state, id).run()
+    await h.audit(c, 'summit.slot', 'summit_slots', id, { state, company })
+    return c.json({ ok: true })
+  } catch (e) {
+    if (noTable(e)) return c.json({ ok: false, error: 'Run migration 0067 first: ' + MIGRATION_0067 }, 409)
+    throw e
+  }
+})
+
+// Email voting links to the next people with a vote who have not had one. A few dozen a click,
+// so one click stays inside the Worker's limits; the answer says how many are left.
+app.post('/api/admin/agent-summit/vote-links', async (c) => {
+  const db = c.env.DB
+  const todo = ((await db.prepare(
+    `SELECT a.id, a.name, a.email, a.badge_type FROM attendees a WHERE a.event_id = ? AND ${SETTLED_VOTER_SQL}
+        AND NOT EXISTS (SELECT 1 FROM admin_audit x WHERE x.action = 'summit.vote_link_sent' AND CAST(x.entity_id AS TEXT) = CAST(a.id AS TEXT))
+      ORDER BY a.id LIMIT ?`
+  ).bind(SUMMIT_EVENT_ID, VOTE_LINKS_PER_CLICK).all()) as any).results || []
+  let sent = 0, failed = 0
+  for (const a of todo) {
+    const ok = await sendVoteLink(c, a).catch((e: any) => { console.error('vote link failed', a.id, e?.message); return false })
+    if (ok) { sent++; await h.audit(c, 'summit.vote_link_sent', 'attendee', a.id, { email: h.maskEmail(a.email) }) } else failed++
+  }
+  const left = await db.prepare(
+    `SELECT COUNT(*) AS n FROM attendees a WHERE a.event_id = ? AND ${SETTLED_VOTER_SQL}
+        AND NOT EXISTS (SELECT 1 FROM admin_audit x WHERE x.action = 'summit.vote_link_sent' AND CAST(x.entity_id AS TEXT) = CAST(a.id AS TEXT))`
+  ).bind(SUMMIT_EVENT_ID).first() as any
+  return c.json({ ok: true, sent, failed, left: Number(left?.n || 0) })
+})
+
+app.post('/api/admin/agent-summit/breaks', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const breaker = text(b.breaker, 80), agent = text(b.agent, 120), what = text(b.what, 200)
+  if (breaker.length < 2 || agent.length < 2) return c.json({ ok: false, error: 'Write who broke it and which agent.' }, 400)
+  try {
+    const r = await c.env.DB.prepare('INSERT INTO summit_breaks (breaker, agent, what) VALUES (?, ?, ?)').bind(breaker, agent, what).run()
+    await h.audit(c, 'summit.break', 'summit_breaks', r.meta.last_row_id, { breaker, agent })
+    return c.json({ ok: true, id: r.meta.last_row_id })
+  } catch (e) {
+    if (noTable(e)) return c.json({ ok: false, error: 'Run migration 0067 first: ' + MIGRATION_0067 }, 409)
+    throw e
+  }
+})
+
+app.post('/api/admin/agent-summit/breaks/:id/delete', async (c) => {
+  const id = Number(c.req.param('id'))
+  try {
+    await c.env.DB.prepare('DELETE FROM summit_breaks WHERE id = ?').bind(id).run()
+    await h.audit(c, 'summit.break_delete', 'summit_breaks', id, {})
+    return c.json({ ok: true })
+  } catch (e) {
+    if (noTable(e)) return c.json({ ok: false, error: 'Run migration 0067 first.' }, 409)
+    throw e
+  }
+})
+
+// Put a problem on the board (or take it off). The words shown can be tidied first; the sender
+// is emailed the first time it goes up, as the Problems page says.
+app.post('/api/admin/agent-summit/problems/:id/publish', async (c) => {
+  const id = Number(c.req.param('id'))
+  const b = await c.req.json().catch(() => ({})) as any
+  const row = await c.env.DB.prepare("SELECT id, name, email, metadata FROM inquiries WHERE id = ? AND inquiry_type = 'agent_problem'").bind(id).first() as any
+  if (!row) return c.json({ ok: false, error: 'No such problem.' }, 404)
+  const m = parseMeta(row.metadata)
+  const publish = !!b.publish
+  const first = publish && !m.published_at && !m.published_once
+  if (b.text !== undefined) m.board_text = text(b.text, 1500)
+  if (publish) { m.published_at = m.published_at || new Date().toISOString(); m.published_once = true } else delete m.published_at
+  await c.env.DB.prepare('UPDATE inquiries SET metadata = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(JSON.stringify(m), id).run()
+  await h.audit(c, publish ? 'summit.problem_publish' : 'summit.problem_hide', 'inquiry', id, {})
+  if (first) {
+    const esc = h.payEsc
+    const html = summitMail('Your problem is on the board',
+      `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(firstName(row.name))}</strong>,</p>` +
+      P('The task you sent us is now on the AI Agent Summit problem board, where showcase companies and AI Agent Challenge teams can pick it up and show an agent doing it on 16 April.') +
+      P(`<em>${esc(m.board_text || m.problem || '')}</em>`) +
+      P(m.show_name ? 'Your company is named on the board, as you asked.' : 'Your company is not named on the board.') +
+      P('To change the words or take it down, reply to this email.') +
+      `<div style="text-align:center;margin:0 0 6px;"><a href="https://aiagentssummit.org/ai-agent-summit/problems#board" style="display:inline-block;padding:12px 26px;background:#c6ff3d;color:#07080a;text-decoration:none;border-radius:4px;font-weight:bold;font-size:14px;">See the board</a></div>`)
+    const sent = h.sendEmail(c, row.email, `Your problem is on the board: ${SUMMIT_EVENT_NAME}`, h.noAppOnPhone(html), { unsubscribe: false }).catch((e: any) => console.error('problem email failed', e?.message))
+    try { c.executionCtx.waitUntil(sent) } catch { await sent }
+  }
+  return c.json({ ok: true, published: publish, emailed: first })
+})
+
+app.get('/api/admin/agent-summit/report', async (c) => c.json({ ok: true, published: await reportPublic(c), ...(await reportData(c)) }))
+
+app.post('/api/admin/agent-summit/report', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const on = !!b.publish
+  await c.env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"
+  ).bind(REPORT_KEY, on ? '1' : '0').run()
+  await h.audit(c, on ? 'summit.report_publish' : 'summit.report_hide', 'app_settings', null, {})
+  return c.json({ ok: true, published: on })
+})
 
 export default app

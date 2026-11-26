@@ -42,3 +42,4 @@
 - [Partner packages](https://aiagentssummit.org/ai-agent-summit/partners)
 - [AI Agent Challenge](https://aiagentssummit.org/ai-agent-summit/challenge)
 - [Bring a problem for an AI agent](https://aiagentssummit.org/ai-agent-summit/problems)
+- [Agents of India 2027 report](https://aiagentssummit.org/ai-agent-summit/report)

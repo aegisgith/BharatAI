@@ -391,4 +391,166 @@
     var r = params.get('ref');
     if (r && /^AAS27-[A-Z]-[A-Z0-9]{6}$/.test(r)) thanksRef.textContent = 'Reference ' + r;
   }
+  /* ---------- On the day (26 Nov 2026): the problem board, the voting page, the hall screen, the report ---------- */
+  var getJSON = function (url) {
+    return fetch(url, { headers: { accept: 'application/json' }, cache: 'no-store' }).then(function (r) { return r.json(); });
+  };
+  var escH = function (v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]; });
+  };
+
+  // The board shows the problems the team has published; until there are any, the examples stay.
+  var board = document.querySelector('[data-board]');
+  var boardList = document.querySelector('[data-board-list]');
+  if (board || boardList) {
+    getJSON('/api/agent-summit/problems').then(function (j) {
+      var list = (j && j.problems) || [];
+      if (boardList) boardList.innerHTML = list.map(function (p) { return '<option value="' + escH(String(p.text).slice(0, 190)) + '">'; }).join('');
+      if (!board || !list.length) return;
+      board.innerHTML = list.map(function (p) {
+        return '<article class="pcard"><p class="pcard-top"><span>' + escH(p.sector) + '</span>' + (p.company ? '<em class="co">' + escH(p.company) + '</em>' : '') + '</p><p class="pcard-task">' + escH(p.text) + '</p></article>';
+      }).join('');
+      var lede = document.querySelector('[data-board-lede]');
+      if (lede) lede.textContent = list.length === 1 ? 'One problem is on the board so far. Pick it for your demo or your challenge entry.' : list.length + ' problems are on the board so far. Pick one for your demo or your challenge entry.';
+    }).catch(function () { /* the examples stay */ });
+  }
+
+  // The voting page: the link from the email carries a signed token, kept on this phone so
+  // the page works all day without the email. What the voter has picked survives the refresh.
+  var vote = document.querySelector('[data-vote]');
+  if (vote) {
+    var VKEY = 'aas27-vote';
+    var stateEl = vote.querySelector('[data-vote-state]');
+    var slotsEl = vote.querySelector('[data-vote-slots]');
+    var askEl = vote.querySelector('[data-vote-ask]');
+    var tok = params.get('t');
+    try {
+      if (tok) { localStorage.setItem(VKEY, tok); history.replaceState(null, '', window.location.pathname); }
+      else tok = localStorage.getItem(VKEY);
+    } catch (e) { /* private mode: the link still works while the page is open */ }
+    var picks = {};
+    var shownIds = null;
+    var QS = [['worked', 'Did it work?'], ['would_use', 'Would I use it?'], ['clear', 'Was it clear?']];
+    var renderSlots = function (open) {
+      var ids = open.map(function (s) { return s.id; }).join(',');
+      if (ids === shownIds) return;
+      shownIds = ids;
+      slotsEl.innerHTML = open.map(function (s) {
+        var mine = s.mine || {};
+        return '<form class="card vote-card" data-slot="' + s.id + '" novalidate><p class="vote-co">' + escH(s.company) + '</p>' + (s.agent ? '<h2>' + escH(s.agent) + '</h2>' : '')
+          + QS.map(function (q) {
+            var cur = (picks[s.id] && picks[s.id][q[0]]) || mine[q[0]] || 0;
+            return '<fieldset class="vote-q"><legend>' + q[1] + '</legend><div class="vote-scale">' + [1, 2, 3, 4, 5].map(function (n) {
+              var id = 'v' + s.id + '-' + q[0] + '-' + n;
+              return '<input type="radio" id="' + id + '" name="' + q[0] + '" value="' + n + '"' + (Number(cur) === n ? ' checked' : '') + '><label for="' + id + '">' + n + '</label>';
+            }).join('') + '</div></fieldset>';
+          }).join('')
+          + '<div class="vote-foot"><span class="vote-hint">1 is poor, 5 is excellent</span><button type="submit" class="btn btn-primary">' + (s.mine ? 'Update my score' : 'Send my score') + '</button></div><p class="vote-msg" role="status"></p></form>';
+      }).join('');
+    };
+    var paintVote = function () {
+      if (!tok) { askEl.hidden = false; return; }
+      getJSON('/api/agent-summit/vote?t=' + encodeURIComponent(tok)).then(function (j) {
+        if (!j || !j.ok) {
+          try { localStorage.removeItem(VKEY); } catch (e) { /* nothing kept */ }
+          tok = null; shownIds = null; slotsEl.innerHTML = '';
+          stateEl.innerHTML = '<p class="vote-hello">' + escH((j && j.error) || 'This voting link is not valid.') + '</p>';
+          askEl.hidden = false;
+          return;
+        }
+        askEl.hidden = true;
+        var open = j.open || [];
+        stateEl.innerHTML = '<p class="vote-hello">Hi ' + escH(j.name) + '. Your ' + escH(j.pass) + ' comes with a vote'
+          + (j.scored ? ', and you have scored ' + j.scored + (j.scored === 1 ? ' demo' : ' demos') : '') + '.</p>'
+          + (open.length ? '' : '<p class="vote-none">' + (j.ready ? 'Nothing to score right now. When a slot ends, it appears here on its own.' : 'Scoring opens on 16 April. Keep this page: the same link works all day.') + '</p>');
+        renderSlots(open);
+      }).catch(function () {
+        stateEl.innerHTML = '<p class="vote-hello">We could not reach the server. Check your connection; this page tries again on its own.</p>';
+      });
+    };
+    slotsEl.addEventListener('change', function (e) {
+      var f = e.target.closest('[data-slot]');
+      if (!f) return;
+      var sid = f.getAttribute('data-slot');
+      picks[sid] = picks[sid] || {};
+      picks[sid][e.target.name] = Number(e.target.value);
+    });
+    slotsEl.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = e.target.closest('[data-slot]');
+      if (!f) return;
+      var body = { t: tok, slot_id: Number(f.getAttribute('data-slot')) };
+      var missing = false;
+      QS.forEach(function (q) { var ch = f.querySelector('input[name="' + q[0] + '"]:checked'); if (ch) body[q[0]] = Number(ch.value); else missing = true; });
+      var msg = f.querySelector('.vote-msg');
+      var btn = f.querySelector('button[type="submit"]');
+      if (missing) { msg.textContent = 'Give each question a score from 1 to 5.'; msg.className = 'vote-msg err'; return; }
+      btn.setAttribute('aria-busy', 'true');
+      fetch('/api/agent-summit/vote', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.ok) { msg.textContent = 'Saved. You can change it until scoring closes.'; msg.className = 'vote-msg ok'; btn.textContent = 'Update my score'; }
+          else { msg.textContent = (j && j.error) || 'Could not save. Try again.'; msg.className = 'vote-msg err'; if (j && j.closed) { shownIds = null; paintVote(); } }
+        })
+        .catch(function () { msg.textContent = 'Could not reach the server. Try again.'; msg.className = 'vote-msg err'; })
+        .then(function () { btn.removeAttribute('aria-busy'); });
+    });
+    paintVote();
+    setInterval(function () { if (!document.hidden && tok) paintVote(); }, 15000);
+  }
+
+  // The hall screens: scores and Break the agent, one after the other, refreshed every 10 seconds.
+  var screenEl = document.querySelector('[data-screen]');
+  if (screenEl) {
+    var scViews = screenEl.querySelectorAll('.sc-view');
+    var scIndex = 0;
+    var drawScreen = function (j) {
+      var ag = (j && j.agents) || [];
+      screenEl.querySelector('[data-sc-scores]').innerHTML = ag.length ? ag.map(function (a, i) {
+        return '<li><span class="sc-rank">' + (i + 1) + '</span><span class="sc-name"><b>' + escH(a.agent || a.company) + '</b>' + (a.agent ? '<small>' + escH(a.company) + '</small>' : '') + '</span>'
+          + '<span class="sc-bar"><i style="width:' + Math.round(a.score / 5 * 100) + '%"></i></span><span class="sc-score">' + Number(a.score).toFixed(1) + '<small>' + a.votes + ' votes</small></span></li>';
+      }).join('') : '<li class="sc-empty">The first scores appear after the first slot.</li>';
+      var bk = (j && j.breakers) || [];
+      screenEl.querySelector('[data-sc-breakers]').innerHTML = bk.length ? bk.map(function (b, i) {
+        return '<li><span class="sc-rank">' + (i + 1) + '</span><span class="sc-name"><b>' + escH(b.breaker) + '</b></span><span class="sc-score">' + b.breaks + '<small>' + (b.breaks === 1 ? 'break' : 'breaks') + '</small></span></li>';
+      }).join('') : '<li class="sc-empty">No agent has been broken yet.</li>';
+      screenEl.querySelector('[data-sc-recent]').innerHTML = ((j && j.recent) || []).map(function (r) {
+        return '<li><b>' + escH(r.breaker) + '</b> broke <b>' + escH(r.agent) + '</b>' + (r.what ? '<span>' + escH(r.what) + '</span>' : '') + '</li>';
+      }).join('');
+      var vn = (j && j.voting_now) || [];
+      screenEl.querySelector('[data-sc-now]').textContent = vn.length ? 'Scoring now: ' + vn.map(function (v) { return v.agent ? v.agent + ', ' + v.company : v.company; }).join(' · ') : '';
+    };
+    var pullScreen = function () { getJSON('/api/agent-summit/leaderboard').then(drawScreen).catch(function () { /* keep the last numbers */ }); };
+    pullScreen();
+    setInterval(pullScreen, 10000);
+    setInterval(function () {
+      scIndex = (scIndex + 1) % scViews.length;
+      scViews.forEach(function (v, i) { v.hidden = i !== scIndex; });
+    }, 20000);
+  }
+
+  // Agents of India 2027: drawn from the totals once the team has made the report public.
+  var reportEl = document.querySelector('[data-report]');
+  if (reportEl) {
+    getJSON('/api/agent-summit/report').then(function (j) {
+      if (!j || !j.published) return;
+      var bars = function (title, list) {
+        if (!list || !list.length) return '';
+        var max = Math.max.apply(null, list.map(function (x) { return x.n; }));
+        return '<section class="rp-block"><h3>' + escH(title) + '</h3><ul class="rp-bars">' + list.map(function (x) {
+          return '<li><span class="rp-l">' + escH(x.label) + '</span><span class="rp-b"><i style="width:' + Math.max(4, Math.round(x.n / max * 100)) + '%"></i></span><span class="rp-n">' + x.n + '</span></li>';
+        }).join('') + '</ul></section>';
+      };
+      var body = reportEl.querySelector('[data-report-body]');
+      body.innerHTML = '<div class="rp-head"><div class="rp-num"><b>' + j.applications + '</b><span>showcase applications</span></div><div class="rp-num"><b>' + j.teams + '</b><span>AI Agent Challenge teams</span></div>'
+        + '<button type="button" class="btn btn-primary" data-print>Download as PDF</button></div>'
+        + '<div class="rp-grid">' + bars('What the agents do', j.categories) + bars('How far along they are', j.stages) + bars('Languages they work in', j.languages)
+        + bars('Where they are built', j.cities) + bars('Team size', j.team_sizes) + bars('When the company started', j.founded) + bars('Challenge team size', j.challenge_sizes) + '</div>'
+        + '<p class="fine">Totals from every showcase application and AI Agent Challenge entry received by ' + new Date(j.as_of).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+        + '. Groups smaller than ' + j.min_group + ' are left out, so no company can be picked out.</p>';
+      body.hidden = false;
+      reportEl.querySelector('[data-report-wait]').hidden = true;
+      body.querySelector('[data-print]').addEventListener('click', function () { window.print(); });
+    }).catch(function () { /* the launch note stays */ });
+  }
 })();

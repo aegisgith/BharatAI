@@ -316,10 +316,112 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
   const pm = JSON.parse(pr.metadata || '{}');
   check('a problem is an agent_problem enquiry kept off the board by name unless asked, with reference AAS27-P',
     q.status === 201 && pr.event_id === 1 && pm.edition === 'agent-summit-2027' && pm.sector === 'banking' && pm.show_name === false && /^AAS27-P\d+$/.test(q.json?.reference || '') && /Problem: Reconcile about 3,000 vendor invoices a month against pur\.\.\./.test(pr.subject), q.text + ' ' + pr.subject);
-  check('the sender is told nothing goes up before we write to them', /before yours is published/.test(q.json?.message || ''), q.text);
+  check('the sender is told we write to them when it goes up', /when yours is published/.test(q.json?.message || ''), q.text);
   q = await post('/api/agent-summit/enquire', { name: 'Sameer Shah', email: 'sameer@cloud.example.com', company: 'CloudCo', tier: 'challenge', consent: 'yes' });
   const ce = rows("SELECT subject FROM inquiries WHERE inquiry_type = 'sponsorship' ORDER BY id DESC LIMIT 1")[0] || {};
   check('a partner can ask about the challenge or the Break the agent booth', q.status === 201 && /Partner: AI Agent Challenge partner/.test(ce.subject || ''), ce.subject);
+}
+
+// ---- On the day (26 Nov 2026): the room's scores, Break the agent, the board, the report ----
+{
+  const AUTHJ = { Authorization: 'Bearer smoke-admin', 'Content-Type': 'application/json' };
+  const getJ = (path, headers) => hit(path, headers ? { headers } : {});
+  let q = await getJ('/api/agent-summit/leaderboard');
+  check('before migration 0067 the hall screen answers ready: false, not an error', q.status === 200 && q.json?.ready === false, q.text);
+  q = await getJ('/api/admin/agent-summit/day', AUTHJ);
+  check('before 0067 Admin -> On the day names the migration to run', q.status === 200 && q.json?.ready === false && /0067_summit_day/.test(q.json?.migration || ''), q.text.slice(0, 200));
+  db.exec(readFileSync(new URL('../../migrations/0067_summit_day.sql', import.meta.url), 'utf8'));
+  db.exec(readFileSync(new URL('../../migrations/0067_summit_day.sql', import.meta.url), 'utf8'));
+  check('migration 0067 runs twice without error', true);
+
+  // Voters: five settled Delegate passes, one unpaid Delegate, one Visitor.
+  for (let i = 1; i <= 5; i++) db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status) VALUES (3, ?, ?, 'Delegate Pass', 'paid')", ['Voter ' + i, 'voter' + i + '@example.com']);
+  db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status) VALUES (3, 'Unpaid Ume', 'unpaid@example.com', 'Delegate Pass', 'pending')");
+  db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status) VALUES (3, 'Visitor Vee', 'visitor-vote@example.com', 'Visitor Pass', 'paid')");
+  db.run("INSERT INTO attendees (event_id, name, email, badge_type, payment_status) VALUES (1, 'Mumbai Mo', 'mumbai-vote@example.com', 'Delegate Pass', 'paid')");
+  const tokens = [];
+  for (let i = 1; i <= 5; i++) {
+    mail = [];
+    q = await post('/api/agent-summit/vote-link', { email: 'Voter' + i + '@example.com' }, '10.9.0.' + i);
+    await settled();
+    const link = (mail.map(bodyOf).join(' ').match(/ai-agent-summit\/vote\?t=([0-9]+\.[0-9a-f]{32})/) || [])[1];
+    if (link) tokens.push(link);
+  }
+  check('a settled Delegate Pass asking for a voting link is emailed one, signed', tokens.length === 5, 'tokens ' + tokens.length);
+  for (const [em, why] of [['unpaid@example.com', 'an unpaid Delegate Pass'], ['visitor-vote@example.com', 'a Visitor Pass'], ['mumbai-vote@example.com', 'a Mumbai attendee'], ['nobody@example.com', 'an unknown email']]) {
+    mail = [];
+    q = await post('/api/agent-summit/vote-link', { email: em }, '10.9.1.1');
+    await settled();
+    check(why + ' gets the same answer and no link', q.status === 200 && q.json?.ok === true && !mail.some((m) => /vote\?t=/.test(bodyOf(m))), q.text + ' mails ' + mail.length);
+  }
+  q = await getJ('/api/agent-summit/vote?t=' + tokens[0].replace(/.$/, (ch) => (ch === 'a' ? 'b' : 'a')));
+  check('a voting link with one character changed is refused', q.status === 403, String(q.status));
+  q = await getJ('/api/agent-summit/vote?t=' + tokens[0]);
+  check('a voter opens the page: first name, nothing open yet', q.status === 200 && q.json?.ready === true && q.json?.name === 'Voter' && q.json.open.length === 0, q.text);
+
+  q = await post('/api/admin/agent-summit/slots', { lines: 'AgentCo | InvoiceBot\nVoiceCo | Saathi' });
+  check('the slots list needs Admin', q.status === 401 || q.status === 403, String(q.status));
+  q = await hit('/api/admin/agent-summit/slots', { method: 'POST', headers: AUTHJ, body: JSON.stringify({ lines: 'AgentCo | InvoiceBot\nVoiceCo | Saathi\n\n' }) });
+  const slots = rows('SELECT * FROM summit_slots ORDER BY position');
+  check('Admin adds the running order, one "Company | Agent" a line', q.status === 200 && slots.length === 2 && slots[0].company === 'AgentCo' && slots[0].agent === 'InvoiceBot' && slots[1].position === 2, q.text);
+  const s1 = slots[0].id, s2 = slots[1].id;
+  q = await post('/api/agent-summit/vote', { t: tokens[0], slot_id: s1, worked: 5, would_use: 4, clear: 5 });
+  check('a slot not yet open cannot be scored', q.status === 409 && q.json?.closed === true, q.text);
+  await hit('/api/admin/agent-summit/slots/' + s1, { method: 'POST', headers: AUTHJ, body: JSON.stringify({ state: 'open' }) });
+  q = await getJ('/api/agent-summit/vote?t=' + tokens[0]);
+  check('once Admin opens it, the voter sees it', q.json?.open?.length === 1 && q.json.open[0].company === 'AgentCo' && q.json.open[0].mine === null, q.text);
+  q = await post('/api/agent-summit/vote', { t: tokens[0], slot_id: s1, worked: 6, would_use: 4, clear: 5 });
+  check('a score outside 1 to 5 is refused', q.status === 400, q.text);
+  for (let i = 0; i < 4; i++) await post('/api/agent-summit/vote', { t: tokens[i], slot_id: s1, worked: 4, would_use: 4, clear: 4 });
+  q = await post('/api/agent-summit/vote', { t: tokens[0], slot_id: s1, worked: 5, would_use: 5, clear: 5 });
+  check('a voter can change their score while the slot is open: one row each', q.status === 200 && rows('SELECT COUNT(*) AS n FROM summit_scores WHERE slot_id = ?', [s1])[0].n === 4, q.text);
+  q = await getJ('/api/agent-summit/leaderboard');
+  check('under five votes a slot stays off the hall screen', q.json?.ready === true && q.json.agents.length === 0 && q.json.voting_now.length === 1, q.text.slice(0, 300));
+  await post('/api/agent-summit/vote', { t: tokens[4], slot_id: s1, worked: 3, would_use: 3, clear: 3 });
+  q = await getJ('/api/agent-summit/leaderboard');
+  const top = (q.json?.agents || [])[0] || {};
+  check('at five votes it shows, with the average of the three questions', top.company === 'AgentCo' && top.votes === 5 && top.worked === 4 && top.score === 4, JSON.stringify(top));
+  await hit('/api/admin/agent-summit/slots/' + s1, { method: 'POST', headers: AUTHJ, body: JSON.stringify({ state: 'closed' }) });
+  q = await post('/api/agent-summit/vote', { t: tokens[1], slot_id: s1, worked: 1, would_use: 1, clear: 1 });
+  check('after Admin closes it, no more scores', q.status === 409 && rows('SELECT worked FROM summit_scores WHERE slot_id = ? AND attendee_id = (SELECT id FROM attendees WHERE email = ?)', [s1, 'voter2@example.com'])[0].worked === 4, q.text);
+  q = await hit('/api/admin/agent-summit/slots/' + s1, { method: 'POST', headers: AUTHJ, body: JSON.stringify({ delete: true }) });
+  check('a slot with scores cannot be deleted', q.status === 409, q.text);
+  q = await hit('/api/admin/agent-summit/slots/' + s2, { method: 'POST', headers: AUTHJ, body: JSON.stringify({ delete: true }) });
+  check('a slot without scores can', q.status === 200 && rows('SELECT COUNT(*) AS n FROM summit_slots')[0].n === 1, q.text);
+
+  q = await hit('/api/admin/agent-summit/breaks', { method: 'POST', headers: AUTHJ, body: JSON.stringify({ breaker: 'Riya S', agent: 'InvoiceBot', what: 'Got it to approve an invoice over its limit' }) });
+  await hit('/api/admin/agent-summit/breaks', { method: 'POST', headers: AUTHJ, body: JSON.stringify({ breaker: 'riya s ', agent: 'Saathi', what: 'Made it reveal another caller\'s number' }) });
+  await hit('/api/admin/agent-summit/breaks', { method: 'POST', headers: AUTHJ, body: JSON.stringify({ breaker: 'Arjun', agent: 'InvoiceBot', what: '' }) });
+  q = await getJ('/api/agent-summit/leaderboard');
+  check('Break the agent: breaks by the same person count together, most first', q.json?.breakers?.[0]?.breaks === 2 && /riya/i.test(q.json.breakers[0].breaker) && q.json.breakers.length === 2 && q.json.recent.length === 3, JSON.stringify(q.json?.breakers));
+
+  q = await getJ('/api/agent-summit/problems');
+  check('the public board is empty until the team publishes', q.status === 200 && q.json?.problems?.length === 0, q.text);
+  const pid = rows("SELECT id FROM inquiries WHERE inquiry_type = 'agent_problem'")[0].id;
+  mail = [];
+  q = await hit('/api/admin/agent-summit/problems/' + pid + '/publish', { method: 'POST', headers: AUTHJ, body: JSON.stringify({ publish: true, text: 'Match 3,000 vendor invoices a month to purchase orders.' }) });
+  await settled();
+  const pb = await getJ('/api/agent-summit/problems');
+  const shown = (pb.json?.problems || [])[0] || {};
+  check('published: on the board with the tidied words, the company kept off as asked', q.json?.emailed === true && shown.text === 'Match 3,000 vendor invoices a month to purchase orders.' && shown.company === null && shown.sector === 'Banking and financial services', pb.text);
+  check('the sender is emailed when it goes up, once', mail.some((m) => /on the board/i.test(m.Content.Subject) && (m.Recipients?.To || m.Recipients || []).toString().includes('kavita@bigbank.example.com')), mail.map((m) => m.Content.Subject).join(' | '));
+  mail = [];
+  await hit('/api/admin/agent-summit/problems/' + pid + '/publish', { method: 'POST', headers: AUTHJ, body: JSON.stringify({ publish: false }) });
+  await hit('/api/admin/agent-summit/problems/' + pid + '/publish', { method: 'POST', headers: AUTHJ, body: JSON.stringify({ publish: true }) });
+  await settled();
+  check('taken down and put back: no second email', mail.length === 0, mail.map((m) => m.Content.Subject).join(' | '));
+
+  q = await getJ('/api/agent-summit/report');
+  check('the report is not public until the team switches it on', q.status === 200 && q.json?.published === false && q.json.applications === undefined, q.text);
+  q = await getJ('/api/admin/agent-summit/report', AUTHJ);
+  const nApps = rows("SELECT COUNT(*) AS n FROM inquiries WHERE inquiry_type = 'agent_showcase'")[0].n;
+  const groups = q.json ? ['categories', 'stages', 'languages', 'cities', 'team_sizes', 'founded', 'challenge_sizes'].flatMap((k) => q.json[k] || []) : [];
+  check('Admin sees the totals; no group under three is shown', q.status === 200 && q.json?.applications === nApps && q.json.teams === 1 && groups.every((g) => g.n >= 3), q.text.slice(0, 300));
+  await hit('/api/admin/agent-summit/report', { method: 'POST', headers: AUTHJ, body: JSON.stringify({ publish: true }) });
+  q = await getJ('/api/agent-summit/report');
+  check('switched on, the report is public: totals only, no names', q.json?.published === true && q.json.applications === nApps && !/AgentCo|InvoiceBot|Neha|agentco/i.test(q.text), q.text.slice(0, 200));
+  q = await getJ('/api/admin/agent-summit/day', AUTHJ);
+  check('Admin -> On the day: voters, slots, breaks, problems and the report switch in one answer', q.json?.ready === true && q.json.voters.eligible >= 5 && q.json.slots.length === 1 && q.json.breaks.length === 3 && q.json.problems.length === 1 && q.json.report.published === true, q.text.slice(0, 300));
 }
 
 // The day is Friday 16 April 2027 (the organiser, 26 Nov 2026): no page, calendar file or script says 17 or Saturday.

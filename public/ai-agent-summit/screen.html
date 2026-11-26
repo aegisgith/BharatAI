@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hall screen | AI Agent Summit 2027</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#08090c">
+<link rel="icon" href="/ai-agent-summit/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/ai-agent-summit/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/ai-agent-summit/assets/site.css?v=20261126i">
+<script src="/ai-agent-summit/assets/site.js?v=20261126i" defer></script>
+</head>
+<body class="screen-body">
+<!-- The hall screens on 16 April: the room's scores and Break the agent, one after the other.
+     Reads GET /api/agent-summit/leaderboard every 10 seconds. Open it full screen (F11). -->
+<main class="screen" data-screen>
+  <header class="sc-head">
+    <img src="/ai-agent-summit/images/brand/logo-horizontal-dark.svg" alt="AI Agent Summit" width="464" height="67">
+    <p class="sc-now" data-sc-now></p>
+  </header>
+  <section class="sc-view" data-view="scores">
+    <h1>Scored by the room</h1>
+    <ol class="sc-list" data-sc-scores></ol>
+    <p class="sc-note">A demo appears once five people have scored it. Score with the link in your voting email.</p>
+  </section>
+  <section class="sc-view" data-view="breaks" hidden>
+    <h1>Break the agent</h1>
+    <div class="sc-cols">
+      <ol class="sc-list" data-sc-breakers></ol>
+      <ul class="sc-recent" data-sc-recent></ul>
+    </div>
+    <p class="sc-note">Try it yourself at the Break the agent booth on the showcase floor.</p>
+  </section>
+</main>
+</body>
+</html>
