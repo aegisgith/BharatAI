@@ -10,6 +10,9 @@
 //  - a showcase application and a partner enquiry land on the Inquiries desk (event 1 rows,
 //    told apart by metadata.edition), the team is told, a repeat application is the same one;
 //  - the app's public routes refuse event 3; the Admin list needs Admin and lists event 3 only.
+//  - a showcase package: accepted on the desk, emailed a signed pay link, paid through the same
+//    checkout; the application is paid and Won, a paid pass is kept, no pass becomes Exhibitor;
+//    the stage limit counts paid slots.
 // Run after `npm run build`:  node scripts/verify/smoke-agent-summit.mjs
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -164,6 +167,89 @@ r = await hit('/api/admin/agent-summit/passes/' + nehaId + '/confirm', { method:
 check('a Delegate Pass is not confirmed by hand', r.status === 400, r.text);
 r = await hit('/api/admin/agent-summit/overview');
 check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(r.status));
+
+// ---- a showcase package, accepted on the desk and paid online (26 Nov 2026) ----
+{
+  const early = Date.now() <= Date.parse('2027-01-31T23:59:59+05:30');
+  const appRow = rows("SELECT * FROM inquiries WHERE inquiry_type = 'agent_showcase' ORDER BY id LIMIT 1")[0];
+  const acceptUrl = (id) => '/api/admin/agent-summit/applications/' + id + '/accept';
+  r = await hit(acceptUrl(appRow.id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  check('accepting an application needs Admin', r.status === 401 || r.status === 403, String(r.status));
+  mail = [];
+  r = await hit(acceptUrl(appRow.id), { method: 'POST', headers: AUTH, body: JSON.stringify({ package: 'startup' }) });
+  await settled();
+  const acc = JSON.parse(rows('SELECT metadata FROM inquiries WHERE id = ?', [appRow.id])[0].metadata || '{}');
+  const price = early ? 64000 : 79000;
+  check('accepting records the package and its price (the Startup early price for an application before 31 Jan), and the link is on bharataiinnovation.com',
+    r.status === 200 && r.json?.ok && /^https:\/\/bharataiinnovation\.com\/pay\/summit-showcase\?t=/.test(r.json.link || '') && acc.accepted_package === 'startup' && acc.accepted_inr === price && !!acc.accepted_at,
+    r.text + ' ' + JSON.stringify(acc));
+  const acceptMail = to('neha@agentco.example.com')[0];
+  check('the company is emailed the pay link, in summit words, with no Bharat AI app block',
+    !!acceptMail && /^Accepted: InvoiceBot at AI Agent Summit 2027$/.test(acceptMail.Content.Subject) && bodyOf(acceptMail).includes('/pay/summit-showcase?t=') && /Friday 16 April 2027/.test(bodyOf(acceptMail)) && !/Save the Bharat AI app|Get the app/i.test(bodyOf(acceptMail)),
+    mail.map((m) => m.Recipients.To.join(',') + ': ' + m.Content.Subject).join(' | '));
+  const link = new URL(r.json.link);
+  const t = link.searchParams.get('t');
+  let page = await hit(link.pathname + link.search);
+  check('the pay page shows the package and what it costs with GST', page.status === 200 && /Startup Showcase/.test(page.text) && /InvoiceBot/.test(page.text) && /securely/.test(page.text), page.text.slice(0, 300));
+  page = await hit(link.pathname + '?t=' + encodeURIComponent(t.slice(0, -1) + (t.endsWith('a') ? 'b' : 'a')));
+  check('a changed link is refused', page.status === 404 && /not valid/.test(page.text), String(page.status));
+  const form = (o) => hit('/pay/summit-showcase', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(o).toString() });
+  const pkgOrders = () => rows("SELECT * FROM payment_orders WHERE pass_type IN ('Startup Showcase', 'Growth Showcase', 'Enterprise Showcase', 'Showcase Pod') ORDER BY id");
+  page = await form({ t, legal_name: 'AgentCo Private Limited', gstin: 'NOTAGSTIN', address: '' });
+  check('a wrong GSTIN is refused in words on the page, and no order is made', page.status === 400 && /GSTIN/.test(page.text) && pkgOrders().length === 0, page.status + ' ' + pkgOrders().length);
+  page = await form({ t, legal_name: 'AgentCo Private Limited', gstin: '', address: '' });
+  const po = pkgOrders()[0] || {};
+  check('paying makes an event-3 order at the package price plus 18% GST and goes to the checkout on bharataiinnovation.com',
+    page.status === 303 && /^https:\/\/bharataiinnovation\.com\/pay\/ccavenue\//.test(page.location || '') && po.event_id === 3 && po.pass_type === 'Startup Showcase' && po.base_paise === price * 100 && po.gst_paise === Math.round(price * 100 * 0.18),
+    page.status + ' ' + page.location + ' ' + JSON.stringify(po));
+  const co = await hit(new URL(page.location).pathname);
+  check('the checkout page opens for the package and marks it for CCAvenue reports', co.status === 200 && /AI Agent Summit 2027/.test(co.text) && /Startup Showcase/.test(co.text), co.text.slice(0, 300));
+  mail = [];
+  r = await hit('/pay/ccavenue/return', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ encResp: kitEncrypt(gatewayAnswer(SECRET, po)) }).toString() });
+  await settled();
+  const paidApp = rows('SELECT status, metadata FROM inquiries WHERE id = ?', [appRow.id])[0];
+  const pm = JSON.parse(paidApp.metadata || '{}');
+  const nehaNow = rows("SELECT badge_type, payment_status FROM attendees WHERE event_id = 3 AND email = 'neha@agentco.example.com'")[0] || {};
+  check('the gateway marks the application paid and Won; her paid Delegate Pass is kept',
+    rows('SELECT status FROM payment_orders WHERE id = ?', [po.id])[0]?.status === 'paid' && paidApp.status === 'won' && pm.paid_order === po.order_id && pm.paid_paise === po.amount_paise && !!pm.paid_at && nehaNow.badge_type === 'Delegate Pass',
+    JSON.stringify(paidApp) + ' ' + JSON.stringify(nehaNow));
+  const paidMail = to('neha@agentco.example.com').find((m) => /^Payment received: Startup Showcase at AI Agent Summit 2027$/.test(m.Content.Subject));
+  check('the company gets the package confirmation with what happens next, and no pass wording', !!paidMail && /What happens next/.test(bodyOf(paidMail)) && /ten-minute slot/.test(bodyOf(paidMail)) && !/Save the Bharat AI app/i.test(bodyOf(paidMail)), mail.map((m) => m.Content.Subject).join(' | '));
+  check('the team is told the showcase is paid', mail.some((m) => /^Showcase paid, AI Agent Summit: InvoiceBot, AgentCo, Startup Showcase, Rs /.test(m.Content.Subject)), mail.map((m) => m.Content.Subject).join(' | '));
+  check('no pass payment email went out for a package', !mail.some((m) => /Paid online, AI Agent Summit/.test(m.Content.Subject)), mail.map((m) => m.Content.Subject).join(' | '));
+  const pr = rows('SELECT item_desc FROM invoices WHERE order_ref = ?', [po.order_id])[0];
+  check('the receipt names the package and the summit', !pr || /^Startup Showcase - AI Agent Summit 2027$/.test(pr.item_desc), JSON.stringify(pr));
+  const loc = r.location || '';
+  const res = loc ? await hit(new URL(loc, 'https://bharataiinnovation.com').pathname + new URL(loc, 'https://bharataiinnovation.com').search) : { status: 0, text: '' };
+  check('the result page confirms the package', res.status === 200 && /Startup Showcase<\/strong> at AI Agent Summit 2027 is confirmed/.test(res.text), loc + ' ' + res.text.slice(0, 200));
+  page = await hit(link.pathname + link.search);
+  check('the pay link, opened again, says it is paid', page.status === 200 && /This package is paid/.test(page.text), page.text.slice(0, 200));
+  r = await hit(acceptUrl(appRow.id), { method: 'POST', headers: AUTH, body: '{}' });
+  check('accepting a paid application changes nothing', r.status === 200 && r.json?.paid === true, r.text);
+  r = await hit('/api/admin/agent-summit/overview', { headers: AUTH });
+  const ov = (r.json?.applications || []).find((x) => x.id === appRow.id) || {};
+  check('the desk shows it paid, lists the packages, and counts the package apart from the passes', !!ov.paid_at && ov.paid_paise === po.amount_paise && r.json?.packages?.startup?.label === 'Startup Showcase' && r.json?.sales?.packages_paid === 1 && r.json?.sales?.passes_paid === 1, JSON.stringify(ov) + ' ' + JSON.stringify(r.json?.sales));
+
+  // A second company with no pass: it becomes an Exhibitor; the stage limit is kept.
+  await post('/api/agent-summit/apply', { ...A, company: 'LedgerWorks', agent_name: 'LedgerBot', contact_name: 'Ravi Menon', email: 'ravi@ledgerworks.example.com', phone: '+91 98200 44444' }, '10.3.3.9');
+  await settled();
+  const ravi = rows("SELECT id FROM inquiries WHERE email = 'ravi@ledgerworks.example.com'")[0];
+  db.run("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('summit_stage_cap', '1')");
+  r = await hit(acceptUrl(ravi.id), { method: 'POST', headers: AUTH, body: JSON.stringify({ package: 'growth' }) });
+  await settled();
+  const rt = new URL(r.json.link).searchParams.get('t');
+  page = await form({ t: rt, legal_name: 'LedgerWorks LLP' });
+  check('a stage package past the limit of paid slots is refused in words, with no order', page.status === 409 && /stage slots/.test(page.text) && pkgOrders().length === 1, page.status + ' ' + pkgOrders().length);
+  db.run("DELETE FROM app_settings WHERE key = 'summit_stage_cap'");
+  page = await form({ t: rt, legal_name: 'LedgerWorks LLP' });
+  const ro = pkgOrders()[1] || {};
+  check('the Growth Showcase is Rs 1,49,000 plus GST', page.status === 303 && ro.pass_type === 'Growth Showcase' && ro.base_paise === 14900000, JSON.stringify(ro));
+  await hit('/pay/ccavenue/return', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ encResp: kitEncrypt(gatewayAnswer(SECRET, ro)) }).toString() });
+  await settled();
+  const raviNow = rows("SELECT badge_type, payment_status, registration_source FROM attendees WHERE event_id = 3 AND email = 'ravi@ledgerworks.example.com'")[0] || {};
+  check('a contact with no pass becomes an Exhibitor of the summit, on event 3', raviNow.badge_type === 'Exhibitor' && raviNow.payment_status === 'paid' && raviNow.registration_source === 'agent-summit-showcase', JSON.stringify(raviNow));
+  check('Mumbai is still untouched', rows('SELECT COUNT(*) AS n FROM attendees WHERE event_id = 1')[0].n === 0, '');
+}
 
 // The day is Friday 16 April 2027 (the organiser, 26 Nov 2026): no page, calendar file or script says 17 or Saturday.
 {

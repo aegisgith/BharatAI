@@ -59,6 +59,8 @@ type Hooks = {
   mobileKey: (v: unknown) => string
   maskEmail: (email: string) => string
   consts: () => { PAID_TIERS: string[]; FREE_BADGE_RE: RegExp; PASS_GST_RATE: number; PAY_ORDERS_PER_HOUR: number }
+  sign: (c: any, message: string) => Promise<string>
+  receiptForOrder: (c: any, order: any, a: any, trackingId: string) => Promise<{ invoice_no: string; url: string } | null>
 }
 let h: Hooks = {} as Hooks
 export function configureAgentSummit(hooks: Partial<Hooks>) { h = { ...h, ...hooks } as Hooks }
@@ -181,6 +183,15 @@ function summitHeader(title: string): string {
   </div>`
 }
 
+// The top of a summit payment page (checkout, result, the package pay page): the summit's
+// own logo bar, not Bharat AI's, though the page is on bharataiinnovation.com (26 Nov 2026).
+export function summitPageHeader(): string {
+  return `<div style="background:#0d1013;padding:22px 24px;border-bottom:3px solid #c6ff3d;">
+    <img src="https://bharataiinnovation.com/ai-agent-summit/images/brand/logo-horizontal-dark.png" width="200" height="29" alt="AI Agent Summit" style="display:block;border:0;width:200px;height:auto;">
+    <div style="font-family:Arial,sans-serif;font-size:13px;color:#a4aeb9;margin-top:12px;">${SUMMIT_WHEN}</div>
+  </div>`
+}
+
 function summitMail(title: string, inner: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f2f3f5;font-family:Arial,sans-serif;">
   <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:10px;overflow:hidden;">
@@ -268,6 +279,7 @@ async function sendFreePassEmail(c: any, a: any, kind: string) {
 
 // /pay/result for a summit order (index.tsx dispatches here).
 export async function summitPayResult(c: any, order: any) {
+  if (isSummitPackageOrder(order)) return packagePayResult(c, order)
   const esc = h.payEsc
   const no = esc(order.order_id)
   const page = (title: string, body: string) => c.html(h.payPage(title, body, 'summit'))
@@ -581,12 +593,15 @@ app.get('/api/admin/agent-summit/passes', async (c) => {
 // 'summit.confirm'), not a column: attendees.entry_status is Mumbai's waiting list.
 const CONFIRMED_SQL = "EXISTS (SELECT 1 FROM admin_audit au WHERE au.action = 'summit.confirm' AND CAST(au.entity_id AS TEXT) = CAST(a.id AS TEXT))"
 
-export async function summitSales(c: any): Promise<{ registered: number; paid: number; paise: number; review: number; applications: number; applications_new: number; partners: number }> {
+export async function summitSales(c: any): Promise<{ registered: number; paid: number; passes_paid: number; packages_paid: number; paise: number; review: number; applications: number; applications_new: number; partners: number }> {
   const one = async (sql: string, ...v: any[]) => Number(((await c.env.DB.prepare(sql).bind(...v).first().catch(() => null)) as any)?.n || 0)
   return {
     registered: await one('SELECT COUNT(*) AS n FROM attendees WHERE event_id = ?', SUMMIT_EVENT_ID),
     paid: await one("SELECT COUNT(DISTINCT attendee_id) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid'", SUMMIT_EVENT_ID),
     paise: await one("SELECT COALESCE(SUM(amount_paise), 0) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid'", SUMMIT_EVENT_ID),
+    // Showcase packages (26 Nov 2026) are in paid and paise; the desk shows them apart from the passes.
+    passes_paid: await one(`SELECT COUNT(DISTINCT attendee_id) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid' AND pass_type NOT IN (${PACKAGE_LABELS_SQL})`, SUMMIT_EVENT_ID),
+    packages_paid: await one(`SELECT COUNT(*) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid' AND pass_type IN (${PACKAGE_LABELS_SQL})`, SUMMIT_EVENT_ID),
     review: await one(`SELECT COUNT(*) AS n FROM attendees a WHERE a.event_id = ? AND a.badge_type IN ('Buyer Pass', 'Investor Pass') AND NOT ${CONFIRMED_SQL}`, SUMMIT_EVENT_ID),
     applications: await one("SELECT COUNT(*) AS n FROM inquiries WHERE inquiry_type = 'agent_showcase'"),
     applications_new: await one("SELECT COUNT(*) AS n FROM inquiries WHERE inquiry_type = 'agent_showcase' AND status = 'new'"),
@@ -611,7 +626,9 @@ app.get('/api/admin/agent-summit/overview', async (c) => {
     const m = parse(r.metadata)
     return { id: r.id, created_at: r.created_at, contact: r.name, email: r.email, phone: r.phone, company: r.organization, status: r.status,
       agent: m.agent_name || '', package: m.package_label || '', category: m.category_label || '', stage: m.stage_label || '',
-      demo_url: m.demo_url || '', website: m.website || '', summary: String(r.message || '').split('\n')[0] }
+      demo_url: m.demo_url || '', website: m.website || '', summary: String(r.message || '').split('\n')[0],
+      package_key: m.package || '', accepted_at: m.accepted_at || null, accepted_package: m.accepted_package || '', link_sent_at: m.link_sent_at || null,
+      price_inr: packagePrice(m.accepted_package || m.package || '', r.created_at), paid_at: m.paid_at || null, paid_paise: Number(m.paid_paise) || 0 }
   })
   const partners = ((((await db.prepare(
     `SELECT id, created_at, name, email, phone, organization, subject, status, metadata FROM inquiries WHERE inquiry_type = 'sponsorship' AND subject LIKE 'AI Agent Summit 2027%' ORDER BY id DESC LIMIT 500`
@@ -620,7 +637,8 @@ app.get('/api/admin/agent-summit/overview', async (c) => {
     return { id: r.id, created_at: r.created_at, name: r.name, email: r.email, phone: r.phone, company: r.organization, status: r.status,
       tier: String(r.subject || '').replace(/^AI Agent Summit 2027 · Partner: /, ''), job_title: m.job_title || '' }
   })
-  return c.json({ sales: await summitSales(c), passes, applications, partners, prices: SUMMIT_PASS_PRICES_INR })
+  const packages = Object.fromEntries(Object.entries(SUMMIT_PACKAGES).map(([k, p]) => [k, { label: p.label, inr: p.inr, early: p.early || null }]))
+  return c.json({ sales: await summitSales(c), passes, applications, partners, prices: SUMMIT_PASS_PRICES_INR, packages })
 })
 
 // The team confirms a Buyer or Investor Pass: the person is emailed, the audit row is the record.
@@ -644,5 +662,351 @@ app.post('/api/admin/agent-summit/passes/:id/confirm', async (c) => {
   try { c.executionCtx.waitUntil(sent) } catch { await sent }
   return c.json({ ok: true })
 })
+
+// ==================== SHOWCASE PACKAGES: accepted, then paid online (26 Nov 2026) ====================
+//
+// The organiser, 26 Nov 2026: yes to online payment for accepted showcase packages, in this
+// app. The team accepts an application on Admin -> AI Agent Summit; the company is emailed a
+// signed link to /pay/summit-showcase, adds its GST details there and pays through the same
+// CCAvenue checkout as the passes. The order is an event-3 payment_orders row whose pass_type
+// is the package name: settlePaidOrder (index.tsx) hands it to settleSummitPackageOrder, never
+// to the pass path. No new table: acceptance and payment are on the application's metadata
+// (accepted_at, accepted_package, accepted_inr, link_sent_at, last_order, paid_at, paid_order,
+// paid_paise) and in admin_audit (summit.accept, summit.package.order, payment.received).
+// A link stays good for PACKAGE_LINK_DAYS; Resend on the desk makes a new one.
+
+export const SUMMIT_PACKAGES: Record<string, { label: string; inr: number; early?: number; stage: boolean; space: string; passes: string }> = {
+  startup: { label: 'Startup Showcase', inr: 79000, early: 64000, stage: true, space: '1.5 x 1.5 m pod', passes: '2 passes' },
+  growth: { label: 'Growth Showcase', inr: 149000, stage: true, space: '2 x 2 m booth', passes: '4 passes, one of them VIP' },
+  enterprise: { label: 'Enterprise Showcase', inr: 295000, stage: true, space: '3 x 2 m booth', passes: '6 passes, two of them VIP' },
+  pod: { label: 'Showcase Pod', inr: 38000, stage: false, space: '1.5 x 1.5 m pod', passes: '' },
+}
+const PACKAGE_BY_LABEL: Record<string, string> = Object.fromEntries(Object.entries(SUMMIT_PACKAGES).map(([k, p]) => [p.label, k]))
+const PACKAGE_LABELS_SQL = Object.values(SUMMIT_PACKAGES).map((p) => "'" + p.label.replace(/'/g, "''") + "'").join(', ')
+const PACKAGE_LINK_DAYS = 30
+const STAGE_CAP_KEY = 'summit_stage_cap'
+const STAGE_CAP_DEFAULT = 30
+const PACKAGE_PAY_PATH = '/pay/summit-showcase'
+
+export function isSummitPackageOrder(o: any): boolean { return isSummitOrder(o) && !!PACKAGE_BY_LABEL[String(o?.pass_type || '')] }
+
+// The Startup Showcase is Rs 64,000 for a company that applied by 31 Jan 2027 (the pages say
+// "if you apply by"), whenever it pays. Inquiry times are UTC, as SQLite's datetime('now').
+export function packagePrice(key: string, appliedAt: any): number {
+  const p = SUMMIT_PACKAGES[key]
+  if (!p) return 0
+  const raw = String(appliedAt || '').trim()
+  const t = Date.parse(raw.replace(' ', 'T') + (/([zZ]|[+-]\d\d:?\d\d)$/.test(raw) ? '' : 'Z'))
+  return p.early && Number.isFinite(t) && t <= SUMMIT_EARLY_UNTIL ? p.early : p.inr
+}
+function packageAmounts(inr: number) {
+  const base = inr * 100
+  const gst = Math.round(base * h.consts().PASS_GST_RATE / 100)
+  return { base, gst, total: base + gst }
+}
+const inrText = (n: number) => Number(n).toLocaleString('en-IN')
+const parseMeta = (m: any) => { try { return JSON.parse(m || '{}') || {} } catch { return {} } }
+function sameText(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let d = 0
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return d === 0
+}
+
+async function packageToken(c: any, inquiryId: number): Promise<string> {
+  const exp = Math.floor(Date.now() / 1000) + PACKAGE_LINK_DAYS * 86400
+  const sig = await h.sign(c, 'summit-package:' + inquiryId + ':' + exp)
+  return inquiryId + '.' + exp + '.' + sig.slice(0, 32)
+}
+async function packageTokenId(c: any, token: unknown): Promise<number> {
+  const m = /^(\d{1,9})\.(\d{9,11})\.([0-9a-f]{32})$/.exec(String(token || ''))
+  if (!m || Number(m[2]) * 1000 < Date.now()) return 0
+  const want = (await h.sign(c, 'summit-package:' + m[1] + ':' + m[2])).slice(0, 32)
+  return want && sameText(want, m[3]) ? Number(m[1]) : 0
+}
+async function packageLink(c: any, inquiryId: number): Promise<string> {
+  return (await checkoutBase(c)) + PACKAGE_PAY_PATH + '?t=' + encodeURIComponent(await packageToken(c, inquiryId))
+}
+async function applicationRow(c: any, id: number): Promise<any | null> {
+  if (!id) return null
+  return await c.env.DB.prepare("SELECT * FROM inquiries WHERE id = ? AND inquiry_type = 'agent_showcase'").bind(id).first().catch(() => null)
+}
+async function stageCap(c: any): Promise<number> {
+  const v = parseInt(await h.settingValue(c, STAGE_CAP_KEY), 10)
+  return Number.isFinite(v) && v >= 0 ? v : STAGE_CAP_DEFAULT
+}
+async function stagePaid(c: any): Promise<number> {
+  const labels = Object.values(SUMMIT_PACKAGES).filter((p) => p.stage).map((p) => p.label)
+  const r = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid' AND pass_type IN (${labels.map(() => '?').join(', ')})`
+  ).bind(SUMMIT_EVENT_ID, ...labels).first() as any
+  return Number(r?.n || 0)
+}
+function includesLine(key: string): string {
+  const p = SUMMIT_PACKAGES[key]
+  return p.stage
+    ? `A ten-minute slot on the main stage, a ${p.space} for the day, ${p.passes} and the edited video of your demo`
+    : `A ${p.space} on the showcase floor for the day`
+}
+
+// Admin: accept an application, or send its link again. Body: { package?: key, send?: false }.
+app.post('/api/admin/agent-summit/applications/:id/accept', async (c) => {
+  const id = Number(c.req.param('id'))
+  const r = await applicationRow(c, id)
+  if (!r) return c.json({ error: 'No AI Agent Summit showcase application with that id.' }, 404)
+  const m = parseMeta(r.metadata)
+  if (m.paid_at) return c.json({ ok: true, paid: true, error: 'This application is paid already.' })
+  const b = await c.req.json().catch(() => ({})) as any
+  const key = SUMMIT_PACKAGES[String(b.package || '')] ? String(b.package)
+    : SUMMIT_PACKAGES[m.accepted_package] ? String(m.accepted_package)
+    : SUMMIT_PACKAGES[m.package] ? String(m.package) : ''
+  if (!key) return c.json({ error: 'Choose the package to accept them for.' }, 400)
+  const price = packagePrice(key, r.created_at)
+  const link = await packageLink(c, id)
+  const resend = !!m.accepted_at
+  const send = b.send !== false
+  await c.env.DB.prepare(
+    `UPDATE inquiries SET metadata = json_set(COALESCE(metadata, '{}'), '$.accepted_at', COALESCE(json_extract(metadata, '$.accepted_at'), datetime('now')),
+       '$.accepted_package', ?, '$.accepted_inr', ?, '$.link_sent_at', datetime('now')),
+       status = CASE WHEN status IN ('new', 'responded') THEN 'in_progress' ELSE status END
+     WHERE id = ?`
+  ).bind(key, price, id).run()
+  await h.audit(c, 'summit.accept', 'inquiry', id, { package: key, price_inr: price, resend, emailed: send })
+  if (send) {
+    const esc = h.payEsc
+    const p = SUMMIT_PACKAGES[key]
+    const a = packageAmounts(price)
+    const agent = String(m.agent_name || r.organization || 'your agent')
+    const html = summitMail(resend ? 'Your payment link' : 'You are on the stage',
+      `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(titledName(r.name) || 'there')}</strong>,</p>` +
+      P(resend
+        ? `Here is the link again to pay for <strong>${esc(agent)}</strong>'s ${esc(p.label)} at ${SUMMIT_EVENT_NAME}.`
+        : `Good news: <strong>${esc(agent)}</strong> is accepted for ${SUMMIT_EVENT_NAME}, with the ${esc(p.label)}. Your place is confirmed when the payment arrives.`) +
+      h.payRows([
+        ['Company', esc(r.organization || '')],
+        ['Package', esc(p.label)],
+        ['Includes', esc(includesLine(key))],
+        ['Price', `&#8377;${inrText(price)} + ${h.consts().PASS_GST_RATE}% GST = <strong>&#8377;${h.rupees(a.total)}</strong>`],
+        ['Date', 'Friday 16 April 2027, World Trade Center Mumbai'],
+      ]) +
+      `<div style="text-align:center;margin:0 0 20px;"><a href="${esc(link)}" style="display:inline-block;padding:13px 28px;background:#c6ff3d;color:#07080a;text-decoration:none;border-radius:4px;font-weight:bold;font-size:15px;">Pay online and confirm</a></div>` +
+      P(`The link works for ${PACKAGE_LINK_DAYS} days. You add your GST details on the page, and the GST invoice is made out to your company. If your finance team needs a proforma invoice or prefers a bank transfer, reply to this email and we will send one.`))
+    const sent = h.sendEmail(c, r.email, (resend ? 'Payment link: ' : 'Accepted: ') + agent + ' at ' + SUMMIT_EVENT_NAME, h.noAppOnPhone(html), { unsubscribe: false })
+      .catch((e: any) => console.error('summit accept email failed', r.email, e?.message))
+    try { c.executionCtx.waitUntil(sent) } catch { await sent }
+  }
+  return c.json({ ok: true, link, package: SUMMIT_PACKAGES[key].label, price_inr: price, total_inr: packageAmounts(price).total / 100, resend, emailed: send })
+})
+
+// The pay page the email links to, and its form.
+function packagePage(c: any, title: string, body: string, status = 200) {
+  c.header('Cache-Control', 'no-store')
+  c.header('X-Robots-Tag', 'noindex')
+  return c.html(h.payPage(title, body, 'summit'), status)
+}
+function packageForm(token: string, r: any, m: any, key: string, price: number, fill: any, error = ''): string {
+  const esc = h.payEsc
+  const p = SUMMIT_PACKAGES[key]
+  const a = packageAmounts(price)
+  const field = 'width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #cfd3da;border-radius:8px;font-size:14px;margin:0 0 12px;font-family:inherit;'
+  const label = 'display:block;font-size:13px;font-weight:bold;color:#333;margin:0 0 5px;'
+  return h.payH1('Pay for your ' + esc(p.label)) +
+    h.payP(`<strong>${esc(m.agent_name || r.organization || '')}</strong> is accepted for ${SUMMIT_EVENT_NAME}, Friday 16 April 2027 at World Trade Center Mumbai.`) +
+    h.payRows([
+      ['Company', esc(r.organization || '')],
+      ['Package', esc(p.label)],
+      ['Includes', esc(includesLine(key))],
+      ['Price', `&#8377;${inrText(price)}`],
+      [`GST (${h.consts().PASS_GST_RATE}%)`, `&#8377;${h.rupees(a.gst)}`],
+      ['To pay', `&#8377;${h.rupees(a.total)}`],
+    ]) +
+    (error ? `<p role="alert" style="margin:0 0 14px;padding:10px 12px;border-radius:8px;background:#fdecea;color:#8a1c12;font-size:14px;line-height:1.5;">${esc(error)}</p>` : '') +
+    `<form method="post" action="${PACKAGE_PAY_PATH}" style="margin:6px 0 0;">` +
+    `<input type="hidden" name="t" value="${esc(token)}">` +
+    `<p style="margin:0 0 12px;font-size:14px;color:#444;line-height:1.6;">The GST invoice is made out to these details.</p>` +
+    `<label for="ln" style="${label}">Registered company name</label><input id="ln" name="legal_name" required maxlength="160" autocomplete="organization" value="${esc(fill.legal_name ?? r.organization ?? '')}" style="${field}">` +
+    `<label for="gs" style="${label}">GSTIN <span style="font-weight:normal;color:#777;">(leave empty if you have none)</span></label><input id="gs" name="gstin" maxlength="20" placeholder="27AAACB1234C1Z5" value="${esc(fill.gstin ?? '')}" style="${field}text-transform:uppercase;">` +
+    `<label for="ad" style="${label}">Billing address <span style="font-weight:normal;color:#777;">(needed with a GSTIN)</span></label><textarea id="ad" name="address" rows="3" maxlength="400" autocomplete="street-address" style="${field}">${esc(fill.address ?? '')}</textarea>` +
+    `<button type="submit" style="width:100%;padding:14px 24px;background:#c6ff3d;color:#07080a;border:0;border-radius:9px;font-size:16px;font-weight:bold;cursor:pointer;">Pay &#8377;${h.rupees(a.total)} securely</button>` +
+    `</form>` +
+    `<p style="font-size:12px;line-height:1.6;color:#777;margin:14px 0 0;">Payments are handled by CCAvenue: card, UPI and net banking details are entered on their page and never reach this site. For a proforma invoice or a bank transfer, write to info@bharataiinnovation.com.</p>`
+}
+async function packageFromToken(c: any, token: unknown): Promise<{ r: any; m: any; key: string; price: number } | null> {
+  const r = await applicationRow(c, await packageTokenId(c, token))
+  if (!r) return null
+  const m = parseMeta(r.metadata)
+  const key = String(m.accepted_package || '')
+  if (!m.accepted_at || !SUMMIT_PACKAGES[key]) return null
+  return { r, m, key, price: Number(m.accepted_inr) || packagePrice(key, r.created_at) }
+}
+const linkGone = (c: any) => packagePage(c, 'Link not valid', h.payH1('That payment link is not valid any more.') +
+  h.payP('Nothing has been charged. Links work for ' + PACKAGE_LINK_DAYS + ' days: write to info@bharataiinnovation.com or call +91 89765 80367 and we will send a new one.'), 404)
+const paidAlready = (c: any, m: any) => packagePage(c, 'Paid', h.payH1('This package is paid. Thank you.') +
+  h.payP('The payment for ' + h.payEsc(m.agent_name || 'this application') + ' arrived' + (m.paid_at ? ' on ' + h.istStamp(m.paid_at) : '') + '. The confirmation and receipt went to your email.') +
+  h.payButton(SUMMIT_PAGE, 'Back to the AI Agent Summit'))
+
+app.get(PACKAGE_PAY_PATH, async (c) => {
+  const t = String(c.req.query('t') || '')
+  const x = await packageFromToken(c, t)
+  if (!x) return linkGone(c)
+  if (x.m.paid_at) return paidAlready(c, x.m)
+  return packagePage(c, 'Pay for your showcase', packageForm(t, x.r, x.m, x.key, x.price, {}))
+})
+
+app.post(PACKAGE_PAY_PATH, async (c) => {
+  const f = await c.req.parseBody().catch(() => ({})) as Record<string, any>
+  const t = String(f.t || '')
+  const x = await packageFromToken(c, t)
+  if (!x) return linkGone(c)
+  const { r, m, key, price } = x
+  if (m.paid_at) return paidAlready(c, m)
+  const again = (msg: string, status = 400) => packagePage(c, 'Pay for your showcase', packageForm(t, r, m, key, price, f, msg), status)
+  if (!(await h.onlinePaymentsOn(c))) return again('Online payment is not available just now. Please try again in a little while, or write to info@bharataiinnovation.com for a bank transfer.', 503)
+  const billed = h.cleanBilling({ legal_name: f.legal_name, gstin: f.gstin, address: f.address })
+  if ('error' in billed) return again(billed.error)
+  if (!billed.billing) return again('Add the registered company name for the GST invoice.')
+  if (SUMMIT_PACKAGES[key].stage && (await stagePaid(c)) >= (await stageCap(c))) {
+    return again('All the stage slots have been paid for. Write to info@bharataiinnovation.com: we will tell you if one comes free, or offer a showcase pod.', 409)
+  }
+  // The contact as an event-3 attendee: the order, receipt and invoice hang off one.
+  const email = String(r.email || '').trim().toLowerCase()
+  const pick = () => c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = ? AND lower(email) = ? ORDER BY id LIMIT 1').bind(SUMMIT_EVENT_ID, email).first()
+  let a = await pick() as any
+  if (!a) {
+    await ensureSummitEvent(c)
+    try {
+      const made = await c.env.DB.prepare(
+        `INSERT INTO attendees (event_id, name, email, company, job_title, mobile, city, industry, lunch_inclusion, badge_type, payment_status, registration_source, registration_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, '', 'No', 'Visitor Pass', 'paid', 'agent-summit-showcase', datetime('now'))`
+      ).bind(SUMMIT_EVENT_ID, text(r.name, 100), email, text(r.organization, 120), text(m.contact_role, 100), text(r.phone, 30), text(m.city, 80)).run()
+      a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(made.meta.last_row_id).first()
+    } catch (e: any) {
+      if (!String(e?.message || '').includes('UNIQUE')) {
+        console.error('summit package attendee failed', email, e?.message)
+        return again('We could not start the payment. Nothing was charged. Please try again, or write to info@bharataiinnovation.com.', 500)
+      }
+      a = await pick()
+    }
+  }
+  if (!a) return again('We could not start the payment. Nothing was charged. Please try again.', 500)
+  const recent = await c.env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM payment_orders WHERE attendee_id = ? AND event_id = ? AND created_at > datetime('now', '-1 hour')"
+  ).bind(a.id, SUMMIT_EVENT_ID).first() as any
+  if (Number(recent?.n || 0) >= h.consts().PAY_ORDERS_PER_HOUR) return again('That is a lot of payment attempts in one hour. Please wait a little, or write to info@bharataiinnovation.com.', 429)
+  await h.saveBilling(c, a.id, billed.billing)
+  const amounts = packageAmounts(price)
+  const rand = Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => (b % 36).toString(36)).join('')
+  const orderId = ('BAI' + a.id + '-' + Date.now().toString(36) + rand).toUpperCase()
+  await c.env.DB.prepare(
+    'INSERT INTO payment_orders (order_id, attendee_id, event_id, pass_type, previous_badge, base_paise, gst_paise, amount_paise) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).bind(orderId, a.id, SUMMIT_EVENT_ID, SUMMIT_PACKAGES[key].label, a.badge_type || '', amounts.base, amounts.gst, amounts.total).run()
+  await c.env.DB.prepare("UPDATE inquiries SET metadata = json_set(COALESCE(metadata, '{}'), '$.last_order', ?) WHERE id = ?").bind(orderId, r.id).run()
+  await h.audit(c, 'summit.package.order', 'inquiry', r.id, { order_id: orderId, package: key, amount_paise: amounts.total, attendee: a.id }, { actor: 'showcase pay link', kind: 'public' })
+  return c.redirect((await checkoutBase(c)) + '/pay/ccavenue/' + await h.payLinkToken(c, orderId), 303)
+})
+
+// The money has arrived for a package: the application is marked paid (Won on the Enquiries
+// desk), the contact's free pass becomes Exhibitor, then the receipt and both emails.
+export async function settleSummitPackageOrder(c: any, order: any, trackingId: string, paymentMode: string) {
+  const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any
+  if (!a) throw new Error('attendee ' + order.attendee_id + ' no longer exists')
+  const key = PACKAGE_BY_LABEL[String(order.pass_type)]
+  const p = SUMMIT_PACKAGES[key]
+  const badge = String(a.badge_type || '').trim()
+  const { FREE_BADGE_RE } = h.consts()
+  const freeLike = !badge || FREE_BADGE_RE.test(badge) || ['Visitor Pass', 'Buyer Pass', 'Investor Pass'].includes(badge)
+  if (freeLike) {
+    await c.env.DB.prepare("UPDATE attendees SET badge_type = 'Exhibitor', payment_status = 'paid' WHERE id = ? AND event_id = ?").bind(a.id, SUMMIT_EVENT_ID).run()
+  }
+  const app_ = await c.env.DB.prepare(
+    "SELECT * FROM inquiries WHERE inquiry_type = 'agent_showcase' AND json_extract(metadata, '$.last_order') = ? LIMIT 1"
+  ).bind(order.order_id).first().catch(() => null) as any
+  const m = parseMeta(app_?.metadata)
+  if (app_) {
+    await c.env.DB.prepare(
+      `UPDATE inquiries SET status = 'won', metadata = json_set(COALESCE(metadata, '{}'), '$.paid_at', datetime('now'), '$.paid_order', ?, '$.paid_paise', ?) WHERE id = ?`
+    ).bind(order.order_id, Number(order.amount_paise), app_.id).run()
+  }
+  await h.audit(c, 'payment.received', 'attendee', a.id, {
+    order_id: order.order_id, tracking_id: trackingId, pass_type: order.pass_type, amount_paise: order.amount_paise,
+    payment_mode: paymentMode, badge: freeLike ? [badge || null, 'Exhibitor'] : 'left as ' + badge, summit_application: app_?.id ?? null,
+  }, { actor: 'CCAvenue', kind: 'gateway' })
+
+  const mails = (async () => {
+    const receipt = await h.receiptForOrder(c, order, a, trackingId)
+    try {
+      const esc = h.payEsc
+      const amount = h.rupees(Number(order.amount_paise))
+      const agent = String(m.agent_name || app_?.organization || a.company || '')
+      const next = [
+        p.stage ? 'Your block and time on stage: we email them by early March, once the programme is set.' : 'Your pod position: we email the floor plan by early March.',
+        p.passes
+          ? `Your team's ${p.passes}: reply to this email with the names, and we send each person their entry pass in the week before the summit.`
+          : 'Reply to this email with the names of the people staffing your pod, and we send each of them an entry pass in the week before the summit.',
+        p.stage ? 'Early April: an online rehearsal with our A/V team. Please send us a backup screen recording of your demo by 10 April.' : '',
+        'Your logo and a two-line description for the summit\'s agent directory: reply with them when you can.',
+      ].filter(Boolean)
+      const html = summitMail('Payment received',
+        `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(titledName(app_?.name || a.name) || 'there')}</strong>,</p>` +
+        P(`Thank you. The payment has arrived and <strong>${esc(agent)}</strong>'s ${esc(p.label)} at ${SUMMIT_EVENT_NAME} is confirmed.`) +
+        h.payRows([
+          ['Package', esc(p.label)],
+          ['Includes', esc(includesLine(key))],
+          ['Date', 'Friday 16 April 2027, doors 08:30 IST'],
+          ['Venue', 'World Trade Center, Cuffe Parade, Mumbai'],
+          ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${h.consts().PASS_GST_RATE}% GST)</span>`],
+          ['Order number', esc(order.order_id)],
+          ['CCAvenue reference', esc(trackingId)],
+        ]) +
+        P('<strong>What happens next</strong>') +
+        `<ul style="margin:0 0 16px 18px;padding:0;font-size:14px;line-height:1.7;color:#444;">${next.map((l) => '<li>' + l + '</li>').join('')}</ul>` +
+        (receipt
+          ? P(`Receipt <strong>${esc(receipt.invoice_no)}</strong>: <a href="${esc(receipt.url)}" style="color:#3a5a00;font-weight:bold;">view the receipt</a>. Your GST invoice follows separately.`)
+          : P('Your receipt and GST invoice follow separately.')) +
+        `<div style="text-align:center;margin:0 0 6px;"><a href="https://bharataiinnovation.com/ai-agent-summit/ai-agent-summit-2027.ics" style="display:inline-block;padding:12px 26px;background:#c6ff3d;color:#07080a;text-decoration:none;border-radius:4px;font-weight:bold;font-size:14px;">Save the date</a></div>`)
+      await h.sendEmail(c, a.email, `Payment received: ${p.label} at ${SUMMIT_EVENT_NAME}`, h.noAppOnPhone(html), { unsubscribe: false })
+      await h.sendEmail(c, await teamAddress(c), `Showcase paid, AI Agent Summit: ${agent}${app_?.organization ? ', ' + app_.organization : ''}, ${p.label}, Rs ${amount}`,
+        `<div style="font-family:Arial,sans-serif;max-width:560px;font-size:14px;line-height:1.6;color:#333;"><p style="margin:0 0 12px;"><strong>${esc(app_?.organization || a.company || '')}</strong> has paid for the <strong>${esc(p.label)}</strong> (${esc(agent)}): &#8377;${amount} including GST, order ${esc(order.order_id)}, CCAvenue ${esc(trackingId)}${paymentMode ? ' (' + esc(paymentMode) + ')' : ''}.</p>` +
+        `<p style="margin:0 0 12px;">Contact: ${esc(app_?.name || a.name)}, ${esc(a.email)}${app_?.phone ? ', ' + esc(app_.phone) : ''}.${receipt ? ' Receipt ' + esc(receipt.invoice_no) + '.' : ' <strong>No receipt was raised automatically: raise it by hand.</strong>'}</p>` +
+        `<p style="margin:0;color:#555;">Admin &rarr; AI Agent Summit &rarr; Showcase applications shows it as paid${app_ ? ' (application #' + esc(app_.id) + ')' : ''}.</p></div>`, { unsubscribe: false })
+    } catch (e: any) { console.error('summit package emails failed', order?.order_id, e?.message) }
+  })()
+  let scheduled = false
+  try { c.executionCtx.waitUntil(mails); scheduled = true } catch { /* no ctx */ }
+  if (!scheduled) await mails
+}
+
+// The result page for a package order (summitPayResult sends it here).
+async function packagePayResult(c: any, order: any) {
+  const esc = h.payEsc
+  const no = esc(order.order_id)
+  const page = (title: string, body: string) => c.html(h.payPage(title, body, 'summit'))
+  const app_ = await c.env.DB.prepare(
+    "SELECT id FROM inquiries WHERE inquiry_type = 'agent_showcase' AND json_extract(metadata, '$.last_order') = ? LIMIT 1"
+  ).bind(order.order_id).first().catch(() => null) as any
+  const retry = app_ ? h.payButton(await packageLink(c, Number(app_.id)), 'Try again') : h.payP('Write to info@bharataiinnovation.com and we will send a new payment link.')
+  if (order.status === 'paid') {
+    return page('Payment received', h.payH1('Payment received. Thank you.') +
+      h.payP(`Your <strong>${esc(order.pass_type)}</strong> at ${SUMMIT_EVENT_NAME} is confirmed.`) +
+      h.payRows([
+        ['Amount paid', `&#8377;${h.rupees(Number(order.amount_paise))} <span style="font-weight:normal;color:#666;">(includes GST)</span>`],
+        ['Order number', no],
+        ['CCAvenue reference', esc(order.tracking_id)],
+      ]) +
+      h.payP('The confirmation, with what happens next, and your receipt are on their way to your email. The GST invoice follows separately.') +
+      h.payButton(SUMMIT_PAGE + 'ai-agent-summit-2027.ics', 'Save the date'))
+  }
+  if (order.status === 'awaited') {
+    return page('Waiting for your bank', h.payH1('Your bank has not confirmed yet.') +
+      h.payP('Please do not pay a second time. If the money has left your account, the package is confirmed as soon as the bank reports it.') +
+      h.payP(`If nothing has changed in a day, write to info@bharataiinnovation.com quoting order <strong>${no}</strong>.`))
+  }
+  if (order.status === 'mismatch') {
+    return page('We are checking this payment', h.payH1('We need to check this payment.') +
+      h.payP(`The amount the payment gateway reported is not the package price. Our team has been told and will write to you. Your order number is <strong>${no}</strong>.`))
+  }
+  return page('Payment not completed', h.payH1(order.status === 'aborted' ? 'You cancelled the payment.' : order.status === 'created' ? 'We have not heard back about this payment.' : 'The payment did not go through.') +
+    h.payP('Nothing has been confirmed for this order. If money left your account, your bank returns it on its own; if it has not come back within a week, write to info@bharataiinnovation.com quoting order <strong>' + no + '</strong>.') + retry)
+}
 
 export default app

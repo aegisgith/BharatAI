@@ -51,3 +51,7 @@
 .asd-s-new { background: #fffaeb; border-color: #fedf89; color: #93370d; }
 .asd-s-won { background: #ecfdf3; border-color: #abefc6; color: #067647; }
 .asd-s-lost, .asd-s-closed { color: var(--as-muted); }
+/* Showcase applications: the Payment column (26 Nov 2026) */
+.asd-pay { min-width: 190px; }
+.asd-pay .asd-pkg { display: block; width: 100%; max-width: 210px; min-height: 32px; margin: 6px 0; padding: 0 8px; border: 1px solid var(--as-line); border-radius: 8px; background: #fff; color: var(--as-ink); }
+.asd-pay .asd-btn { white-space: nowrap; }

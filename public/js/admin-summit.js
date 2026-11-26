@@ -48,7 +48,7 @@
   function tiles(s) {
     var t = [
       ['fa-users', num(s.registered), 'Registrations', 'all passes'],
-      ['fa-indian-rupee-sign', rs(s.paise), 'Received online', num(s.paid) + ' paid passes'],
+      ['fa-indian-rupee-sign', rs(s.paise), 'Received online', num(s.passes_paid != null ? s.passes_paid : s.paid) + ' paid passes' + (s.packages_paid ? ', ' + num(s.packages_paid) + ' showcase packages' : '')],
       ['fa-user-check', num(s.review), 'To confirm', 'Buyer and Investor passes'],
       ['fa-robot', num(s.applications), 'Showcase applications', num(s.applications_new) + ' new'],
       ['fa-handshake', num(s.partners), 'Partner enquiries', 'Sponsorship'],
@@ -100,16 +100,34 @@
       }).join('') + '</tbody></table></div>';
   }
 
+  // Accept and send the pay link, send it again, or paid (26 Nov 2026). The package can be
+  // changed before accepting: the select starts on the one they applied for.
+  function payCell(r) {
+    if (r.paid_at) return '<span class="asd-pill asd-s-won">Paid ' + rs(r.paid_paise) + '</span><div class="asd-sub">' + ist(r.paid_at) + '</div>';
+    var pk = (data && data.packages) || {};
+    var cur = r.accepted_package || r.package_key;
+    var sel = '<select class="asd-pkg" data-pkg-for="' + Number(r.id) + '" aria-label="Package for ' + esc(r.agent) + '">' + Object.keys(pk).map(function (k) {
+      return '<option value="' + esc(k) + '"' + (k === cur ? ' selected' : '') + '>' + esc(pk[k].label) + '</option>';
+    }).join('') + '</select>';
+    var price = r.price_inr ? '<div class="asd-sub">&#8377;' + num(r.price_inr) + ' + GST</div>' : '';
+    if (r.accepted_at) {
+      return '<span class="asd-pill">Link sent</span><div class="asd-sub">' + ist(r.link_sent_at) + '</div>' + price + sel
+        + '<button type="button" class="asd-btn" data-act="accept" data-id="' + Number(r.id) + '">Resend link</button>';
+    }
+    return price + sel + '<button type="button" class="asd-btn asd-primary" data-act="accept" data-id="' + Number(r.id) + '">Accept and send pay link</button>';
+  }
+
   function appsTable(apps) {
     var head = '<div class="asd-bar"><span class="asd-count">' + num(apps.length) + ' applications</span>'
       + '<button type="button" class="asd-btn" data-act="desk" data-type="agent_showcase"><i class="fas fa-inbox" aria-hidden="true"></i> Work them on the Enquiries desk</button></div>';
     if (!apps.length) return head + '<p class="asd-empty">No showcase applications yet. The form is at /ai-agent-summit/showcase.</p>';
-    return head + '<div class="asd-wrap"><table class="asd-table"><thead><tr><th>Agent</th><th>Package</th><th>Category and stage</th><th>Contact</th><th>Status</th><th>Received</th></tr></thead><tbody>'
+    return head + '<div class="asd-wrap"><table class="asd-table"><thead><tr><th>Agent</th><th>Package</th><th>Category and stage</th><th>Contact</th><th>Payment</th><th>Status</th><th>Received</th></tr></thead><tbody>'
       + apps.map(function (r) {
         return '<tr><td><b>' + esc(r.agent) + '</b><div class="asd-sub">' + esc(r.company) + '</div><div class="asd-sub asd-clip">' + esc(r.summary) + '</div>'
           + (r.demo_url ? '<a class="asd-link" href="' + esc(/^https?:/i.test(r.demo_url) ? r.demo_url : 'https://' + r.demo_url) + '" target="_blank" rel="noopener">Demo link</a>' : '') + '</td>'
           + '<td>' + esc(r.package) + '</td><td>' + esc(r.category) + '<div class="asd-sub">' + esc(r.stage) + '</div></td>'
           + '<td>' + esc(r.contact) + '<div class="asd-sub">' + esc(r.email) + '</div><div class="asd-sub">' + esc(r.phone) + '</div></td>'
+          + '<td class="asd-pay">' + payCell(r) + '</td>'
           + '<td><span class="asd-pill asd-s-' + esc(r.status) + '">' + esc(STATUS[r.status] || r.status) + '</span></td><td class="asd-nowrap">' + ist(r.created_at) + '</td></tr>';
       }).join('') + '</tbody></table></div>';
   }
@@ -178,6 +196,28 @@
     if (act === 'reload') { load(); return; }
     if (act === 'csv') { csv(); return; }
     if (act === 'desk') { if (opts.openInquiries) opts.openInquiries(b.dataset.type); return; }
+    if (act === 'accept') {
+      var aid = Number(b.dataset.id);
+      var row = ((data && data.applications) || []).filter(function (x) { return Number(x.id) === aid; })[0] || {};
+      var pick = host.querySelector('[data-pkg-for="' + aid + '"]');
+      var pkg = pick ? pick.value : '';
+      var label = (((data && data.packages) || {})[pkg] || {}).label || 'the package';
+      var again = !!row.accepted_at;
+      if (!w.confirm((again ? 'Send the payment link again for ' + (row.agent || 'this application') + ' (' + label + ')?' : 'Accept ' + (row.agent || 'this application') + ' for the ' + label + '?')
+        + ' ' + (row.contact || 'The contact') + ' (' + (row.email || '') + ') is emailed a link to pay online.')) return;
+      b.disabled = true;
+      try {
+        var x = await opts.api.post('/api/admin/agent-summit/applications/' + aid + '/accept', { package: pkg });
+        if (x && x.paid) { toast('That one is paid already.'); load(); }
+        else if (x && x.ok && x.link) {
+          var copied = false;
+          try { await navigator.clipboard.writeText(x.link); copied = true; } catch (e) { /* the email has it */ }
+          toast((again ? 'Link sent again: ' : 'Accepted: ') + x.package + ', Rs ' + num(x.total_inr) + ' with GST. Emailed' + (copied ? ', and the link is copied to share on WhatsApp.' : '.'));
+          load();
+        } else { toast((x && x.error) || 'Could not accept.', 'error'); b.disabled = false; }
+      } catch (e) { toast('Could not accept: ' + (e && e.message), 'error'); b.disabled = false; }
+      return;
+    }
     if (act === 'confirm') {
       var id = Number(b.dataset.id);
       var person = ((data && data.passes) || []).filter(function (a) { return Number(a.id) === id; })[0] || {};

@@ -26,7 +26,7 @@ import exhibitorMedia, { configureExhibitorMedia } from './routes/exhibitor-medi
 import whatsapp, { configureWhatsapp, whatsappTick, whatsappYes } from './routes/whatsapp'
 import photoReps, { configurePhotoReps } from './routes/photo-reps'
 import adminAssist from './routes/admin-assist'
-import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, SUMMIT_EVENT_NAME, SUMMIT_WHEN } from './routes/agent-summit'
+import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, isSummitPackageOrder, settleSummitPackageOrder, SUMMIT_EVENT_NAME, SUMMIT_WHEN, summitPageHeader } from './routes/agent-summit'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
 import { SENDER_DOMAIN, sendAs, sendersFor, pickSender } from './lib/senders'
@@ -815,6 +815,8 @@ configureAgentSummit({
   payRows: (r: [string, string][]) => payRows(r), payEsc: (v: any) => payEsc(v), rupees: (pz: number) => rupees(pz),
   istStamp: (v: any) => istStamp(v), mobileKey: (v: unknown) => mobileKey(v), maskEmail: (e: string) => maskEmail(e),
   consts: () => ({ PAID_TIERS, FREE_BADGE_RE, PASS_GST_RATE, PAY_ORDERS_PER_HOUR }),
+  sign: async (c: any, m: string) => { const k = passTokenSecret(c); return k ? hmacHexA(k, m) : '' },
+  receiptForOrder: (c: any, o: any, a: any, t: string) => autoReceiptForOrder(c, o, a, t, ''),
 })
 app.route('/', agentSummit)
 
@@ -4463,9 +4465,11 @@ const payRows = (rows: [string, string][]) =>
     `<td valign="top" style="padding:0 0 8px;font-size:14px;color:#1E2140;font-weight:bold;word-break:break-word;">${v}</td></tr>`).join('') + `</table>`
 
 function payPage(title: string, body: string, delhi: boolean | 'summit' = false): string {
+  // The summit's pages wear its own colours: its logo bar, and lime buttons for orange (26 Nov 2026).
+  if (delhi === 'summit') body = body.split('background:#FF6B00;color:#fff;').join('background:#c6ff3d;color:#07080a;')
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title} - ${delhi === 'summit' ? SUMMIT_EVENT_NAME : delhi ? DELHI_EVENT_NAME : 'Bharat AI Innovation 2026'}</title></head>
 <body style="margin:0;padding:24px 12px;background:#f5f5f5;font-family:Arial,sans-serif;"><div style="max-width:520px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;">
-${emailBrandHeader('', delhi === 'summit' ? SUMMIT_WHEN : delhi ? DELHI_WHEN : '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
+${delhi === 'summit' ? summitPageHeader() : emailBrandHeader('', delhi ? DELHI_WHEN : '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
 <div style="padding:26px 24px 30px;">${body}</div></div></body></html>`
 }
 
@@ -4498,7 +4502,7 @@ app.get('/pay/ccavenue/:token', async (c) => {
   const fresh = Number.isFinite(born) && Date.now() - born < PAY_LINK_MINUTES * 60000
   if (order.status !== 'created' || !fresh) {
     return c.html(payPage('Start again', payH1('This checkout has closed.') +
-      payP('A payment link is good for one attempt, for an hour. Nothing further has been charged. Please start a new payment from ' + (delhi ? 'the Delhi page.' : summit ? 'the AI Agent Summit page.' : 'the app.')) +
+      payP('A payment link is good for one attempt, for an hour. Nothing further has been charged. Please start a new payment from ' + (delhi ? 'the Delhi page.' : summit ? (isSummitPackageOrder(order) ? 'the link in your acceptance email.' : 'the AI Agent Summit page.') : 'the app.')) +
       (delhi ? payButton('/delhi-register', 'Start again') : summit ? payButton('/ai-agent-summit/attend', 'Start again') : payButton('/app', 'Open the app')), summit ? 'summit' : delhi), 410)
   }
 
@@ -4634,6 +4638,8 @@ app.post('/pay/ccavenue/notify', ccavenueNotify)
 // The money has arrived: unlock the pass, write it down, tell the buyer and the team.
 async function settlePaidOrder(c: any, order: any, trackingId: string, paymentMode: string) {
   if (isShowcaseOrder(order)) return settleShowcaseOrder(c, order, trackingId, paymentMode)
+  // An AI Agent Summit showcase package (26 Nov 2026): the application is paid, not a pass.
+  if (isSummitPackageOrder(order)) return settleSummitPackageOrder(c, order, trackingId, paymentMode)
   if (isGroupOrder(order)) return settleGroupOrder(c, order, trackingId, paymentMode)
   const a = await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(order.attendee_id).first() as any
   if (!a) throw new Error('attendee ' + order.attendee_id + ' no longer exists')
