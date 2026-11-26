@@ -262,6 +262,9 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
   // The organiser, 26 Nov 2026: "jury" belongs to awards (the Aegis Graham Bell Awards); the summit's is an evaluation committee.
   const juryOn = files.filter((f) => /jur(y|ies|or)/i.test(readFileSync(new URL(f, dir), 'utf8')));
   check('no summit page says jury: applications go to an evaluation committee', juryOn.length === 0 && /evaluation committee/i.test(home), 'still says jury: ' + juryOn.join(', '));
+  // Every booth's team passes include lunch and the cocktail evening (the organiser, 26 Nov 2026).
+  const sc = readFileSync(new URL('showcase.html', dir), 'utf8');
+  check('every package says its team passes include lunch and the cocktail evening', (home.match(/with lunch and the cocktail evening/g) || []).length === 3 && /pod on the floor[^<]*lunch and the cocktail evening/.test(home) && /Lunch and the cocktail evening<\/th>/.test(sc), 'home: ' + (home.match(/with lunch and the cocktail evening/g) || []).length);
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nall AI Agent Summit checks passed');

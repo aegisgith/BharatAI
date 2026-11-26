@@ -676,10 +676,10 @@ app.post('/api/admin/agent-summit/passes/:id/confirm', async (c) => {
 // A link stays good for PACKAGE_LINK_DAYS; Resend on the desk makes a new one.
 
 export const SUMMIT_PACKAGES: Record<string, { label: string; inr: number; early?: number; stage: boolean; space: string; passes: string }> = {
-  startup: { label: 'Startup Showcase', inr: 79000, early: 64000, stage: true, space: '1.5 x 1.5 m pod', passes: '2 passes' },
-  growth: { label: 'Growth Showcase', inr: 149000, stage: true, space: '2 x 2 m booth', passes: '4 passes, one of them VIP' },
-  enterprise: { label: 'Enterprise Showcase', inr: 295000, stage: true, space: '3 x 2 m booth', passes: '6 passes, two of them VIP' },
-  pod: { label: 'Showcase Pod', inr: 38000, stage: false, space: '1.5 x 1.5 m pod', passes: '' },
+  startup: { label: 'Startup Showcase', inr: 79000, early: 64000, stage: true, space: '1.5 x 1.5 m pod', passes: '2 team passes' },
+  growth: { label: 'Growth Showcase', inr: 149000, stage: true, space: '2 x 2 m booth', passes: '4 team passes (1 VIP)' },
+  enterprise: { label: 'Enterprise Showcase', inr: 295000, stage: true, space: '3 x 2 m booth', passes: '6 team passes (2 VIP)' },
+  pod: { label: 'Showcase Pod', inr: 38000, stage: false, space: '1.5 x 1.5 m pod', passes: '1 team pass' },
 }
 const PACKAGE_BY_LABEL: Record<string, string> = Object.fromEntries(Object.entries(SUMMIT_PACKAGES).map(([k, p]) => [p.label, k]))
 const PACKAGE_LABELS_SQL = Object.values(SUMMIT_PACKAGES).map((p) => "'" + p.label.replace(/'/g, "''") + "'").join(', ')
@@ -744,9 +744,10 @@ async function stagePaid(c: any): Promise<number> {
 }
 function includesLine(key: string): string {
   const p = SUMMIT_PACKAGES[key]
+  // Every team pass includes lunch and the cocktail evening (the organiser, 26 Nov 2026).
   return p.stage
-    ? `A ten-minute slot on the main stage, a ${p.space} for the day, ${p.passes} and the edited video of your demo`
-    : `A ${p.space} on the showcase floor for the day`
+    ? `A ten-minute slot on the main stage, a ${p.space} for the day, ${p.passes} with lunch and the cocktail evening, and the edited video of your demo`
+    : `A ${p.space} on the showcase floor for the day, and ${p.passes} with lunch and the cocktail evening`
 }
 
 // Admin: accept an application, or send its link again. Body: { package?: key, send?: false }.
@@ -941,7 +942,7 @@ export async function settleSummitPackageOrder(c: any, order: any, trackingId: s
       const next = [
         p.stage ? 'Your block and time on stage: we email them by early March, once the programme is set.' : 'Your pod position: we email the floor plan by early March.',
         p.passes
-          ? `Your team's ${p.passes}: reply to this email with the names, and we send each person their entry pass in the week before the summit.`
+          ? `Your ${p.passes}, each with lunch and the cocktail evening: reply to this email with the names, and we send each person their entry pass in the week before the summit.`
           : 'Reply to this email with the names of the people staffing your pod, and we send each of them an entry pass in the week before the summit.',
         p.stage ? 'Early April: an online rehearsal with our A/V team. Please send us a backup screen recording of your demo by 10 April.' : '',
         'Your logo and a two-line description for the summit\'s agent directory: reply with them when you can.',
