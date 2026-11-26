@@ -23,8 +23,8 @@
 <link rel="apple-touch-icon" href="/ai-agent-summit/images/apple-touch-icon.png">
 <link rel="preload" href="/ai-agent-summit/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/ai-agent-summit/images/hero-wtc26.webp" as="image" type="image/webp">
-<link rel="stylesheet" href="/ai-agent-summit/assets/site.css?v=20261126c">
-<script src="/ai-agent-summit/assets/site.js?v=20261126c" defer></script>
+<link rel="stylesheet" href="/ai-agent-summit/assets/site.css?v=20261126d">
+<script src="/ai-agent-summit/assets/site.js?v=20261126d" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -84,19 +84,113 @@
 
 <main id="main">
 
-  <!-- Hero -->
-  <section class="hero">
-    <div class="hero-bg"><img src="/ai-agent-summit/images/hero-wtc26.webp" width="1600" height="1066" alt="A founder demonstrating his product on the big screen of the main stage at Bharat AI Innovation, WTC Mumbai" fetchpriority="high"></div>
-    <div class="container hero-inner">
-      <p class="hero-badge">Friday 16 April 2027 <span aria-hidden="true">·</span> World Trade Center Mumbai</p>
-      <h1>AI Agent Summit <span>2027</span></h1>
-      <p class="hero-sub">A one-day summit with 50 ten-minute slots on one stage, where companies run their AI agents live. We are inviting the CIOs, enterprise buyers and investors who decide on agents like these.</p>
-      <div class="hero-actions">
-        <a href="/ai-agent-summit/showcase#apply" class="btn btn-primary btn-lg">Apply to showcase</a>
-        <a href="/ai-agent-summit/attend" class="btn btn-secondary btn-lg">Get a pass</a>
+  <!-- Hero: stage photos that change every few seconds, and an agent working through a task.
+       The backdrop is the current photo at 48 px, blurred, so the room's light fills the page. -->
+  <section class="hero" aria-labelledby="hero-h">
+    <div class="hero-amb" aria-hidden="true">
+      <img src="/ai-agent-summit/images/amb/hero-wtc26.webp" alt="" class="is-on">
+      <img data-src="/ai-agent-summit/images/amb/stage-speaker.webp" alt="">
+      <img data-src="/ai-agent-summit/images/amb/keynote-wtc26.webp" alt="">
+      <img data-src="/ai-agent-summit/images/amb/hero-stage.webp" alt="">
+      <img data-src="/ai-agent-summit/images/amb/stage-solo-talk.webp" alt="">
+      <img data-src="/ai-agent-summit/images/amb/stage-demo.webp" alt="">
+    </div>
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <p class="hero-badge">Friday 16 April 2027 <span aria-hidden="true">·</span> World Trade Center Mumbai</p>
+        <h1 id="hero-h"><span class="l">AI Agent</span> <span class="l">Summit <em>2027</em></span></h1>
+        <p class="hero-sub">A one-day summit with 50 ten-minute slots on one stage, where companies run their AI agents live. We are inviting the CIOs, enterprise buyers and investors who decide on agents like these.</p>
+        <div class="hero-actions">
+          <a href="/ai-agent-summit/showcase#apply" class="btn btn-primary btn-lg">Apply to showcase <span class="arr" aria-hidden="true">→</span></a>
+          <a href="/ai-agent-summit/attend" class="btn btn-secondary btn-lg">Get a pass</a>
+        </div>
+      </div>
+
+      <div class="hero-stage">
+        <div class="show" data-slideshow>
+          <div class="show-frame">
+            <figure class="show-slide is-on" data-caption="Product demo, Bharat AI Innovation 2026, WTC Mumbai" style="--pos: 85% 50%"><img src="/ai-agent-summit/images/hero-wtc26.webp" width="1600" height="1066" alt="A founder demonstrating his product on the big screen of the main stage at Bharat AI Innovation, WTC Mumbai" fetchpriority="high"></figure>
+            <figure class="show-slide" data-caption="A talk at a past Aegis conference" style="--pos: 35% 40%" aria-hidden="true"><img data-src="/ai-agent-summit/images/stage-speaker.webp" width="1200" height="800" alt="A speaker gesturing as he presents at a past Aegis conference"></figure>
+            <figure class="show-slide" data-caption="Keynote, Bharat AI Innovation 2026, WTC Mumbai" style="--pos: 50% 50%" aria-hidden="true"><img data-src="/ai-agent-summit/images/keynote-wtc26.webp" width="1200" height="800" alt="A keynote speaker on the main stage at Bharat AI Innovation, in front of the event's big screen"></figure>
+            <figure class="show-slide" data-caption="Keynote, Data Science Congress, Mumbai" style="--pos: 56% 50%" aria-hidden="true"><img data-src="/ai-agent-summit/images/hero-stage.webp" width="1600" height="1066" alt="A keynote on a large conference stage lit by a full-width screen, at Data Science Congress in Mumbai"></figure>
+            <figure class="show-slide" data-caption="A founder presenting her company, past Aegis conference" style="--pos: 50% 50%" aria-hidden="true"><img data-src="/ai-agent-summit/images/stage-solo-talk.webp" width="1200" height="800" alt="A founder presenting her company alone on a large conference stage"></figure>
+            <figure class="show-slide" data-caption="A product talk, past Aegis conference" style="--pos: 76% 40%" aria-hidden="true"><img data-src="/ai-agent-summit/images/stage-demo.webp" width="1200" height="800" alt="A speaker presenting a product on stage in front of a screen of workflow diagrams"></figure>
+            <div class="show-top">
+              <div class="show-ticks" role="group" aria-label="Photos from our stages">
+                <button type="button" class="tick is-on" aria-label="Photo 1 of 6" aria-current="true"><i></i></button>
+                <button type="button" class="tick" aria-label="Photo 2 of 6"><i></i></button>
+                <button type="button" class="tick" aria-label="Photo 3 of 6"><i></i></button>
+                <button type="button" class="tick" aria-label="Photo 4 of 6"><i></i></button>
+                <button type="button" class="tick" aria-label="Photo 5 of 6"><i></i></button>
+                <button type="button" class="tick" aria-label="Photo 6 of 6"><i></i></button>
+              </div>
+              <button type="button" class="show-pause" aria-label="Pause the photos" aria-pressed="false"><i aria-hidden="true"></i></button>
+              <p class="show-cap" data-show-cap>Product demo, Bharat AI Innovation 2026, WTC Mumbai</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Four example agents, one at a time: each step goes from waiting to running to done. -->
+        <div class="run" data-run role="group" aria-label="Examples of AI agents at work">
+          <div class="run-head">
+            <span class="run-live">Agent at work</span>
+            <span class="run-clock"><span class="vh">Demo time left </span><span data-run-clock>07:00</span></span>
+          </div>
+          <div class="run-body">
+            <article class="run-case is-on" aria-hidden="false">
+              <p class="run-agent"><b>Sales agent</b><span>Customer and revenue agents</span></p>
+              <p class="run-task">A hospital chain with 40 branches asks about pricing</p>
+              <ol class="run-steps">
+                <li>Read the enquiry and the chain's website</li>
+                <li>Matched it to the right product and price</li>
+                <li>Wrote a reply in the sales team's voice</li>
+                <li>Booked a call with the sales head</li>
+              </ol>
+              <p class="run-out">Call booked for Tuesday at 11:30</p>
+            </article>
+            <article class="run-case" aria-hidden="true">
+              <p class="run-agent"><b>KYC agent</b><span>Finance and BFSI agents</span></p>
+              <p class="run-task">Open a current account for a new private limited company</p>
+              <ol class="run-steps">
+                <li>Read the PAN, GST and incorporation papers</li>
+                <li>Checked them against government records</li>
+                <li>Screened the directors against watch lists</li>
+                <li>Prepared the file for a banker to sign off</li>
+              </ol>
+              <p class="run-out">File ready for sign-off</p>
+            </article>
+            <article class="run-case" aria-hidden="true">
+              <p class="run-agent"><b>On-call agent</b><span>Developer and IT agents</span></p>
+              <p class="run-task">Payment errors are rising on the checkout service</p>
+              <ol class="run-steps">
+                <li>Read the error logs and the last three releases</li>
+                <li>Traced the errors to the 01:58 release</li>
+                <li>Rolled it back once an engineer said yes</li>
+                <li>Wrote the incident note for the morning team</li>
+              </ol>
+              <p class="run-out">Checkout errors back to normal</p>
+            </article>
+            <article class="run-case" aria-hidden="true">
+              <p class="run-agent"><b>Hiring agent</b><span>Industry agents</span></p>
+              <p class="run-task">Find 12 staff nurses for a new hospital in Pune</p>
+              <ol class="run-steps">
+                <li>Screened 340 applications against the role</li>
+                <li>Called the top 60 in Marathi, Hindi or English</li>
+                <li>Booked interviews into the matron's diary</li>
+                <li>Sent the shortlist with a note on each nurse</li>
+              </ol>
+              <p class="run-out">Shortlist of 18 sent to HR</p>
+            </article>
+          </div>
+          <div class="run-tabs" role="group" aria-label="Choose an example">
+            <button type="button" aria-pressed="true">Sales</button>
+            <button type="button" aria-pressed="false">KYC</button>
+            <button type="button" aria-pressed="false">On-call</button>
+            <button type="button" aria-pressed="false">Hiring</button>
+          </div>
+        </div>
       </div>
     </div>
-    <p class="hero-credit">Photo: a product demo on the main stage at Bharat AI Innovation, WTC Mumbai, November 2026.</p>
   </section>
 
   <!-- Facts -->
@@ -108,6 +202,88 @@
       <div class="figure"><dt>Doors open</dt><dd>08:30</dd></div>
     </dl>
   </div>
+
+  <!-- The five blocks of the day, each drawn as an example agent doing its job -->
+  <section class="section agents" id="agents" aria-labelledby="agents-h">
+    <div class="container">
+      <div class="head">
+        <h2 class="h2" id="agents-h">Five kinds of agent, one stage</h2>
+        <p class="lede">The fifty slots run in five themed blocks. Below is an example of an agent that would fit each one.</p>
+      </div>
+      <div class="bento">
+
+        <article class="cell cell-chat">
+          <header><p class="cell-time">09:15 to 10:55</p><h3>Customer and revenue agents</h3><p class="cell-sub">Support, sales and marketing</p></header>
+          <div class="viz chat" data-seq data-tick="1000">
+            <div class="bubble in" data-s><small>Customer, on WhatsApp</small>My order 4471 arrived damaged. Can I get a new one?</div>
+            <ul class="chips">
+              <li data-s>Found order 4471</li>
+              <li data-s>Checked the returns policy</li>
+              <li data-s>Booked a replacement</li>
+            </ul>
+            <div class="bubble out" data-s><small>Agent</small>Sorry about that. A replacement leaves today and reaches you on Thursday. Here is the tracking link.</div>
+          </div>
+        </article>
+
+        <article class="cell cell-doc">
+          <header><p class="cell-time">11:10 to 12:50</p><h3>Finance and BFSI agents</h3><p class="cell-sub">Banking, insurance, accounts and back office</p></header>
+          <div class="viz doc" data-seq data-tick="850">
+            <div class="paper" aria-hidden="true">
+              <b>Hospital claim</b>
+              <i></i><i></i><i></i><i></i><i></i><i></i>
+              <span class="scan"></span>
+            </div>
+            <dl class="claim">
+              <div data-s><dt>Policy</dt><dd>Active, cashless</dd></div>
+              <div data-s><dt>Bill</dt><dd>₹1,24,000</dd></div>
+              <div data-s><dt>Room rent</dt><dd>Within the limit</dd></div>
+              <div data-s><dt>Fraud check</dt><dd>Clear</dd></div>
+              <div class="viz-out" data-s><dt>Next</dt><dd>Sent to an assessor to approve</dd></div>
+            </dl>
+          </div>
+        </article>
+
+        <article class="cell cell-code">
+          <header><p class="cell-time">13:35 to 15:15</p><h3>Developer and IT agents</h3><p class="cell-sub">Coding, testing, IT operations and agent infrastructure</p></header>
+          <div class="viz code" data-seq data-tick="800">
+            <p class="code-file">checkout/pay.ts</p>
+            <pre><code><span>  await pay(order, {</span><span class="del" data-s>-   timeout: 300,</span><span class="add" data-s>+   timeout: 3000,</span><span class="add" data-s>+   retries: 2,</span><span>  });</span></code></pre>
+            <p class="viz-out" data-s>Pull request opened, tests passing</p>
+          </div>
+        </article>
+
+        <article class="cell cell-chart">
+          <header><p class="cell-time">15:30 to 17:10</p><h3>Industry agents</h3><p class="cell-sub">Healthcare, manufacturing, legal and HR</p></header>
+          <div class="viz chart" data-seq data-tick="1100">
+            <svg viewBox="0 0 320 110" role="img" aria-label="A machine's vibration reading rising past its safe limit" data-s>
+              <line class="lim" x1="0" y1="40" x2="320" y2="40"></line>
+              <text class="lim-t" x="0" y="33">Safe limit</text>
+              <polyline class="trace" pathLength="1" points="0,86 10,82 20,88 30,84 40,87 50,81 60,86 70,83 80,88 90,84 100,86 110,80 120,85 130,83 140,87 150,82 160,85 170,79 180,84 190,78 200,81 210,74 220,77 230,68 240,70 250,58 260,61 270,47 280,49 290,33 300,30"></polyline>
+              <circle class="hit" cx="300" cy="30" r="5"></circle>
+            </svg>
+            <ol class="feed">
+              <li data-s>Spindle 3 is vibrating past its limit</li>
+              <li data-s>The pattern matches a bearing wearing out</li>
+              <li class="viz-out" data-s>Repair booked before the next shift</li>
+            </ol>
+          </div>
+        </article>
+
+        <article class="cell cell-voice">
+          <header><p class="cell-time">17:20 to 19:00</p><h3>Voice and Indian-language agents</h3><p class="cell-sub">Including agents for public services</p></header>
+          <div class="viz voice" data-seq data-tick="1300">
+            <div class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <p class="say" data-s><span lang="hi">नमस्ते, मेरी अगली EMI कब कटेगी?</span><small>When will my next EMI be paid?</small></p>
+            <p class="say out" data-s><span lang="hi">आपकी अगली EMI 5 तारीख को कटेगी।</span><small>On the 5th of this month.</small></p>
+            <ul class="langs" aria-label="Languages">
+              <li lang="hi">हिन्दी</li><li lang="mr">मराठी</li><li lang="ta">தமிழ்</li><li lang="bn">বাংলা</li>
+            </ul>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
 
   <!-- Credibility -->
   <section class="trust container" aria-labelledby="trust-h">

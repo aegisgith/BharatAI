@@ -59,28 +59,175 @@
     if (paint()) setInterval(paint, 20000);
   }
 
-  /* ---------- Hero console: the agent works through its steps, then replays ---------- */
-  var consoleEl = document.querySelector('[data-console]');
-  if (consoleEl) {
-    var steps = Array.prototype.slice.call(consoleEl.querySelectorAll('.trace li'));
-    if (reduceMotion || !steps.length) {
-      steps.forEach(function (li) { li.classList.add('on'); });
-    } else {
-      var shown = 0, onScreen = true, holdTicks = 0;
-      if ('IntersectionObserver' in window) {
-        new IntersectionObserver(function (en) { onScreen = en[0].isIntersecting; }).observe(consoleEl);
+  // Calls back with true when the element is on screen, false when it leaves (always true without IntersectionObserver).
+  var watchOnScreen = function (el, cb) {
+    if (!('IntersectionObserver' in window)) { cb(true); return; }
+    new IntersectionObserver(function (en) { cb(en[0].isIntersecting); }, { threshold: 0.15 }).observe(el);
+  };
+  var whenLoaded = function (fn) { if (document.readyState === 'complete') fn(); else window.addEventListener('load', fn); };
+  var loadImg = function (img) {
+    var src = img && img.getAttribute('data-src');
+    if (src) { img.src = src; img.removeAttribute('data-src'); }
+  };
+
+  /* ---------- Hero photos: one stage after another (26 Nov 2026) ----------
+     The fill of the current bar is a CSS animation; when it ends, the next photo comes in.
+     Pausing (the button, the hero off screen, the tab hidden) pauses that animation,
+     so the timing stops with it. With reduced motion nothing moves on its own. */
+  var show = document.querySelector('[data-slideshow]');
+  if (show) {
+    var slides = show.querySelectorAll('.show-slide');
+    var ticks = show.querySelectorAll('.tick');
+    var ambs = document.querySelectorAll('.hero-amb img');
+    var cap = show.querySelector('[data-show-cap]');
+    var pauseBtn = show.querySelector('.show-pause');
+    var cur = 0, userPaused = false, showVisible = true;
+    var syncPause = function () { show.classList.toggle('is-paused', userPaused || !showVisible || document.hidden); };
+    var go = function (n) {
+      n = (n + slides.length) % slides.length;
+      if (n === cur) return;
+      loadImg(slides[n].querySelector('img'));
+      loadImg(slides[(n + 1) % slides.length].querySelector('img'));
+      slides.forEach(function (s, i) {
+        s.classList.toggle('is-out', i === cur);
+        s.classList.toggle('is-on', i === n);
+        s.setAttribute('aria-hidden', i === n ? 'false' : 'true');
+      });
+      ticks.forEach(function (t, i) {
+        t.classList.toggle('is-on', i === n);
+        t.classList.toggle('is-done', i < n);
+        if (i === n) t.setAttribute('aria-current', 'true'); else t.removeAttribute('aria-current');
+      });
+      ambs.forEach(function (a, i) { loadImg(a); a.classList.toggle('is-on', i === n); });
+      if (cap) cap.textContent = slides[n].getAttribute('data-caption') || '';
+      cur = n;
+    };
+    ticks.forEach(function (t, i) { t.addEventListener('click', function () { go(i); }); });
+    show.addEventListener('animationend', function (e) { if (e.animationName === 'tick-fill') go(cur + 1); });
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', function () {
+        userPaused = !userPaused;
+        pauseBtn.setAttribute('aria-pressed', userPaused ? 'true' : 'false');
+        pauseBtn.setAttribute('aria-label', userPaused ? 'Play the photos' : 'Pause the photos');
+        syncPause();
+      });
+    }
+    watchOnScreen(show, function (on) { showVisible = on; syncPause(); });
+    document.addEventListener('visibilitychange', syncPause);
+    // The first photo is in the page; the second and the small backdrops come after the page has loaded.
+    whenLoaded(function () { loadImg(slides[1] && slides[1].querySelector('img')); ambs.forEach(loadImg); });
+  }
+
+  /* ---------- Hero agent card: an example agent works through its task ----------
+     The page arrives with the first example finished, so nothing flashes; the script
+     holds it, then plays the next example step by step. The clock counts down a
+     seven-minute demo, the way the timer on stage does. */
+  var run = document.querySelector('[data-run]');
+  if (run) {
+    var cases = run.querySelectorAll('.run-case');
+    var tabs = run.querySelectorAll('.run-tabs button');
+    var clockEl = run.querySelector('[data-run-clock]');
+    var ci = 0, si = 0, runTimer = null, runVisible = false, left = 7 * 60;
+    var stepsOf = function (c) { return c.querySelectorAll('.run-steps li'); };
+    var resetCase = function (c) {
+      stepsOf(c).forEach(function (li) { li.classList.remove('doing', 'ok'); });
+      c.querySelector('.run-out').classList.remove('on');
+    };
+    var finishCase = function (c) {
+      stepsOf(c).forEach(function (li) { li.classList.remove('doing'); li.classList.add('ok'); });
+      c.querySelector('.run-out').classList.add('on');
+    };
+    var showCase = function (n) {
+      cases.forEach(function (c, i) { c.classList.toggle('is-on', i === n); c.setAttribute('aria-hidden', i === n ? 'false' : 'true'); });
+      tabs.forEach(function (t, i) { t.setAttribute('aria-pressed', i === n ? 'true' : 'false'); });
+      ci = n;
+    };
+    var step = function () {
+      runTimer = null;
+      if (!runVisible || document.hidden) return;
+      var c = cases[ci], steps = stepsOf(c);
+      if (si < steps.length) {
+        if (si > 0) { steps[si - 1].classList.remove('doing'); steps[si - 1].classList.add('ok'); }
+        steps[si].classList.add('doing');
+        si++;
+        runTimer = setTimeout(step, 1000 + Math.round(Math.random() * 600));
+        return;
       }
+      if (si === steps.length) { finishCase(c); si++; runTimer = setTimeout(step, 3600); return; }
+      var n = (ci + 1) % cases.length;
+      resetCase(cases[n]); showCase(n); si = 0;
+      runTimer = setTimeout(step, 650);
+    };
+    var resume = function (delay) { if (!runTimer && runVisible && !document.hidden) runTimer = setTimeout(step, delay); };
+
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () {
+        if (runTimer) { clearTimeout(runTimer); runTimer = null; }
+        if (reduceMotion) { showCase(i); return; }
+        resetCase(cases[i]); showCase(i); si = 0;
+        resume(350);
+      });
+    });
+
+    if (!reduceMotion) {
+      finishCase(cases[0]);
+      si = stepsOf(cases[0]).length + 1; // the first example is shown finished: hold it, then move on
+      run.classList.add('is-live');
+      watchOnScreen(run, function (on) { runVisible = on; if (on) resume(2600); });
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) resume(400); });
       setInterval(function () {
-        if (!onScreen || document.hidden) return;
-        if (shown < steps.length) { steps[shown].classList.add('on'); shown++; return; }
-        holdTicks++;
-        if (holdTicks >= 9) { // about 8 seconds on the finished trace, then run again
-          steps.forEach(function (li) { li.classList.remove('on'); });
-          shown = 0; holdTicks = 0;
-        }
-      }, 900);
+        if (!runVisible || document.hidden) return;
+        left = left > 0 ? left - 1 : 7 * 60;
+        var m = Math.floor(left / 60), s = left % 60;
+        clockEl.textContent = '0' + m + ':' + (s < 10 ? '0' : '') + s;
+      }, 1000);
     }
   }
+
+  /* ---------- Five kinds of agent: each drawing plays its items in order, holds, and plays again ----------
+     Items carry data-s; the container carries data-seq (data-tick = ms between items).
+     Items are only hidden once a play begins, so without the script, or with reduced motion,
+     every drawing simply shows its finished state. */
+  document.querySelectorAll('[data-seq]').forEach(function (root) {
+    if (reduceMotion) return;
+    var items = root.querySelectorAll('[data-s]');
+    var gap = parseInt(root.getAttribute('data-tick'), 10) || 900;
+    var k = 0, t = null, visible = false, started = false;
+    var next = function () {
+      t = null;
+      if (!visible || document.hidden) return;
+      if (k < items.length) { items[k].classList.add('on'); k++; t = setTimeout(next, gap); return; }
+      root.classList.add('done');
+      t = setTimeout(function () {
+        // Fade the whole drawing out, clear it without transitions, fade the empty frame back, play again.
+        root.classList.add('fade');
+        t = setTimeout(function () {
+          root.classList.add('snap');
+          items.forEach(function (el) { el.classList.remove('on'); });
+          root.classList.remove('done');
+          void root.offsetWidth;
+          root.classList.remove('snap', 'fade');
+          k = 0;
+          t = setTimeout(next, 500);
+        }, 320);
+      }, 5200);
+    };
+    watchOnScreen(root, function (on) {
+      visible = on;
+      root.classList.toggle('live', on);
+      if (on && !started) {
+        // Clear the finished drawing at once (no fade) as it comes into view, then play it.
+        started = true;
+        root.classList.add('snap', 'seq');
+        void root.offsetWidth;
+        root.classList.remove('snap');
+        t = setTimeout(next, 250);
+        return;
+      }
+      if (on && !t) t = setTimeout(next, 250);
+    });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && visible && !t) t = setTimeout(next, 250); });
+  });
 
   /* ---------- Forms ---------- */
   var params = new URLSearchParams(window.location.search);
