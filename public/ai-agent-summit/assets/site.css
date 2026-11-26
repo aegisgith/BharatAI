@@ -290,7 +290,7 @@ p { text-wrap: pretty; }
 
 /* ---------- Inner page header ---------- */
 .page-head { position: relative; isolation: isolate; overflow: hidden; padding: 110px 0 80px; border-bottom: 1px solid var(--line); }
-.page-head::after { content: ''; position: absolute; inset: 0; z-index: -2; background: url('/ai-agent-summit/images/hero-stage.webp') center 40% / cover no-repeat; }
+.page-head::after { content: ''; position: absolute; inset: 0; z-index: -2; background: url('/ai-agent-summit/images/hall-wtc26.webp') center 45% / cover no-repeat; }
 .page-head::before { content: ''; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, rgba(8, 9, 12, 0.96) 0%, rgba(8, 9, 12, 0.86) 50%, rgba(8, 9, 12, 0.62) 100%), linear-gradient(0deg, var(--bg) 0%, rgba(8, 9, 12, 0) 40%); }
 .page-head h1 { font-size: clamp(2.6rem, 5.6vw, 4.6rem); font-weight: 800; letter-spacing: -0.045em; max-width: 17ch; }
 .page-head p { font-size: 1.18rem; color: var(--ink-2); max-width: 60ch; margin-top: 22px; }
@@ -511,3 +511,17 @@ table.dates { width: 100%; border-collapse: collapse; border-top: 1px solid var(
 .organiser .gallery figcaption { margin-top: 8px; font-size: 0.84rem; color: var(--ink-3); }
 .organiser .gallery figure:hover img { transform: none; }
 @media (max-width: 760px) { .hero { flex-direction: column; align-items: stretch; justify-content: flex-end; } }
+
+/* ---------- Bharat AI Innovation 2026 in numbers (26 Nov 2026) ---------- */
+.trust-stats { margin: 34px auto 0; max-width: 880px; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.trust-stats > div { padding: 24px 12px 22px; display: flex; flex-direction: column-reverse; gap: 6px; }
+.trust-stats > div + div { border-left: 1px solid var(--line); }
+.trust-stats dd { margin: 0; font-size: clamp(2rem, 3.6vw, 2.9rem); font-weight: 700; letter-spacing: -0.04em; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.trust-stats dt { font-size: 0.88rem; color: var(--ink-3); }
+.trust-sub { margin: 40px auto 0; font-size: 1rem; color: var(--ink-2); }
+.trust-stats + .trust-sub + .logos { margin-top: 18px; }
+@media (max-width: 700px) {
+  .trust-stats { grid-template-columns: repeat(2, 1fr); }
+  .trust-stats > div:nth-child(3) { border-left: 0; }
+  .trust-stats > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+}
