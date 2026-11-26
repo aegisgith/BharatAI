@@ -19,6 +19,8 @@ import { titledName } from '../lib/greet'
 //   POST /api/agent-summit/pass-again   Try again from the result page (signed link)
 //   POST /api/agent-summit/apply        showcase application -> inquiry 'agent_showcase'
 //   POST /api/agent-summit/enquire      sponsor enquiry -> inquiry 'sponsorship'
+//   POST /api/agent-summit/challenge    AI Agent Challenge team -> inquiry 'agent_challenge'
+//   POST /api/agent-summit/problem      a buyer's problem for the board -> inquiry 'agent_problem'
 //   GET  /api/admin/agent-summit/passes Admin -> Overview card "AI Agent Summit passes"
 //
 // Rules this keeps (handbook §2, §14 6 Nov): every query on attendees / payment_orders
@@ -569,7 +571,7 @@ app.post('/api/agent-summit/apply', async (c) => {
   return c.json({ ok: true, reference: 'AAS27-A' + id, message: `Application received for ${agent}. The evaluation committee reviews applications every week and will reply within five working days. Your reference is AAS27-A${id}.` }, 201)
 })
 
-const TIERS: Record<string, string> = { presenting: 'Presenting Partner (Rs 20,00,000)', platinum: 'Platinum (Rs 10,00,000)', gold: 'Gold (Rs 5,00,000)', 'add-on': 'An add-on or extra floor space' }
+const TIERS: Record<string, string> = { presenting: 'Presenting Partner (Rs 20,00,000)', platinum: 'Platinum (Rs 10,00,000)', gold: 'Gold (Rs 5,00,000)', 'add-on': 'An add-on or extra floor space', challenge: 'AI Agent Challenge partner', break: 'Break the agent booth partner' }
 
 app.post('/api/agent-summit/enquire', async (c) => {
   const b = await c.req.json().catch(() => ({})) as any
@@ -592,6 +594,109 @@ app.post('/api/agent-summit/enquire', async (c) => {
   })
   await h.audit(c, 'summit.enquire', 'inquiry', id, { tier: String(b.tier || '') }, { actor: 'public registration', kind: 'public' })
   return c.json({ ok: true, reference: 'AAS27-E' + id, message: `Thank you, ${titledName(name) || name}. Our partnerships team will reply within one working day with the partner deck and what is still open. Your reference is AAS27-E${id}.` }, 201)
+})
+
+// ---- The AI Agent Challenge and the problem board (26 Nov 2026) ----
+// The organiser said yes to both: an online challenge before the summit, whose five
+// finalists present free on the main stage at 19:00 on the day, and a board of real tasks
+// that buyers want an agent for. A team is an inquiry 'agent_challenge', a problem an
+// inquiry 'agent_problem', both on the Inquiries desk with the summit's other rows.
+// Nothing goes on the public board until the team has read it and told the sender.
+const CHALLENGE_REGISTER_BY = Date.parse('2027-01-31T23:59:59+05:30')
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+const agreed = (v: unknown) => ['yes', 'on', 'true', '1'].includes(String(v || '').toLowerCase())
+export const PROBLEM_SECTORS: Record<string, string> = {
+  banking: 'Banking and financial services', insurance: 'Insurance', manufacturing: 'Manufacturing', retail: 'Retail and consumer goods',
+  healthcare: 'Healthcare', it: 'IT and software', logistics: 'Logistics and travel', government: 'Government and public services', other: 'Another sector',
+}
+
+app.post('/api/agent-summit/challenge', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  if (Date.now() > CHALLENGE_REGISTER_BY) {
+    return c.json({ ok: false, error: 'Team registration for the AI Agent Challenge closed on 31 January 2027. For anything else, write to info@bharataiinnovation.com.' }, 400)
+  }
+  const team = text(b.team_name, 80)
+  const name = text(b.name, 100)
+  const email = text(b.email, 160).toLowerCase()
+  const phone = text(b.phone, 30)
+  const members = Math.floor(Number(b.members) || 0)
+  const idea = text(b.idea, 700)
+  const errors: { field: string; message: string }[] = []
+  if (team.length < 2) errors.push({ field: 'team_name', message: 'Your team name is required.' })
+  if (name.length < 2) errors.push({ field: 'name', message: 'Your name is required.' })
+  if (!EMAIL_RE.test(email)) errors.push({ field: 'email', message: 'Enter a valid email address.' })
+  if (phone.replace(/\D/g, '').length < 8) errors.push({ field: 'phone', message: 'Enter a valid phone number.' })
+  if (members < 1 || members > 4) errors.push({ field: 'members', message: 'A team has one to four people.' })
+  if (idea.length < 30) errors.push({ field: 'idea', message: idea ? 'Tell us a little more: at least 30 characters.' : 'Tell us what your agent will do.' })
+  if (!agreed(b.eligible)) errors.push({ field: 'eligible', message: 'The challenge is for teams that have not raised outside funding.' })
+  if (!agreed(b.consent)) errors.push({ field: 'consent', message: 'Please agree to the terms and privacy policy to continue.' })
+  if (errors.length) return c.json({ ok: false, error: errors.length === 1 ? errors[0].message : 'Please check the highlighted fields.', errors }, 400)
+  if (text(b.website_confirm, 200)) return c.json({ ok: true, reference: 'AAS27-RECEIVED', message: 'Thank you.' })
+  if (await ipOver(c, 'summit.challenge', 20)) return c.json({ ok: false, error: 'Too many registrations from this connection. Please try again in an hour, or write to info@bharataiinnovation.com.' }, 429)
+  const dupe = await c.env.DB.prepare(
+    "SELECT id FROM inquiries WHERE inquiry_type = 'agent_challenge' AND lower(email) = ? AND lower(COALESCE(json_extract(metadata, '$.team_name'), '')) = lower(?) LIMIT 1"
+  ).bind(email, team).first().catch(() => null) as any
+  if (dupe) return c.json({ ok: true, already: true, reference: 'AAS27-C' + dupe.id, message: `Team ${team} is already registered from this email. Your reference is AAS27-C${dupe.id}.` })
+  const meta = {
+    edition: EDITION, kind: 'challenge', team_name: team, members, idea,
+    org: text(b.org, 120), city: text(b.city, 80), problem: text(b.problem, 200), page: 'ai-agent-summit/challenge',
+  }
+  const message = [
+    idea,
+    '',
+    'Team: ' + team + ' (' + members + (members === 1 ? ' person' : ' people') + ')',
+    meta.org ? 'College or company: ' + meta.org : '',
+    meta.city ? 'City: ' + meta.city : '',
+    meta.problem ? 'Problem from the board: ' + meta.problem : '',
+  ].filter((l, i) => l !== '' || i === 1).join('\n')
+  const id = await saveInquiry(c, {
+    type: 'agent_challenge', name, email, phone, organization: meta.org || team,
+    subject: `AI Agent Summit 2027 · Challenge: ${team}`, message, metadata: meta,
+  })
+  await h.audit(c, 'summit.challenge', 'inquiry', id, { team, members }, { actor: 'public registration', kind: 'public' })
+  return c.json({ ok: true, reference: 'AAS27-C' + id, message: `Team ${team} is registered for the AI Agent Challenge. We will email the full brief and how to submit to ${email}. Your reference is AAS27-C${id}.` }, 201)
+})
+
+app.post('/api/agent-summit/problem', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as any
+  const name = text(b.name, 100)
+  const email = text(b.email, 160).toLowerCase()
+  const company = text(b.company, 120)
+  const sector = String(b.sector || '')
+  const problem = text(b.problem, 1500)
+  const errors: { field: string; message: string }[] = []
+  if (name.length < 2) errors.push({ field: 'name', message: 'Your name is required.' })
+  if (!EMAIL_RE.test(email)) errors.push({ field: 'email', message: 'Enter a valid email address.' })
+  if (company.length < 2) errors.push({ field: 'company', message: 'Your company is required. You can keep it off the board.' })
+  if (!PROBLEM_SECTORS[sector]) errors.push({ field: 'sector', message: 'Choose the sector closest to yours.' })
+  if (problem.length < 30) errors.push({ field: 'problem', message: problem ? 'Tell us a little more: at least 30 characters.' : 'Describe the task you want an agent to do.' })
+  if (!agreed(b.consent)) errors.push({ field: 'consent', message: 'Please agree to the terms and privacy policy to continue.' })
+  if (errors.length) return c.json({ ok: false, error: errors.length === 1 ? errors[0].message : 'Please check the highlighted fields.', errors }, 400)
+  if (text(b.website_confirm, 200)) return c.json({ ok: true, reference: 'AAS27-RECEIVED', message: 'Thank you.' })
+  if (await ipOver(c, 'summit.problem', 20)) return c.json({ ok: false, error: 'Too many problems from this connection. Please try again in an hour, or write to info@bharataiinnovation.com.' }, 429)
+  const dupe = await c.env.DB.prepare(
+    "SELECT id FROM inquiries WHERE inquiry_type = 'agent_problem' AND lower(email) = ? AND COALESCE(json_extract(metadata, '$.problem'), '') = ? LIMIT 1"
+  ).bind(email, problem).first().catch(() => null) as any
+  if (dupe) return c.json({ ok: true, already: true, reference: 'AAS27-P' + dupe.id, message: `We already have this problem from you. Your reference is AAS27-P${dupe.id}.` })
+  const showName = agreed(b.show_name)
+  const meta = {
+    edition: EDITION, kind: 'problem', sector, sector_label: PROBLEM_SECTORS[sector], problem, volume: text(b.volume, 300),
+    job_title: text(b.job_title, 100), show_name: showName, page: 'ai-agent-summit/problems',
+  }
+  const message = [
+    problem,
+    '',
+    meta.volume ? 'How often or how much: ' + meta.volume : '',
+    'Sector: ' + PROBLEM_SECTORS[sector],
+    'Company name on the board: ' + (showName ? 'yes' : 'no, keep it off'),
+    meta.job_title ? 'Title: ' + meta.job_title : '',
+  ].filter((l, i) => l !== '' || i === 1).join('\n')
+  const id = await saveInquiry(c, {
+    type: 'agent_problem', name, email, phone: text(b.phone, 30), organization: company,
+    subject: `AI Agent Summit 2027 · Problem: ${problem.length > 60 ? problem.slice(0, 57).trim() + '...' : problem}`, message, metadata: meta,
+  })
+  await h.audit(c, 'summit.problem', 'inquiry', id, { sector, show_name: showName }, { actor: 'public registration', kind: 'public' })
+  return c.json({ ok: true, reference: 'AAS27-P' + id, message: `Thank you, ${titledName(name) || name}. We read every problem before it goes on the board, and we will email you before yours is published. Your reference is AAS27-P${id}.` }, 201)
 })
 
 // ---- admin (behind index.tsx's /api/admin/* guard) ----

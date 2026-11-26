@@ -290,10 +290,42 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
   check('Mumbai is still untouched', rows('SELECT COUNT(*) AS n FROM attendees WHERE event_id = 1')[0].n === 0, '');
 }
 
+// ---- The AI Agent Challenge and the problem board (26 Nov 2026) ----
+{
+  const T = { team_name: 'Pune Builders', name: 'Aditi Kulkarni', email: 'Aditi@college.example.edu', phone: '+91 98200 11223', members: '3', idea: 'An agent that reads a GST notice, finds the invoices it is about and drafts the reply.', org: 'COEP', city: 'Pune', eligible: 'yes', consent: 'yes' };
+  let q = await post('/api/agent-summit/challenge', { ...T, eligible: '' });
+  check('a challenge team that has raised funding (or did not say): refused on that field', q.status === 400 && q.json?.errors?.some((e) => e.field === 'eligible'), q.text);
+  q = await post('/api/agent-summit/challenge', { ...T, members: '5' });
+  check('a challenge team of five: refused, one to four people', q.status === 400 && q.json?.errors?.some((e) => e.field === 'members'), q.text);
+  mail = [];
+  q = await post('/api/agent-summit/challenge', T);
+  await settled();
+  const ch = rows("SELECT * FROM inquiries WHERE inquiry_type = 'agent_challenge'")[0] || {};
+  const cm = JSON.parse(ch.metadata || '{}');
+  check('a challenge team is an agent_challenge enquiry, event 1, edition agent-summit-2027, with reference AAS27-C',
+    q.status === 201 && ch.event_id === 1 && cm.edition === 'agent-summit-2027' && cm.team_name === 'Pune Builders' && cm.members === 3 && ch.email === 'aditi@college.example.edu' && /^AAS27-C\d+$/.test(q.json?.reference || ''), q.text);
+  check('its subject names the team, and the team is told', /AI Agent Summit 2027 · Challenge: Pune Builders/.test(ch.subject) && mail.length > 0, ch.subject + ' / mails ' + mail.length);
+  q = await post('/api/agent-summit/challenge', T);
+  check('the same team from the same email again: the same registration', q.status === 200 && q.json?.already === true && rows("SELECT COUNT(*) AS n FROM inquiries WHERE inquiry_type = 'agent_challenge'")[0].n === 1, q.text);
+
+  const Pb = { name: 'Kavita Rao', email: 'kavita@bigbank.example.com', company: 'BigBank', job_title: 'Head of Operations', sector: 'banking', problem: 'Reconcile about 3,000 vendor invoices a month against purchase orders and flag the ones that do not match.', consent: 'yes' };
+  q = await post('/api/agent-summit/problem', { ...Pb, sector: 'space' });
+  check('a problem with an unknown sector: refused on that field', q.status === 400 && q.json?.errors?.some((e) => e.field === 'sector'), q.text);
+  q = await post('/api/agent-summit/problem', Pb);
+  const pr = rows("SELECT * FROM inquiries WHERE inquiry_type = 'agent_problem'")[0] || {};
+  const pm = JSON.parse(pr.metadata || '{}');
+  check('a problem is an agent_problem enquiry kept off the board by name unless asked, with reference AAS27-P',
+    q.status === 201 && pr.event_id === 1 && pm.edition === 'agent-summit-2027' && pm.sector === 'banking' && pm.show_name === false && /^AAS27-P\d+$/.test(q.json?.reference || '') && /Problem: Reconcile about 3,000 vendor invoices a month against pur\.\.\./.test(pr.subject), q.text + ' ' + pr.subject);
+  check('the sender is told nothing goes up before we write to them', /before yours is published/.test(q.json?.message || ''), q.text);
+  q = await post('/api/agent-summit/enquire', { name: 'Sameer Shah', email: 'sameer@cloud.example.com', company: 'CloudCo', tier: 'challenge', consent: 'yes' });
+  const ce = rows("SELECT subject FROM inquiries WHERE inquiry_type = 'sponsorship' ORDER BY id DESC LIMIT 1")[0] || {};
+  check('a partner can ask about the challenge or the Break the agent booth', q.status === 201 && /Partner: AI Agent Challenge partner/.test(ce.subject || ''), ce.subject);
+}
+
 // The day is Friday 16 April 2027 (the organiser, 26 Nov 2026): no page, calendar file or script says 17 or Saturday.
 {
   const dir = new URL('../../public/ai-agent-summit/', import.meta.url);
-  const files = ['index.html', 'attend.html', 'showcase.html', 'partners.html', 'terms.html', 'refund.html', 'privacy.html', 'thanks.html', 'llms.txt', 'ai-agent-summit-2027.ics', 'assets/site.js'];
+  const files = ['index.html', 'attend.html', 'showcase.html', 'partners.html', 'challenge.html', 'problems.html', 'terms.html', 'refund.html', 'privacy.html', 'thanks.html', 'llms.txt', 'ai-agent-summit-2027.ics', 'assets/site.js'];
   const bad = files.filter((f) => /17 April|April 17|Saturday|2027-04-17|20270417/.test(readFileSync(new URL(f, dir), 'utf8')));
   const home = readFileSync(new URL('index.html', dir), 'utf8');
   const ics = readFileSync(new URL('ai-agent-summit-2027.ics', dir), 'utf8');
@@ -319,6 +351,12 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
   // The organiser, 26 Nov 2026: we invite buyers and investors and try to bring them, but never promise them.
   const promises = files.filter((f) => /pre-arranged buyer|panel of enterprise buyers|buyer panel|in front of the CIOs and investors|introductions to the companies|Reach the CIOs/i.test(readFileSync(new URL(f, dir), 'utf8')));
   check('no page promises buyers, investors, meetings or introductions', promises.length === 0, 'still promises: ' + promises.join(', '));
+  // The challenge and the board (26 Nov 2026): each page posts to its own route, and the home page links to both.
+  const chp = readFileSync(new URL('challenge.html', dir), 'utf8');
+  const pbp = readFileSync(new URL('problems.html', dir), 'utf8');
+  check('the challenge and problem pages post to their routes, and the home page links to both',
+    /data-endpoint="\/api\/agent-summit\/challenge"/.test(chp) && /name="eligible"/.test(chp) && /data-endpoint="\/api\/agent-summit\/problem"/.test(pbp) && /name="show_name"/.test(pbp)
+      && /href="\/ai-agent-summit\/challenge/.test(home) && /href="\/ai-agent-summit\/problems/.test(home), '');
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nall AI Agent Summit checks passed');

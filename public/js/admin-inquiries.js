@@ -18,6 +18,8 @@
   var TYPES = {
     sponsorship:        { label: 'Sponsorship', icon: 'fa-handshake', group: 'revenue' },
     agent_showcase:     { label: 'AI Agent Summit showcase', icon: 'fa-robot', group: 'revenue' },
+    agent_problem:      { label: 'AI Agent Summit problem', icon: 'fa-lightbulb', group: 'revenue' },
+    agent_challenge:    { label: 'AI Agent Challenge team', icon: 'fa-trophy', group: 'programme' },
     booth_inquiry:      { label: 'Booth', icon: 'fa-store-alt', group: 'revenue' },
     exhibition:         { label: 'Exhibition', icon: 'fa-store', group: 'revenue' },
     group_registration: { label: 'Group registration', icon: 'fa-users', group: 'revenue' },
@@ -32,8 +34,8 @@
     delhi_pass:         { label: 'Delhi free pass', icon: 'fa-ticket', group: 'other' },
     visa_letter:        { label: 'Visa letter (Delhi)', icon: 'fa-file-signature', group: 'other' }
   };
-  var TYPE_ORDER = ['sponsorship', 'agent_showcase', 'booth_inquiry', 'exhibition', 'group_registration', 'government', 'pass_upgrade',
-    'workshop_partner', 'speaking', 'media', 'meeting_room', 'general', 'other', 'visa_letter'];
+  var TYPE_ORDER = ['sponsorship', 'agent_showcase', 'agent_problem', 'booth_inquiry', 'exhibition', 'group_registration', 'government', 'pass_upgrade',
+    'workshop_partner', 'agent_challenge', 'speaking', 'media', 'meeting_room', 'general', 'other', 'visa_letter'];
   var STATUS = {
     'new': 'New', responded: 'Replied', in_progress: 'In talks', won: 'Won', lost: 'Lost', closed: 'Closed', waitlisted: 'Waitlisted'
   };

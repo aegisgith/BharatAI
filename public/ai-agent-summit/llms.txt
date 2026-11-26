@@ -5,8 +5,15 @@
 ## Key facts
 - Date: Friday 16 April 2027, doors 08:30 IST, stage 09:00 to 19:00, cocktail evening 19:30 to 21:00
 - Venue: World Trade Center Mumbai, Cuffe Parade, Mumbai
-- Format: 50 ten-minute stage slots in five themed blocks of ten (44 for showcase companies, 6 for partner keynotes and talks); showcase floor all day; audience-voted Best Agent of the Summit plus category awards, announced at the cocktail evening
+- Format: 50 ten-minute stage slots, open to every kind of AI agent (44 for showcase companies, 6 for partner keynotes and talks); the running order is published once the companies are confirmed; showcase floor all day; audience-voted Best Agent of the Summit plus category awards, announced at the cocktail evening
 - Contact: info@bharataiinnovation.com, +91 89765 80367
+
+## More ways to take part
+- AI Agent Challenge: free, online, teams of one to four that have not raised outside funding; register by 31 January 2027, submit by 28 February 2027, five finalists named by 15 March 2027 and shown free on the main stage on 16 April 2027
+- Problem board: companies post tasks they want an AI agent for; showcase companies and challenge teams can pick one to demo
+- Break the agent: an open booth where visitors try to make volunteer agents misbehave, with a leaderboard
+- Scored by the room: after every slot, everyone with a vote scores the demo on their phone; the scores count towards Best Agent of the Summit
+- Agents of India 2027: a report of totals from every application and challenge entry, launched on 16 April 2027
 
 ## Showcase packages (INR, excluding 18% GST; charged only after acceptance)
 - Startup Showcase: 38,000; raised under 25 crore or bootstrapped; stage slot and 24 sq ft pod; 20 slots
@@ -33,3 +40,5 @@
 - [Showcase your agent](https://aiagentssummit.org/ai-agent-summit/showcase)
 - [Passes and registration](https://aiagentssummit.org/ai-agent-summit/attend)
 - [Partner packages](https://aiagentssummit.org/ai-agent-summit/partners)
+- [AI Agent Challenge](https://aiagentssummit.org/ai-agent-summit/challenge)
+- [Bring a problem for an AI agent](https://aiagentssummit.org/ai-agent-summit/problems)

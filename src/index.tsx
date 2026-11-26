@@ -23261,21 +23261,21 @@ app.post('/api/admin/inbox-submissions/:id/reread', async (c) => {
 // - deal value, follow-up day and lost reason in inquiry_pipeline (0053). Until that
 //   table exists those three are hidden and the rest works.
 // The screen itself is public/js/admin-inquiries.js (one global, InqDesk).
-const INQUIRY_TYPES = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'government', 'workshop_partner', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'agent_showcase', 'other']
+const INQUIRY_TYPES = ['general', 'exhibition', 'booth_inquiry', 'sponsorship', 'speaking', 'government', 'workshop_partner', 'media', 'group_registration', 'pass_upgrade', 'meeting_room', 'agent_showcase', 'agent_problem', 'agent_challenge', 'other']
 const INQUIRY_STATUSES = ['new', 'responded', 'in_progress', 'won', 'lost', 'closed', 'waitlisted']
 const INQUIRY_OPEN = ['new', 'responded', 'in_progress']
 const INQUIRY_TYPE_LABEL: Record<string, string> = {
   general: 'General', exhibition: 'Exhibition', booth_inquiry: 'Booth', sponsorship: 'Sponsorship', speaking: 'Speaking',
   government: 'Government', workshop_partner: 'Workshop partner', media: 'Media', group_registration: 'Group registration',
   pass_upgrade: 'Pass upgrade', meeting_room: 'Boardroom', other: 'Other', delhi_pass: 'Delhi free pass',
-  agent_showcase: 'AI Agent Summit showcase',
+  agent_showcase: 'AI Agent Summit showcase', agent_problem: 'AI Agent Summit problem', agent_challenge: 'AI Agent Challenge team',
 }
 // How much a type is worth chasing before anything else is known. Money first: booths
 // and sponsorship are sold in lakhs, a group is many passes, a speaking request or a
 // question is answered rather than sold.
 const INQUIRY_TYPE_WEIGHT: Record<string, number> = {
   sponsorship: 50, booth_inquiry: 48, agent_showcase: 46, exhibition: 42, group_registration: 34, government: 32, pass_upgrade: 30,
-  workshop_partner: 24, meeting_room: 22, media: 14, speaking: 10, general: 10, other: 6,
+  agent_problem: 28, workshop_partner: 24, meeting_room: 22, media: 14, agent_challenge: 12, speaking: 10, general: 10, other: 6,
 }
 const INQUIRY_FREE_MAIL_RE = /@(gmail|googlemail|yahoo|ymail|rocketmail|hotmail|outlook|live|msn|rediffmail|icloud|me|aol|protonmail|proton|gmx)\.[a-z.]+$/i
 const INQUIRY_LOST_REASONS = ['Price', 'Dates or timing', 'Chose another event', 'No reply from them', 'Not a fit', 'Duplicate or spam', 'Other']
@@ -53728,7 +53728,7 @@ function adminPageScript(): string {
     // own stylesheet, both loaded the first time Inquiries opens. The Overview
     // board's links name a type first (openEnquiriesOfType).
     let inquiryFilterType = '';
-    var INQ_DESK_VERSION = '20261123t';
+    var INQ_DESK_VERSION = '20261126a';
     var inqDeskAssets = null;
     function openEnquiriesOfType(type) {
       inquiryFilterType = type;
