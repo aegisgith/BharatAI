@@ -10,7 +10,7 @@ import { titledName } from '../lib/greet'
 // applications and sponsor enquiries are rows on the Inquiries desk.
 //
 // Friday 16 April 2027, World Trade Center Mumbai. One day. Companies that have built AI
-// agents apply for a 10-minute slot (7 minutes live demo, 3 minutes buyer panel) and a
+// agents apply for a 10-minute slot (7 minutes live demo, 3 minutes of questions) and a
 // showcase spot on the floor.
 //
 // Pages: public/ai-agent-summit/ (its own design: dark "agent console"). They post here:
@@ -653,7 +653,7 @@ app.post('/api/admin/agent-summit/passes/:id/confirm', async (c) => {
   const esc = h.payEsc
   const html = summitMail('Your pass is confirmed',
     `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(a.name)}</strong>,</p>` +
-    P(`Your <strong>${esc(a.badge_type)}</strong> for ${SUMMIT_EVENT_NAME} is confirmed. It is complimentary and includes a reserved seat in the main hall, lunch, the VIP lounge and introductions to the companies you choose.`) +
+    P(`Your <strong>${esc(a.badge_type)}</strong> for ${SUMMIT_EVENT_NAME} is confirmed. It is complimentary and includes a reserved seat in the main hall, lunch, the VIP lounge and help meeting the companies you choose.`) +
     h.payRows([['Event', SUMMIT_EVENT_NAME], ['Date', 'Friday 16 April 2027, doors 08:30 IST'], ['Venue', 'World Trade Center, Cuffe Parade, Mumbai']]) +
     P('In the week before the summit we will email your entry pass and the final programme, with the list of companies on stage.') +
     `<div style="text-align:center;margin:0 0 6px;"><a href="https://bharataiinnovation.com/ai-agent-summit/ai-agent-summit-2027.ics" style="display:inline-block;padding:12px 26px;background:#c6ff3d;color:#07080a;text-decoration:none;border-radius:4px;font-weight:bold;font-size:14px;">Save the date</a></div>`)

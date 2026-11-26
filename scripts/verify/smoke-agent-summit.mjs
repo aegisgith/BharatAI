@@ -265,6 +265,9 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
   // Every booth's team passes include lunch and the cocktail evening (the organiser, 26 Nov 2026).
   const sc = readFileSync(new URL('showcase.html', dir), 'utf8');
   check('every package says its team passes include lunch and the cocktail evening', (home.match(/with lunch and the cocktail evening/g) || []).length === 3 && /pod on the floor[^<]*lunch and the cocktail evening/.test(home) && /Lunch and the cocktail evening<\/th>/.test(sc), 'home: ' + (home.match(/with lunch and the cocktail evening/g) || []).length);
+  // The organiser, 26 Nov 2026: we invite buyers and investors and try to bring them, but never promise them.
+  const promises = files.filter((f) => /pre-arranged buyer|panel of enterprise buyers|buyer panel|in front of the CIOs and investors|introductions to the companies|Reach the CIOs/i.test(readFileSync(new URL(f, dir), 'utf8')));
+  check('no page promises buyers, investors, meetings or introductions', promises.length === 0, 'still promises: ' + promises.join(', '));
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nall AI Agent Summit checks passed');
