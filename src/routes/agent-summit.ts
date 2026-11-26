@@ -9,7 +9,7 @@ import { titledName } from '../lib/greet'
 // the same payment_orders, CCAvenue checkout, receipt and GST invoice, and its showcase
 // applications and sponsor enquiries are rows on the Inquiries desk.
 //
-// Saturday 17 April 2027, World Trade Center Mumbai. One day. Companies that have built AI
+// Friday 16 April 2027, World Trade Center Mumbai. One day. Companies that have built AI
 // agents apply for a 10-minute slot (7 minutes live demo, 3 minutes buyer panel) and a
 // showcase spot on the floor.
 //
@@ -65,7 +65,7 @@ export function configureAgentSummit(hooks: Partial<Hooks>) { h = { ...h, ...hoo
 
 export const SUMMIT_EVENT_ID = 3
 export const SUMMIT_EVENT_NAME = 'AI Agent Summit 2027'
-export const SUMMIT_WHEN = 'Saturday 17 April 2027 &bull; World Trade Center Mumbai'
+export const SUMMIT_WHEN = 'Friday 16 April 2027 &bull; World Trade Center Mumbai'
 export const SUMMIT_PAGE = '/ai-agent-summit/'
 // The summit's own domain is aiagentssummit.org (15 Nov 2026): a Cloudflare zone in this account,
 // attached to this Pages project (apex and www). Its home page is NOT served by this worker:
@@ -206,7 +206,7 @@ export async function sendSummitPaymentEmails(c: any, a: any, order: any, tracki
     const rows = h.payRows([
       ['Pass', esc(order.pass_type) + (upgradeFrom ? ` <span style="font-weight:normal;color:#666;">(moved up from ${esc(upgradeFrom)})</span>` : '')],
       ['Event', SUMMIT_EVENT_NAME],
-      ['Date', 'Saturday 17 April 2027, doors 08:30 IST'],
+      ['Date', 'Friday 16 April 2027, doors 08:30 IST'],
       ['Venue', 'World Trade Center, Cuffe Parade, Mumbai'],
       ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${h.consts().PASS_GST_RATE}% GST)</span>`],
       ['Order number', esc(order.order_id)],
@@ -251,7 +251,7 @@ async function sendFreePassEmail(c: any, a: any, kind: string) {
       : P(`Your <strong>Visitor Pass</strong> for ${SUMMIT_EVENT_NAME} is confirmed. It covers the showcase floor all day, and seating in the main hall when seats are free.`)
     const html = summitMail(info.review ? 'Request received' : 'You are registered',
       `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(a.name)}</strong>,</p>` + body +
-      h.payRows([['Event', SUMMIT_EVENT_NAME], ['Date', 'Saturday 17 April 2027, doors 08:30 IST'], ['Venue', 'World Trade Center, Cuffe Parade, Mumbai']]) +
+      h.payRows([['Event', SUMMIT_EVENT_NAME], ['Date', 'Friday 16 April 2027, doors 08:30 IST'], ['Venue', 'World Trade Center, Cuffe Parade, Mumbai']]) +
       P('In the week before the summit we will email your entry pass and the final programme. Want a reserved seat and lunch? The Delegate Pass is on the attend page.') +
       `<div style="text-align:center;margin:0 0 6px;"><a href="https://bharataiinnovation.com/ai-agent-summit/ai-agent-summit-2027.ics" style="display:inline-block;padding:12px 26px;background:#c6ff3d;color:#07080a;text-decoration:none;border-radius:4px;font-weight:bold;font-size:14px;">Save the date</a></div>`)
     await h.sendEmail(c, a.email, info.review ? `We have your ${info.label} request: ${SUMMIT_EVENT_NAME}` : `You are registered: ${SUMMIT_EVENT_NAME}`, h.noAppOnPhone(html), { unsubscribe: false })
@@ -335,7 +335,7 @@ async function ensureSummitEvent(c: any) {
   // attendees.event_id and inquiries.event_id have foreign keys in production: the first
   // registration brings event 3 into being, as Delhi's first buyer did for event 2.
   await c.env.DB.prepare(
-    "INSERT OR IGNORE INTO events (id, title, event_type, venue, start_date, end_date) VALUES (?, ?, 'conference', 'World Trade Center Mumbai', '2027-04-17', '2027-04-17')"
+    "INSERT OR IGNORE INTO events (id, title, event_type, venue, start_date, end_date) VALUES (?, ?, 'conference', 'World Trade Center Mumbai', '2027-04-16', '2027-04-16')"
   ).bind(SUMMIT_EVENT_ID, SUMMIT_EVENT_NAME).run()
 }
 
@@ -636,7 +636,7 @@ app.post('/api/admin/agent-summit/passes/:id/confirm', async (c) => {
   const html = summitMail('Your pass is confirmed',
     `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(a.name)}</strong>,</p>` +
     P(`Your <strong>${esc(a.badge_type)}</strong> for ${SUMMIT_EVENT_NAME} is confirmed. It is complimentary and includes a reserved seat in the main hall, lunch, the VIP lounge and introductions to the companies you choose.`) +
-    h.payRows([['Event', SUMMIT_EVENT_NAME], ['Date', 'Saturday 17 April 2027, doors 08:30 IST'], ['Venue', 'World Trade Center, Cuffe Parade, Mumbai']]) +
+    h.payRows([['Event', SUMMIT_EVENT_NAME], ['Date', 'Friday 16 April 2027, doors 08:30 IST'], ['Venue', 'World Trade Center, Cuffe Parade, Mumbai']]) +
     P('In the week before the summit we will email your entry pass and the final programme, with the list of companies on stage.') +
     `<div style="text-align:center;margin:0 0 6px;"><a href="https://bharataiinnovation.com/ai-agent-summit/ai-agent-summit-2027.ics" style="display:inline-block;padding:12px 26px;background:#c6ff3d;color:#07080a;text-decoration:none;border-radius:4px;font-weight:bold;font-size:14px;">Save the date</a></div>`)
   const sent = h.sendEmail(c, a.email, `Confirmed: your ${a.badge_type} for ${SUMMIT_EVENT_NAME}`, h.noAppOnPhone(html), { unsubscribe: false })

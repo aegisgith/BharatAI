@@ -72,9 +72,10 @@ r = await post('/api/agent-summit/pass', V);
 await settled();
 const asha = rows('SELECT * FROM attendees WHERE email = ?', ['asha.rao@example.com'])[0] || {};
 check('a Visitor Pass is an event-3 attendee, confirmed, nothing owed', r.status === 201 && r.json?.status === 'confirmed' && asha.event_id === 3 && asha.badge_type === 'Visitor Pass' && asha.payment_status === 'paid' && asha.name === 'Asha Rao', r.text + ' ' + JSON.stringify(asha));
-check('the first registration brings event 3 into being', rows('SELECT title FROM events WHERE id = 3')[0]?.title === 'AI Agent Summit 2027', JSON.stringify(rows('SELECT * FROM events')));
+check('the first registration brings event 3 into being, on Friday 16 April 2027', rows('SELECT title, start_date, end_date FROM events WHERE id = 3').map((e) => e.title + ' ' + e.start_date + ' ' + e.end_date)[0] === 'AI Agent Summit 2027 2027-04-16 2027-04-16', JSON.stringify(rows('SELECT * FROM events')));
 const ashaMail = to('asha.rao@example.com')[0];
 check('one email to them, in summit words, with no Bharat AI app block', to('asha.rao@example.com').length === 1 && /AI Agent Summit 2027/.test(ashaMail.Content.Subject) && /Visitor Pass/.test(bodyOf(ashaMail)) && !/Save the Bharat AI app|Get the app/i.test(bodyOf(ashaMail)), ashaMail ? ashaMail.Content.Subject : 'none');
+check('the email gives the day as Friday 16 April 2027', !!ashaMail && /Friday 16 April 2027/.test(bodyOf(ashaMail)) && !/17 April|Saturday/.test(bodyOf(ashaMail)), ashaMail ? bodyOf(ashaMail).slice(0, 300) : 'none');
 mail = [];
 r = await post('/api/agent-summit/pass', { ...V, email: 'asha.rao@example.com' });
 check('the same email again: the same registration, no second email', r.status === 200 && r.json?.already === true && rows('SELECT COUNT(*) AS n FROM attendees WHERE event_id = 3')[0].n === 1 && mail.length === 0, r.text);
@@ -163,6 +164,16 @@ r = await hit('/api/admin/agent-summit/passes/' + nehaId + '/confirm', { method:
 check('a Delegate Pass is not confirmed by hand', r.status === 400, r.text);
 r = await hit('/api/admin/agent-summit/overview');
 check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(r.status));
+
+// The day is Friday 16 April 2027 (the organiser, 26 Nov 2026): no page, calendar file or script says 17 or Saturday.
+{
+  const dir = new URL('../../public/ai-agent-summit/', import.meta.url);
+  const files = ['index.html', 'attend.html', 'showcase.html', 'partners.html', 'terms.html', 'refund.html', 'privacy.html', 'thanks.html', 'llms.txt', 'ai-agent-summit-2027.ics', 'assets/site.js'];
+  const bad = files.filter((f) => /17 April|April 17|Saturday|2027-04-17|20270417/.test(readFileSync(new URL(f, dir), 'utf8')));
+  const home = readFileSync(new URL('index.html', dir), 'utf8');
+  const ics = readFileSync(new URL('ai-agent-summit-2027.ics', dir), 'utf8');
+  check('the pages, the calendar file and the countdown say Friday 16 April 2027', bad.length === 0 && home.includes('Friday 16 April 2027') && home.includes('"startDate": "2027-04-16T09:00:00+05:30"') && ics.includes('DTSTART:20270416T030000Z'), 'still the old day: ' + bad.join(', '));
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nall AI Agent Summit checks passed');
 process.exit(fails ? 1 : 0);

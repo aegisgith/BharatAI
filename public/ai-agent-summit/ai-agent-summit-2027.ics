@@ -5,12 +5,13 @@ CALSCALE:GREGORIAN
 METHOD:PUBLISH
 BEGIN:VEVENT
 UID:ai-agent-summit-2027@bharataiinnovation.com
-DTSTAMP:20261115T000000Z
-DTSTART:20270417T030000Z
-DTEND:20270417T133000Z
+DTSTAMP:20261126T000000Z
+SEQUENCE:1
+DTSTART:20270416T030000Z
+DTEND:20270416T133000Z
 SUMMARY:AI Agent Summit 2027
 LOCATION:World Trade Center\, Cuffe Parade\, Mumbai 400005
-DESCRIPTION:Live AI agent demos: 10 minutes on stage per company. Doors 08:30 IST. https://bharataiinnovation.com/ai-agent-summit/
-URL:https://bharataiinnovation.com/ai-agent-summit/
+DESCRIPTION:Live AI agent demos: 10 minutes on stage per company. Doors 08:30 IST. https://aiagentssummit.org/
+URL:https://aiagentssummit.org/
 END:VEVENT
 END:VCALENDAR

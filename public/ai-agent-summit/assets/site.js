@@ -3,8 +3,8 @@
   'use strict';
   document.documentElement.classList.add('js');
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var EVENT_START = new Date('2027-04-17T09:00:00+05:30').getTime();
-  var EVENT_END = new Date('2027-04-17T19:00:00+05:30').getTime();
+  var EVENT_START = new Date('2027-04-16T09:00:00+05:30').getTime();
+  var EVENT_END = new Date('2027-04-16T19:00:00+05:30').getTime();
 
   /* ---------- Mobile nav ---------- */
   var nav = document.querySelector('.nav');
@@ -35,7 +35,7 @@
     revealEls.forEach(function (el) { el.classList.add('in'); });
   }
 
-  /* ---------- Countdown to 9:00 IST, 17 April 2027 ---------- */
+  /* ---------- Countdown to 9:00 IST, 16 April 2027 ---------- */
   var cd = document.querySelector('[data-countdown]');
   if (cd) {
     var dEl = cd.querySelector('[data-d]');

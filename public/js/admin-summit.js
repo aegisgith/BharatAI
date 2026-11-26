@@ -134,7 +134,7 @@
     var tabs = [['passes', 'Passes', num(passes.length)], ['apps', 'Showcase applications', num((d.applications || []).length)], ['partners', 'Partner enquiries', num((d.partners || []).length)]];
     host.innerHTML = '<div class="asd">'
       + '<div class="asd-card asd-head"><div><h2><i class="fas fa-robot" aria-hidden="true"></i> AI Agent Summit 2027</h2>'
-      + '<p class="asd-lead">Saturday 17 April 2027, World Trade Center Mumbai. Event 3 in this app: passes and payments run through the same checkout, receipts and invoices as Mumbai.</p></div>'
+      + '<p class="asd-lead">Friday 16 April 2027, World Trade Center Mumbai. Event 3 in this app: passes and payments run through the same checkout, receipts and invoices as Mumbai.</p></div>'
       + '<div class="asd-acts"><a class="asd-btn" href="/ai-agent-summit/" target="_blank" rel="noopener"><i class="fas fa-external-link-alt" aria-hidden="true"></i> Open the summit site</a>'
       + '<button type="button" class="asd-btn" data-act="reload"><i class="fas fa-rotate" aria-hidden="true"></i> Refresh</button></div></div>'
       + tiles(s)
