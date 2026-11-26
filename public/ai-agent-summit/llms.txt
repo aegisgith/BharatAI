@@ -3,17 +3,17 @@
 > A one-day showcase on Friday 16 April 2027 at World Trade Center Mumbai (Cuffe Parade, Mumbai 400005, India). Companies that have built AI agents apply for a 10-minute innovation talk on the main stage (7 minutes of live demo, 3 minutes of questions) plus a showcase spot on the floor all day. Organised by Aegis Knowledge Trust, the team behind Bharat AI Innovation.
 
 ## Key facts
-- Date: Friday 16 April 2027, doors 08:30 IST, programme until 19:00
+- Date: Friday 16 April 2027, doors 08:30 IST, stage 09:00 to 19:00, cocktail evening 19:30 to 21:00
 - Venue: World Trade Center Mumbai, Cuffe Parade, Mumbai
-- Format: 30 stage slots in five themed blocks of six live demos; showcase floor all day; audience-voted Best Agent of the Summit plus category awards
+- Format: 50 ten-minute stage slots in five themed blocks of ten (44 for showcase companies, 6 for partner keynotes and talks); showcase floor all day; audience-voted Best Agent of the Summit plus category awards, announced at the cocktail evening
 - Contact: info@bharataiinnovation.com, +91 89765 80367
 
 ## Showcase packages (INR, excluding 18% GST; charged only after acceptance)
-- Startup Showcase: 79,000 (64,000 for applications by 31 January 2027); raised under 25 crore
-- Growth Showcase: 1,49,000; raised 25 to 200 crore
-- Enterprise Showcase: 2,95,000; above 200 crore, listed companies, MNCs
-- Showcase pod only (no stage slot): 38,000
-- Team passes: pod 1, Startup 2, Growth 4 (1 VIP), Enterprise 6 (2 VIP); every team pass includes lunch and the cocktail evening
+- Startup Showcase: 38,000; raised under 25 crore or bootstrapped; stage slot and 24 sq ft pod; 20 slots
+- Growth Showcase: 1,49,000; raised 25 to 200 crore; stage slot and 43 sq ft booth; 14 slots
+- Enterprise Showcase: 2,95,000; above 200 crore, listed companies, MNCs; stage slot and 65 sq ft booth; 10 slots
+- Custom booth: 6,000 per sq ft, 200 sq ft minimum (from 12,00,000), with everything in Enterprise Showcase; book by 15 February 2027
+- Team passes: Startup 2, Growth 4 (1 VIP), Enterprise and custom booth 6 (2 VIP); every team pass includes lunch and the cocktail evening
 
 ## Passes (INR, excluding GST)
 - Visitor: free
@@ -21,9 +21,12 @@
 - Delegate: 3,999 (2,499 until 31 January 2027)
 - VIP: 12,999
 - Buyer and Investor: free, on approval
+- Cocktail evening (19:30 to 21:00): VIP, Buyer and Investor passes, showcase team passes and partner passes
 
 ## Partner packages (INR, excluding GST)
-- Presenting Partner 20,00,000; Platinum 10,00,000; Gold 5,00,000; Silver 2,50,000; add-ons from 1,50,000
+- Presenting Partner 20,00,000 (one); Platinum 10,00,000 (two); Gold 5,00,000 (four); every partner pass includes lunch and the cocktail evening
+- Add-ons from 1,50,000; cocktail evening partner 5,00,000
+- Extra floor space: 6,000 per sq ft, 200 sq ft minimum, booked by 15 February 2027
 
 ## Pages
 - [Home](https://aiagentssummit.org/)

@@ -13,6 +13,9 @@
 //  - a showcase package: accepted on the desk, emailed a signed pay link, paid through the same
 //    checkout; the application is paid and Won, a paid pass is kept, no pass becomes Exhibitor;
 //    the stage limit counts paid slots.
+//  - the commercials of 26 Nov 2026: Startup Showcase Rs 38,000, no pod without a stage slot,
+//    a custom booth at Rs 6,000 a sq ft from 200 sq ft, slots per package, three partner
+//    tiers, 50 slots until 19:00 and the cocktail evening until 21:00.
 // Run after `npm run build`:  node scripts/verify/smoke-agent-summit.mjs
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -170,7 +173,6 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
 
 // ---- a showcase package, accepted on the desk and paid online (26 Nov 2026) ----
 {
-  const early = Date.now() <= Date.parse('2027-01-31T23:59:59+05:30');
   const appRow = rows("SELECT * FROM inquiries WHERE inquiry_type = 'agent_showcase' ORDER BY id LIMIT 1")[0];
   const acceptUrl = (id) => '/api/admin/agent-summit/applications/' + id + '/accept';
   r = await hit(acceptUrl(appRow.id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
@@ -179,8 +181,8 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
   r = await hit(acceptUrl(appRow.id), { method: 'POST', headers: AUTH, body: JSON.stringify({ package: 'startup' }) });
   await settled();
   const acc = JSON.parse(rows('SELECT metadata FROM inquiries WHERE id = ?', [appRow.id])[0].metadata || '{}');
-  const price = early ? 64000 : 79000;
-  check('accepting records the package and its price (the Startup early price for an application before 31 Jan), and the link is on bharataiinnovation.com',
+  const price = 38000;
+  check('accepting records the package and its price (the Startup Showcase is Rs 38,000), and the link is on bharataiinnovation.com',
     r.status === 200 && r.json?.ok && /^https:\/\/bharataiinnovation\.com\/pay\/summit-showcase\?t=/.test(r.json.link || '') && acc.accepted_package === 'startup' && acc.accepted_inr === price && !!acc.accepted_at,
     r.text + ' ' + JSON.stringify(acc));
   const acceptMail = to('neha@agentco.example.com')[0];
@@ -194,7 +196,7 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
   page = await hit(link.pathname + '?t=' + encodeURIComponent(t.slice(0, -1) + (t.endsWith('a') ? 'b' : 'a')));
   check('a changed link is refused', page.status === 404 && /not valid/.test(page.text), String(page.status));
   const form = (o) => hit('/pay/summit-showcase', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(o).toString() });
-  const pkgOrders = () => rows("SELECT * FROM payment_orders WHERE pass_type IN ('Startup Showcase', 'Growth Showcase', 'Enterprise Showcase', 'Showcase Pod') ORDER BY id");
+  const pkgOrders = () => rows("SELECT * FROM payment_orders WHERE pass_type IN ('Startup Showcase', 'Growth Showcase', 'Enterprise Showcase', 'Custom Booth', 'Showcase Pod') ORDER BY id");
   page = await form({ t, legal_name: 'AgentCo Private Limited', gstin: 'NOTAGSTIN', address: '' });
   check('a wrong GSTIN is refused in words on the page, and no order is made', page.status === 400 && /GSTIN/.test(page.text) && pkgOrders().length === 0, page.status + ' ' + pkgOrders().length);
   page = await form({ t, legal_name: 'AgentCo Private Limited', gstin: '', address: '' });
@@ -248,6 +250,43 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
   await settled();
   const raviNow = rows("SELECT badge_type, payment_status, registration_source FROM attendees WHERE event_id = 3 AND email = 'ravi@ledgerworks.example.com'")[0] || {};
   check('a contact with no pass becomes an Exhibitor of the summit, on event 3', raviNow.badge_type === 'Exhibitor' && raviNow.payment_status === 'paid' && raviNow.registration_source === 'agent-summit-showcase', JSON.stringify(raviNow));
+  // The commercials of 26 Nov 2026 (the organiser): three showcase choices and a custom booth.
+  const customOpen = Date.now() <= Date.parse('2027-02-15T23:59:59+05:30');
+  const B = { ...A, company: 'BigCo', agent_name: 'BigBot', contact_name: 'Meera Shah', email: 'meera@bigco.example.com', phone: '+91 98200 55555' };
+  r = await post('/api/agent-summit/apply', { ...B, package: 'pod' }, '10.3.3.10');
+  check('the pod without a stage slot is no longer on the form', r.status === 400 && (r.json?.errors || []).some((e) => e.field === 'package'), r.text);
+  r = await post('/api/agent-summit/apply', { ...B, package: 'custom', booth_sqft: '150' }, '10.3.3.10');
+  check(customOpen ? 'a custom booth under 200 sq ft is refused on its size field' : 'custom booths are closed after 15 February 2027',
+    r.status === 400 && (r.json?.errors || []).some((e) => e.field === (customOpen ? 'booth_sqft' : 'package')), r.text);
+  r = await post('/api/agent-summit/apply', { ...B, package: customOpen ? 'custom' : 'enterprise', booth_sqft: '300' }, '10.3.3.10');
+  await settled();
+  const big = rows("SELECT * FROM inquiries WHERE email = 'meera@bigco.example.com'")[0] || {};
+  const bigMeta = JSON.parse(big.metadata || '{}');
+  check('a custom booth application keeps its size and says what it comes to',
+    r.status === 201 && (!customOpen || (bigMeta.package === 'custom' && bigMeta.booth_sqft === 300 && /300 sq ft at Rs 6,000 per sq ft: Rs 18,00,000/.test(big.message || ''))), r.text + ' ' + JSON.stringify(bigMeta));
+  r = await hit(acceptUrl(big.id), { method: 'POST', headers: AUTH, body: JSON.stringify({ package: 'custom', sqft: 250, send: false }) });
+  const bigAcc = JSON.parse(rows('SELECT metadata FROM inquiries WHERE id = ?', [big.id])[0].metadata || '{}');
+  check('a custom booth is Rs 6,000 a sq ft at the size the desk sets: 250 sq ft is Rs 15,00,000',
+    r.status === 200 && r.json?.package === 'Custom Booth' && r.json?.price_inr === 1500000 && bigAcc.accepted_sqft === 250 && bigAcc.accepted_inr === 1500000, r.text + ' ' + JSON.stringify(bigAcc));
+  const bt = new URL(r.json.link).searchParams.get('t');
+  page = await hit('/pay/summit-showcase?t=' + encodeURIComponent(bt));
+  check('its pay page names the size and the price', page.status === 200 && /250 sq ft custom booth/.test(page.text) && /15,00,000/.test(page.text), page.text.slice(0, 300));
+  db.run("INSERT OR REPLACE INTO app_settings (key, value) VALUES ('summit_cap_enterprise', '0')");
+  page = await form({ t: bt, legal_name: 'BigCo Limited' });
+  check('a package whose own slots are all paid is refused in words (a custom booth takes an Enterprise slot)', page.status === 409 && /Enterprise Showcase slots/.test(page.text) && pkgOrders().length === 2, page.status + ' ' + pkgOrders().length);
+  db.run("DELETE FROM app_settings WHERE key = 'summit_cap_enterprise'");
+  r = await hit(acceptUrl(big.id), { method: 'POST', headers: AUTH, body: JSON.stringify({ package: 'custom', sqft: 50, send: false }) });
+  check('a custom booth is never under 200 sq ft: Rs 12,00,000', r.json?.price_inr === 1200000, r.text);
+  db.run("UPDATE inquiries SET metadata = json_set(metadata, '$.accepted_package', 'startup', '$.accepted_inr', 79000) WHERE id = ?", [big.id]);
+  page = await hit('/pay/summit-showcase?t=' + encodeURIComponent(bt));
+  check('a Startup Showcase accepted at the old Rs 79,000 pays Rs 38,000', page.status === 200 && /Startup Showcase/.test(page.text) && /38,000/.test(page.text) && !/79,000/.test(page.text), page.text.slice(0, 300));
+  r = await hit(acceptUrl(big.id), { method: 'POST', headers: AUTH, body: JSON.stringify({ package: 'pod', send: false }) });
+  check('the desk cannot accept anyone for the old pod: it keeps the package they have', r.json?.package === 'Startup Showcase' && r.json?.price_inr === 38000, r.text);
+  r = await hit('/api/admin/agent-summit/overview', { headers: AUTH });
+  const pk = r.json?.packages || {};
+  check('the desk offers the three packages and the custom booth, with their slots and what is paid, and no pod',
+    Object.keys(pk).join() === 'startup,growth,enterprise,custom' && pk.startup.inr === 38000 && pk.startup.slots === 20 && pk.growth.slots === 14 && pk.enterprise.slots === 10
+      && pk.custom.per_sqft === 6000 && pk.custom.shares === 'enterprise' && pk.startup.sold === 1 && pk.growth.sold === 1, JSON.stringify(pk));
   check('Mumbai is still untouched', rows('SELECT COUNT(*) AS n FROM attendees WHERE event_id = 1')[0].n === 0, '');
 }
 
@@ -264,7 +303,19 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
   check('no summit page says jury: applications go to an evaluation committee', juryOn.length === 0 && /evaluation committee/i.test(home), 'still says jury: ' + juryOn.join(', '));
   // Every booth's team passes include lunch and the cocktail evening (the organiser, 26 Nov 2026).
   const sc = readFileSync(new URL('showcase.html', dir), 'utf8');
-  check('every package says its team passes include lunch and the cocktail evening', (home.match(/with lunch and the cocktail evening/g) || []).length === 3 && /pod on the floor[^<]*lunch and the cocktail evening/.test(home) && /Lunch and the cocktail evening<\/th>/.test(sc), 'home: ' + (home.match(/with lunch and the cocktail evening/g) || []).length);
+  check('every package says its team passes include lunch and the cocktail evening', (home.match(/with lunch and the cocktail evening/g) || []).length === 3 && /custom booth is[^<]*lunch and the cocktail evening/.test(home) && /Lunch and the cocktail evening<\/th>/.test(sc), 'home: ' + (home.match(/with lunch and the cocktail evening/g) || []).length);
+  // The commercials of 26 Nov 2026: three showcase choices and a custom booth, three partner tiers, 50 slots.
+  const pt = readFileSync(new URL('partners.html', dir), 'utf8');
+  const at = readFileSync(new URL('attend.html', dir), 'utf8');
+  const old = files.filter((f) => /79,000|64,000|Silver|pod only|package=pod|[0-9] × [0-9.]+ m\b/.test(readFileSync(new URL(f, dir), 'utf8')));
+  check('no page keeps the old prices, the pod without a stage slot, Silver, or sizes in metres', old.length === 0, 'still there: ' + old.join(', '));
+  check('the home page sells three packages, and the custom booth by the sq ft until 15 February 2027',
+    (home.match(/<article class="plan/g) || []).length === 3 && /₹38,000<small>/.test(home) && /₹6,000 per sq ft/.test(home) && /Book by 15 February 2027/.test(home) && /package=custom/.test(home), '');
+  check('the showcase form offers the custom booth with its size, and no pod', /value="custom"/.test(sc) && /name="booth_sqft"/.test(sc) && !/value="pod"/.test(sc), '');
+  check('partners: Presenting, Platinum and Gold, the cocktail evening partner, and no Silver',
+    (pt.match(/<article class="tier/g) || []).length === 3 && /Cocktail evening partner/.test(pt) && !/value="silver"/.test(pt), '');
+  check('the day has 50 slots until 19:00, then the cocktail evening until 21:00 for VIP, Buyer and Investor passes',
+    /Fifty ten-minute slots/.test(home) && home.includes('"endDate": "2027-04-16T21:00:00+05:30"') && ics.includes('DTEND:20270416T153000Z') && /Cocktail evening<\/th><td class="n">No<\/td><td class="n">No<\/td><td class="n">No<\/td><td class="y">Yes<\/td><td class="y">Yes<\/td><td class="y">Yes<\/td>/.test(at), '');
   // The organiser, 26 Nov 2026: we invite buyers and investors and try to bring them, but never promise them.
   const promises = files.filter((f) => /pre-arranged buyer|panel of enterprise buyers|buyer panel|in front of the CIOs and investors|introductions to the companies|Reach the CIOs/i.test(readFileSync(new URL(f, dir), 'utf8')));
   check('no page promises buyers, investors, meetings or introductions', promises.length === 0, 'still promises: ' + promises.join(', '));

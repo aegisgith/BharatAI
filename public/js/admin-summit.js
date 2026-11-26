@@ -100,15 +100,27 @@
       }).join('') + '</tbody></table></div>';
   }
 
+  // How many of a package's slots are paid (a custom booth takes an Enterprise slot), or its rate.
+  function slotText(pk, k) {
+    var p = pk[k] || {};
+    if (!p.slots) return p.per_sqft ? ' (Rs ' + num(p.per_sqft) + ' a sq ft)' : '';
+    var sold = Number(p.sold) || 0;
+    Object.keys(pk).forEach(function (o) { if (pk[o].shares === k) sold += Number(pk[o].sold) || 0; });
+    return ' (' + num(sold) + ' of ' + num(p.slots) + ' paid)';
+  }
+
   // Accept and send the pay link, send it again, or paid (26 Nov 2026). The package can be
-  // changed before accepting: the select starts on the one they applied for.
+  // changed before accepting: the select starts on the one they applied for (an application
+  // for the old pod starts on the first package). A custom booth also takes its size.
   function payCell(r) {
     if (r.paid_at) return '<span class="asd-pill asd-s-won">Paid ' + rs(r.paid_paise) + '</span><div class="asd-sub">' + ist(r.paid_at) + '</div>';
     var pk = (data && data.packages) || {};
     var cur = r.accepted_package || r.package_key;
+    if (!pk[cur]) cur = Object.keys(pk)[0];
     var sel = '<select class="asd-pkg" data-pkg-for="' + Number(r.id) + '" aria-label="Package for ' + esc(r.agent) + '">' + Object.keys(pk).map(function (k) {
-      return '<option value="' + esc(k) + '"' + (k === cur ? ' selected' : '') + '>' + esc(pk[k].label) + '</option>';
-    }).join('') + '</select>';
+      return '<option value="' + esc(k) + '"' + (k === cur ? ' selected' : '') + '>' + esc(pk[k].label + slotText(pk, k)) + '</option>';
+    }).join('') + '</select>'
+      + '<input type="number" class="asd-sqft" data-sqft-for="' + Number(r.id) + '" min="200" max="2000" step="1" value="' + (Number(r.sqft) || 200) + '" title="Booth size in sq ft" aria-label="Booth size in sq ft for ' + esc(r.agent) + '"' + (pk[cur] && pk[cur].per_sqft ? '' : ' hidden') + '>';
     var price = r.price_inr ? '<div class="asd-sub">&#8377;' + num(r.price_inr) + ' + GST</div>' : '';
     if (r.accepted_at) {
       return '<span class="asd-pill">Link sent</span><div class="asd-sub">' + ist(r.link_sent_at) + '</div>' + price + sel
@@ -125,7 +137,7 @@
       + apps.map(function (r) {
         return '<tr><td><b>' + esc(r.agent) + '</b><div class="asd-sub">' + esc(r.company) + '</div><div class="asd-sub asd-clip">' + esc(r.summary) + '</div>'
           + (r.demo_url ? '<a class="asd-link" href="' + esc(/^https?:/i.test(r.demo_url) ? r.demo_url : 'https://' + r.demo_url) + '" target="_blank" rel="noopener">Demo link</a>' : '') + '</td>'
-          + '<td>' + esc(r.package) + '</td><td>' + esc(r.category) + '<div class="asd-sub">' + esc(r.stage) + '</div></td>'
+          + '<td>' + esc(r.package) + (r.sqft ? '<div class="asd-sub">' + num(r.sqft) + ' sq ft</div>' : '') + '</td><td>' + esc(r.category) + '<div class="asd-sub">' + esc(r.stage) + '</div></td>'
           + '<td>' + esc(r.contact) + '<div class="asd-sub">' + esc(r.email) + '</div><div class="asd-sub">' + esc(r.phone) + '</div></td>'
           + '<td class="asd-pay">' + payCell(r) + '</td>'
           + '<td><span class="asd-pill asd-s-' + esc(r.status) + '">' + esc(STATUS[r.status] || r.status) + '</span></td><td class="asd-nowrap">' + ist(r.created_at) + '</td></tr>';
@@ -201,13 +213,17 @@
       var row = ((data && data.applications) || []).filter(function (x) { return Number(x.id) === aid; })[0] || {};
       var pick = host.querySelector('[data-pkg-for="' + aid + '"]');
       var pkg = pick ? pick.value : '';
-      var label = (((data && data.packages) || {})[pkg] || {}).label || 'the package';
+      var chosen = ((data && data.packages) || {})[pkg] || {};
+      var sizeEl = host.querySelector('[data-sqft-for="' + aid + '"]');
+      var sqft = chosen.per_sqft && sizeEl ? Math.floor(Number(sizeEl.value) || 0) : 0;
+      if (chosen.per_sqft && (sqft < 200 || sqft > 2000)) { toast('Enter the booth size, from 200 to 2,000 sq ft.', 'error'); return; }
+      var label = (chosen.label || 'the package') + (sqft ? ', ' + num(sqft) + ' sq ft at Rs ' + num(sqft * chosen.per_sqft) + ' + GST' : '');
       var again = !!row.accepted_at;
       if (!w.confirm((again ? 'Send the payment link again for ' + (row.agent || 'this application') + ' (' + label + ')?' : 'Accept ' + (row.agent || 'this application') + ' for the ' + label + '?')
         + ' ' + (row.contact || 'The contact') + ' (' + (row.email || '') + ') is emailed a link to pay online.')) return;
       b.disabled = true;
       try {
-        var x = await opts.api.post('/api/admin/agent-summit/applications/' + aid + '/accept', { package: pkg });
+        var x = await opts.api.post('/api/admin/agent-summit/applications/' + aid + '/accept', { package: pkg, sqft: sqft || undefined });
         if (x && x.paid) { toast('That one is paid already.'); load(); }
         else if (x && x.ok && x.link) {
           var copied = false;
@@ -231,10 +247,18 @@
     }
   }
 
+  // The size box shows only for a package priced by the square foot (the custom booth).
+  function onChange(ev) {
+    var s = ev.target && ev.target.closest ? ev.target.closest('.asd-pkg') : null;
+    if (!s || !host.contains(s)) return;
+    var box = host.querySelector('[data-sqft-for="' + s.getAttribute('data-pkg-for') + '"]');
+    if (box) box.hidden = !((((data && data.packages) || {})[s.value] || {}).per_sqft);
+  }
+
   w.SummitDesk = {
     mount: async function (el, o) {
       opts = o || {};
-      if (host !== el) { host = el; host.addEventListener('click', onClick); }
+      if (host !== el) { host = el; host.addEventListener('click', onClick); host.addEventListener('change', onChange); }
       if (!data) host.innerHTML = '<div class="text-center py-12 text-gray-500">Loading...</div>';
       await load();
     }

@@ -92,11 +92,19 @@ const FREE_PASSES: Record<string, { label: string; source: string; review: boole
 }
 const PAID_PASSES: Record<string, string> = { delegate: 'Delegate Pass', vip: 'VIP Pass', academic: 'Academic Pass' }
 
+// The commercials of 26 Nov 2026 (the organiser): three showcase choices, each with a stage
+// slot, and a custom booth by the square foot, booked by 15 Feb 2027. The pod without a
+// stage slot is no longer sold: the Startup Showcase is the pod with a stage slot, Rs 38,000.
+const CUSTOM_RATE_INR = 6000
+const CUSTOM_MIN_SQFT = 200
+const CUSTOM_MAX_SQFT = 2000
+const CUSTOM_BOOK_BY = Date.parse('2027-02-15T23:59:59+05:30')
+const customSqft = (v: any) => Math.min(CUSTOM_MAX_SQFT, Math.max(CUSTOM_MIN_SQFT, Math.floor(Number(v) || 0)))
 const SHOWCASE_PACKAGES: Record<string, { label: string; price: string }> = {
-  startup: { label: 'Startup Showcase', price: 'Rs 79,000 (Rs 64,000 by 31 Jan 2027)' },
+  startup: { label: 'Startup Showcase', price: 'Rs 38,000' },
   growth: { label: 'Growth Showcase', price: 'Rs 1,49,000' },
   enterprise: { label: 'Enterprise Showcase', price: 'Rs 2,95,000' },
-  pod: { label: 'Showcase pod only', price: 'Rs 38,000' },
+  custom: { label: 'Custom Booth', price: 'Rs 6,000 per sq ft, 200 sq ft minimum' },
 }
 const AGENT_CATEGORIES: Record<string, string> = {
   'customer-support': 'Customer support and CX', 'sales-marketing': 'Sales and marketing',
@@ -504,7 +512,12 @@ app.post('/api/agent-summit/apply', async (c) => {
   const contact = text(b.contact_name, 100)
   const email = text(b.email, 160).toLowerCase()
   const phone = text(b.phone, 30)
+  const sqft = Math.floor(Number(String(b.booth_sqft ?? '').replace(/[^\d.]/g, '')) || 0)
   if (!SHOWCASE_PACKAGES[pkg]) errors.push({ field: 'package', message: 'Choose a showcase package.' })
+  if (pkg === 'custom') {
+    if (Date.now() > CUSTOM_BOOK_BY) errors.push({ field: 'package', message: 'Custom booths closed on 15 February 2027. Choose another package, or write to info@bharataiinnovation.com.' })
+    else if (sqft < CUSTOM_MIN_SQFT || sqft > CUSTOM_MAX_SQFT) errors.push({ field: 'booth_sqft', message: 'Enter the booth size you want, from 200 to 2,000 sq ft. For a larger one, write to info@bharataiinnovation.com.' })
+  }
   if (company.length < 2) errors.push({ field: 'company', message: 'Company name is required.' })
   if (agent.length < 2) errors.push({ field: 'agent_name', message: 'Agent or product name is required.' })
   if (!AGENT_CATEGORIES[category]) errors.push({ field: 'category', message: 'Choose the category that fits your agent best.' })
@@ -524,8 +537,12 @@ app.post('/api/agent-summit/apply', async (c) => {
   if (dupe) {
     return c.json({ ok: true, already: true, reference: 'AAS27-A' + dupe.id, message: `We already have an application for ${agent} from this email (reference AAS27-A${dupe.id}). Reply to our email if you need to change anything.` })
   }
+  const priceText = pkg === 'custom'
+    ? `${inrText(sqft)} sq ft at Rs ${inrText(CUSTOM_RATE_INR)} per sq ft: Rs ${inrText(sqft * CUSTOM_RATE_INR)}`
+    : SHOWCASE_PACKAGES[pkg].price
   const meta = {
-    edition: EDITION, package: pkg, package_label: SHOWCASE_PACKAGES[pkg].label, package_price: SHOWCASE_PACKAGES[pkg].price,
+    edition: EDITION, package: pkg, package_label: SHOWCASE_PACKAGES[pkg].label, package_price: priceText,
+    booth_sqft: pkg === 'custom' ? sqft : undefined,
     agent_name: agent, category, category_label: AGENT_CATEGORIES[category], stage: String(b.stage), stage_label: STAGES[String(b.stage)],
     website: text(b.website, 300), demo_url: text(b.demo_url, 300), live_demo: text(b.live_demo, 700), customers: text(b.customers, 300),
     founded_year: text(b.founded_year, 4), team_size: text(b.team_size, 20), city: text(b.city, 80), contact_role: text(b.contact_role, 100),
@@ -534,7 +551,7 @@ app.post('/api/agent-summit/apply', async (c) => {
   const message = [
     summary,
     '',
-    'Package: ' + SHOWCASE_PACKAGES[pkg].label + ' (' + SHOWCASE_PACKAGES[pkg].price + ' + GST)',
+    'Package: ' + SHOWCASE_PACKAGES[pkg].label + ' (' + priceText + ' + GST)',
     'Category: ' + AGENT_CATEGORIES[category],
     'Stage: ' + STAGES[String(b.stage)],
     meta.live_demo ? 'Live demo plan: ' + meta.live_demo : '',
@@ -552,7 +569,7 @@ app.post('/api/agent-summit/apply', async (c) => {
   return c.json({ ok: true, reference: 'AAS27-A' + id, message: `Application received for ${agent}. The evaluation committee reviews applications every week and will reply within five working days. Your reference is AAS27-A${id}.` }, 201)
 })
 
-const TIERS: Record<string, string> = { presenting: 'Presenting Partner (Rs 20,00,000)', platinum: 'Platinum (Rs 10,00,000)', gold: 'Gold (Rs 5,00,000)', silver: 'Silver (Rs 2,50,000)', 'add-on': 'An add-on' }
+const TIERS: Record<string, string> = { presenting: 'Presenting Partner (Rs 20,00,000)', platinum: 'Platinum (Rs 10,00,000)', gold: 'Gold (Rs 5,00,000)', 'add-on': 'An add-on or extra floor space' }
 
 app.post('/api/agent-summit/enquire', async (c) => {
   const b = await c.req.json().catch(() => ({})) as any
@@ -628,7 +645,8 @@ app.get('/api/admin/agent-summit/overview', async (c) => {
       agent: m.agent_name || '', package: m.package_label || '', category: m.category_label || '', stage: m.stage_label || '',
       demo_url: m.demo_url || '', website: m.website || '', summary: String(r.message || '').split('\n')[0],
       package_key: m.package || '', accepted_at: m.accepted_at || null, accepted_package: m.accepted_package || '', link_sent_at: m.link_sent_at || null,
-      price_inr: packagePrice(m.accepted_package || m.package || '', r.created_at), paid_at: m.paid_at || null, paid_paise: Number(m.paid_paise) || 0 }
+      sqft: Number(m.accepted_sqft || m.booth_sqft) || 0,
+      price_inr: owedPrice(m, SUMMIT_PACKAGES[m.accepted_package] ? m.accepted_package : m.package || ''), paid_at: m.paid_at || null, paid_paise: Number(m.paid_paise) || 0 }
   })
   const partners = ((((await db.prepare(
     `SELECT id, created_at, name, email, phone, organization, subject, status, metadata FROM inquiries WHERE inquiry_type = 'sponsorship' AND subject LIKE 'AI Agent Summit 2027%' ORDER BY id DESC LIMIT 500`
@@ -637,7 +655,10 @@ app.get('/api/admin/agent-summit/overview', async (c) => {
     return { id: r.id, created_at: r.created_at, name: r.name, email: r.email, phone: r.phone, company: r.organization, status: r.status,
       tier: String(r.subject || '').replace(/^AI Agent Summit 2027 · Partner: /, ''), job_title: m.job_title || '' }
   })
-  const packages = Object.fromEntries(Object.entries(SUMMIT_PACKAGES).map(([k, p]) => [k, { label: p.label, inr: p.inr, early: p.early || null }]))
+  const sold = await packagesSold(c)
+  const packages = Object.fromEntries(Object.entries(SUMMIT_PACKAGES).filter(([, p]) => !p.retired).map(([k, p]) => [k, {
+    label: p.label, inr: p.inr, early: null, per_sqft: p.perSqft || null, min_sqft: p.perSqft ? CUSTOM_MIN_SQFT : null,
+    slots: p.slots || null, shares: p.shares || null, sold: sold[p.label] || 0 }]))
   return c.json({ sales: await summitSales(c), passes, applications, partners, prices: SUMMIT_PASS_PRICES_INR, packages })
 })
 
@@ -653,7 +674,7 @@ app.post('/api/admin/agent-summit/passes/:id/confirm', async (c) => {
   const esc = h.payEsc
   const html = summitMail('Your pass is confirmed',
     `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${esc(a.name)}</strong>,</p>` +
-    P(`Your <strong>${esc(a.badge_type)}</strong> for ${SUMMIT_EVENT_NAME} is confirmed. It is complimentary and includes a reserved seat in the main hall, lunch, the VIP lounge and help meeting the companies you choose.`) +
+    P(`Your <strong>${esc(a.badge_type)}</strong> for ${SUMMIT_EVENT_NAME} is confirmed. It is complimentary and includes a reserved seat in the main hall, lunch, the VIP lounge, the cocktail evening and help meeting the companies you choose.`) +
     h.payRows([['Event', SUMMIT_EVENT_NAME], ['Date', 'Friday 16 April 2027, doors 08:30 IST'], ['Venue', 'World Trade Center, Cuffe Parade, Mumbai']]) +
     P('In the week before the summit we will email your entry pass and the final programme, with the list of companies on stage.') +
     `<div style="text-align:center;margin:0 0 6px;"><a href="https://bharataiinnovation.com/ai-agent-summit/ai-agent-summit-2027.ics" style="display:inline-block;padding:12px 26px;background:#c6ff3d;color:#07080a;text-decoration:none;border-radius:4px;font-weight:bold;font-size:14px;">Save the date</a></div>`)
@@ -675,29 +696,42 @@ app.post('/api/admin/agent-summit/passes/:id/confirm', async (c) => {
 // paid_paise) and in admin_audit (summit.accept, summit.package.order, payment.received).
 // A link stays good for PACKAGE_LINK_DAYS; Resend on the desk makes a new one.
 
-export const SUMMIT_PACKAGES: Record<string, { label: string; inr: number; early?: number; stage: boolean; space: string; passes: string }> = {
-  startup: { label: 'Startup Showcase', inr: 79000, early: 64000, stage: true, space: '1.5 x 1.5 m pod', passes: '2 team passes' },
-  growth: { label: 'Growth Showcase', inr: 149000, stage: true, space: '2 x 2 m booth', passes: '4 team passes (1 VIP)' },
-  enterprise: { label: 'Enterprise Showcase', inr: 295000, stage: true, space: '3 x 2 m booth', passes: '6 team passes (2 VIP)' },
-  pod: { label: 'Showcase Pod', inr: 38000, stage: false, space: '1.5 x 1.5 m pod', passes: '1 team pass' },
+// The commercials of 26 Nov 2026: the day has 50 ten-minute slots, 44 of them for showcase
+// companies (the other 6 are the Platinum keynotes and the Gold talks). `slots` is how many
+// of the 44 a package may take; a custom booth takes an Enterprise slot (`shares`). The
+// Startup Showcase was Rs 79,000 (Rs 64,000 early) until that day. `retired` keeps a package
+// that was sold before then payable and settleable, and off the form and the desk.
+export const SUMMIT_PACKAGES: Record<string, { label: string; inr: number; stage: boolean; space: string; passes: string; slots?: number; shares?: string; perSqft?: number; retired?: boolean }> = {
+  startup: { label: 'Startup Showcase', inr: 38000, stage: true, space: '24 sq ft pod', passes: '2 team passes', slots: 20 },
+  growth: { label: 'Growth Showcase', inr: 149000, stage: true, space: '43 sq ft booth', passes: '4 team passes (1 VIP)', slots: 14 },
+  enterprise: { label: 'Enterprise Showcase', inr: 295000, stage: true, space: '65 sq ft booth', passes: '6 team passes (2 VIP)', slots: 10 },
+  custom: { label: 'Custom Booth', inr: CUSTOM_RATE_INR * CUSTOM_MIN_SQFT, perSqft: CUSTOM_RATE_INR, stage: true, space: 'custom booth', passes: '6 team passes (2 VIP)', shares: 'enterprise' },
+  pod: { label: 'Showcase Pod', inr: 38000, stage: false, space: '24 sq ft pod', passes: '1 team pass', retired: true },
 }
 const PACKAGE_BY_LABEL: Record<string, string> = Object.fromEntries(Object.entries(SUMMIT_PACKAGES).map(([k, p]) => [p.label, k]))
 const PACKAGE_LABELS_SQL = Object.values(SUMMIT_PACKAGES).map((p) => "'" + p.label.replace(/'/g, "''") + "'").join(', ')
 const PACKAGE_LINK_DAYS = 30
 const STAGE_CAP_KEY = 'summit_stage_cap'
-const STAGE_CAP_DEFAULT = 30
+const STAGE_CAP_DEFAULT = 44
 const PACKAGE_PAY_PATH = '/pay/summit-showcase'
 
 export function isSummitPackageOrder(o: any): boolean { return isSummitOrder(o) && !!PACKAGE_BY_LABEL[String(o?.pass_type || '')] }
 
-// The Startup Showcase is Rs 64,000 for a company that applied by 31 Jan 2027 (the pages say
-// "if you apply by"), whenever it pays. Inquiry times are UTC, as SQLite's datetime('now').
-export function packagePrice(key: string, appliedAt: any): number {
+// The list price: fixed, or for a custom booth its size (200 sq ft at least) at Rs 6,000 a sq ft.
+export function packagePrice(key: string, sqft?: any): number {
   const p = SUMMIT_PACKAGES[key]
   if (!p) return 0
-  const raw = String(appliedAt || '').trim()
-  const t = Date.parse(raw.replace(' ', 'T') + (/([zZ]|[+-]\d\d:?\d\d)$/.test(raw) ? '' : 'Z'))
-  return p.early && Number.isFinite(t) && t <= SUMMIT_EARLY_UNTIL ? p.early : p.inr
+  return p.perSqft ? p.perSqft * customSqft(sqft) : p.inr
+}
+// What an accepted application pays: the price it was accepted at, and for a fixed package
+// never more than today's list price (a Startup Showcase accepted at Rs 79,000 pays Rs 38,000).
+function owedPrice(m: any, key: string): number {
+  const p = SUMMIT_PACKAGES[key]
+  if (!p) return 0
+  const list = packagePrice(key, m?.accepted_sqft || m?.booth_sqft)
+  const agreed = Number(m?.accepted_inr) || 0
+  if (!agreed) return list
+  return p.perSqft ? agreed : Math.min(agreed, list)
 }
 function packageAmounts(inr: number) {
   const base = inr * 100
@@ -742,15 +776,36 @@ async function stagePaid(c: any): Promise<number> {
   ).bind(SUMMIT_EVENT_ID, ...labels).first() as any
   return Number(r?.n || 0)
 }
-function includesLine(key: string): string {
+// A package's own slots are all paid for (Startup 20, Growth 14, Enterprise with custom booths
+// 10): app_settings.summit_cap_<package> changes a number without a deploy.
+async function tierFull(c: any, key: string): Promise<boolean> {
+  const group = SUMMIT_PACKAGES[key]?.shares || key
+  const slots = SUMMIT_PACKAGES[group]?.slots
+  if (!slots) return false
+  const set = parseInt(await h.settingValue(c, 'summit_cap_' + group), 10)
+  const limit = Number.isFinite(set) && set >= 0 ? set : slots
+  const labels = Object.entries(SUMMIT_PACKAGES).filter(([k, p]) => k === group || p.shares === group).map(([, p]) => p.label)
+  const r = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid' AND pass_type IN (${labels.map(() => '?').join(', ')})`
+  ).bind(SUMMIT_EVENT_ID, ...labels).first() as any
+  return Number(r?.n || 0) >= limit
+}
+async function packagesSold(c: any): Promise<Record<string, number>> {
+  const out = await c.env.DB.prepare(
+    `SELECT pass_type, COUNT(*) AS n FROM payment_orders WHERE event_id = ? AND status = 'paid' AND pass_type IN (${PACKAGE_LABELS_SQL}) GROUP BY pass_type`
+  ).bind(SUMMIT_EVENT_ID).all().catch(() => ({ results: [] })) as any
+  return Object.fromEntries(((out?.results || []) as any[]).map((r) => [String(r.pass_type), Number(r.n) || 0]))
+}
+function includesLine(key: string, sqft: any = 0): string {
   const p = SUMMIT_PACKAGES[key]
+  const space = p.perSqft ? inrText(customSqft(sqft)) + ' sq ft custom booth' : p.space
   // Every team pass includes lunch and the cocktail evening (the organiser, 26 Nov 2026).
   return p.stage
-    ? `A ten-minute slot on the main stage, a ${p.space} for the day, ${p.passes} with lunch and the cocktail evening, and the edited video of your demo`
+    ? `A ten-minute slot on the main stage, a ${space} for the day, ${p.passes} with lunch and the cocktail evening, and the edited video of your demo`
     : `A ${p.space} on the showcase floor for the day, and ${p.passes} with lunch and the cocktail evening`
 }
 
-// Admin: accept an application, or send its link again. Body: { package?: key, send?: false }.
+// Admin: accept an application, or send its link again. Body: { package?: key, sqft?: number, send?: false }.
 app.post('/api/admin/agent-summit/applications/:id/accept', async (c) => {
   const id = Number(c.req.param('id'))
   const r = await applicationRow(c, id)
@@ -758,21 +813,23 @@ app.post('/api/admin/agent-summit/applications/:id/accept', async (c) => {
   const m = parseMeta(r.metadata)
   if (m.paid_at) return c.json({ ok: true, paid: true, error: 'This application is paid already.' })
   const b = await c.req.json().catch(() => ({})) as any
-  const key = SUMMIT_PACKAGES[String(b.package || '')] ? String(b.package)
+  const onSale = (k: any) => !!SUMMIT_PACKAGES[String(k || '')] && !SUMMIT_PACKAGES[String(k)].retired
+  const key = onSale(b.package) ? String(b.package)
     : SUMMIT_PACKAGES[m.accepted_package] ? String(m.accepted_package)
-    : SUMMIT_PACKAGES[m.package] ? String(m.package) : ''
+    : onSale(m.package) ? String(m.package) : ''
   if (!key) return c.json({ error: 'Choose the package to accept them for.' }, 400)
-  const price = packagePrice(key, r.created_at)
+  const sqft = SUMMIT_PACKAGES[key].perSqft ? customSqft(b.sqft ?? m.accepted_sqft ?? m.booth_sqft) : 0
+  const price = packagePrice(key, sqft)
   const link = await packageLink(c, id)
   const resend = !!m.accepted_at
   const send = b.send !== false
   await c.env.DB.prepare(
     `UPDATE inquiries SET metadata = json_set(COALESCE(metadata, '{}'), '$.accepted_at', COALESCE(json_extract(metadata, '$.accepted_at'), datetime('now')),
-       '$.accepted_package', ?, '$.accepted_inr', ?, '$.link_sent_at', datetime('now')),
+       '$.accepted_package', ?, '$.accepted_inr', ?, '$.accepted_sqft', ?, '$.link_sent_at', datetime('now')),
        status = CASE WHEN status IN ('new', 'responded') THEN 'in_progress' ELSE status END
      WHERE id = ?`
-  ).bind(key, price, id).run()
-  await h.audit(c, 'summit.accept', 'inquiry', id, { package: key, price_inr: price, resend, emailed: send })
+  ).bind(key, price, sqft || null, id).run()
+  await h.audit(c, 'summit.accept', 'inquiry', id, { package: key, price_inr: price, sqft: sqft || undefined, resend, emailed: send })
   if (send) {
     const esc = h.payEsc
     const p = SUMMIT_PACKAGES[key]
@@ -786,7 +843,7 @@ app.post('/api/admin/agent-summit/applications/:id/accept', async (c) => {
       h.payRows([
         ['Company', esc(r.organization || '')],
         ['Package', esc(p.label)],
-        ['Includes', esc(includesLine(key))],
+        ['Includes', esc(includesLine(key, sqft))],
         ['Price', `&#8377;${inrText(price)} + ${h.consts().PASS_GST_RATE}% GST = <strong>&#8377;${h.rupees(a.total)}</strong>`],
         ['Date', 'Friday 16 April 2027, World Trade Center Mumbai'],
       ]) +
@@ -796,7 +853,7 @@ app.post('/api/admin/agent-summit/applications/:id/accept', async (c) => {
       .catch((e: any) => console.error('summit accept email failed', r.email, e?.message))
     try { c.executionCtx.waitUntil(sent) } catch { await sent }
   }
-  return c.json({ ok: true, link, package: SUMMIT_PACKAGES[key].label, price_inr: price, total_inr: packageAmounts(price).total / 100, resend, emailed: send })
+  return c.json({ ok: true, link, package: SUMMIT_PACKAGES[key].label, sqft: sqft || null, price_inr: price, total_inr: packageAmounts(price).total / 100, resend, emailed: send })
 })
 
 // The pay page the email links to, and its form.
@@ -816,7 +873,7 @@ function packageForm(token: string, r: any, m: any, key: string, price: number, 
     h.payRows([
       ['Company', esc(r.organization || '')],
       ['Package', esc(p.label)],
-      ['Includes', esc(includesLine(key))],
+      ['Includes', esc(includesLine(key, m.accepted_sqft))],
       ['Price', `&#8377;${inrText(price)}`],
       [`GST (${h.consts().PASS_GST_RATE}%)`, `&#8377;${h.rupees(a.gst)}`],
       ['To pay', `&#8377;${h.rupees(a.total)}`],
@@ -838,7 +895,7 @@ async function packageFromToken(c: any, token: unknown): Promise<{ r: any; m: an
   const m = parseMeta(r.metadata)
   const key = String(m.accepted_package || '')
   if (!m.accepted_at || !SUMMIT_PACKAGES[key]) return null
-  return { r, m, key, price: Number(m.accepted_inr) || packagePrice(key, r.created_at) }
+  return { r, m, key, price: owedPrice(m, key) }
 }
 const linkGone = (c: any) => packagePage(c, 'Link not valid', h.payH1('That payment link is not valid any more.') +
   h.payP('Nothing has been charged. Links work for ' + PACKAGE_LINK_DAYS + ' days: write to info@bharataiinnovation.com or call +91 89765 80367 and we will send a new one.'), 404)
@@ -867,7 +924,10 @@ app.post(PACKAGE_PAY_PATH, async (c) => {
   if ('error' in billed) return again(billed.error)
   if (!billed.billing) return again('Add the registered company name for the GST invoice.')
   if (SUMMIT_PACKAGES[key].stage && (await stagePaid(c)) >= (await stageCap(c))) {
-    return again('All the stage slots have been paid for. Write to info@bharataiinnovation.com: we will tell you if one comes free, or offer a showcase pod.', 409)
+    return again('All the stage slots have been paid for. Write to info@bharataiinnovation.com: we will tell you if one comes free.', 409)
+  }
+  if (await tierFull(c, key)) {
+    return again('All the ' + SUMMIT_PACKAGES[SUMMIT_PACKAGES[key].shares || key].label + ' slots have been paid for. Write to info@bharataiinnovation.com: we will tell you if one comes free, or offer another package.', 409)
   }
   // The contact as an event-3 attendee: the order, receipt and invoice hang off one.
   const email = String(r.email || '').trim().toLowerCase()
@@ -952,7 +1012,7 @@ export async function settleSummitPackageOrder(c: any, order: any, trackingId: s
         P(`Thank you. The payment has arrived and <strong>${esc(agent)}</strong>'s ${esc(p.label)} at ${SUMMIT_EVENT_NAME} is confirmed.`) +
         h.payRows([
           ['Package', esc(p.label)],
-          ['Includes', esc(includesLine(key))],
+          ['Includes', esc(includesLine(key, m.accepted_sqft))],
           ['Date', 'Friday 16 April 2027, doors 08:30 IST'],
           ['Venue', 'World Trade Center, Cuffe Parade, Mumbai'],
           ['Amount paid', `&#8377;${amount} <span style="font-weight:normal;color:#666;">(includes ${h.consts().PASS_GST_RATE}% GST)</span>`],

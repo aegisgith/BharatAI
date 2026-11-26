@@ -54,4 +54,6 @@
 /* Showcase applications: the Payment column (26 Nov 2026) */
 .asd-pay { min-width: 190px; }
 .asd-pay .asd-pkg { display: block; width: 100%; max-width: 210px; min-height: 32px; margin: 6px 0; padding: 0 8px; border: 1px solid var(--as-line); border-radius: 8px; background: #fff; color: var(--as-ink); }
+.asd-pay .asd-sqft { display: block; width: 100%; max-width: 210px; min-height: 32px; margin: 0 0 6px; padding: 0 8px; border: 1px solid var(--as-line); border-radius: 8px; background: #fff; color: var(--as-ink); }
+.asd-pay .asd-sqft[hidden] { display: none; }
 .asd-pay .asd-btn { white-space: nowrap; }

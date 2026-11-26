@@ -316,7 +316,7 @@ table.compare { width: 100%; border-collapse: collapse; min-width: 700px; font-s
 @media (max-width: 760px) { .criteria { grid-template-columns: 1fr; } }
 
 /* ---------- Sponsor tiers ---------- */
-.tiers { display: grid; grid-template-columns: 1.25fr 1fr 1fr 1fr; gap: 14px; align-items: stretch; }
+.tiers { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 14px; align-items: stretch; }
 .tier { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); padding: 28px 24px; display: flex; flex-direction: column; }
 .tier.top { border-color: var(--acc-line); background: linear-gradient(180deg, rgba(198, 255, 61, 0.09), var(--panel) 50%); }
 .tier h3 { font-size: 1.2rem; }
@@ -329,7 +329,7 @@ table.compare { width: 100%; border-collapse: collapse; min-width: 700px; font-s
 .tier .btn { margin-top: 22px; }
 @media (max-width: 1060px) { .tiers { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .tiers { grid-template-columns: 1fr; } }
-.addons { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.addons { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
 .addon { border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); padding: 22px 24px; }
 .addon b { display: block; font-weight: 700; }
 .addon .p { display: block; color: var(--acc); font-weight: 700; margin-top: 6px; }
@@ -355,6 +355,7 @@ form.card { background: var(--panel); border: 1px solid var(--line-2); border-ra
 .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 16px; }
 .field { display: flex; flex-direction: column; gap: 7px; }
 .field.full { grid-column: 1 / -1; }
+.field[hidden] { display: none; }
 .field > label, .field > .label { font-size: 0.92rem; font-weight: 600; color: var(--ink); }
 .field .opt { color: var(--ink-3); font-weight: 400; }
 .field .hint { font-size: 0.85rem; color: var(--ink-3); }

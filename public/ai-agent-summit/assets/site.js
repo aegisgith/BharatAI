@@ -101,6 +101,20 @@
       if (sel && sel.querySelector('option[value="' + val + '"]')) sel.value = val;
     });
 
+    // A field that belongs to one choice, e.g. data-when="package=custom": shown, enabled
+    // and required only while that choice is picked (a disabled field is not sent).
+    var whens = form.querySelectorAll('[data-when]');
+    var syncWhen = function () {
+      whens.forEach(function (box) {
+        var kv = box.getAttribute('data-when').split('=');
+        var picked = form.querySelector('input[name="' + kv[0] + '"]:checked');
+        var on = !!picked && picked.value === kv[1];
+        box.hidden = !on;
+        box.querySelectorAll('input, select, textarea').forEach(function (el) { el.disabled = !on; el.required = on; });
+      });
+    };
+    if (whens.length) { form.addEventListener('change', syncWhen); syncWhen(); }
+
     form.querySelectorAll('textarea[maxlength]').forEach(function (ta) {
       var c = ta.parentNode.querySelector('.counter');
       if (!c) return;
