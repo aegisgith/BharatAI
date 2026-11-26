@@ -23,8 +23,8 @@
 <link rel="apple-touch-icon" href="/ai-agent-summit/images/apple-touch-icon.png">
 <link rel="preload" href="/ai-agent-summit/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/ai-agent-summit/images/hero-wtc26.webp" as="image" type="image/webp">
-<link rel="stylesheet" href="/ai-agent-summit/assets/site.css?v=20261126f">
-<script src="/ai-agent-summit/assets/site.js?v=20261126f" defer></script>
+<link rel="stylesheet" href="/ai-agent-summit/assets/site.css?v=20261126g">
+<script src="/ai-agent-summit/assets/site.js?v=20261126g" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -204,31 +204,37 @@
     </dl>
   </div>
 
-  <!-- Five example agents, each drawn doing its job, and the many other kinds that are welcome.
+  <!-- Nine example agents, each drawn doing its job (finance first: Mumbai is the BFSI hub), and the many other kinds that are welcome.
        Examples only: any working agent can apply (the organiser, 26 Nov 2026). -->
   <section class="section agents" id="agents" aria-labelledby="agents-h">
     <div class="container">
       <div class="head">
         <h2 class="h2" id="agents-h">Any agent that does real work</h2>
-        <p class="lede">Fifty ten-minute slots, open to every kind of AI agent: in support desks, banks, hospitals, factories, code bases, phone lines and hundreds of other places. Here are five examples.</p>
+        <p class="lede">Fifty ten-minute slots, open to every kind of AI agent. Mumbai is India's banking and insurance capital, so we expect many from finance, alongside sales, marketing, healthcare and hundreds of other fields. A few examples:</p>
       </div>
       <div class="bento">
 
-        <article class="cell cell-chat">
-          <header><p class="cell-time">Example</p><h3>A support agent</h3><p class="cell-sub">Customer service, sales and marketing</p></header>
-          <div class="viz chat" data-seq data-tick="1000">
-            <div class="bubble in" data-s><small>Customer, on WhatsApp</small>My order 4471 arrived damaged. Can I get a new one?</div>
-            <ul class="chips">
-              <li data-s>Found order 4471</li>
-              <li data-s>Checked the returns policy</li>
-              <li data-s>Booked a replacement</li>
-            </ul>
-            <div class="bubble out" data-s><small>Agent</small>Sorry about that. A replacement leaves today and reaches you on Thursday. Here is the tracking link.</div>
+        <article class="cell cell-loan">
+          <header><p class="cell-time">Example</p><h3>A loan agent</h3><p class="cell-sub">Banking and lending</p></header>
+          <div class="viz loan" data-seq data-tick="1000">
+            <p class="ask" data-s><small>Application</small>A textile exporter in Surat asks for a working capital loan of ₹50 lakh.</p>
+            <div class="loan-grid">
+              <div class="lbars-box" data-s>
+                <div class="lbars" aria-hidden="true"><i style="--h:38%;--i:0"></i><i style="--h:46%;--i:1"></i><i style="--h:41%;--i:2"></i><i style="--h:52%;--i:3"></i><i style="--h:49%;--i:4"></i><i style="--h:58%;--i:5"></i><i style="--h:55%;--i:6"></i><i style="--h:63%;--i:7"></i><i style="--h:60%;--i:8"></i><i style="--h:71%;--i:9"></i><i style="--h:76%;--i:10"></i><i style="--h:84%;--i:11"></i></div>
+                <p>12 months of bank statements read</p>
+              </div>
+              <ul class="lfacts">
+                <li data-s>GST returns filed on time</li>
+                <li data-s>No defaults at the credit bureau</li>
+                <li class="flag" data-s>Two large buyers pay late</li>
+              </ul>
+            </div>
+            <p class="viz-out loan-out" data-s>Recommends ₹40 lakh. Sent to a credit officer to decide.</p>
           </div>
         </article>
 
         <article class="cell cell-doc">
-          <header><p class="cell-time">Example</p><h3>A claims agent</h3><p class="cell-sub">Banking, insurance and finance</p></header>
+          <header><p class="cell-time">Example</p><h3>A claims agent</h3><p class="cell-sub">Insurance</p></header>
           <div class="viz doc" data-seq data-tick="850">
             <div class="paper" aria-hidden="true">
               <b>Hospital claim</b>
@@ -242,6 +248,54 @@
               <div data-s><dt>Fraud check</dt><dd>Clear</dd></div>
               <div class="viz-out" data-s><dt>Next</dt><dd>Sent to an assessor to approve</dd></div>
             </dl>
+          </div>
+        </article>
+
+        <article class="cell cell-sales">
+          <header><p class="cell-time">Example</p><h3>A sales agent</h3><p class="cell-sub">Sales and business development</p></header>
+          <div class="viz funnel" data-seq data-tick="1000">
+            <p class="fn-row" style="--w:100%" data-s><b>214</b><span>enquiries read overnight</span></p>
+            <p class="fn-row" style="--w:64%" data-s><b>38</b><span>fit the product and the budget</span></p>
+            <p class="fn-row" style="--w:36%" data-s><b>9</b><span>calls booked</span></p>
+            <p class="viz-out fn-out" data-s>In the sales team's calendar by 9 am</p>
+          </div>
+        </article>
+
+        <article class="cell cell-mkt">
+          <header><p class="cell-time">Example</p><h3>A marketing agent</h3><p class="cell-sub">Marketing and campaigns</p></header>
+          <div class="viz mkt" data-seq data-tick="950">
+            <p class="ask" data-s><small>Brief</small>Launch a new credit card to young professionals in Mumbai.</p>
+            <div class="variants">
+              <div class="variant" data-s><small>Email</small><b>Your first card, with no joining fee</b></div>
+              <div class="variant win" data-s><small>WhatsApp</small><b>Apply from your phone in three minutes</b></div>
+              <div class="variant" data-s><small>Instagram</small><b>Weekend plans, with cashback</b></div>
+            </div>
+            <p class="viz-out mkt-out" data-s>WhatsApp is ahead after a day. Budget moved to it.</p>
+          </div>
+        </article>
+
+        <article class="cell cell-care">
+          <header><p class="cell-time">Example</p><h3>A patient care agent</h3><p class="cell-sub">Hospitals and healthcare</p></header>
+          <div class="viz care" data-seq data-tick="1050">
+            <ol class="tl">
+              <li data-s><time>Day 1</time><span>Calls the patient after surgery. Pain is 3 out of 10.</span></li>
+              <li data-s><time>Day 3</time><span>Reminds the patient about the blood test, in Marathi.</span></li>
+              <li class="warn" data-s><time>Day 6</time><span>A fever is reported. The surgeon is alerted.</span></li>
+              <li class="viz-out" data-s><time>Day 7</time><span>Review booked for 10:30 the next morning.</span></li>
+            </ol>
+          </div>
+        </article>
+
+        <article class="cell cell-chat">
+          <header><p class="cell-time">Example</p><h3>A support agent</h3><p class="cell-sub">Customer service</p></header>
+          <div class="viz chat" data-seq data-tick="1000">
+            <div class="bubble in" data-s><small>Customer, on WhatsApp</small>My order 4471 arrived damaged. Can I get a new one?</div>
+            <ul class="chips">
+              <li data-s>Found order 4471</li>
+              <li data-s>Checked the returns policy</li>
+              <li data-s>Booked a replacement</li>
+            </ul>
+            <div class="bubble out" data-s><small>Agent</small>Sorry about that. A replacement leaves today and reaches you on Thursday. Here is the tracking link.</div>
           </div>
         </article>
 
@@ -286,8 +340,8 @@
         <article class="cell cell-more">
           <header><h3>And hundreds more</h3><p class="cell-sub">If your agent finishes real tasks for real users, it belongs on this stage.</p></header>
           <div class="kinds" role="group" aria-label="More kinds of agent">
-            <div class="kinds-row"><ul><li>Contract review</li><li>Hiring and HR</li><li>GST and tax filing</li><li>Procurement</li><li>Crop advice for farmers</li><li>Tutoring</li><li>Security alert triage</li><li>Travel booking</li><li>Medical records</li><li>KYC and onboarding</li><li>Research and analysis</li></ul><ul aria-hidden="true"><li>Contract review</li><li>Hiring and HR</li><li>GST and tax filing</li><li>Procurement</li><li>Crop advice for farmers</li><li>Tutoring</li><li>Security alert triage</li><li>Travel booking</li><li>Medical records</li><li>KYC and onboarding</li><li>Research and analysis</li></ul></div>
-            <div class="kinds-row rev"><ul><li>Legal research</li><li>Logistics and dispatch</li><li>Compliance checks</li><li>Quality inspection</li><li>Retail inventory</li><li>Energy and utilities</li><li>Citizen services</li><li>Personal finance</li><li>Data engineering</li><li>Marketing content</li><li>Field sales</li></ul><ul aria-hidden="true"><li>Legal research</li><li>Logistics and dispatch</li><li>Compliance checks</li><li>Quality inspection</li><li>Retail inventory</li><li>Energy and utilities</li><li>Citizen services</li><li>Personal finance</li><li>Data engineering</li><li>Marketing content</li><li>Field sales</li></ul></div>
+            <div class="kinds-row"><ul><li>Fraud detection</li><li>Underwriting</li><li>Contract review</li><li>Hiring and HR</li><li>GST and tax filing</li><li>Procurement</li><li>Crop advice for farmers</li><li>Tutoring</li><li>Security alert triage</li><li>Travel booking</li><li>Medical records</li><li>KYC and onboarding</li></ul><ul aria-hidden="true"><li>Fraud detection</li><li>Underwriting</li><li>Contract review</li><li>Hiring and HR</li><li>GST and tax filing</li><li>Procurement</li><li>Crop advice for farmers</li><li>Tutoring</li><li>Security alert triage</li><li>Travel booking</li><li>Medical records</li><li>KYC and onboarding</li></ul></div>
+            <div class="kinds-row rev"><ul><li>Loan collections</li><li>Wealth advice</li><li>Legal research</li><li>Logistics and dispatch</li><li>Compliance checks</li><li>Quality inspection</li><li>Retail inventory</li><li>Energy and utilities</li><li>Citizen services</li><li>Research and analysis</li><li>Data engineering</li><li>Trade finance</li></ul><ul aria-hidden="true"><li>Loan collections</li><li>Wealth advice</li><li>Legal research</li><li>Logistics and dispatch</li><li>Compliance checks</li><li>Quality inspection</li><li>Retail inventory</li><li>Energy and utilities</li><li>Citizen services</li><li>Research and analysis</li><li>Data engineering</li><li>Trade finance</li></ul></div>
           </div>
           <a href="/ai-agent-summit/showcase#apply" class="btn btn-primary">Apply with your agent <span class="arr" aria-hidden="true">→</span></a>
         </article>
@@ -503,20 +557,20 @@
         <div class="pass-row"><b>Delegate Pass</b><span class="p">₹3,999</span><span>A reserved seat, lunch, a vote for Best Agent and the <a class="link" href="#app">networking app</a>. ₹2,499 if you register by 31 January 2027.</span></div>
         <div class="pass-row"><b>VIP Pass</b><span class="p">₹12,999</span><span>Front-row seating, the VIP lounge, the cocktail evening, the networking app, and help meeting the companies you choose.</span></div>
         <div class="pass-row"><b>Academic Pass</b><span class="p">₹999</span><span>For students and faculty with a college ID.</span></div>
-        <div class="pass-row"><b>Buyer or Investor Pass</b><span class="p">Free, once approved</span><span>For people evaluating or funding AI agents, with the cocktail evening. We confirm within three working days.</span></div>
+        <div class="pass-row"><b>Buyer or Investor Pass</b><span class="p">Free, once approved</span><span>For people evaluating or funding AI agents, with the networking app and the cocktail evening. We confirm within three working days.</span></div>
       </div>
     </div>
   </section>
 
   <!-- The networking app: five steps, and a phone that plays each one (the format of
        bharataiinnovation.com/networking). The app is Bharat AI Connect; for the summit it comes with
-       Delegate and VIP passes, showcase teams and speakers (the organiser, 26 Nov 2026).
+       Delegate, VIP, Buyer and Investor passes, showcase teams and speakers (not Visitor or Academic).
        The people on the phone are examples: there are no summit attendees to show yet. -->
   <section class="section app-sec" id="app" aria-labelledby="app-h">
     <div class="container app-grid">
       <div class="app-copy">
         <h2 class="h2" id="app-h">Fix your meetings before you arrive</h2>
-        <p class="lede">Delegate and VIP pass holders, showcase teams and speakers get Bharat AI Connect, the networking app we run for Bharat AI Innovation. It opens in your phone's browser, so there is nothing to install.</p>
+        <p class="lede">Delegate, VIP, Buyer and Investor pass holders, showcase teams and speakers get Bharat AI Connect, the networking app we run for Bharat AI Innovation. It opens in your phone's browser, so there is nothing to install.</p>
         <ol class="app-steps" data-app-steps>
           <li><button type="button" class="is-on" aria-pressed="true"><span class="app-n">1</span><span class="app-t"><b>Find the right people <em>Online</em></b><small>Search by name, company or title. Filter by industry, and by why people are coming: to buy, sell or invest.</small></span><i aria-hidden="true"></i></button></li>
           <li><button type="button" aria-pressed="false"><span class="app-n">2</span><span class="app-t"><b>Connect in one tap <em>Online</em></b><small>They get your request in the app and by email, and accept it from there.</small></span><i aria-hidden="true"></i></button></li>
@@ -671,7 +725,7 @@
         <details><summary>Is GST extra?</summary><p>Yes. All prices exclude 18% GST. Companies outside India are invoiced in rupees, and we can share US dollar equivalents on request.</p></details>
         <details><summary>What kinds of agent can apply?</summary><p>Any kind. The examples on this page are only examples: if your agent finishes real tasks for real users, in any sector and any language, it can apply.</p></details>
         <details><summary>When will the running order be out?</summary><p>The stage runs from 09:00 to 19:00, and the cocktail evening follows at 19:30. We will publish who is on stage, and when, once the showcase companies are confirmed. Registered attendees get it by email.</p></details>
-        <details><summary>Is there a networking app?</summary><p>Yes. Delegate and VIP pass holders, showcase teams and speakers get Bharat AI Connect, the app we run for Bharat AI Innovation. Use it to find people, connect, message and book meetings at the venue. <a href="#app">See how it works</a>.</p></details>
+        <details><summary>Is there a networking app?</summary><p>Yes. Delegate, VIP, Buyer and Investor pass holders, showcase teams and speakers get Bharat AI Connect, the app we run for Bharat AI Innovation. Use it to find people, connect, message and book meetings at the venue. <a href="#app">See how it works</a>.</p></details>
         <details><summary>Do I need a visa to attend?</summary><p>Most visitors from outside India do. Check which visa you need, and apply, on the Government of India's official site, <a href="https://indianvisaonline.gov.in/" target="_blank" rel="noopener">indianvisaonline.gov.in</a>, well before you travel. Hotels near the venue are listed under <a href="#travel">where to stay</a>.</p></details>
         <details><summary>Can we sponsor instead of showcasing?</summary><p>Yes. Partner packages start at ₹5,00,000 and combine a booth, stage time and branding, and add-ons start at ₹1,50,000. See <a href="/ai-agent-summit/partners">partner packages</a>.</p></details>
       </div>

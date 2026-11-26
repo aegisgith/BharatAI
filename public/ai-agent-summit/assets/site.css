@@ -949,3 +949,70 @@ table.dates { width: 100%; border-collapse: collapse; border-top: 1px solid var(
 .pcard-task { margin-top: 12px; font-size: 1.05rem; font-weight: 600; line-height: 1.45; color: var(--ink); }
 @media (max-width: 900px) { .board { grid-template-columns: 1fr; } }
 .form-note { font-size: 0.9rem; color: var(--ink-3); }
+
+/* =========================================================
+   26 Nov 2026, evening: nine example agents, finance first (Mumbai is the BFSI hub).
+   Order: loan + claims, sales + marketing, patient care + support, coding + maintenance + voice.
+   ========================================================= */
+.cell-loan { grid-column: span 7; background: radial-gradient(110% 90% at 0% 100%, rgba(198, 255, 61, 0.06), transparent 55%), var(--panel); }
+.cell-sales { grid-column: span 5; }
+.cell-mkt { grid-column: span 7; }
+.cell-care { grid-column: span 5; }
+.cell-chat { background: var(--panel); }
+.ask { padding: 10px 14px 11px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--panel-2); font-size: 0.95rem; line-height: 1.45; color: var(--ink); }
+.ask small { display: block; font-family: var(--mono); font-size: 0.64rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+
+/* Banking: a year of statements, three findings, a recommendation for a person to decide */
+.loan { display: grid; gap: 16px; }
+.loan-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 24px; align-items: end; }
+.lbars { display: flex; align-items: flex-end; gap: 5px; height: 84px; border-bottom: 1px solid var(--line-2); }
+.lbars i { flex: 1; height: var(--h); border-radius: 3px 3px 0 0; background: rgba(255, 255, 255, 0.26); transform-origin: bottom; }
+.lbars i:nth-last-child(-n+3) { background: var(--acc); }
+.lbars-box p { margin-top: 8px; font-family: var(--mono); font-size: 0.7rem; color: var(--ink-3); }
+.seq .lbars i { transition: transform .7s var(--ease-out); transition-delay: calc(var(--i) * 45ms); }
+.seq .lbars-box:not(.on) .lbars i { transform: scaleY(0.04); transition-delay: 0s; }
+.lfacts { display: grid; gap: 9px; }
+.lfacts li { position: relative; padding-left: 24px; font-size: 0.92rem; color: var(--ink-2); }
+.lfacts li::before { content: ''; position: absolute; left: 3px; top: 0.42em; width: 9px; height: 5px; border-left: 2px solid var(--acc); border-bottom: 2px solid var(--acc); transform: rotate(-45deg); }
+.lfacts .flag { color: var(--ink); }
+.lfacts .flag::before { top: 0.36em; left: 2px; width: 9px; height: 9px; border: 0; border-radius: 2px; background: #ffb86b; transform: none; }
+.loan-out, .fn-out, .mkt-out { padding: 10px 14px; border-radius: 12px; background: var(--acc-soft); border: 1px solid var(--acc-line); font-size: 0.93rem; font-weight: 600; }
+
+/* Sales: enquiries narrowing to booked calls */
+.funnel { display: grid; gap: 8px; }
+.fn-row { width: var(--w); min-width: max-content; display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line-2); background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02)); }
+.fn-row b { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.fn-row span { font-size: 0.88rem; color: var(--ink-2); white-space: nowrap; }
+.fn-row:nth-child(3) { border-color: var(--acc-line); background: linear-gradient(90deg, rgba(198, 255, 61, 0.16), rgba(198, 255, 61, 0.05)); }
+.fn-out { margin-top: 6px; }
+
+/* Marketing: one brief, three versions, the budget follows the one that works */
+.mkt { display: grid; gap: 12px; }
+.variants { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.variant { padding: 12px 12px 14px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--bg-2); transition: border-color .4s ease, background-color .4s ease; }
+.variant small { display: block; font-family: var(--mono); font-size: 0.64rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 8px; }
+.variant b { display: block; font-size: 0.95rem; font-weight: 700; line-height: 1.3; letter-spacing: -0.01em; }
+.variant.win { border-color: var(--acc); background: rgba(198, 255, 61, 0.07); }
+.variant.win small { color: var(--acc); }
+.seq:not(.done) .variant.win { border-color: var(--line-2); background: var(--bg-2); }
+.seq:not(.done) .variant.win small { color: var(--ink-3); }
+
+/* Health: a week of follow-up after surgery */
+.tl { position: relative; display: grid; gap: 14px; padding-left: 22px; }
+.tl::before { content: ''; position: absolute; left: 4px; top: 8px; bottom: 8px; width: 1px; background: var(--line-2); }
+.tl li { position: relative; display: grid; grid-template-columns: 52px 1fr; gap: 10px; font-size: 0.92rem; color: var(--ink-2); }
+.tl li::before { content: ''; position: absolute; left: -22px; top: 0.45em; width: 9px; height: 9px; border-radius: 50%; background: var(--panel); border: 2px solid rgba(255, 255, 255, 0.45); }
+.tl time { font-family: var(--mono); font-size: 0.72rem; font-weight: 600; color: var(--ink-3); padding-top: 2px; }
+.tl .warn { color: var(--ink); }
+.tl .warn::before { border-color: #ff8a80; background: #ff8a80; }
+.tl .viz-out::before { border-color: var(--acc); background: var(--acc); }
+
+@media (max-width: 1100px) {
+  .cell-loan, .cell-sales, .cell-mkt, .cell-care, .cell-chat { grid-column: span 1; }
+  .cell-voice { grid-column: 1 / -1; }
+  .variants { grid-template-columns: 1fr; }
+  .loan-grid { grid-template-columns: 1fr; gap: 16px; }
+}
+@media (max-width: 700px) {
+  .cell-voice { grid-column: span 1; }
+}
