@@ -549,7 +549,7 @@ app.post('/api/agent-summit/apply', async (c) => {
     subject: `AI Agent Summit 2027 · Showcase: ${agent} (${SHOWCASE_PACKAGES[pkg].label})`, message, metadata: meta,
   })
   await h.audit(c, 'summit.apply', 'inquiry', id, { package: pkg, agent }, { actor: 'public registration', kind: 'public' })
-  return c.json({ ok: true, reference: 'AAS27-A' + id, message: `Application received for ${agent}. The jury reviews applications every week and will reply within five working days. Your reference is AAS27-A${id}.` }, 201)
+  return c.json({ ok: true, reference: 'AAS27-A' + id, message: `Application received for ${agent}. The evaluation committee reviews applications every week and will reply within five working days. Your reference is AAS27-A${id}.` }, 201)
 })
 
 const TIERS: Record<string, string> = { presenting: 'Presenting Partner (Rs 20,00,000)', platinum: 'Platinum (Rs 10,00,000)', gold: 'Gold (Rs 5,00,000)', silver: 'Silver (Rs 2,50,000)', 'add-on': 'An add-on' }

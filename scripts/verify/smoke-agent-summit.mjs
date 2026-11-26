@@ -259,6 +259,9 @@ check('the dashboard needs Admin', r.status === 401 || r.status === 403, String(
   const home = readFileSync(new URL('index.html', dir), 'utf8');
   const ics = readFileSync(new URL('ai-agent-summit-2027.ics', dir), 'utf8');
   check('the pages, the calendar file and the countdown say Friday 16 April 2027', bad.length === 0 && home.includes('Friday 16 April 2027') && home.includes('"startDate": "2027-04-16T09:00:00+05:30"') && ics.includes('DTSTART:20270416T030000Z'), 'still the old day: ' + bad.join(', '));
+  // The organiser, 26 Nov 2026: "jury" belongs to awards (the Aegis Graham Bell Awards); the summit's is an evaluation committee.
+  const juryOn = files.filter((f) => /jur(y|ies|or)/i.test(readFileSync(new URL(f, dir), 'utf8')));
+  check('no summit page says jury: applications go to an evaluation committee', juryOn.length === 0 && /evaluation committee/i.test(home), 'still says jury: ' + juryOn.join(', '));
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nall AI Agent Summit checks passed');
