@@ -184,6 +184,29 @@
     }
   }
 
+  /* ---------- Networking app: five steps, the phone plays each one ----------
+     As with the hero photos, the bar under the current step is a CSS animation and its end
+     moves to the next step, so pausing the animation pauses the tour. */
+  var appSteps = document.querySelector('[data-app-steps]');
+  var appScreen = document.querySelector('[data-app-screen]');
+  if (appSteps && appScreen) {
+    var aBtns = appSteps.querySelectorAll('button');
+    var aNow = document.querySelector('[data-app-now]');
+    var aCur = 0, aVisible = true;
+    var aGo = function (n) {
+      n = (n + aBtns.length) % aBtns.length;
+      aBtns.forEach(function (b, i) { b.classList.toggle('is-on', i === n); b.setAttribute('aria-pressed', i === n ? 'true' : 'false'); });
+      appScreen.setAttribute('data-step', String(n + 1));
+      if (aNow) aNow.textContent = 'Step ' + (n + 1) + ' of ' + aBtns.length + ': ' + aBtns[n].querySelector('b').firstChild.textContent.trim();
+      aCur = n;
+    };
+    aBtns.forEach(function (b, i) { b.addEventListener('click', function () { aGo(i); }); });
+    appSteps.addEventListener('animationend', function (e) { if (e.animationName === 'app-fill') aGo(aCur + 1); });
+    var aSync = function () { appSteps.classList.toggle('is-paused', !aVisible || document.hidden); };
+    watchOnScreen(appScreen, function (on) { aVisible = on; aSync(); });
+    document.addEventListener('visibilitychange', aSync);
+  }
+
   /* ---------- Five kinds of agent: each drawing plays its items in order, holds, and plays again ----------
      Items carry data-s; the container carries data-seq (data-tick = ms between items).
      Items are only hidden once a play begins, so without the script, or with reduced motion,
