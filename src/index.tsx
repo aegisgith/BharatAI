@@ -26,7 +26,7 @@ import exhibitorMedia, { configureExhibitorMedia } from './routes/exhibitor-medi
 import whatsapp, { configureWhatsapp, whatsappTick, whatsappYes } from './routes/whatsapp'
 import photoReps, { configurePhotoReps } from './routes/photo-reps'
 import adminAssist from './routes/admin-assist'
-import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, isSummitPackageOrder, settleSummitPackageOrder, SUMMIT_EVENT_NAME, SUMMIT_WHEN, summitPageHeader } from './routes/agent-summit'
+import agentSummit, { configureAgentSummit, isSummitOrder, summitPassAmounts, sendSummitPaymentEmails, summitPayResult, summitSales, isSummitPackageOrder, settleSummitPackageOrder, SUMMIT_EVENT_NAME, SUMMIT_WHEN, summitPageHeader, SUMMIT_EVENT_ID } from './routes/agent-summit'
 import { signinPayIntent } from './lib/signin-pay'
 import { organiserTeam } from './lib/team'
 import { SENDER_DOMAIN, sendAs, sendersFor, pickSender } from './lib/senders'
@@ -841,8 +841,18 @@ app.get('/marketplace/listing/:id', (c) => {
 // be listed by the directory or the app's other public routes, which all take an event id.
 // Written as a literal: this line runs before DELHI_EVENT_ID is declared.
 app.use('/api/events/2/*', (c) => c.json({ error: 'Not found' }, 404))
-// Event 3 is the AI Agent Summit 2027 (routes/agent-summit.ts): passes only, no app yet.
-app.use('/api/events/3/*', (c) => c.json({ error: 'Not found' }, 404))
+// Event 3 is the AI Agent Summit 2027 (routes/agent-summit.ts). Its networking app opened on
+// 27 Nov 2026 at aiagentssummit.org/app (the organiser: "go ahead"), so the routes that app
+// needs to sign in and show the summit's own people are open, and each of them checks that
+// the caller's sign-in is a summit one whose pass includes the app (requireSignedIn with an
+// event, wrongEvent). Everything else stays shut: registering happens on the summit's own
+// pages under their pass rules and prices, and the public counts and glimpse name nobody.
+const SUMMIT_APP_ROUTES = new Set(['attendees/login', 'attendees/send-magic-link', 'attendees', 'suggested-attendees', 'speakers', 'attendee-filters'])
+app.use('/api/events/3/*', async (c, next) => {
+  const rest = c.req.path.replace(/^\/api\/events\/3\/?/, '').replace(/\/+$/, '')
+  if (SUMMIT_APP_ROUTES.has(rest)) return next()
+  return c.json({ error: 'Not found' }, 404)
+})
 
 app.get('/api/events/:id', async (c) => {
   const id = c.req.param('id')
@@ -1092,17 +1102,20 @@ const istDay = (daysAgo: number = 0): number => Math.floor((Date.now() + 1980000
 /* Who is looking. full = the whole directory, as before. A database with no
  * session secret keeps its old open behaviour, matching the documented fail-open
  * rule for sessions; every production deploy has one. */
-async function directoryViewer(c: any): Promise<{ id: number | null; full: boolean }> {
-  if (isAdminRequest(c)) return { id: null, full: true }
-  if (!attendeeSessionSecret(c)) return { id: null, full: true }
+async function directoryViewer(c: any): Promise<{ id: number | null; full: boolean; event: number | null }> {
+  if (isAdminRequest(c)) return { id: null, full: true, event: null }
+  if (!attendeeSessionSecret(c)) return { id: null, full: true, event: null }
   const id = await verifyAttendeeSession(c)
-  if (!id) return { id: null, full: false }
+  if (!id) return { id: null, full: false, event: null }
   try {
     const r = await c.env.DB.prepare('SELECT badge_type, role FROM attendees WHERE id = ?').bind(id).first() as any
-    if (!r) return { id, full: false }
-    if (DIRECTORY_FULL_ROLE.test(String(r.role || ''))) return { id, full: true }
-    return { id, full: canInitiateNetworking(r.badge_type) && !(await unpaidPaidPass(c, id, r.badge_type)) }
-  } catch { return { id, full: false } }
+    if (!r) return { id, full: false, event: null }
+    const event = Number((await sessionRow(c))?.event_id) || 1
+    // The summit's app is the whole directory or nothing (SUMMIT_APP_SQL): it has no teaser.
+    if (event === SUMMIT_EVENT_ID) return { id, full: await summitAppOk(c, id), event }
+    if (DIRECTORY_FULL_ROLE.test(String(r.role || ''))) return { id, full: true, event }
+    return { id, full: canInitiateNetworking(r.badge_type) && !(await unpaidPaidPass(c, id, r.badge_type)), event }
+  } catch { return { id, full: false, event: null } }
 }
 
 // A profile the list just showed this viewer may be opened today (or late last
@@ -2384,9 +2397,38 @@ const netSamePerson = (a: any, b: any) => String(a ?? '') === String(b ?? '')
 const netSetting = async (c: any, k: string) =>
   ((await c.env.DB.prepare('SELECT value FROM app_settings WHERE key = ?').bind(k).first()) as any)?.value
 
-async function networkingAppUrl(c: any, hash: string): Promise<string> {
+async function networkingAppUrl(c: any, hash: string, ev: any = 1): Promise<string> {
+  if (Number(ev) === SUMMIT_EVENT_ID) return SUMMIT_APP_URL + hash
   try { return ((await netSetting(c, 'app_url')) || NET_APP_URL_FALLBACK) + hash }
   catch { return NET_APP_URL_FALLBACK + hash }
+}
+
+// The AI Agent Summit's app is on the summit's own domain (27 Nov 2026), so its cookie and
+// saved sign-in are apart from Mumbai's. Its emails carry its own logo bar and no Mumbai
+// app block.
+const SUMMIT_ORIGIN = 'https://aiagentssummit.org'
+const SUMMIT_APP_URL = SUMMIT_ORIGIN + '/app'
+const netEventName = (ev: any): string => Number(ev) === SUMMIT_EVENT_ID ? 'AI Agent Summit 2027' : 'Bharat AI Innovation 2026'
+function summitNetMail(title: string, body: string): string {
+  return noAppOnPhone(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f2f3f5;font-family:Arial,sans-serif;">
+  <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:10px;overflow:hidden;">
+    ${summitPageHeader()}
+    <div style="padding:28px 30px;">
+      <h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;color:#0d1013;">${title}</h1>
+      ${body}
+      <p style="margin:22px 0 0;font-size:12.5px;line-height:1.6;color:#777;">You are getting this because you are registered for AI Agent Summit 2027. Replies to this address reach the summit team, not the other attendee, so answer them in the app. Questions? Write to <a href="mailto:info@bharataiinnovation.com" style="color:#555;">info@bharataiinnovation.com</a>.</p>
+    </div>
+  </div></body></html>`)
+}
+const summitNetButton = (href: string, label: string) =>
+  `<div style="text-align:center;margin:24px 0 6px;"><a href="${href}" style="display:inline-block;padding:12px 28px;background:#c6ff3d;color:#07080a;text-decoration:none;border-radius:6px;font-weight:bold;font-size:14px;">${label}</a></div>`
+function summitSigninEmailHTML(name: string, link: string, code: string): string {
+  return summitNetMail('Sign in to the AI Agent Summit app',
+    `<p style="margin:0 0 14px;font-size:15px;color:#333;">Hi <strong>${escEmail(titledName(name) || 'there')}</strong>,</p>` +
+    `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#555;">The button below signs you in to the summit app, where you can see who is coming, ask to connect, message people and book a time to meet on 16 April. No password needed.</p>` +
+    (code ? `<p style="margin:0 0 6px;text-align:center;font-size:14px;color:#444;">Or enter this code in the app:</p><p style="margin:0 0 4px;text-align:center;font-family:monospace;font-size:28px;letter-spacing:6px;font-weight:bold;color:#0d1013;">${code}</p><p style="margin:0;text-align:center;font-size:12px;color:#888;">Works for 30 minutes. Never share it; we will not ask you for it.</p>` : '') +
+    summitNetButton(link, 'Sign in to the app') +
+    `<p style="margin:14px 0 0;font-size:12px;color:#999;text-align:center;">If you did not ask for this, you can ignore this email.</p>`)
 }
 
 // The site root, derived from the same app_url setting rather than hardcoded, so
@@ -2422,7 +2464,12 @@ function formatMeetingTime(v: any): string {
 
 // One shell for all six notifications, so they read as one family and the house
 // header is not redrawn six times.
-function networkingEmailHTML(o: { title: string; greeting: string; lead: string; detail?: string; cta: string; ctaUrl: string }): string {
+function networkingEmailHTML(o: { title: string; greeting: string; lead: string; detail?: string; cta: string; ctaUrl: string; ev?: any }): string {
+  if (Number(o.ev) === SUMMIT_EVENT_ID) {
+    return summitNetMail(o.title,
+      `<p style="margin:0 0 6px;font-size:15px;color:#333;">Hi <strong>${o.greeting}</strong>,</p>` +
+      `<p style="margin:0 0 18px;font-size:14px;line-height:1.7;color:#555;">${o.lead}</p>${o.detail || ''}` + summitNetButton(o.ctaUrl, o.cta))
+  }
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#f5f5f5;font-family:Arial,sans-serif;">
     <div style="max-width:600px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;">
       ${emailBrandHeader(o.title, '20&ndash;21 Nov 2026 &bull; WTC Mumbai')}
@@ -2484,7 +2531,7 @@ async function notifyConnectionRequest(c: any, connId: any, fromId: any, toId: a
     if (netSamePerson(fromId, toId)) return
     // Both parties in one query: who to write to, and who to name.
     const row = await c.env.DB.prepare(
-      `SELECT t.name AS to_name, t.email AS to_email,
+      `SELECT t.name AS to_name, t.email AS to_email, t.event_id AS ev,
               f.name AS from_name, f.company AS from_company, f.job_title AS from_job_title,
               f.industry AS from_industry, f.interests AS from_interests, f.badge_type AS from_badge
          FROM attendees t JOIN attendees f ON f.id = ?
@@ -2505,21 +2552,22 @@ async function notifyConnectionRequest(c: any, connId: any, fromId: any, toId: a
 
     const token = await connectionActionToken(c, connId)
     const decideUrl = token
-      ? (await netSiteOrigin(c)) + '/c/' + token
-      : await networkingAppUrl(c, '#inbox')
+      ? (Number(row.ev) === SUMMIT_EVENT_ID ? SUMMIT_ORIGIN : await netSiteOrigin(c)) + '/c/' + token
+      : await networkingAppUrl(c, '#inbox', row.ev)
 
     const html = networkingEmailHTML({
       title: 'A new connection request',
       greeting: netFirstName(row.to_name),
       lead: `<strong>${escEmail(row.from_name)}</strong>${at ? ' &mdash; ' + at : ''}` +
         `${tier ? ` <span style="display:inline-block;padding:1px 7px;border-radius:20px;background:#FFF2E6;color:#C2410C;font-size:11px;font-weight:bold;vertical-align:middle;">${escEmail(tier)}</span>` : ''}` +
-        ` would like to connect with you at Bharat AI Innovation 2026.` +
+        ` would like to connect with you at ${netEventName(row.ev)}.` +
         `${facts.length ? `<br><span style="font-size:12.5px;color:#666;">${facts.join(' &middot; ')}</span>` : ''}`,
       detail: trimmed ? netQuote('#FF9933', '&ldquo;' + escEmail(trimmed) + '&rdquo;') : '',
       cta: 'Accept or decline',
       ctaUrl: decideUrl,
+      ev: row.ev,
     })
-    await notifyNetworking(c, row.to_email, `${netPlain(row.from_name)} wants to connect - Bharat AI Innovation 2026`, html)
+    await notifyNetworking(c, row.to_email, `${netPlain(row.from_name)} wants to connect - ${netEventName(row.ev)}`, html)
   } catch { /* the connection row is already saved */ }
 }
 
@@ -2528,7 +2576,7 @@ async function notifyConnectionAccepted(c: any, connectionId: any): Promise<void
   try {
     const row = await c.env.DB.prepare(
       `SELECT cn.from_attendee_id AS from_id, cn.to_attendee_id AS to_id,
-              f.name AS from_name, f.email AS from_email,
+              f.name AS from_name, f.email AS from_email, f.event_id AS ev,
               t.name AS to_name, t.company AS to_company, t.job_title AS to_job_title
          FROM connections cn
          JOIN attendees f ON f.id = cn.from_attendee_id
@@ -2541,14 +2589,17 @@ async function notifyConnectionAccepted(c: any, connectionId: any): Promise<void
     const html = networkingEmailHTML({
       title: 'Your connection was accepted',
       greeting: netFirstName(row.from_name),
-      lead: `<strong>${escEmail(row.to_name)}</strong>${at ? ' &mdash; ' + at : ''} accepted your connection request. You can message them now, or put a time in the diary for the 20th or 21st &mdash; the good slots go early.`,
-      detail: netQuote('#0f7b47',
+      lead: Number(row.ev) === SUMMIT_EVENT_ID
+        ? `<strong>${escEmail(row.to_name)}</strong>${at ? ' (' + at + ')' : ''} accepted your connection request. You can message them now, or ask for a time to meet on 16 April.`
+        : `<strong>${escEmail(row.to_name)}</strong>${at ? ' &mdash; ' + at : ''} accepted your connection request. You can message them now, or put a time in the diary for the 20th or 21st &mdash; the good slots go early.`,
+      detail: Number(row.ev) === SUMMIT_EVENT_ID ? '' : netQuote('#0f7b47',
         'Meeting properly? The four WTC boardrooms can be booked by the hour for a private conversation, ' +
         'and they are the only rooms on site you can reserve. They go first to whoever asks first.'),
       cta: 'Message them and pick a time',
-      ctaUrl: await networkingAppUrl(c, '#inbox'),
+      ctaUrl: await networkingAppUrl(c, '#inbox', row.ev),
+      ev: row.ev,
     })
-    await notifyNetworking(c, row.from_email, `${netPlain(row.to_name)} accepted your connection - Bharat AI Innovation 2026`, html)
+    await notifyNetworking(c, row.from_email, `${netPlain(row.to_name)} accepted your connection - ${netEventName(row.ev)}`, html)
   } catch { /* the status change is already saved */ }
 }
 
@@ -2560,12 +2611,13 @@ async function notifyNewMessage(c: any, row: any, content: string): Promise<void
     const html = networkingEmailHTML({
       title: 'You have a new message',
       greeting: netFirstName(row.to_name),
-      lead: `<strong>${escEmail(row.from_name)}</strong> sent you a message on Bharat AI Connect.`,
+      lead: `<strong>${escEmail(row.from_name)}</strong> sent you a message on ${Number(row.ev) === SUMMIT_EVENT_ID ? 'the AI Agent Summit app' : 'Bharat AI Connect'}.`,
       detail: preview ? netQuote('#0f7b47', escEmail(preview) + (full.length > 140 ? '&hellip;' : '')) : '',
       cta: 'Read and reply',
-      ctaUrl: await networkingAppUrl(c, '#inbox'),
+      ctaUrl: await networkingAppUrl(c, '#inbox', row.ev),
+      ev: row.ev,
     })
-    await notifyNetworking(c, row.to_email, `${netPlain(row.from_name)} messaged you - Bharat AI Innovation 2026`, html)
+    await notifyNetworking(c, row.to_email, `${netPlain(row.from_name)} messaged you - ${netEventName(row.ev)}`, html)
   } catch { /* the message row is already saved */ }
 }
 
@@ -2575,7 +2627,7 @@ async function notifyMeetingRequested(c: any, meetingId: any, proposed: boolean 
     const row = await c.env.DB.prepare(
       `SELECT m.title, m.meeting_time, m.duration_minutes, m.location, m.notes,
               m.requester_id AS from_id, m.requestee_id AS to_id,
-              e.name AS to_name, e.email AS to_email,
+              e.name AS to_name, e.email AS to_email, e.event_id AS ev,
               q.name AS from_name, q.company AS from_company, q.job_title AS from_job_title
          FROM meetings m
          JOIN attendees e ON e.id = m.requestee_id
@@ -2600,7 +2652,8 @@ async function notifyMeetingRequested(c: any, meetingId: any, proposed: boolean 
         ['Note', escEmail(String(row.notes || '').replace(/\s+/g, ' ').trim().slice(0, 300))],
       ]),
       cta: 'Accept or decline',
-      ctaUrl: await networkingAppUrl(c, '#inbox'),
+      ctaUrl: await networkingAppUrl(c, '#inbox', row.ev),
+      ev: row.ev,
     })
     await notifyNetworking(c, row.to_email, (proposed ? 'New time proposed by ' : 'Meeting request from ') + `${netPlain(row.from_name, 60)} - ${when}`, html)
   } catch { /* the meeting row is already saved */ }
@@ -2612,7 +2665,7 @@ async function notifyMeetingResponse(c: any, meetingId: any, status: string): Pr
     const row = await c.env.DB.prepare(
       `SELECT m.title, m.meeting_time, m.duration_minutes, m.location,
               m.requester_id AS to_id, m.requestee_id AS from_id,
-              q.name AS to_name, q.email AS to_email,
+              q.name AS to_name, q.email AS to_email, q.event_id AS ev,
               e.name AS from_name, e.company AS from_company
          FROM meetings m
          JOIN attendees q ON q.id = m.requester_id
@@ -2636,7 +2689,8 @@ async function notifyMeetingResponse(c: any, meetingId: any, status: string): Pr
         ['Where', escEmail(row.location || 'To be agreed')],
       ]) : '',
       cta: accepted ? 'View in the app' : 'Propose another time',
-      ctaUrl: await networkingAppUrl(c, '#inbox'),
+      ctaUrl: await networkingAppUrl(c, '#inbox', row.ev),
+      ev: row.ev,
     })
     await notifyNetworking(
       c, row.to_email,
@@ -6785,6 +6839,7 @@ function staffScanHTML(me: any): string {
      else if(j.state==='already') card({state:'already',bg:AMBER,title:'ALREADY CHECKED IN TODAY',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:(j.at_ist||'')+(j.by?' by '+j.by:'')+'.'+ws,token:tok,undo:j.undoable});
      else if(j.state==='payment_pending') card({state:'payment_pending',bg:AMBER,title:'PAYMENT PENDING',name:j.name,sub:sub,pass:j.pass,note:'This tier has not been paid for. Do not admit without checking.',token:tok});
      else if(j.state==='panel_only') card({state:'panel_only',bg:RED,title:'NOT REGISTERED',name:j.name,note:'Registered for a campus panel only, not for the conference. Send them to the registration desk.',token:tok});
+     else if(j.state==='other_event') card({state:'other_event',bg:RED,title:'WRONG EVENT',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:j.note,token:tok});
      else if(j.state==='waitlisted') card({state:'waitlisted',bg:RED,title:'WAITING LIST',name:j.name,sub:sub,pass:j.pass,photo:j.photo,note:'${WAITLIST_DESK_TEXT}',token:tok});
      else card({state:'invalid',bg:RED,title:'NOT VALID',note:'This code is not a Bharat AI Innovation pass.'});
    }
@@ -7246,6 +7301,8 @@ app.post('/api/staff/scan', async (c) => {
   if (!a) return c.json({ state: 'invalid' })
   const photo = String(a.avatar_url || '').trim()
   const person: any = { name: a.name, company: a.company || '', job_title: a.job_title || '', pass: a.badge_type || 'Visitor Pass', photo, photo_flagged: !!a.photo_flagged_at && !photo }
+  const otherEvent = otherEventPass(a)
+  if (otherEvent) return c.json({ state: 'other_event', note: otherEvent, ...person })
   if (Number(a.main_event ?? 1) === 0) return c.json({ state: 'panel_only', ...person })
   if (['pending', 'refunded'].includes(String(a.payment_status || '').trim().toLowerCase())) return c.json({ state: 'payment_pending', ...person })
   if (entryWaitlisted(a)) return c.json({ state: 'waitlisted', ...person })
@@ -7286,7 +7343,8 @@ app.get('/api/staff/roster', async (c) => {
   const enc = new TextEncoder()
   const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const hex = (buf: ArrayBuffer) => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
-  const { results } = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = 1 ORDER BY id').all() as any
+  // The day's own event (EVENT_DAYS), Mumbai's on any other day as before.
+  const { results } = await c.env.DB.prepare('SELECT * FROM attendees WHERE event_id = ? ORDER BY id').bind(eventOfDay(istDate()) || 1).all() as any
   const people: any[] = []
   for (const a of (results || [])) {
     const token = a.id + '.' + hex(await crypto.subtle.sign('HMAC', key, enc.encode('pass:' + a.id))).slice(0, 24)
@@ -7304,8 +7362,10 @@ app.post('/api/verify/:token/checkin', async (c) => {
   const id = await verifyPassToken(c, c.req.param('token'))
   if (id === null) return c.json({ error: 'Invalid pass' }, 400)
   const body = await c.req.json().catch(() => ({})) as any
-  const a = await c.env.DB.prepare('SELECT id, name, checked_in_at, checked_in_by FROM attendees WHERE id = ?').bind(id).first() as any
+  const a = await c.env.DB.prepare('SELECT id, event_id, name, checked_in_at, checked_in_by FROM attendees WHERE id = ?').bind(id).first() as any
   if (!a) return c.json({ error: 'Not found' }, 404)
+  const otherEvent = otherEventPass(a)
+  if (otherEvent) return c.json({ error: otherEvent }, 400)
   try {
     const m = await c.env.DB.prepare('SELECT main_event FROM attendees WHERE id = ?').bind(id).first() as any
     if (m && Number(m.main_event ?? 1) === 0) return c.json({ error: 'Registered for a campus panel only, not for the conference.' }, 400)
@@ -8592,8 +8652,8 @@ function speakerLinkScore(sp: any, at: any): number {
 }
 
 app.get('/api/events/:id/speakers', async (c) => {
-  const shutOut = await requireSignedIn(c); if (shutOut) return shutOut
   const eventId = c.req.param('id')
+  const shutOut = await requireSignedIn(c, eventId); if (shutOut) return shutOut
   let speakers: any[] = []
   try {
     speakers = ((await c.env.DB.prepare(
@@ -8655,11 +8715,35 @@ app.get('/api/events/:id/speakers', async (c) => {
  * the same reason: a rotated or missing secret should degrade to the old
  * behaviour rather than lock every attendee out of the directory at once.
  * GET /api/auth/status reports which mode is live. */
-async function requireSignedIn(c: any): Promise<Response | null> {
+async function requireSignedIn(c: any, eventId?: any): Promise<Response | null> {
   if (!attendeeSessionSecret(c)) return null
   if (isAdminRequest(c)) return null
-  if (await verifyAttendeeSession(c)) return null
-  return c.json({ error: 'Please sign in to browse the attendee directory.' }, 401)
+  if (!(await verifyAttendeeSession(c))) return c.json({ error: 'Please sign in to browse the attendee directory.' }, 401)
+  return eventId === undefined ? null : wrongEvent(c, eventId)
+}
+
+/* One event per sign-in (27 Nov 2026). The session cookie names a person, and a person is
+ * a row in one event, so a Mumbai 2026 sign-in reaches Mumbai's people and an AI Agent
+ * Summit sign-in reaches the summit's: the directory, profiles, requests, messages, meetings
+ * and busy times all check it. Until then the event came from the address or the request
+ * body, so anyone signed in could open, message or ask to meet a person from another event
+ * by changing a number. Admin sees every event. */
+const sessionRowCache = new WeakMap<object, any>()
+async function sessionRow(c: any): Promise<any | null> {
+  const key = c.req.raw
+  if (sessionRowCache.has(key)) return sessionRowCache.get(key)
+  const id = await verifyAttendeeSession(c)
+  const row = id ? await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(id).first().catch(() => null) : null
+  sessionRowCache.set(key, row || null)
+  return row || null
+}
+async function wrongEvent(c: any, eventId: any): Promise<Response | null> {
+  if (!attendeeSessionSecret(c) || isAdminRequest(c)) return null
+  const me = await sessionRow(c)
+  if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
+  if (Number(me.event_id) !== Number(eventId)) return c.json({ error: "Your sign-in is for another event. Open that event's own app.", code: 'wrong_event' }, 403)
+  if (Number(me.event_id) === SUMMIT_EVENT_ID && !(await summitAppOk(c, me.id))) return c.json({ error: SUMMIT_NO_APP, code: 'no_app' }, 403)
+  return null
 }
 
 // Lets us confirm from outside whether enforcement is on, without exposing the
@@ -8678,6 +8762,8 @@ app.get('/api/auth/status', async (c) => {
 // headcount, so this stays readable below the reveal threshold.
 app.get('/api/events/:id/attendee-filters', async (c) => {
   const eventId = c.req.param('id')
+  // The summit's values are for its own signed-in people only (see the event 3 guard).
+  if (Number(eventId) === SUMMIT_EVENT_ID) { const shut = await requireSignedIn(c, eventId); if (shut) return shut }
   const distinct = async (col: string) => {
     try {
       const r = await c.env.DB.prepare(
@@ -8900,8 +8986,8 @@ app.get('/api/events/:id/glimpse', async (c) => {
 
 app.get('/api/events/:id/attendees', async (c) => {
   // Bulk. This is the one that was worth walking.
-  const shutOut = await requireSignedIn(c); if (shutOut) return shutOut
   const eventId = c.req.param('id')
+  const shutOut = await requireSignedIn(c, eventId); if (shutOut) return shutOut
   const search = c.req.query('search')
   const role = c.req.query('role')
   const interest = c.req.query('interest')
@@ -8926,6 +9012,8 @@ app.get('/api/events/:id/attendees', async (c) => {
   // Panel-only registrants (0041) are not in the room in November, so they are
   // not in the directory - to anyone but the admin, who sees the whole table.
   if (!isAdminRequest(c)) where += await mainEventClause(c)
+  // The summit lists only the people who have its app, so everyone shown can answer.
+  if (!isAdminRequest(c) && Number(eventId) === SUMMIT_EVENT_ID) where += ' AND ' + SUMMIT_APP_SQL('attendees')
   const params: any[] = [eventId]
 
   if (search) {
@@ -9149,10 +9237,11 @@ app.get('/api/events/:id/attendees', async (c) => {
 // already lives - duplicating that here would give us two copies to keep in step.
 const SUGGEST_POOL = 60
 app.get('/api/events/:id/suggested-attendees', async (c) => {
-  const mc = await mainEventClause(c)
   const eventId = c.req.param('id')
+  const mc = (await mainEventClause(c)) + (Number(eventId) === SUMMIT_EVENT_ID ? ' AND ' + SUMMIT_APP_SQL('attendees') : '')
   const me = await verifyAttendeeSession(c)
   if (!me && attendeeSessionSecret(c)) return c.json([])
+  if (me) { const wrong = await wrongEvent(c, eventId); if (wrong) return wrong }
 
   const mine = await c.env.DB.prepare('SELECT interests, networking_goals FROM attendees WHERE id = ?')
     .bind(me).first() as any
@@ -9221,6 +9310,11 @@ app.get('/api/attendees/:id', async (c) => {
   const cols = isAdminRequest(c) ? '*' : ATTENDEE_PUBLIC_COLS
   const attendee = await c.env.DB.prepare(`SELECT ${cols} FROM attendees WHERE id = ?`).bind(id).first() as any
   const locked = () => c.json({ error: 'Open this profile from the directory. A Delegate, Academic or VIP pass shows everyone.', locked: true }, 403)
+  // Someone in another event, or at the summit someone without its app, is not there to see.
+  if (attendee && viewer.event !== null && !(viewer.id && String(viewer.id) === String(id)) &&
+      (Number(attendee.event_id) !== viewer.event || (viewer.event === SUMMIT_EVENT_ID && !(await summitAppOk(c, id))))) {
+    return viewer.full ? c.json({ error: 'Attendee not found' }, 404) : locked()
+  }
   if (viewer.full || (viewer.id && String(viewer.id) === String(id))) {
     if (!attendee) return c.json({ error: 'Attendee not found' }, 404)
     return c.json(attendee)
@@ -10194,13 +10288,44 @@ app.post('/api/events/:id/attendees/login', async (c) => {
     'SELECT * FROM attendees WHERE event_id = ? AND email = ?'
   ).bind(eventId, email.trim().toLowerCase()).first()
   if (!attendee) return c.json({ error: 'No account found with this email.' }, 404)
+  // The summit's app is for the passes that include it (SUMMIT_APP_SQL): no session otherwise.
+  if (Number(eventId) === SUMMIT_EVENT_ID && !(await summitAppOk(c, (attendee as any).id))) return c.json({ error: SUMMIT_NO_APP, code: 'no_app' }, 403)
   // An email scanner's sign-in is not the person's last sign-in, and does not put them online.
   if (!isScannerRequest(c)) {
     await c.env.DB.prepare('UPDATE attendees SET is_online = 1, last_login_at = datetime("now") WHERE id = ?').bind((attendee as any).id).run()
   }
   await issueAttendeeSession(c, (attendee as any).id)
-  return c.json(attendee)
+  return c.json(Number(eventId) === SUMMIT_EVENT_ID && !isScannerRequest(c) ? await carryProfileForward(c, attendee) : attendee)
 })
+
+// Someone who was at Bharat AI Innovation brings their profile to the summit (the organiser,
+// 27 Nov 2026: nobody should have to upload a photo and type their designation and company
+// again). On a summit sign-in, each profile field still empty on the summit row is filled
+// from that person's latest row in another event, matched by email. A field they have
+// already written for the summit is never changed, and nothing is matched by name.
+const CARRY_PROFILE_FIELDS = ['avatar_url', 'company_logo_url', 'job_title', 'company', 'bio', 'interests', 'industry',
+  'city', 'country', 'linkedin_url', 'twitter_url', 'website_url', 'networking_goals']
+async function carryProfileForward(c: any, a: any): Promise<any> {
+  try {
+    const email = String(a?.email || '').trim().toLowerCase()
+    if (!email || isNoEmail(email)) return a
+    const blank = (v: any) => { const t = String(v ?? '').trim(); return !t || t === '-' }
+    const cols = await attendeeColumns(c)
+    const fields = CARRY_PROFILE_FIELDS.filter((f) => cols.has(f) && blank(a[f]))
+    if (!fields.length) return a
+    const prev = await c.env.DB.prepare(
+      `SELECT ${fields.join(', ')} FROM attendees WHERE email = ? AND id <> ? AND event_id <> ? ORDER BY id DESC LIMIT 1`
+    ).bind(email, a.id, a.event_id).first() as any
+    const take = prev ? fields.filter((f) => !blank(prev[f])) : []
+    if (!take.length) return a
+    // Written only where the summit row is still empty when the update runs.
+    await c.env.DB.prepare(
+      'UPDATE attendees SET ' + take.map((f) => `${f} = CASE WHEN COALESCE(TRIM(${f}), '') IN ('', '-') THEN ? ELSE ${f} END`).join(', ') + ' WHERE id = ?'
+    ).bind(...take.map((f) => prev[f]), a.id).run()
+    await audit(c, 'profile.carried', 'attendee', a.id, { fields: take }, { actor: 'automatic', kind: 'system' })
+    return await c.env.DB.prepare('SELECT * FROM attendees WHERE id = ?').bind(a.id).first() || a
+  } catch { return a }
+}
 
 // ==================== MAGIC LINK LOGIN ====================
 app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
@@ -10222,9 +10347,14 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
     return c.json({ success: true, message: NEUTRAL_SIGNIN_REPLY })
   }
 
-  // Build magic link URL
+  // A summit pass without the app gets the same neutral reply and no link: the sign-in
+  // screen says which passes include it (SUMMIT_APP_SQL).
+  const summit = Number(eventId) === SUMMIT_EVENT_ID
+  if (summit && !(await summitAppOk(c, attendee.id))) return c.json({ success: true, message: NEUTRAL_SIGNIN_REPLY })
+
+  // Build magic link URL. The summit's app is on its own domain.
   const appUrlRow = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'app_url'").first() as any
-  const appUrl = appUrlRow?.value || 'https://bharataiinnovation.com/app'
+  const appUrl = summit ? SUMMIT_APP_URL : (appUrlRow?.value || 'https://bharataiinnovation.com/app')
   // Was `?email=<address>&action=magic-login` — no token at all, so anyone could
   // construct the "magic link" for any address without receiving the mail. It now
   // carries a single-use token that expires in 30 minutes (LOGIN_TOKEN_MINUTES).
@@ -10249,7 +10379,7 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
   }
 
   // Build email HTML
-  const emailHtml = `<!DOCTYPE html>
+  const emailHtml = summit ? summitSigninEmailHTML(String(attendee.name || ''), magicLink, loginCode) : `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif;">
   <div style="max-width:600px;margin:20px auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
@@ -10289,9 +10419,9 @@ app.post('/api/events/:id/attendees/send-magic-link', async (c) => {
     const payload = {
       Recipients: { To: [normalizedEmail] },
       Content: {
-        Body: [{ ContentType: "HTML", Content: Number(eventId) === DELHI_EVENT_ID ? emailHtml : await withAppOnPhoneFor(c, emailHtml, normalizedEmail), Charset: "utf-8" }],
+        Body: [{ ContentType: "HTML", Content: Number(eventId) === DELHI_EVENT_ID || summit ? emailHtml : await withAppOnPhoneFor(c, emailHtml, normalizedEmail), Charset: "utf-8" }],
         From: `${fromName} <${fromEmail}>`,
-        Subject: payName ? 'Sign in to pay for your ' + payName : 'Sign In to Bharat AI Innovation 2026'
+        Subject: summit ? 'Your sign-in link for the AI Agent Summit app' : payName ? 'Sign in to pay for your ' + payName : 'Sign In to Bharat AI Innovation 2026'
       },
       Options: { TrackClicks: false, TrackOpens: false }
     }
@@ -10629,6 +10759,22 @@ async function unpaidPaidPass(c: any, id: any, badgeType: unknown): Promise<bool
 const unpaidSentence = (badge: any, what: string): string =>
   'Your ' + String(badge || 'pass') + ' is not paid yet, so ' + what + ' is not open to you yet. It unlocks the moment the payment goes through: use Pay now on your pass card in the app.'
 
+// Who has the AI Agent Summit's networking app (the organiser, 26 Nov 2026): a paid Delegate
+// or VIP Pass, a Buyer or Investor Pass the team has confirmed (admin_audit 'summit.confirm',
+// as routes/agent-summit.ts does), an exhibitor and a speaker. Not Visitor, Academic or
+// Student. The one test decides who may sign in, who the directory lists and who may be
+// asked or messaged, so nobody is shown who cannot answer.
+const SUMMIT_APP_SQL = (t: string) => `((${t}.badge_type IN ('Delegate Pass', 'VIP Pass') AND lower(COALESCE(${t}.payment_status, '')) = 'paid')` +
+  ` OR (${t}.badge_type IN ('Buyer Pass', 'Investor Pass') AND EXISTS (SELECT 1 FROM admin_audit au WHERE au.action = 'summit.confirm' AND CAST(au.entity_id AS TEXT) = CAST(${t}.id AS TEXT)))` +
+  ` OR ${t}.badge_type IN ('Exhibitor', 'Speaker')` +
+  ` OR lower(COALESCE(${t}.role, '')) LIKE '%speaker%' OR lower(COALESCE(${t}.role, '')) LIKE '%exhibitor%' OR lower(COALESCE(${t}.role, '')) LIKE '%organi%')`
+async function summitAppOk(c: any, id: any): Promise<boolean> {
+  const r = await c.env.DB.prepare(`SELECT 1 AS ok FROM attendees a WHERE a.id = ? AND a.event_id = ? AND ${SUMMIT_APP_SQL('a')}`)
+    .bind(id, SUMMIT_EVENT_ID).first().catch(() => null)
+  return !!r
+}
+const SUMMIT_NO_APP = 'The AI Agent Summit app comes with a paid Delegate or VIP Pass, a confirmed Buyer or Investor Pass, and for exhibitors and speakers, so your pass does not include it. To move up to a Delegate Pass, see aiagentssummit.org/ai-agent-summit/attend.'
+
 // What a profile must carry before its owner may approach a stranger. The person
 // deciding has to know who is asking and what they do; that is the whole
 // difference between business networking and a dating app. Photo and LinkedIn are
@@ -10710,10 +10856,31 @@ async function requestTargetProblem(c: any, toId: any, eventId: any): Promise<{ 
     return { status: 403, message: 'They are registered for a campus panel, not the conference, so they cannot take requests here.' }
   }
   if (row.unsubscribed_at) return { status: 403, message: 'This person is not taking requests.' }
+  if (Number(eventId) === SUMMIT_EVENT_ID && !(await summitAppOk(c, toId))) return { status: 404, message: 'That person is not on the summit app.' }
   return null
 }
-// 20 or 21 November 2026, from 9:00 to 17:59 at the venue (the form sends "2026-11-20T11:00").
-const meetingSlotOk = (s: any): boolean => /^2026-11-(20|21)T(09|1[0-7]):[0-5]\d(:[0-5]\d)?$/.test(String(s || ''))
+// The days each event is at the venue (IST). Meetings are booked on them, from 9:00 to 17:59
+// (the form sends "2026-11-20T11:00"), and on them the badge desk admits that event's passes
+// only (otherEventPass): a Mumbai 2026 pass is refused at the summit, and the other way round.
+// On any other day (a rehearsal, the suites) a pass checks in as it always did.
+const EVENT_DAYS: Record<number, string[]> = { 1: ['2026-11-20', '2026-11-21'], [SUMMIT_EVENT_ID]: ['2027-04-16'] }
+const EVENT_LABEL: Record<number, string> = { 1: 'Bharat AI Innovation 2026', 2: 'Bharat AI Innovation Delhi 2027', [SUMMIT_EVENT_ID]: 'AI Agent Summit 2027' }
+const meetingSlotOk = (s: any, eventId: any = 1): boolean => {
+  const m = String(s || '').match(/^(\d{4}-\d{2}-\d{2})T(09|1[0-7]):[0-5]\d(:[0-5]\d)?$/)
+  return !!m && (EVENT_DAYS[Number(eventId)] || EVENT_DAYS[1]).includes(m[1])
+}
+const meetingSlotSentence = (eventId: any): string => Number(eventId) === SUMMIT_EVENT_ID
+  ? 'Pick a time on 16 April, between 9 AM and 6 PM.'
+  : 'Pick a time on 20 or 21 November, between 9 AM and 6 PM.'
+const eventOfDay = (day: string): number | null => {
+  for (const ev of Object.keys(EVENT_DAYS)) if (EVENT_DAYS[Number(ev)].includes(day)) return Number(ev)
+  return null
+}
+function otherEventPass(a: any, day: string = istDate()): string | null {
+  const owner = eventOfDay(day)
+  if (!owner || (Number(a?.event_id) || 1) === owner) return null
+  return 'This pass is for ' + (EVENT_LABEL[Number(a?.event_id)] || 'another event') + ', not ' + EVENT_LABEL[owner] + '. Do not admit on it.'
+}
 
 // Minutes after midnight of a meeting's time ("2026-11-20T11:30" -> 690), or -1.
 const meetingMinuteOf = (t: any): number => {
@@ -10755,7 +10922,12 @@ app.get('/api/meetings/busy', async (c) => {
   c.header('Cache-Control', 'no-store')
   const me = await verifyAttendeeSession(c)
   if (!me) return c.json({ error: 'Please sign in again to continue.' }, 401)
-  const other = parseInt(String(c.req.query('with') || ''), 10)
+  let other = parseInt(String(c.req.query('with') || ''), 10)
+  // Only for someone in the same event (one event per sign-in).
+  if (Number.isFinite(other)) {
+    const pair = await c.env.DB.prepare('SELECT a.event_id AS mine, b.event_id AS theirs FROM attendees a, attendees b WHERE a.id = ? AND b.id = ?').bind(me, other).first() as any
+    if (!pair || Number(pair.mine) !== Number(pair.theirs)) other = NaN
+  }
   const busy = async (id: number) => {
     const { results } = await c.env.DB.prepare(
       "SELECT meeting_time, duration_minutes FROM meetings WHERE status = 'accepted' AND (requester_id = ? OR requestee_id = ?)"
@@ -10776,7 +10948,7 @@ async function autoMeetingReminders(c: any): Promise<any> {
   const now = Date.now()
   const { results } = await c.env.DB.prepare(
     `SELECT m.id, m.title, m.meeting_time, m.duration_minutes, m.location,
-            a.name AS a_name, a.email AS a_email, a.company AS a_company,
+            a.name AS a_name, a.email AS a_email, a.company AS a_company, a.event_id AS ev,
             b.name AS b_name, b.email AS b_email, b.company AS b_company
        FROM meetings m JOIN attendees a ON a.id = m.requester_id JOIN attendees b ON b.id = m.requestee_id
       WHERE m.status = 'accepted' AND substr(m.meeting_time, 1, 10) = ? LIMIT 1000`
@@ -10803,7 +10975,8 @@ async function autoMeetingReminders(c: any): Promise<any> {
           ['Where', escEmail(m.location || 'As agreed between you')],
         ]),
         cta: 'Open my meetings',
-        ctaUrl: await networkingAppUrl(c, '#inbox'),
+        ctaUrl: await networkingAppUrl(c, '#inbox', m.ev),
+        ev: m.ev,
       })
       await notifyNetworking(c, toEmail, 'Starting soon: your meeting with ' + netPlain(withName, 60) + ', ' + when.replace(/^.*?, /, ''), html)
     }
@@ -10822,7 +10995,7 @@ async function autoMeetingNudges(c: any): Promise<any> {
   const { results } = await c.env.DB.prepare(
     `SELECT m.id, m.title, m.meeting_time, m.duration_minutes, m.location, m.created_at,
             a.name AS from_name, a.company AS from_company, a.job_title AS from_job_title,
-            b.name AS to_name, b.email AS to_email
+            b.name AS to_name, b.email AS to_email, b.event_id AS ev
        FROM meetings m JOIN attendees a ON a.id = m.requester_id JOIN attendees b ON b.id = m.requestee_id
       WHERE m.status = 'pending' AND m.created_at <= datetime('now', ?)
         AND NOT EXISTS (SELECT 1 FROM app_settings s WHERE s.key = 'meeting_nudge:' || m.id)
@@ -10849,7 +11022,8 @@ async function autoMeetingNudges(c: any): Promise<any> {
         ['Where', escEmail(m.location || 'To be agreed')],
       ]),
       cta: 'Accept or decline',
-      ctaUrl: await networkingAppUrl(c, '#inbox'),
+      ctaUrl: await networkingAppUrl(c, '#inbox', m.ev),
+      ev: m.ev,
     })
     await notifyNetworking(c, m.to_email, 'Still waiting: ' + netPlain(m.from_name, 60) + ' asked to meet you - ' + when, html)
     await audit(c, 'meeting.nudged', 'meeting', m.id, { asked_on: m.created_at, meeting_time: m.meeting_time }, { actor: 'automatic', kind: 'system' })
@@ -10860,7 +11034,7 @@ async function autoMeetingNudges(c: any): Promise<any> {
 
 app.post('/api/connections', async (c) => {
   const body = await c.req.json()
-  const { event_id, from_attendee_id, to_attendee_id, message } = body
+  const { from_attendee_id, to_attendee_id, message } = body
   const denied = await requireSelf(c, from_attendee_id); if (denied) return denied
 
   if (String(from_attendee_id) === String(to_attendee_id)) {
@@ -10872,9 +11046,12 @@ app.post('/api/connections', async (c) => {
   // button carried no such check, which is how every request in the table came
   // from a Visitor Pass in the first place.
   const sender = await c.env.DB.prepare(
-    'SELECT name, badge_type, job_title, company, industry, interests FROM attendees WHERE id = ?'
+    'SELECT name, event_id, badge_type, job_title, company, industry, interests FROM attendees WHERE id = ?'
   ).bind(from_attendee_id).first() as any
   if (!sender) return c.json({ error: 'Please sign in again to continue.' }, 401)
+  // The event is the sender's own, never the one in the body (one event per sign-in).
+  const ev = Number(sender.event_id) || 1
+  if (ev === SUMMIT_EVENT_ID && !isAdminRequest(c) && !(await summitAppOk(c, from_attendee_id))) return c.json({ error: 'no_app', message: SUMMIT_NO_APP }, 403)
 
   const senderUnpaid = await unpaidPaidPass(c, from_attendee_id, sender.badge_type)
   if (!canInitiateNetworking(sender.badge_type) || senderUnpaid) {
@@ -10899,7 +11076,7 @@ app.post('/api/connections', async (c) => {
   const reasonProblem = connectionReasonProblem(message)
   if (reasonProblem) return c.json({ error: 'reason_required', message: reasonProblem }, 400)
 
-  const target = await requestTargetProblem(c, to_attendee_id, event_id)
+  const target = await requestTargetProblem(c, to_attendee_id, ev)
   if (target) return c.json({ error: target.message, message: target.message }, target.status)
   if (!isAdminRequest(c)) {
     const sent = await c.env.DB.prepare(
@@ -10916,7 +11093,7 @@ app.post('/api/connections', async (c) => {
   try {
     const ins = await c.env.DB.prepare(
       'INSERT INTO connections (event_id, from_attendee_id, to_attendee_id, message) VALUES (?, ?, ?, ?)'
-    ).bind(event_id, from_attendee_id, to_attendee_id, note).run()
+    ).bind(ev, from_attendee_id, to_attendee_id, note).run()
 
     // The row is committed; the mail goes out behind the response and cannot fail it.
     // The UNIQUE(event_id, from, to) constraint means a repeat request throws above
@@ -11037,7 +11214,7 @@ app.get('/api/messages/:userId/:otherUserId', async (c) => {
 
 app.post('/api/messages', async (c) => {
   const body = await c.req.json()
-  const { event_id, sender_id, receiver_id } = body
+  const { sender_id, receiver_id } = body
   const denied = await requireSelf(c, sender_id); if (denied) return denied
 
   // The same rule POST /api/connections enforces: a free Visitor Pass can reply,
@@ -11047,8 +11224,17 @@ app.post('/api/messages', async (c) => {
   const content = String(body.content ?? '').trim().slice(0, 4000)
   if (!content) return c.json({ error: 'Empty message' }, 400)
   if (netSamePerson(sender_id, receiver_id)) return c.json({ error: 'You cannot message yourself.' }, 400)
-  const senderRow = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE id = ?').bind(sender_id).first() as any
+  const senderRow = await c.env.DB.prepare('SELECT badge_type, event_id FROM attendees WHERE id = ?').bind(sender_id).first() as any
   if (!senderRow) return c.json({ error: 'Sender not found' }, 404)
+  // Someone real, in the sender's own event (one event per sign-in): until 27 Nov 2026 any
+  // id was written, another event's people included. At the summit both need its app.
+  const ev = Number(senderRow.event_id) || 1
+  const receiverRow = await c.env.DB.prepare('SELECT event_id FROM attendees WHERE id = ?').bind(receiver_id).first() as any
+  if (!receiverRow || (Number(receiverRow.event_id) || 1) !== ev) return c.json({ error: 'That person is not registered for this event.' }, 404)
+  if (ev === SUMMIT_EVENT_ID && !isAdminRequest(c)) {
+    if (!(await summitAppOk(c, sender_id))) return c.json({ error: SUMMIT_NO_APP, code: 'no_app' }, 403)
+    if (!(await summitAppOk(c, receiver_id))) return c.json({ error: 'That person is not on the summit app.' }, 404)
+  }
   const senderUnpaid = await unpaidPaidPass(c, sender_id, senderRow.badge_type)
   if ((!canInitiateNetworking(senderRow.badge_type) || senderUnpaid) && !isAdminRequest(c)) {
     const replying = await c.env.DB.prepare(
@@ -11083,7 +11269,7 @@ app.post('/api/messages', async (c) => {
   let notify: any = null
   try {
     notify = await c.env.DB.prepare(
-      `SELECT r.name AS to_name, r.email AS to_email, s.name AS from_name,
+      `SELECT r.name AS to_name, r.email AS to_email, r.event_id AS ev, s.name AS from_name,
               (SELECT COUNT(*) FROM messages m
                  WHERE m.sender_id = s.id AND m.receiver_id = r.id AND m.is_read = 0) AS unread_from_sender,
               (SELECT COUNT(*) FROM messages m
@@ -11096,7 +11282,7 @@ app.post('/api/messages', async (c) => {
 
   const result = await c.env.DB.prepare(
     'INSERT INTO messages (event_id, sender_id, receiver_id, content) VALUES (?, ?, ?, ?)'
-  ).bind(event_id, sender_id, receiver_id, content).run()
+  ).bind(ev, sender_id, receiver_id, content).run()
 
   // Two conditions, both necessary. unread_from_sender = 0 means the recipient has
   // no un-opened message from this person, so we are not shouting about a nudge they
@@ -11354,11 +11540,15 @@ app.get('/api/attendees/:id/meetings', async (c) => {
 
 app.post('/api/meetings', async (c) => {
   const body = await c.req.json()
-  const { event_id, requester_id, requestee_id, title, meeting_time, duration_minutes, location, notes } = body
+  const { requester_id, requestee_id, title, meeting_time, duration_minutes, location, notes } = body
   const denied = await requireSelf(c, requester_id); if (denied) return denied
   // Same pass rule as connections and messages; the client gate alone was bypassable.
-  const requester = await c.env.DB.prepare('SELECT badge_type FROM attendees WHERE id = ?').bind(requester_id).first() as any
-  const requesterUnpaid = requester ? await unpaidPaidPass(c, requester_id, requester.badge_type) : false
+  const requester = await c.env.DB.prepare('SELECT badge_type, event_id FROM attendees WHERE id = ?').bind(requester_id).first() as any
+  if (!requester) return c.json({ error: 'Please sign in again to continue.' }, 401)
+  // The requester's own event, never the body's (one event per sign-in), and its days.
+  const ev = Number(requester.event_id) || 1
+  if (ev === SUMMIT_EVENT_ID && !isAdminRequest(c) && !(await summitAppOk(c, requester_id))) return c.json({ error: SUMMIT_NO_APP, code: 'no_app' }, 403)
+  const requesterUnpaid = await unpaidPaidPass(c, requester_id, requester.badge_type)
   if (requester && (!canInitiateNetworking(requester.badge_type) || requesterUnpaid) && !isAdminRequest(c)) {
     return c.json({ error: requesterUnpaid ? unpaidSentence(requester.badge_type, 'asking for a meeting') : 'Meeting requests are part of the Delegate and VIP passes.', code: 'networking_locked' }, 403)
   }
@@ -11366,9 +11556,9 @@ app.post('/api/meetings', async (c) => {
   // Someone real, in this event, and not yourself; the text clipped and the
   // duration a whole number of minutes (2 Nov 2026: all four were stored as sent).
   if (String(requestee_id) === String(requester_id)) return c.json({ error: 'You cannot ask yourself for a meeting.' }, 400)
-  const target = await requestTargetProblem(c, requestee_id, event_id)
+  const target = await requestTargetProblem(c, requestee_id, ev)
   if (target) return c.json({ error: target.message }, target.status)
-  if (!meetingSlotOk(meeting_time)) return c.json({ error: 'Pick a time on 20 or 21 November, between 9 AM and 6 PM.' }, 400)
+  if (!meetingSlotOk(meeting_time, ev)) return c.json({ error: meetingSlotSentence(ev) }, 400)
   if (!isAdminRequest(c)) {
     const asked = await c.env.DB.prepare(
       `SELECT COUNT(*) AS n FROM meetings WHERE requester_id = ? AND created_at > datetime('now', '-1 day')`
@@ -11383,7 +11573,7 @@ app.post('/api/meetings', async (c) => {
   if (clash) return c.json({ error: meetingClashSentence(clash, requester_id), code: 'meeting_clash' }, 409)
   const result = await c.env.DB.prepare(
     'INSERT INTO meetings (event_id, requester_id, requestee_id, title, meeting_time, duration_minutes, location, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).bind(event_id, requester_id, requestee_id, clip(title, 120), clip(meeting_time, 40), minutes, clip(location, 120), clip(notes, 1000)).run()
+  ).bind(ev, requester_id, requestee_id, clip(title, 120), clip(meeting_time, 40), minutes, clip(location, 120), clip(notes, 1000)).run()
 
   // A meeting request nobody is told about is a slot that will not be honoured. The
   // row is committed above, so the mail runs behind the response and its failure is
@@ -11453,7 +11643,9 @@ app.post('/api/meetings/:id/propose', async (c) => {
     if (me !== row.requestee_id) return c.json({ error: 'Only the person you asked can propose another time.' }, 403)
   }
   if (row.status !== 'pending' && row.status !== 'accepted') return c.json({ error: 'This meeting can no longer be moved.' }, 409)
-  if (!meetingSlotOk(when)) return c.json({ error: 'Pick a time on 20 or 21 November, between 9 AM and 6 PM.' }, 400)
+  const evRow = await c.env.DB.prepare('SELECT event_id FROM attendees WHERE id = ?').bind(row.requester_id).first() as any
+  const ev = Number(evRow?.event_id) || 1
+  if (!meetingSlotOk(when, ev)) return c.json({ error: meetingSlotSentence(ev) }, 400)
   const clash = await meetingClash(c, [row.requestee_id, row.requester_id], when, parseInt(row.duration_minutes, 10) || 15, id)
   if (clash) return c.json({ error: meetingClashSentence(clash, row.requestee_id), code: 'meeting_clash' }, 409)
   const proposer = await c.env.DB.prepare('SELECT name FROM attendees WHERE id = ?').bind(row.requestee_id).first() as any
