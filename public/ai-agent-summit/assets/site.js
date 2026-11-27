@@ -70,6 +70,33 @@
     if (src) { img.src = src; img.removeAttribute('data-src'); }
   };
 
+  /* ---------- Home hero: one stage photo after another, every seven seconds (27 Nov 2026) ----------
+     The first photo is in the page; each next one loads a slide ahead. Off screen or in a
+     hidden tab nothing changes, and with reduced motion the first photo stays. */
+  // A slide marked data-wide is too busy at phone size, so phones skip it.
+  var arenaNarrow = window.matchMedia && window.matchMedia('(max-width: 640px)').matches;
+  var arenaSlides = [].filter.call(document.querySelectorAll('.arena-slide'), function (s) { return !(arenaNarrow && s.hasAttribute('data-wide')); });
+  if (arenaSlides.length > 1 && !reduceMotion) {
+    var arenaCap = document.querySelector('.arena-cap');
+    var arenaCur = 0, arenaOn = true, arenaTimer = null;
+    var arenaLoad = function (s) {
+      s.querySelectorAll('img[data-src]').forEach(function (i) { i.src = i.getAttribute('data-src'); i.removeAttribute('data-src'); });
+    };
+    var arenaNext = function () {
+      var prev = arenaSlides[arenaCur];
+      arenaCur = (arenaCur + 1) % arenaSlides.length;
+      var s = arenaSlides[arenaCur];
+      arenaLoad(arenaSlides[(arenaCur + 1) % arenaSlides.length]);
+      prev.classList.remove('is-on'); prev.classList.add('is-out');
+      s.classList.remove('is-out'); s.classList.add('is-on');
+      setTimeout(function () { prev.classList.remove('is-out'); }, 1800);
+      if (arenaCap) arenaCap.textContent = s.getAttribute('data-cap');
+    };
+    var arenaTick = function () { arenaTimer = setTimeout(function () { if (arenaOn && !document.hidden) arenaNext(); arenaTick(); }, 7000); };
+    whenLoaded(function () { arenaLoad(arenaSlides[1]); arenaTick(); });
+    watchOnScreen(document.querySelector('.hero-arena'), function (on) { arenaOn = on; });
+  }
+
   /* ---------- Home: the menu sits clear over the hero photo until the page scrolls (27 Nov 2026) ---------- */
   if (nav && document.querySelector('.hero-arena')) {
     var clearNav = function () { nav.classList.toggle('is-clear', window.scrollY < 24); };

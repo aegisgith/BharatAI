@@ -515,21 +515,26 @@ body:has(.hero-arena) .nav { transition: background-color .35s ease, border-colo
 
 .hero-arena { position: relative; isolation: isolate; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; min-height: max(640px, 100dvh); margin-top: calc(-1 * var(--nav-h)); padding: calc(var(--nav-h) + 48px) 0 132px; }
 .arena-photo { position: absolute; inset: 0; z-index: -2; overflow: hidden; background: var(--bg); }
-.arena-move { --z0: 1.16; --z1: 1.24; position: absolute; inset: 0; transform: scale(var(--z0)); transform-origin: 83% 56%; }
-.arena-photo img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: 85% 45%; }
+/* Each slide sets its own framing: --pos (object-position), --o and --z (zoom), --mx --my --mw --mh (the
+   sharp area round the speaker); the same with an "s" (--ps, --os, --zs, --mxs ...) for phones. */
+.arena-slide { position: absolute; inset: 0; opacity: 0; transition: opacity 1.6s ease; }
+.arena-slide.is-on { opacity: 1; }
+.arena-move { position: absolute; inset: 0; transform: scale(var(--z, 1.16)); transform-origin: var(--o, 83% 56%); }
+.arena-photo img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: var(--pos, 85% 45%); }
 .arena-photo .soft { filter: grayscale(1) blur(10px) brightness(0.4) contrast(1.08); }
 .arena-photo .sharp { filter: grayscale(1) contrast(1.12) brightness(0.82);
-  -webkit-mask-image: radial-gradient(ellipse 10% 50% at 81.5% 60%, #000 38%, transparent 100%);
-  mask-image: radial-gradient(ellipse 10% 50% at 81.5% 60%, #000 38%, transparent 100%); }
+  -webkit-mask-image: radial-gradient(ellipse var(--mw, 10%) var(--mh, 50%) at var(--mx, 81.5%) var(--my, 60%), #000 38%, transparent 100%);
+  mask-image: radial-gradient(ellipse var(--mw, 10%) var(--mh, 50%) at var(--mx, 81.5%) var(--my, 60%), #000 38%, transparent 100%); }
 .hero-arena::before { content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; background:
   linear-gradient(180deg, rgba(8, 9, 12, 0.8) 0%, rgba(8, 9, 12, 0) 20%, rgba(8, 9, 12, 0) 42%, rgba(8, 9, 12, 0.9) 84%, var(--bg) 100%),
   linear-gradient(90deg, rgba(8, 9, 12, 0.72) 0%, rgba(8, 9, 12, 0.3) 45%, rgba(8, 9, 12, 0) 62%, rgba(8, 9, 12, 0) 86%, rgba(8, 9, 12, 0.55) 100%); }
 @media (prefers-reduced-motion: no-preference) {
-  .arena-move { animation: arena-drift 30s linear infinite alternate; }
+  .arena-slide.is-on .arena-move, .arena-slide.is-out .arena-move { animation: arena-drift 12s linear both; }
   .arena-title, .arena-side { animation: rise 1s var(--ease-out) both; }
   .arena-side { animation-delay: .15s; }
 }
-@keyframes arena-drift { from { transform: scale(var(--z0)); } to { transform: scale(var(--z1)); } }
+@keyframes arena-drift { from { transform: scale(var(--z, 1.16)); } to { transform: scale(calc(var(--z, 1.16) + 0.07)); } }
+@keyframes arena-drift-s { from { transform: scale(var(--zs, 1.7)); } to { transform: scale(calc(var(--zs, 1.7) + 0.07)); } }
 
 .arena-grid { display: grid; grid-template-columns: minmax(0, 680px); gap: 22px; } /* all the words on the left; the speaker has the right */
 .arena-when { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-bottom: 20px; font-size: clamp(1rem, 1.3vw, 1.2rem); font-weight: 500; }
@@ -589,7 +594,8 @@ body:has(.hero-arena) .nav { transition: background-color .35s ease, border-colo
 .run-tabs button[aria-pressed='true']::after { transform: scaleX(1); }
 .run-tabs button:focus-visible { outline-offset: -3px; }
 
-@media (max-width: 1100px) {
+@media (max-width: 1240px) {
+  /* below the container width the caption would run into the numbers bar, so it moves under the menu */
   .arena-cap { top: calc(var(--nav-h) + 12px); bottom: auto; height: auto; }
 }
 @media (max-width: 1060px) {
@@ -604,9 +610,10 @@ body:has(.hero-arena) .nav { transition: background-color .35s ease, border-colo
   /* On a phone the photo is a band across the top, so the speaker is not under the words */
   .hero-arena { min-height: 0; padding-top: calc(var(--nav-h) + 290px); }
   .arena-photo { bottom: auto; height: calc(var(--nav-h) + 430px); }
-  .arena-move { --z0: 1.7; --z1: 1.8; transform-origin: 80% 40%; }
-  .arena-photo img { object-position: 100% 45%; }
-  .arena-photo .sharp { -webkit-mask-image: radial-gradient(ellipse 17% 46% at 66% 58%, #000 45%, transparent 100%); mask-image: radial-gradient(ellipse 17% 46% at 66% 58%, #000 45%, transparent 100%); }
+  .arena-move { transform: scale(var(--zs, 1.7)); transform-origin: var(--os, 80% 40%); }
+  .arena-slide.is-on .arena-move, .arena-slide.is-out .arena-move { animation-name: arena-drift-s; }
+  .arena-photo img { object-position: var(--ps, 100% 45%); }
+  .arena-photo .sharp { -webkit-mask-image: radial-gradient(ellipse var(--mws, 17%) var(--mhs, 46%) at var(--mxs, 66%) var(--mys, 58%), #000 45%, transparent 100%); mask-image: radial-gradient(ellipse var(--mws, 17%) var(--mhs, 46%) at var(--mxs, 66%) var(--mys, 58%), #000 45%, transparent 100%); }
   .hero-arena::before { background: linear-gradient(180deg, rgba(8, 9, 12, 0.72) 0, rgba(8, 9, 12, 0) 120px, rgba(8, 9, 12, 0) calc(var(--nav-h) + 250px), var(--bg) calc(var(--nav-h) + 430px)); }
   .arena-cap { font-size: 0.72rem; }
   .arena-when { flex-direction: column; align-items: flex-start; gap: 2px; }
