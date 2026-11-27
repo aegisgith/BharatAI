@@ -70,55 +70,14 @@
     if (src) { img.src = src; img.removeAttribute('data-src'); }
   };
 
-  /* ---------- Hero photos: one stage after another (26 Nov 2026) ----------
-     The fill of the current bar is a CSS animation; when it ends, the next photo comes in.
-     Pausing (the button, the hero off screen, the tab hidden) pauses that animation,
-     so the timing stops with it. With reduced motion nothing moves on its own. */
-  var show = document.querySelector('[data-slideshow]');
-  if (show) {
-    var slides = show.querySelectorAll('.show-slide');
-    var ticks = show.querySelectorAll('.tick');
-    var ambs = document.querySelectorAll('.hero-amb img');
-    var cap = show.querySelector('[data-show-cap]');
-    var pauseBtn = show.querySelector('.show-pause');
-    var cur = 0, userPaused = false, showVisible = true;
-    var syncPause = function () { show.classList.toggle('is-paused', userPaused || !showVisible || document.hidden); };
-    var go = function (n) {
-      n = (n + slides.length) % slides.length;
-      if (n === cur) return;
-      loadImg(slides[n].querySelector('img'));
-      loadImg(slides[(n + 1) % slides.length].querySelector('img'));
-      slides.forEach(function (s, i) {
-        s.classList.toggle('is-out', i === cur);
-        s.classList.toggle('is-on', i === n);
-        s.setAttribute('aria-hidden', i === n ? 'false' : 'true');
-      });
-      ticks.forEach(function (t, i) {
-        t.classList.toggle('is-on', i === n);
-        t.classList.toggle('is-done', i < n);
-        if (i === n) t.setAttribute('aria-current', 'true'); else t.removeAttribute('aria-current');
-      });
-      ambs.forEach(function (a, i) { loadImg(a); a.classList.toggle('is-on', i === n); });
-      if (cap) cap.textContent = slides[n].getAttribute('data-caption') || '';
-      cur = n;
-    };
-    ticks.forEach(function (t, i) { t.addEventListener('click', function () { go(i); }); });
-    show.addEventListener('animationend', function (e) { if (e.animationName === 'tick-fill') go(cur + 1); });
-    if (pauseBtn) {
-      pauseBtn.addEventListener('click', function () {
-        userPaused = !userPaused;
-        pauseBtn.setAttribute('aria-pressed', userPaused ? 'true' : 'false');
-        pauseBtn.setAttribute('aria-label', userPaused ? 'Play the photos' : 'Pause the photos');
-        syncPause();
-      });
-    }
-    watchOnScreen(show, function (on) { showVisible = on; syncPause(); });
-    document.addEventListener('visibilitychange', syncPause);
-    // The first photo is in the page; the second and the small backdrops come after the page has loaded.
-    whenLoaded(function () { loadImg(slides[1] && slides[1].querySelector('img')); ambs.forEach(loadImg); });
+  /* ---------- Home: the menu sits clear over the hero photo until the page scrolls (27 Nov 2026) ---------- */
+  if (nav && document.querySelector('.hero-arena')) {
+    var clearNav = function () { nav.classList.toggle('is-clear', window.scrollY < 24); };
+    clearNav();
+    window.addEventListener('scroll', clearNav, { passive: true });
   }
 
-  /* ---------- Hero agent card: an example agent works through its task ----------
+  /* ---------- Agent card (beside the stage photo in "What a selected company gets") ----------
      The page arrives with the first example finished, so nothing flashes; the script
      holds it, then plays the next example step by step. The clock counts down a
      seven-minute demo, the way the timer on stage does. */
