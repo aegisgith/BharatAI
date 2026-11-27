@@ -30338,6 +30338,124 @@ if (standWanted) {
 
 // ==================== ADMIN PAGE ====================
 
+// ---------------------------------------------------------------------------
+// The home-page hero test on aiagentssummit.org (27 Nov 2026): A ("Arena", photos of one
+// person on stage) against C ("Signal", the summit's lime). The page's head script gives each
+// visitor one hero, half each, kept in their browser; site.js counts each visitor once per
+// step and sends only { v: hero, e: step }. Here a step adds one to that day's total: no
+// person, email or IP is stored. Table from migration 0069.
+// Fixed before the first visitor (the organiser: "test Option A against Option C properly"):
+//   main measure  the share of visitors who click Apply to showcase or Get a pass;
+//   decision      after at least 14 days, once each hero has 2,000 visitors or on 8 January
+//                 2027, whichever comes first; a winner only at p < 0.05 (two-sided
+//                 two-proportion z-test), otherwise keep A, which matches the rest of the site.
+// ---------------------------------------------------------------------------
+const HERO_TEST_STEPS = ['seen', 'cta', 'apply', 'pass', 'applied', 'registered']
+const HERO_TEST_START = '2026-11-27'
+const HERO_TEST_LAST_DAY = '2027-01-08'
+const HERO_TEST_MIN_DAYS = 14
+const HERO_TEST_MIN_VISITORS = 2000
+
+app.post('/api/summit/hero-test', async (c) => {
+  const origin = c.req.header('Origin') || ''
+  // 204 only when the count was kept: the browser marks a visit as counted only then.
+  if (origin && !/^https:\/\/(www\.)?aiagentssummit\.org$/i.test(origin)) return c.body(null, 403)
+  let b: any = null
+  try { const raw = await c.req.text(); if (raw.length > 200) return c.body(null, 400); b = JSON.parse(raw) } catch { return c.body(null, 400) }
+  const v = String(b?.v || ''), e = String(b?.e || '')
+  if ((v !== 'a' && v !== 'c') || !HERO_TEST_STEPS.includes(e)) return c.body(null, 400)
+  try {
+    await c.env.DB.prepare('INSERT INTO summit_hero_test (day, variant, step, n) VALUES (?, ?, ?, 1) ON CONFLICT (day, variant, step) DO UPDATE SET n = n + 1')
+      .bind(istDate(), v, e).run()
+  } catch { return c.body(null, 503) /* before migration 0069: not counted, and the browser will try again */ }
+  return c.body(null, 204)
+})
+
+const normalCdf = (z: number): number => {
+  const x = Math.abs(z) / Math.SQRT2, k = 1 / (1 + 0.3275911 * x)
+  const erf = 1 - ((((1.061405429 * k - 1.453152027) * k + 1.421413741) * k - 0.284496736) * k + 0.254829592) * k * Math.exp(-x * x)
+  return z >= 0 ? 0.5 * (1 + erf) : 0.5 * (1 - erf)
+}
+
+function heroTestStats(tot: Record<string, Record<string, number>>, today: string) {
+  const A = tot.a, C = tot.c
+  const pa = A.seen ? A.cta / A.seen : 0, pc = C.seen ? C.cta / C.seen : 0
+  const both = A.seen > 0 && C.seen > 0
+  const pool = both ? (A.cta + C.cta) / (A.seen + C.seen) : 0
+  const se = both ? Math.sqrt(pool * (1 - pool) * (1 / A.seen + 1 / C.seen)) : 0
+  const z = se ? (pc - pa) / se : 0
+  const p = se ? 2 * (1 - normalCdf(Math.abs(z))) : 1
+  const seU = both ? Math.sqrt(pa * (1 - pa) / A.seen + pc * (1 - pc) / C.seen) : 0
+  const diff = pc - pa
+  const days = Math.max(0, Math.floor((Date.parse(today) - Date.parse(HERO_TEST_START)) / 86400000) + 1)
+  const due = days >= HERO_TEST_MIN_DAYS && (Math.min(A.seen, C.seen) >= HERO_TEST_MIN_VISITORS || today >= HERO_TEST_LAST_DAY)
+  const pts = (x: number) => (x >= 0 ? '+' : '') + (x * 100).toFixed(1)
+  let verdict: string, winner: 'a' | 'c' | null = null
+  if (!due) {
+    verdict = 'Still running, day ' + days + '. The decision comes after ' + HERO_TEST_MIN_DAYS + ' days, once each hero has ' +
+      HERO_TEST_MIN_VISITORS.toLocaleString('en-IN') + ' visitors or on 8 January 2027, whichever is first. Do not stop on an early lead: early leads often disappear.'
+  } else if (p < 0.05) {
+    winner = diff > 0 ? 'c' : 'a'
+    verdict = (winner === 'c' ? 'C (Signal)' : 'A (Arena)') + ' wins: ' + pts(Math.abs(diff)) + ' points more visitors clicked Apply to showcase or Get a pass (p = ' +
+      (p < 0.001 ? '< 0.001' : p.toFixed(3)) + '). Keep ' + (winner === 'c' ? 'C' : 'A') + ' for everyone.'
+  } else {
+    verdict = 'No clear difference (p = ' + p.toFixed(2) + '). Keep A, which matches the rest of the site.'
+  }
+  return { days, rate_a: pa, rate_c: pc, diff, range95: [diff - 1.96 * seU, diff + 1.96 * seU], z, p, due, winner, verdict }
+}
+
+function heroTestPage(d: any): string {
+  const pct = (n: number, of: number) => (of ? (100 * n / of).toFixed(1) + '%' : '-')
+  const T = d.totals
+  const row = (label: string, k: string, share = true) =>
+    `<tr><th>${label}</th><td>${T.a[k].toLocaleString('en-IN')}${share && k !== 'seen' ? ' <small>' + pct(T.a[k], T.a.seen) + '</small>' : ''}</td><td>${T.c[k].toLocaleString('en-IN')}${share && k !== 'seen' ? ' <small>' + pct(T.c[k], T.c.seen) + '</small>' : ''}</td></tr>`
+  const pts = (x: number) => (x >= 0 ? '+' : '') + (x * 100).toFixed(1)
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex">
+<title>Hero test, AI Agent Summit home page</title>
+<style>body{margin:0;background:#0b0c0f;color:#eef0f3;font:16px/1.55 system-ui,-apple-system,'Segoe UI',sans-serif;padding:40px 20px}main{max-width:760px;margin:0 auto}
+h1{font-size:28px;letter-spacing:-.02em;margin:0 0 6px}p{color:#b9c0cb}table{width:100%;border-collapse:collapse;margin:22px 0}th,td{text-align:left;padding:11px 10px;border-bottom:1px solid #252932}
+td{font-variant-numeric:tabular-nums;font-weight:600}small{color:#8d96a6;font-weight:400;margin-left:6px}thead th{color:#8d96a6;font-weight:500;font-size:14px}
+.v{padding:16px 18px;border-radius:12px;background:#151922;border:1px solid #2a3040;color:#fff;font-weight:600}.v.done{background:#1d2a0d;border-color:#c6ff3d}
+ul{color:#b9c0cb;padding-left:20px}a{color:#c6ff3d}</style></head><body><main>
+<h1>Home-page hero test</h1>
+<p>A (Arena, photos of one person on stage) against C (Signal, the summit's lime) on aiagentssummit.org. Counting since ${d.since || 'the first visitor'}; today is ${d.today}, day ${d.days}.</p>
+<table><thead><tr><th></th><th>A, Arena</th><th>C, Signal</th></tr></thead><tbody>
+${row('Visitors who saw the home page', 'seen')}
+${row('Clicked Apply to showcase or Get a pass (main measure)', 'cta')}
+${row('Clicked Apply to showcase', 'apply')}
+${row('Clicked Get a pass', 'pass')}
+${row('Finished a showcase application', 'applied')}
+${row('Finished a pass form', 'registered')}
+</tbody></table>
+<p>Main measure, C minus A: <b>${pts(d.diff)} points</b> (95% range ${pts(d.range95[0])} to ${pts(d.range95[1])}), p = ${d.p < 0.001 ? '&lt; 0.001' : d.p.toFixed(3)}.</p>
+<p class="v${d.due ? ' done' : ''}">${d.verdict}</p>
+<h2 style="font-size:18px;margin-top:30px">The rule, fixed before the test began</h2>
+<ul><li>Each visitor gets A or C at random, half each, and keeps it on every visit.</li>
+<li>Main measure: the share of visitors who click Apply to showcase or Get a pass. Applications and pass forms are shown too.</li>
+<li>Decide after at least 14 days, once each hero has 2,000 visitors or on 8 January 2027, whichever comes first.</li>
+<li>A winner only if p &lt; 0.05. Otherwise keep A, which matches the rest of the site.</li>
+<li>Not counted: preview links, which also take that browser out of the count, and automated browsers.</li></ul>
+<p>Preview: <a href="https://aiagentssummit.org/ai-agent-summit/?hero=a">hero A</a> and <a href="https://aiagentssummit.org/ai-agent-summit/?hero=c">hero C</a>.</p>
+</main></body></html>`
+}
+
+app.get('/api/admin/summit-hero-test', async (c) => {
+  let list: any[] = []
+  try { list = ((await c.env.DB.prepare('SELECT day, variant, step, n FROM summit_hero_test ORDER BY day').all()).results || []) as any[] }
+  catch { return c.json({ ready: false, migration: 'migrations/0069_summit_hero_test.sql' }) }
+  const totals: Record<string, Record<string, number>> = { a: {}, c: {} }
+  for (const k of ['a', 'c']) for (const s of HERO_TEST_STEPS) totals[k][s] = 0
+  for (const r of list) if (totals[r.variant] && r.step in totals[r.variant]) totals[r.variant][r.step] += Number(r.n) || 0
+  const today = istDate()
+  const out = {
+    ready: true, since: list.length ? list[0].day : null, today, totals,
+    rule: { start: HERO_TEST_START, min_days: HERO_TEST_MIN_DAYS, min_visitors_each: HERO_TEST_MIN_VISITORS, last_day: HERO_TEST_LAST_DAY, alpha: 0.05, otherwise: 'a' },
+    ...heroTestStats(totals, today),
+  }
+  if (c.req.query('view') === 'page') return c.html(heroTestPage(out))
+  return c.json(out)
+})
+
 app.get('/admin', (c) => {
   return c.html(adminPageHTML())
 })

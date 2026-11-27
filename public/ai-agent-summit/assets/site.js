@@ -70,6 +70,58 @@
     if (src) { img.src = src; img.removeAttribute('data-src'); }
   };
 
+  /* ---------- Hero test, A ("Arena") against C ("Signal"), from 27 Nov 2026 ----------
+     The home page's head script gives each visitor one hero, half each. This counts each visitor
+     once per step: saw the home page; clicked Apply to showcase or Get a pass there; finished a
+     showcase application or a pass form on this site later. Only the hero and the step are sent,
+     and the server keeps day totals. Preview links (?hero=) and automated browsers are not counted. */
+  var heroTest = (function () {
+    try {
+      if (navigator.webdriver || localStorage.getItem('aas_hero_off')) return null;
+      var v = localStorage.getItem('aas_hero');
+      return v === 'a' || v === 'c' ? v : null;
+    } catch (e) { return null; }
+  })();
+  var heroSend = function (step, beacon) {
+    var body = JSON.stringify({ v: heroTest, e: step });
+    if (beacon && navigator.sendBeacon && navigator.sendBeacon('/api/summit/hero-test', body)) return;
+    return fetch('/api/summit/hero-test', { method: 'POST', body: body, keepalive: true })
+      .then(function (r) { return r.status === 204; }).catch(function () { return false; });
+  };
+  // The visit is marked counted only once the server kept it (204); every later step counts
+  // only for a visitor whose visit was counted, so the share of visitors who clicked stays true.
+  var heroCount = function (step) {
+    if (!heroTest) return;
+    try {
+      var key = 'aas_hero_' + step;
+      if (localStorage.getItem(key)) return;
+      if (step === 'seen') {
+        heroSend(step, false).then(function (ok) { if (ok) { try { localStorage.setItem(key, '1'); } catch (e) {} } });
+        return;
+      }
+      if (!localStorage.getItem('aas_hero_seen')) return;
+      localStorage.setItem(key, '1');
+      heroSend(step, true);
+    } catch (e) {}
+  };
+  // A finished form: a showcase application (AAS27-A...) or a pass (AAS27-<number>), not a repeat.
+  var heroDone = function (out) {
+    var r = String((out && out.reference) || '');
+    if (!out || out.already) return;
+    if (/^AAS27-A\d+$/.test(r)) heroCount('applied');
+    else if (/^AAS27-\d+$/.test(r)) heroCount('registered');
+  };
+  if (heroTest && document.querySelector('.hero-arena')) {
+    heroCount('seen');
+    document.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest && e.target.closest('a[href]');
+      if (!a) return;
+      var path = a.pathname || '';
+      if (/\/ai-agent-summit\/showcase\/?$/.test(path)) { heroCount('cta'); heroCount('apply'); }
+      else if (/\/ai-agent-summit\/attend\/?$/.test(path)) { heroCount('cta'); heroCount('pass'); }
+    });
+  }
+
   /* ---------- Home hero: one stage photo after another, every seven seconds (27 Nov 2026) ----------
      The first photo is in the page; each next one loads a slide ahead. Off screen or in a
      hidden tab nothing changes, and with reduced motion the first photo stays. */
@@ -324,6 +376,7 @@
         .then(function (res) { return res.json().catch(function () { return { ok: false, error: 'Unexpected response from the server (' + res.status + ').' }; }); })
         .then(function (out) {
           if (out && out.ok) {
+            heroDone(out);
             // A paid pass: the server made the order; secure checkout opens on bharataiinnovation.com.
             if (out.pay_url) { submit.textContent = 'Opening secure checkout'; window.location.href = out.pay_url; return; }
             if (success) {

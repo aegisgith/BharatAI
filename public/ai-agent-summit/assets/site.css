@@ -625,6 +625,68 @@ body:has(.hero-arena) .nav { transition: background-color .35s ease, border-colo
 }
 
 /* =========================================================
+   Hero C, "Signal" (27 Nov 2026), in a test against A ("Arena"): the summit's lime is the whole
+   first screen, with black type, a black-and-white photo of the speaker (sharp, his surroundings
+   soft, as in A) and kinds of agent running along the foot. The head script sets
+   html[data-hero="c"] for half the visitors; everyone else, and every page without it, sees A.
+   ========================================================= */
+.hero-signal { display: none; }
+html[data-hero="c"] .hero-arena { display: none; }
+html[data-hero="c"] .hero-signal { display: flex; }
+.hero-signal { position: relative; flex-direction: column; min-height: max(640px, 100dvh); margin-top: calc(-1 * var(--nav-h)); padding-top: var(--nav-h); background: var(--acc); color: var(--acc-ink); overflow: hidden; }
+.signal-grid { flex: 1; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: clamp(32px, 5vw, 72px); align-items: center; padding-top: 24px; padding-bottom: 32px; }
+.signal-when { font-size: clamp(1rem, 1.3vw, 1.2rem); font-weight: 600; margin-bottom: 20px; }
+.hero-signal h1 { font-size: clamp(3.2rem, 6.6vw, 6.25rem); font-weight: 750; letter-spacing: -0.05em; line-height: 0.88; }
+.hero-signal h1 span { display: block; }
+.signal-sub { margin-top: 26px; font-size: clamp(1.04rem, 1.3vw, 1.2rem); line-height: 1.5; color: rgba(10, 11, 13, 0.78); max-width: 46ch; }
+.signal-sub b { color: var(--acc-ink); font-weight: 650; }
+.hero-signal .hero-actions { margin-top: 28px; }
+.hero-signal .btn-primary { background: var(--acc-ink); color: #fff; }
+.hero-signal .btn-primary:hover { box-shadow: 0 12px 30px -14px rgba(10, 11, 13, 0.7); }
+.hero-signal .btn-secondary { background: transparent; color: var(--acc-ink); border: 1.5px solid var(--acc-ink); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.hero-signal .btn-secondary:hover { background: rgba(10, 11, 13, 0.07); border-color: var(--acc-ink); }
+.hero-signal .cal-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 0.92rem; font-weight: 500; color: rgba(10, 11, 13, 0.75); }
+.hero-signal .cal-link:hover { color: var(--acc-ink); }
+.hero-signal .cal-link svg { width: 16px; height: 16px; flex: none; }
+.hero-signal :focus-visible { outline-color: var(--acc-ink); }
+.signal-photo { position: relative; margin: 0; height: min(64vh, 600px); min-height: 380px; border-radius: var(--r-photo); overflow: hidden; background: #15171b; }
+.signal-photo img { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: 88% 40%; transform: scale(2); transform-origin: 100% 50%; }
+.signal-photo .soft { filter: grayscale(1) blur(8px) brightness(0.55) contrast(1.1); }
+.signal-photo .sharp { filter: grayscale(1) contrast(1.18) brightness(0.95);
+  -webkit-mask-image: radial-gradient(ellipse 13% 36% at 81% 52%, #000 45%, transparent 100%);
+  mask-image: radial-gradient(ellipse 13% 36% at 81% 52%, #000 45%, transparent 100%); }
+.signal-photo figcaption { position: absolute; left: 14px; top: 14px; right: 14px; width: fit-content; font-size: 0.76rem; color: #fff; background: rgba(10, 11, 13, 0.62); padding: 5px 11px; border-radius: 999px; }
+.signal-ticker { background: var(--acc-ink); color: #fff; overflow: hidden; padding: 16px 0; }
+.signal-track { display: flex; width: max-content; }
+.signal-track span { font-size: clamp(1.05rem, 1.6vw, 1.4rem); font-weight: 560; letter-spacing: -0.01em; white-space: nowrap; padding: 0 22px; }
+.signal-track span::after { content: ''; display: inline-block; width: 8px; height: 8px; margin-left: 44px; border-radius: 50%; background: var(--acc); vertical-align: middle; }
+@media (prefers-reduced-motion: no-preference) {
+  .signal-track { animation: signal-slide 50s linear infinite; }
+  .signal-copy, .signal-photo { animation: rise 1s var(--ease-out) both; }
+  .signal-photo { animation-delay: .15s; }
+}
+@media (prefers-reduced-motion: reduce) { .signal-track { flex-wrap: wrap; width: auto; } .signal-track span[aria-hidden] { display: none; } }
+@keyframes signal-slide { to { transform: translateX(-50%); } }
+/* the menu on lime, until the page scrolls */
+html[data-hero="c"] .nav.is-clear:not(.open) .brand img { filter: brightness(0); }
+html[data-hero="c"] .nav.is-clear:not(.open) .nav-links a:not(.btn) { color: var(--acc-ink); }
+html[data-hero="c"] .nav.is-clear:not(.open) .nav-links a:not(.btn):hover { background: rgba(10, 11, 13, 0.08); }
+html[data-hero="c"] .nav.is-clear:not(.open) .nav-links .btn-primary { background: var(--acc-ink); color: #fff; }
+html[data-hero="c"] .nav.is-clear:not(.open) .nav-toggle { border-color: rgba(10, 11, 13, 0.35); }
+html[data-hero="c"] .nav.is-clear:not(.open) .nav-toggle span, html[data-hero="c"] .nav.is-clear:not(.open) .nav-toggle span::before, html[data-hero="c"] .nav.is-clear:not(.open) .nav-toggle span::after { background: var(--acc-ink); }
+/* the numbers bar sits under the lime, not over a photo */
+html[data-hero="c"] .hero-arena + .container > .figures { margin-top: 0; min-height: 76px; border-top: 0; }
+@media (max-width: 900px) {
+  .signal-grid { grid-template-columns: 1fr; gap: 30px; padding-top: 24px; }
+  .signal-photo { height: 340px; min-height: 0; }
+}
+@media (max-width: 640px) {
+  .hero-signal { min-height: 0; }
+  .hero-signal .hero-actions .btn { flex: 1 1 100%; }
+  .signal-photo { height: 300px; }
+}
+
+/* =========================================================
    Five kinds of agent (26 Nov 2026): one example per block of the day.
    Each drawing plays once it is on screen, holds, and plays again.
    ========================================================= */
