@@ -171,16 +171,28 @@ const check = (n, ok, d) => { console.log((ok ? 'PASS ' : 'FAIL ') + n + (ok ? '
     check('live marketplace form fits the phone, with no JavaScript errors', await p5.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1) && errs.length === 0, errs.slice(0, 2).join(' | '));
     check('live marketplace check wrote nothing (every other write refused in the browser)', leaked.length === 0, leaked.join(', '));
     await c5.close();
-    // Signed out, the dashboard's Sign in opens the sign-in box. Only GETs leave the browser.
+    // Signed out, the dashboard asks for a 6-digit code (since 24 Nov 2026; its first link
+    // is now the mailto for help, which the old check pressed). An empty address is answered
+    // on screen, and "Sign in with your password" opens the marketplace sign-in box.
+    // Only GETs leave the browser, so no code is ever emailed.
     const c6 = await mpCtx();
     const leaked6 = [];
     await c6.route(/\/api\/mp\//, (r) => { if (r.request().method() === 'GET') return r.continue(); leaked6.push(r.request().url()); return r.abort(); });
     const p6 = await c6.newPage();
     await p6.goto(BASE + '/marketplace/dashboard?live=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await p6.waitForSelector('.dash-login-required a', { timeout: 20000 }).catch(() => {});
-    await p6.click('.dash-login-required a').catch(() => {});
+    await p6.waitForSelector('#code-ask', { timeout: 20000 }).catch(() => {});
+    await p6.click('#code-ask button[type="submit"]').catch(() => {});
+    const codeErr = await p6.locator('#code-error').innerText().catch(() => '');
+    check('live marketplace dashboard, signed out: the code sign-in shows, and an empty address is answered on screen', (await p6.locator('#code-email').isVisible().catch(() => false)) && /type your email address/.test(codeErr), codeErr);
+    await p6.click('.dash-code-help a[href="/marketplace?signin=1"]').catch(() => {});
     await p6.waitForSelector('#auth-section:not(.hidden)', { timeout: 20000 }).catch(() => {});
-    check('live marketplace dashboard, signed out: Sign in opens the sign-in box', p6.url().includes('/marketplace?signin=1') && await p6.locator('#auth-section').isVisible() && leaked6.length === 0, p6.url());
+    check('live marketplace dashboard, signed out: "Sign in with your password" opens the sign-in box', p6.url().includes('/marketplace?signin=1') && await p6.locator('#auth-section').isVisible() && leaked6.length === 0, p6.url());
+    // The marketplace is Delhi 2027's (28 Nov 2026): no card sends a Delhi visitor to a Mumbai stand.
+    await p6.goto(BASE + '/marketplace?live=' + Date.now(), { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await p6.waitForSelector('.listing-card', { timeout: 20000 }).catch(() => {});
+    const badges = await p6.locator('.listing-card .listing-booth-badge').allInnerTexts();
+    const steps = await p6.locator('.mk-steps').innerText().catch(() => '');
+    check('live marketplace: a Mumbai booth says "Exhibited at Mumbai 2026", only Delhi 2027 stands show a number, the steps name Delhi', badges.every((t) => /^Exhibited at Mumbai 2026$|^Booth .+ · Delhi 2027$/.test(t.trim())) && /Bharat Mandapam/.test(steps) && !/Mumbai/.test(steps), JSON.stringify(badges.slice(0, 4)) + ' ' + steps.slice(0, 80));
     await c6.close();
   }
 

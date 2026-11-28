@@ -132,6 +132,11 @@ const buildFilters = (listings) => {
 const searchText = (l) => [l.product_name, l.company_name, l.description, l.ai_category, l.tags, l.target_industry, l.target_customer, l.use_cases].map(v => String(v || '')).join(' ').toLowerCase()
 
 const hasBooth = (l) => !!(l.exhibitor_booth || l.booth_number)
+// What a card says about the company's stand (28 Nov 2026). Every booth number so far is
+// Mumbai 2026's, and Mumbai is over: the card says the company exhibited there instead of
+// sending a Delhi visitor to look for Booth 27. A Delhi 2027 stand (an exhibitor row of
+// event 2, exhibitor_event from the server) shows its number. Same words in marketplace-listing.js.
+const boothBadge = (l) => { const b = l.exhibitor_booth || l.booth_number; if (!b) return ''; return Number(l.exhibitor_event) === 2 ? 'Booth ' + b + ' · Delhi 2027' : 'Exhibited at Mumbai 2026' }
 
 const applyFilters = (listings) => {
   const words = filters.q.toLowerCase().split(/\s+/).filter(Boolean)
@@ -217,8 +222,9 @@ const rerender = () => {
 
 // ── Shortcuts ──
 // One row, not a wall: the needs buyers come with, shown only when at least two approved
-// listings use that category, plus the products they can meet at the event.
-const BOOTH_LABEL = 'Meet them at the event'
+// listings use that category, plus the companies that exhibit with us. It was "Meet them
+// at the event" until 28 Nov 2026: those were Mumbai's stands.
+const BOOTH_LABEL = 'Bharat AI exhibitors'
 const NEEDS = ['AI Agents', 'Speech / Voice AI', 'Sales Automation', 'Recruitment Automation', 'Customer Support Automation', 'AI Chatbots', 'Content Generation', 'Workflow Automation', 'Fraud Detection', 'Cybersecurity AI', 'Computer Vision']
 const needsEl = document.getElementById('mk-needs')
 const buildNeeds = (listings) => {
@@ -358,7 +364,7 @@ const createListingCard = (listing) => {
   const name = String(listing.product_name || '').trim() || 'Untitled product'
   const company = String(listing.company_name || '').trim()
   const logo = safeUrl(listing.logo_url), initials = getInitials(name)
-  const booth = listing.exhibitor_booth || listing.booth_number
+  const booth = boothBadge(listing)
   const chipsFrom = [toTagList(listing.ai_category), toTagList(listing.tags), toTagList(listing.target_industry)].find(list => list.length) || []
   const chips = chipsFrom.slice(0, 3).map(c => `<span class="chip">${esc(c)}</span>`).join('') + (chipsFrom.length > 3 ? `<span class="chip chip--more">+${chipsFrom.length - 3}</span>` : '')
 
@@ -373,7 +379,7 @@ const createListingCard = (listing) => {
       ${listing.description ? `<p class="listing-desc">${esc(listing.description)}</p>` : ''}
       ${chips ? `<div class="listing-chips">${chips}</div>` : ''}
       <div class="listing-foot">
-        <span class="listing-price"><span>${esc(listing.pricing_type || 'Pricing on request')}</span>${booth ? `<span class="listing-booth-badge"><i class="fas fa-location-dot" aria-hidden="true"></i> Booth ${esc(booth)}</span>` : ''}</span>
+        <span class="listing-price"><span>${esc(listing.pricing_type || 'Pricing on request')}</span>${booth ? `<span class="listing-booth-badge"><i class="fas fa-location-dot" aria-hidden="true"></i> ${esc(booth)}</span>` : ''}</span>
         <span class="listing-view">View details <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
       </div>
     </div>`

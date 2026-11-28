@@ -26,7 +26,7 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean; e
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} — Bharat AI Marketplace</title>
-  <meta name="description" content="${title} - Bharat AI Innovation 2026 AI Marketplace. Discover, compare, and connect with India's leading AI solutions.">
+  <meta name="description" content="${title} - the AI Marketplace of Bharat AI Innovation Delhi 2027. Discover, compare, and connect with India's leading AI solutions.">
   <link rel="canonical" href="${url}">
   <meta name="robots" content="${opts.noindex ? 'noindex, nofollow' : 'index, follow, max-image-preview:large'}">
   <meta name="theme-color" content="#F8F9FF">
@@ -36,7 +36,7 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean; e
   <meta property="og:locale" content="en_IN">
   <meta property="og:url" content="${url}">
   <meta property="og:title" content="Bharat AI Marketplace — Discover India's Leading AI Solutions">
-  <meta property="og:description" content="Explore AI products and companies at Bharat AI Innovation 2026. Discover, compare, and connect with India's leading AI solutions. 20–21 Nov 2026, WTC Mumbai.">
+  <meta property="og:description" content="Explore AI products and companies on the marketplace of Bharat AI Innovation Delhi 2027. Discover, compare, and connect with India's leading AI solutions. 28–29 July 2027, Bharat Mandapam, New Delhi.">
   <meta property="og:image" content="${MP_OG_IMAGE}">
   <meta property="og:image:secure_url" content="${MP_OG_IMAGE}">
   <meta property="og:image:type" content="image/jpeg">
@@ -45,7 +45,7 @@ function mpSharedHead(title: string, opts: { path?: string; noindex?: boolean; e
   <meta property="og:image:alt" content="Discover India's AI solutions: the Bharat AI Marketplace">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Bharat AI Marketplace">
-  <meta name="twitter:description" content="Discover India's leading AI solutions at Bharat AI Innovation 2026.">
+  <meta name="twitter:description" content="Discover India's leading AI solutions on the marketplace of Bharat AI Innovation Delhi 2027.">
   <meta name="twitter:image" content="${MP_OG_IMAGE}">
   <meta name="twitter:image:alt" content="Discover India's AI solutions: the Bharat AI Marketplace">
   <!-- The fa-subset.css literal is FA_CSS from src/index.tsx, duplicated rather
@@ -67,7 +67,7 @@ const mkFooter = () => `<footer class="mp-footer">
         <img src="/images/logo-nav.webp" alt="BHAI" class="mp-footer-logo">
         <div>
           <h3>Bharat AI Marketplace</h3>
-          <p>Part of Bharat AI Innovation 2026</p>
+          <p>Part of Bharat AI Innovation Delhi 2027</p>
         </div>
       </div>
       <div class="mp-footer-links">
@@ -144,9 +144,9 @@ export function marketplacePageHTML(): string {
       </a>
       <nav class="mp-nav" aria-label="Main">
         <a href="/" class="mp-nav-link"><i class="fas fa-home mr-1"></i>Home</a>
-        <a href="/app#schedule" class="mp-nav-link">Schedule</a>
+        <a href="/delhi-register" class="mp-nav-link">Delhi Passes</a>
         <a href="/marketplace" class="mp-nav-link" aria-current="page">AI Market</a>
-        <a href="/inquiry" class="mp-nav-link">Book Booth</a>
+        <a href="/delhi-exhibit" class="mp-nav-link">Book Booth</a>
         <a href="/marketplace/faq" class="mp-nav-link">FAQ</a>
         <a id="dashboard-link" href="/marketplace/dashboard" class="mp-nav-link hidden"><i class="fas fa-chart-pie mr-1"></i>Dashboard</a>
       </nav>
@@ -163,7 +163,7 @@ export function marketplacePageHTML(): string {
     <div class="mp-hero-inner">
       <h1 class="mp-hero-title"><span class="mk-w"><span style="--i:0">India's</span></span> <span class="mk-w"><span style="--i:1">Premier</span></span> <span class="mk-w"><span style="--i:2">AI</span></span> <span class="mk-w"><span style="--i:3">Solutions</span></span> <span class="mk-w"><span style="--i:4" class="mk-title-accent">Marketplace</span></span></h1>
       <div class="mk-hero-row">
-        <p class="mp-hero-sub">Find AI products by industry or use case, see who each one is built for, and contact the team behind it directly. Part of Bharat AI Innovation 2026.</p>
+        <p class="mp-hero-sub">Find AI products by industry or use case, see who each one is built for, and contact the team behind it directly. Part of Bharat AI Innovation Delhi 2027.</p>
         <div class="mp-hero-actions">
           <button id="open-listing-button" class="mp-hero-btn mp-hero-btn--primary" type="button"><i class="fas fa-plus" aria-hidden="true"></i> List your AI product</button>
         </div>
@@ -196,7 +196,7 @@ export function marketplacePageHTML(): string {
           <input name="email" autocomplete="username" inputmode="email" autocapitalize="none" spellcheck="false" type="email" placeholder="Email address" required>
           <input name="password" autocomplete="new-password" type="password" placeholder="Password (min 6 chars)" required minlength="6">
           <button type="submit" class="mp-btn-secondary">Create Account</button>
-          <p class="text-xs text-slate-500 mt-2">Exhibiting at Bharat AI Innovation 2026? Use the email from your booth booking and your booth number is added to your listing automatically.</p>
+          <p class="text-xs text-slate-500 mt-2">Exhibiting with us? Use the email from your booth booking, so your listing is linked to your booth.</p>
         </form>
       </div>
     </div>
@@ -451,7 +451,7 @@ export function marketplacePageHTML(): string {
         <li class="mk-step">
           <span class="mk-step-n" aria-hidden="true">3</span>
           <h3>Talk to the team</h3>
-          <p>Send an inquiry from the product page and it goes to the company. Where a booth number shows, you can also meet them at WTC Mumbai on 20 and 21 November.</p>
+          <p>Send an inquiry from the product page and it goes to the company. You can also meet AI companies in person at Bharat AI Innovation Delhi 2027, on 28 and 29 July 2027 at Bharat Mandapam, New Delhi.</p>
         </li>
       </ol>
     </div>
@@ -465,14 +465,14 @@ export function marketplacePageHTML(): string {
         <p>Create a free account, add your product, and our team takes it from there.</p>
         <div class="mk-sell-actions">
           <button type="button" class="mp-hero-btn mp-hero-btn--primary mk-sell-btn" data-open-listing>List your AI product</button>
-          <a class="mk-link mk-link--light" href="/inquiry">Book a booth</a>
+          <a class="mk-link mk-link--light" href="/delhi-exhibit">Book a booth for Delhi 2027</a>
         </div>
       </div>
       <ul class="mk-stack">
         <li class="mk-card">
           <div class="mk-card-text">
             <h3>Free for exhibitors</h3>
-            <p>Listing is free for all exhibitors of Bharat AI Innovation 2026. Non-exhibitor companies may also list for free during the event period.</p>
+            <p>Listing is free for all exhibitors of Bharat AI Innovation. Other companies may also list for free, up to and during Delhi 2027 (28 and 29 July 2027).</p>
           </div>
           <div class="mk-mock" aria-hidden="true">
             <div class="mk-mock-row"><span class="mk-mock-logo"></span><div><b>Your AI product</b><small>Your company</small></div></div>
@@ -482,10 +482,10 @@ export function marketplacePageHTML(): string {
         <li class="mk-card">
           <div class="mk-card-text">
             <h3>Your booth on your listing</h3>
-            <p>Register with the email from your booth booking and your booth number is added automatically, so buyers can find you at the venue.</p>
+            <p>Register with the email from your booth booking and we link your listing to your booth, so buyers can find you at Bharat Mandapam.</p>
           </div>
           <div class="mk-mock" aria-hidden="true">
-            <div class="mk-mock-row mk-mock-row--ends"><b>Your AI product</b><span class="listing-booth-badge"><i class="fas fa-location-dot"></i> Booth 12</span></div>
+            <div class="mk-mock-row mk-mock-row--ends"><b>Your AI product</b><span class="listing-booth-badge"><i class="fas fa-location-dot"></i> Booth 12 · Delhi 2027</span></div>
             <span class="mk-mock-line"></span>
           </div>
         </li>
@@ -520,7 +520,7 @@ export function marketplacePageHTML(): string {
       <div class="mk-faq-list">
         <details class="mk-row">
           <summary>Who can list products?</summary>
-          <p>Any company can create a free marketplace account and list its AI products. If you are exhibiting at Bharat AI Innovation 2026, register with the same email address you used for your booth booking and your booth number is added to your listing automatically.</p>
+          <p>Any company can create a free marketplace account and list its AI products. If you are exhibiting at Bharat AI Innovation Delhi 2027, register with the same email address you used for your booth booking, so we can link your listing to your booth.</p>
         </details>
         <details class="mk-row">
           <summary>How does the approval process work?</summary>
@@ -532,7 +532,7 @@ export function marketplacePageHTML(): string {
         </details>
         <details class="mk-row">
           <summary>Is there a cost to list?</summary>
-          <p>Listing on the Bharat AI Marketplace is free for all exhibitors of Bharat AI Innovation 2026. Non-exhibitor companies may also list for free during the event period.</p>
+          <p>Listing on the Bharat AI Marketplace is free for all exhibitors of Bharat AI Innovation. Other companies may also list for free, up to and during Delhi 2027 (28 and 29 July 2027).</p>
         </details>
       </div>
     </div>
@@ -541,7 +541,7 @@ export function marketplacePageHTML(): string {
   <!-- Footer -->
   ${mkFooter()}
 
-  <script src="/static/marketplace-app.js?v=11"></script>
+  <script src="/static/marketplace-app.js?v=12"></script>
   <script src="/js/marketplace-motion.js?v=20261106b" defer></script>
 </body>
 </html>`
@@ -661,7 +661,7 @@ export function marketplaceListingPageHTML(companySlug?: string, productSlug?: s
         ? `window.__LISTING_LEGACY_ID = ${inlineJsString(legacyId)};`
         : ''}
   </script>
-  <script src="/static/marketplace-listing.js?v=5"></script>
+  <script src="/static/marketplace-listing.js?v=6"></script>
   <script src="/js/marketplace-motion.js?v=20261106b" defer></script>
 </body>
 </html>`
@@ -1221,12 +1221,12 @@ export function marketplaceFaqPageHTML(): string {
 
       <div class="faq-item">
         <h3><i class="fas fa-question-circle mr-2 text-primary-400"></i>What is the Bharat AI Marketplace?</h3>
-        <p>The Bharat AI Marketplace is a curated directory of AI products and solutions showcased at Bharat AI Innovation 2026. It allows exhibitors and AI companies to list their products, and visitors/buyers to browse, compare, and send inquiries.</p>
+        <p>The Bharat AI Marketplace is a curated directory of AI products and solutions, part of Bharat AI Innovation Delhi 2027 (28 and 29 July 2027, Bharat Mandapam, New Delhi). It allows exhibitors and AI companies to list their products, and visitors/buyers to browse, compare, and send inquiries.</p>
       </div>
 
       <div class="faq-item">
         <h3><i class="fas fa-user-plus mr-2 text-primary-400"></i>Who can list products?</h3>
-        <p>Any company can create a free marketplace account and list its AI products. If you are exhibiting at Bharat AI Innovation 2026, register with the same email address you used for your booth booking and your booth number is added to your listing automatically.</p>
+        <p>Any company can create a free marketplace account and list its AI products. If you are exhibiting at Bharat AI Innovation Delhi 2027, register with the same email address you used for your booth booking, so we can link your listing to your booth.</p>
       </div>
 
       <div class="faq-item">
@@ -1241,7 +1241,7 @@ export function marketplaceFaqPageHTML(): string {
 
       <div class="faq-item">
         <h3><i class="fas fa-link mr-2 text-amber-400"></i>How is the marketplace connected to the event?</h3>
-        <p>The marketplace is part of the Bharat AI Innovation 2026 event app. Approved listings from exhibiting companies show their booth number, so buyers can find you at the venue.</p>
+        <p>The marketplace is part of the Bharat AI Innovation event app, now for Delhi 2027. Listings from companies that exhibited at Mumbai 2026 say so. Delhi 2027 booth numbers show on listings once stands are given out, so buyers can find you at Bharat Mandapam.</p>
       </div>
 
       <div class="faq-item">
@@ -1256,7 +1256,7 @@ export function marketplaceFaqPageHTML(): string {
 
       <div class="faq-item">
         <h3><i class="fas fa-money-bill mr-2 text-emerald-400"></i>Is there a cost to list?</h3>
-        <p>Listing on the Bharat AI Marketplace is free for all exhibitors of Bharat AI Innovation 2026. Non-exhibitor companies may also list for free during the event period.</p>
+        <p>Listing on the Bharat AI Marketplace is free for all exhibitors of Bharat AI Innovation. Other companies may also list for free, up to and during Delhi 2027 (28 and 29 July 2027).</p>
       </div>
     </div>
   </main>

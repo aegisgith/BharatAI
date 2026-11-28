@@ -75,7 +75,7 @@ const emailShell = (title: string, body: string) => `<!DOCTYPE html><html><head>
   <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;padding:28px;border:1px solid #e7e9f5">
     <h2 style="margin:0 0 16px;font-size:19px">${htmlEsc(title)}</h2>
     ${body}
-    <p style="margin:24px 0 0;font-size:12px;color:#888">Bharat AI Marketplace &middot; Bharat AI Innovation 2026 &middot; 20-21 November 2026, World Trade Center, Mumbai</p>
+    <p style="margin:24px 0 0;font-size:12px;color:#888">Bharat AI Marketplace &middot; Bharat AI Innovation Delhi 2027 &middot; 28-29 July 2027, Bharat Mandapam, New Delhi</p>
   </div></body></html>`
 
 const emailButton = (href: string, label: string) =>
@@ -827,8 +827,10 @@ mp.post('/api/mp/auth/logout', async (c) => {
 
 // exhibitor_booth is read live from the exhibitor row, so a booth assigned after
 // the listing was approved still shows; booth_number is the snapshot taken at submit.
+// exhibitor_event (28 Nov 2026) says whose stand it is: the pages show a Delhi 2027 (event 2)
+// booth number, and say "Exhibited at Mumbai 2026" for every other.
 const PUBLIC_LISTING_SELECT =
-  'SELECT l.*, e.company_name AS exhibitor_company, e.booth_number AS exhibitor_booth FROM mp_listings l LEFT JOIN exhibitors e ON l.exhibitor_id = e.id'
+  'SELECT l.*, e.company_name AS exhibitor_company, e.booth_number AS exhibitor_booth, e.event_id AS exhibitor_event FROM mp_listings l LEFT JOIN exhibitors e ON l.exhibitor_id = e.id'
 
 // Bharat AI exhibitors come first, everyone else after them (organiser, 14 Nov 2026).
 // An exhibitor's listing is one linked to an exhibitor row, or one that kept the booth

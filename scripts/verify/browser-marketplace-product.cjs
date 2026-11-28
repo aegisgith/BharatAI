@@ -43,7 +43,7 @@ const barUp = (p) => p.locator('#pd-bar').evaluate((b) => b.classList.contains('
   check('phone: white on the main button is readable, 4.5:1 or better', productBtn >= 4.5, productBtn.toFixed(2));
   check('phone: the website still opens in a new tab', (await p.locator('.pd-actions .pd-btn').nth(1).getAttribute('target')) === '_blank');
   check('phone: both buttons are on the first screen', (await box(p, '.pd-actions')).bottom < 844);
-  check('phone: price and booth show at the top', /From INR 99 a month/.test(await p.locator('.pd-badges').innerText()) && /Booth B7/.test(await p.locator('.pd-badges').innerText()));
+  check('phone: price and the Delhi 2027 booth show at the top', /From INR 99 a month/.test(await p.locator('.pd-badges').innerText()) && /Booth B7 at Bharat AI Innovation Delhi 2027/.test(await p.locator('.pd-badges').innerText()), await p.locator('.pd-badges').innerText());
   check('phone: List your product is in reach', (await box(p, '.mk-auth a')).right <= 390);
   check('phone: Home goes to the main website', (await p.locator('.mp-nav-link', { hasText: 'Home' }).getAttribute('href')) === '/');
 

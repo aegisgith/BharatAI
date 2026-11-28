@@ -181,7 +181,7 @@ const renderDetail = (listing) => {
   const videoEmbed = getVideoEmbedUrl(listing.video_url)
   const logo = safeUrl(listing.logo_url), image = safeUrl(listing.product_image_url)
   const website = safeUrl(listing.website_url), productUrl = safeUrl(listing.product_url), demoUrl = safeUrl(listing.demo_url), videoUrl = safeUrl(listing.video_url)
-  const booth = text(listing.exhibitor_booth || listing.booth_number)
+  const booth = boothBadge(listing, true)
   const priceType = text(listing.pricing_type), priceDetails = text(listing.pricing_details)
   const ctaUrl = productUrl || website || demoUrl
   const ctaLabel = (productUrl || website) ? 'Visit website' : 'View demo'
@@ -207,7 +207,7 @@ const renderDetail = (listing) => {
           <p class="pd-byline">${company && !sameText(company, name) ? `<span>by <strong>${esc(company)}</strong></span>` : ''}${siteForByline ? `<a href="${esc(siteForByline)}" target="_blank" rel="noopener noreferrer"><i class="fas fa-globe" aria-hidden="true"></i>${esc(hostOf(siteForByline))}</a>` : ''}</p>
           <div class="pd-badges">
             <span class="pd-badge pd-badge--price">${priceBadge}</span>
-            ${booth ? `<span class="pd-badge pd-badge--booth"><i class="fas fa-location-dot" aria-hidden="true"></i>Booth ${esc(booth)} at Bharat AI Innovation 2026</span>` : ''}
+            ${booth ? `<span class="pd-badge pd-badge--booth"><i class="fas fa-location-dot" aria-hidden="true"></i>${esc(booth)}</span>` : ''}
             ${Number(listing.awards_rating) > 0 ? `<span class="pd-badge"><i class="fas fa-star" aria-hidden="true"></i>${esc(listing.awards_rating)} rating</span>` : ''}
           </div>
         </div>
@@ -363,9 +363,19 @@ const fitRelatedLogo = (img) => {
   }, { once: true })
   if (img.complete && img.naturalWidth) place(); else img.addEventListener('load', place, { once: true })
 }
+// What a listing says about the company's stand (28 Nov 2026). Every booth number so far
+// is Mumbai 2026's, and Mumbai is over: say the company exhibited there instead of
+// sending a Delhi visitor to look for Booth 27. A Delhi 2027 stand (an exhibitor row of
+// event 2, exhibitor_event from the server) shows its number. Same words as marketplace-app.js.
+function boothBadge(l, long) {
+  const b = text(l.exhibitor_booth || l.booth_number)
+  if (!b) return ''
+  if (Number(l.exhibitor_event) === 2) return long ? `Booth ${b} at Bharat AI Innovation Delhi 2027` : `Booth ${b} · Delhi 2027`
+  return long ? 'Exhibited at Bharat AI Innovation Mumbai 2026' : 'Exhibited at Mumbai 2026'
+}
 const relatedCard = (l) => {
   const name = text(l.product_name) || 'Untitled product', company = text(l.company_name), logo = safeUrl(l.logo_url), initials = getInitials(name)
-  const booth = text(l.exhibitor_booth || l.booth_number)
+  const booth = boothBadge(l)
   const href = l.company_slug && l.product_slug ? `/marketplace/listing/${encodeURIComponent(l.company_slug)}/${encodeURIComponent(l.product_slug)}` : `/marketplace/listing/${encodeURIComponent(l.id)}`
   return `<a class="listing-card" href="${esc(href)}"><div class="listing-body">
       <div class="listing-head">
@@ -374,7 +384,7 @@ const relatedCard = (l) => {
       </div>
       ${l.description ? `<p class="listing-desc">${esc(l.description)}</p>` : ''}
       <div class="listing-foot">
-        <span class="listing-price"><span>${esc(l.pricing_type || 'Pricing on request')}</span>${booth ? `<span class="listing-booth-badge"><i class="fas fa-location-dot" aria-hidden="true"></i> Booth ${esc(booth)}</span>` : ''}</span>
+        <span class="listing-price"><span>${esc(l.pricing_type || 'Pricing on request')}</span>${booth ? `<span class="listing-booth-badge"><i class="fas fa-location-dot" aria-hidden="true"></i> ${esc(booth)}</span>` : ''}</span>
         <span class="listing-view">View details <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
       </div>
     </div></a>`

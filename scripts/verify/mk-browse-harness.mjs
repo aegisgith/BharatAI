@@ -23,7 +23,7 @@ const fake = (id, over = {}) => ({
 const ALL = [
   ...Array.from({ length: 12 }, (_, i) => fake(i + 1)),
   fake(13, { product_name: 'Adi Test', company_name: 'Ministry of Testing', company_slug: 'ministry', product_slug: 'adi-test' }),
-  fake(14, { product_name: 'Booth Product', exhibitor_booth: 'B7' }),
+  fake(14, { product_name: 'Booth Product', exhibitor_booth: 'B7', exhibitor_event: 2 }),
   fake(15, { product_name: 'Hall Product', booth_number: '38' }),
   fake(16, { product_name: 'No Logo Product', logo_url: '', pricing_type: '' }),
 ];
@@ -35,7 +35,7 @@ const RICH = fake(1, {
   use_cases: 'Answer calls\nRead forms\nWrite letters', pricing_type: 'Freemium', pricing_details: 'From INR 99 a month',
   access_info: 'Sign up at https://rich.example/start/. Bad: javascript:alert(1)', website_url: 'https://rich.example', demo_url: 'https://rich.example/demo', product_image_url: '/api/mp/uploads/1',
   screenshot_urls: '/api/mp/uploads/2,/api/mp/uploads/3', supported_platforms: 'Web, Android', tech_stack: 'Python', integration_requirements: 'An API key', security_protocols: 'Encryption',
-  support_offering: 'Email', onboarding_process: 'Self-serve', sla_details: '99.9%', case_studies: 'A made-up case study.', founder_name: 'A Founder', sales_contact_name: 'A Seller', sales_contact_email: 'sales@rich.example', exhibitor_booth: 'B7',
+  support_offering: 'Email', onboarding_process: 'Self-serve', sla_details: '99.9%', case_studies: 'A made-up case study.', founder_name: 'A Founder', sales_contact_name: 'A Seller', sales_contact_email: 'sales@rich.example', exhibitor_booth: 'B7', exhibitor_event: 2,
 });
 const PRODUCTS = {
   'rich-co/rich-product': RICH,

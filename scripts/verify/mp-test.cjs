@@ -258,7 +258,8 @@ const png = (name) => ({ name, mimeType: 'image/png', buffer: PNG });
     await page.goto(BASE + '/marketplace');
     await page.waitForSelector('.listing-card:not(.listing-card--skeleton)', { timeout: 10000 }).catch(() => {});
     const card = await text(page, '.listing-card');
-    check('the approved listing is on the public marketplace with its booth', /AIGyan Tutor/.test(card) && /Booth B12/.test(card), card.slice(0, 120));
+    // B12 is a Mumbai 2026 stand (the exhibitor row has no Delhi event): since 28 Nov 2026 the card says so, with no number.
+    check('the approved listing is on the public marketplace, saying the company exhibited at Mumbai 2026', /AIGyan Tutor/.test(card) && /Exhibited at Mumbai 2026/.test(card) && !/Booth B12/.test(card), card.slice(0, 120));
     check('the other three (pending) listings are not shown', await page.locator('.listing-card:not(.listing-card--skeleton)').count() === 1);
     await page.click('.listing-card');
     await page.waitForSelector('[data-detail-form]', { timeout: 10000 }).catch(() => {});
@@ -314,17 +315,18 @@ const png = (name) => ({ name, mimeType: 'image/png', buffer: PNG });
     await ctx.close();
   }
 
-  // ---- 11. signed out, the dashboard's Sign in opens the sign-in box ----
+  // ---- 11. signed out, the dashboard asks for a 6-digit code (24 Nov 2026), and its
+  // "Sign in with your password" opens the sign-in box. Its first link is now the help mailto. ----
   {
     const { ctx, page } = await phone(false);
     await page.goto(BASE + '/marketplace/dashboard');
-    await page.waitForSelector('.dash-login-required a', { timeout: 10000 }).catch(() => {});
+    await page.waitForSelector('#code-ask', { timeout: 10000 }).catch(() => {});
     const blurb = await text(page, '.dash-login-required');
-    check('signed out, the dashboard tells exhibitors to use a sign-in link', /Email me a sign-in link/.test(blurb), blurb);
-    await page.click('.dash-login-required a');
+    check('signed out, the dashboard offers a code by email, no password needed', /No password needed/.test(blurb) && /Email me a code/.test(blurb), blurb);
+    await page.click('.dash-code-help a[href="/marketplace?signin=1"]');
     await page.waitForSelector('#auth-section:not(.hidden)', { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(600);
-    check('Sign in lands with the sign-in box open', page.url().includes('/marketplace?signin=1') && await visible(page, '#auth-section'), page.url());
+    check('"Sign in with your password" lands with the sign-in box open', page.url().includes('/marketplace?signin=1') && await visible(page, '#auth-section'), page.url());
     check('the cursor is in the "Email me a sign-in link" box', await page.evaluate(() => document.activeElement && document.activeElement.closest('#link-form') !== null && document.activeElement.name === 'email'));
     await ctx.close();
   }

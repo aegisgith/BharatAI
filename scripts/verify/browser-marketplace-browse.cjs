@@ -57,7 +57,8 @@ const toEl = async (p, sel, gap = 0) => { await p.evaluate(([s, g]) => window.sc
   check('phone: Exhibitor Login is on the screen without scrolling the menu', login.right <= 390 && login.left >= 0, JSON.stringify(login));
   const searchBox = await box(p, '#mk-search');
   check('phone: the search box is on the first screen', searchBox.bottom < 844, JSON.stringify(searchBox));
-  const clipped = await p.evaluate(() => { const i = document.getElementById('mk-search'); const c = document.createElement('canvas').getContext('2d'); c.font = getComputedStyle(i).font; const s = getComputedStyle(i); return c.measureText(i.placeholder).width > i.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight); });
+  const clipped = await p.evaluate(() => { const i = document.getElementById('mk-search'); const c = document.createElement('canvas').getContext('2d'); c.font = getComputedStyle(i).font; const s = getComputedStyle(i); return c.measureText(i.placeholder).width > i.getBoundingClientRect().width - parseFloat(s.borderLeftWidth) - parseFloat(s.borderRightWidth) - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight); });
+  // The box's own width: Edge's clientWidth on a search input already leaves out the padding, so it was taken off twice (28 Nov 2026).
   check('phone: the search hint is not cut off', !clipped);
   check('phone: the search box will not make an iPhone zoom', parseFloat(await p.evaluate(() => getComputedStyle(document.getElementById('mk-search')).fontSize)) >= 16);
 
@@ -78,7 +79,9 @@ const toEl = async (p, sel, gap = 0) => { await p.evaluate(([s, g]) => window.sc
   check('phone: every card is one link', (await p.locator(CARD).evaluateAll((els) => els.every((e) => e.tagName === 'A' && e.getAttribute('href').startsWith('/marketplace/listing/')))));
   check('phone: a card with no logo shows initials', (await p.locator(CARD, { hasText: 'No Logo Product' }).locator('.listing-logo--initials').count()) === 1);
   check('phone: a card with no price says so', /Pricing on request/.test(await p.locator(CARD, { hasText: 'No Logo Product' }).innerText()));
-  check('phone: a booth number shows on the card', /Booth B7/.test(await p.locator(CARD, { hasText: 'Booth Product' }).innerText()));
+  check('phone: a Delhi 2027 booth number shows on the card', /Booth B7 · Delhi 2027/.test(await p.locator(CARD, { hasText: 'Booth Product' }).innerText()));
+  const hall = await p.locator(CARD, { hasText: 'Hall Product' }).innerText();
+  check('phone: a Mumbai 2026 booth says the company exhibited there, with no stand number', /Exhibited at Mumbai 2026/.test(hall) && !/Booth 38/.test(hall), hall);
 
   // The logos in the hero
   const logos = await p.evaluate(() => ({
@@ -146,7 +149,7 @@ const toEl = async (p, sel, gap = 0) => { await p.evaluate(([s, g]) => window.sc
   check('phone: pressing it again takes it off', (await cards(p)) === 16 && (await p.inputValue('#filter-category')) === '');
   await p.locator('.mk-need[data-booth]').tap();
   await p.waitForTimeout(700);
-  check('phone: "Meet them at the event" shows only products with a booth', (await cards(p)) === 2, await cards(p));
+  check('phone: "Bharat AI exhibitors" shows only products with a booth', (await cards(p)) === 2 && (await p.locator('.mk-need[data-booth]').innerText()) === 'Bharat AI exhibitors', await cards(p));
   await p.locator('.mk-clear').tap();
   await p.waitForTimeout(700);
   check('phone: Clear all brings every product back', (await cards(p)) === 16 && (await p.getAttribute('.mk-need[data-booth]', 'aria-pressed')) === 'false');
@@ -182,7 +185,7 @@ const toEl = async (p, sel, gap = 0) => { await p.evaluate(([s, g]) => window.sc
   // The lower sections
   await toEl(p, '.mk-how', 60);
   check('phone: the three steps are in order', (await p.locator('.mk-step h3').allInnerTexts()).join('|') === 'Find it|See if it fits|Talk to the team');
-  check('phone: the dates are right', /WTC Mumbai on 20 and 21 November/.test(await p.locator('.mk-steps').innerText()));
+  check('phone: the dates are Delhi 2027\'s', /28 and 29 July 2027 at Bharat Mandapam, New Delhi/.test(await p.locator('.mk-steps').innerText()) && !/Mumbai/.test(await p.locator('.mk-steps').innerText()));
   await toEl(p, '.mk-sell', 40);
   await p.waitForTimeout(400);
   const sellT = await p.evaluate(() => { const h = document.querySelector('.mk-sell-title'); return { label: h.getAttribute('aria-label'), text: h.textContent.replace(/\s+/g, ' ').trim(), p: h.style.getPropertyValue('--p') }; });
