@@ -23484,8 +23484,10 @@ type InquiryTemplate = { id: string; name: string; type: string; subject: string
 // Starter replies, in the organiser's plain words. The Automation tab edits them; the
 // reply box adds "Dear <name>," above and the team's sign-off below.
 const INQUIRY_DEFAULT_TEMPLATES: InquiryTemplate[] = [
-  { id: 'booth', name: 'Booth: floor plan and next step', type: 'booth_inquiry', subject: 'Your booth at Bharat AI Innovation 2026',
-    body: 'Thank you for your interest in exhibiting at Bharat AI Innovation 2026, on 20 and 21 November at the World Trade Center, Mumbai.\n\nThe floor plan, with every stand still free, its size and its price, is here:\nhttps://bharataiinnovation.com/exhibition\n\nEvery booth comes with a talk slot on the Innovation Talks stage.\n\nTell us which stand you would like and we will hold it for {organisation} and send the booking details. With the event days away, a quick reply helps.\n\nIf a short call is easier, reply with a good time and number.' },
+  // Delhi's words since 28 Nov 2026: this is the first booth reply the desk offers, and
+  // every booth enquiry now is for Delhi. Delhi has no floor plan yet.
+  { id: 'booth', name: 'Booth: sizes, prices and next step', type: 'booth_inquiry', subject: 'Your booth at Bharat AI Innovation Delhi 2027',
+    body: 'Thank you for your interest in exhibiting at Bharat AI Innovation Delhi 2027, on 28 and 29 July 2027 at Bharat Mandapam, New Delhi.\n\nThe booth sizes and their prices are here:\nhttps://bharataiinnovation.com/exhibition#delhi\n\nEvery booth comes with a talk slot on the Innovation Talks stage.\n\nTo book a booth for {organisation}, apply here and tell us what you will show. We reply within 2 working days:\nhttps://bharataiinnovation.com/delhi-exhibit\n\nIf a short call is easier, reply with a good time and number.' },
   // Booth applications (12 Nov 2026): the organiser reviews each one and answers within 2
   // working days, yes with the next step, or no politely.
   { id: 'booth-approved-mumbai', name: 'Booth application: approved (Mumbai)', type: 'booth_inquiry', subject: 'Your booth application is approved - Bharat AI Innovation 2026',
@@ -23940,7 +23942,7 @@ async function sendInquiryAck(c: any, row: any, owner: string): Promise<void> {
       if (Number(recent?.n || 0) >= INQUIRY_ACK_PER_IP_HOUR) return
     }
     const ref = 'BHAI-INQ-' + String(row.id ?? '').padStart(5, '0')
-    const sent = await sendAdminEmail(c, email, `We have your enquiry (${ref}) - Bharat AI Innovation 2026`, inquiryAckHtml(row, owner), { unsubscribe: false })
+    const sent = await sendAdminEmail(c, email, `We have your enquiry (${ref}) - Bharat AI Innovation Delhi 2027`, inquiryAckHtml(row, owner), { unsubscribe: false })
     await audit(c, sent.ok ? 'inquiry.autoack' : 'inquiry.autoack-failed', 'inquiry', row.id, sent.ok ? { to: email } : { to: email, error: sent.error }, { actor: 'automatic', kind: 'system' })
   } catch { /* the enquiry is saved; a failed acknowledgement must not surface */ }
 }
@@ -25636,7 +25638,7 @@ app.get('/api/admin/inquiries/ack-preview', async (c) => {
   const { routing } = await inquirySettings(c)
   const owner = routing[type] || ''
   const row = { id: 573, inquiry_type: type, name: 'Asha Rao', email: 'asha@example.com' }
-  return c.json({ subject: 'We have your enquiry (BHAI-INQ-00573) - Bharat AI Innovation 2026', html: await withAppOnPhoneFor(c, inquiryAckHtml(row, owner), row.email) })
+  return c.json({ subject: 'We have your enquiry (BHAI-INQ-00573) - Bharat AI Innovation Delhi 2027', html: await withAppOnPhoneFor(c, inquiryAckHtml(row, owner), row.email) })
 })
 
 // Admin: Update inquiry status/notes
@@ -27350,7 +27352,15 @@ ${siteHeaderHTML('/passes')}
 </body></html>`
 }
 
+// After Mumbai (28 Nov 2026): the form said "Bharat AI Innovation 2026 is on 20 and 21
+// November at the World Trade Center, Mumbai", and approving a request issues a Media
+// Pass in Mumbai's app (event 1). Delhi has no app or pass yet, so a journalist or
+// creator for Delhi sends a media enquiry from /contact, which the desk answers with
+// its Delhi media reply. Requests already made stay in Admin as they were.
+const MEDIA_PASS_CLOSED_TEXT = 'Media and influencer passes for Bharat AI Innovation Delhi 2027 (28 and 29 July 2027, Bharat Mandapam, New Delhi) open closer to the event. To cover Delhi 2027, send a media enquiry from bharataiinnovation.com/contact#media and our team will reply.'
+
 app.get('/media-pass', (c) => {
+  if (mumbaiIsOver()) return c.redirect('/contact#media', 302)
   const as = String(c.req.query('as') || '')
   return c.html(mediaPassPageHTML(MEDIA_PASS_KINDS.includes(as) ? as : ''))
 })
@@ -27358,6 +27368,7 @@ app.get('/media-pass', (c) => {
 // Anyone may apply; the answers are checked here whatever the page let through.
 app.post('/api/media-pass-application', async (c) => {
   c.header('Cache-Control', 'no-store')
+  if (mumbaiIsOver()) return c.json({ error: MEDIA_PASS_CLOSED_TEXT, code: 'closed' }, 410)
   const body = await c.req.json().catch(() => null) as any
   if (!body || typeof body !== 'object') return c.json({ error: 'Please fill in the form and try again.' }, 400)
   const thanks = { ok: true, message: 'Thank you. We have your request. ' + MEDIA_PASS_REPLY }
@@ -28032,6 +28043,10 @@ function sharedToastJS(): string {
   }`
 }
 
+// The group box's prices: Delhi's once Mumbai is over (DELHI_PASS_PRICES_INR), Mumbai's before.
+const contactPassPrice = (passType: string): string =>
+  mumbaiIsOver() && DELHI_PASS_PRICES_INR[passType] ? '&#8377;' + DELHI_PASS_PRICES_INR[passType].toLocaleString('en-IN') : rsPrice(passType)
+
 function contactPageHTML(): string {
   return `${sharedHeadHTML('Contact Us', '/contact', mumbaiIsOver() ? "Questions about Bharat AI Innovation? Reach the team for passes, sponsorship, exhibition and press enquiries. Next edition: 28-29 July 2027, Bharat Mandapam, New Delhi." : "Questions about Bharat AI Innovation 2026? Reach the team for registration, sponsorship, exhibition, and press enquiries. 20-21 Nov 2026, WTC Mumbai.")}
 <body class="min-h-screen">
@@ -28070,12 +28085,12 @@ ${sharedNavHTML('contact')}
       <div class="w-12 h-12 rounded-xl bg-rose-500/20 flex items-center justify-center mb-3"><i class="fas fa-newspaper text-xl text-rose-400"></i></div>
       <h3 class="font-bold text-base text-rose-300">Media / Press</h3>
       <p class="text-xs text-gray-400 mt-1">Press accreditation, interviews, media coverage</p>
-      <a href="/media-pass" onclick="event.stopPropagation()" class="inline-block mt-2 text-xs font-semibold text-rose-300 underline">Apply for a Media &amp; Influencer Pass</a>
+      ${mumbaiIsOver() ? '' : '<a href="/media-pass" onclick="event.stopPropagation()" class="inline-block mt-2 text-xs font-semibold text-rose-300 underline">Apply for a Media &amp; Influencer Pass</a>'}
     </div>
     <div class="glass rounded-2xl p-6 card-hover cursor-pointer border border-green-500/20 hover:border-green-400/40" onclick="selectType('group_registration')">
       <div class="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center mb-3"><i class="fas fa-users text-xl text-green-400"></i></div>
       <h3 class="font-bold text-base text-green-300">Group Registration</h3>
-      <p class="text-xs text-gray-400 mt-1">${GROUP_MIN}+ passes: ${groupPctFor(GROUP_MIN)}% off each, ${GROUP_TIERS[0].min}+: ${GROUP_DISCOUNT_PCT}% off, booked online. Corporate bookings</p>
+      <p class="text-xs text-gray-400 mt-1">${mumbaiIsOver() ? 'Passes for your team or delegation. Tell us how many and we will send the details' : `${GROUP_MIN}+ passes: ${groupPctFor(GROUP_MIN)}% off each, ${GROUP_TIERS[0].min}+: ${GROUP_DISCOUNT_PCT}% off, booked online. Corporate bookings`}</p>
     </div>
   </div>
 
@@ -28140,7 +28155,7 @@ ${sharedNavHTML('contact')}
         <p class="text-sm text-gray-400 mt-2 max-w-md mx-auto">Thank you for reaching out. Our team will review your inquiry and respond within 24 hours.</p>
         <div class="flex gap-3 justify-center mt-6">
           <button onclick="resetContactForm()" class="px-6 py-2.5 rounded-xl text-sm font-semibold glass hover:bg-white/10 transition"><i class="fas fa-plus mr-2"></i>Send Another</button>
-          <a href="/app" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-home mr-2"></i>Go to App</a>
+          ${mumbaiIsOver() ? '<a href="/" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-home mr-2"></i>See Delhi 2027</a>' : '<a href="/app" class="px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary-500/20 text-primary-300 hover:bg-primary-500/30 transition"><i class="fas fa-home mr-2"></i>Go to App</a>'}
         </div>
       </div>
     </div>
@@ -28182,13 +28197,14 @@ ${sharedFooterHTML()}
 <script>
 ${sharedToastJS()}
 
+const CF_EDITION = ${mumbaiIsOver() ? "'delhi-2027'" : "''"};
 const TYPE_CONFIG = {
   general: { icon: 'fa-question-circle', color: 'primary', title: 'General Inquiry', subtitle: 'Ask us anything about the event' },
   exhibition: { icon: 'fa-store', color: 'amber', title: 'Exhibition Inquiry', subtitle: 'Booth packages, availability & pricing' },
   sponsorship: { icon: 'fa-handshake', color: 'orange', title: 'Sponsorship Inquiry', subtitle: 'Brand visibility & partnership opportunities' },
   speaking: { icon: 'fa-microphone-alt', color: 'purple', title: 'Speaking Opportunity', subtitle: 'Submit your talk or workshop proposal' },
   media: { icon: 'fa-newspaper', color: 'rose', title: 'Media / Press Inquiry', subtitle: 'Accreditation, interviews & coverage' },
-  group_registration: { icon: 'fa-users', color: 'green', title: 'Group Registration', subtitle: '${GROUP_MIN}+ passes: ${groupPctFor(GROUP_MIN)}% off each, ${GROUP_TIERS[0].min}+: ${GROUP_DISCOUNT_PCT}% off, booked online at /group' },
+  group_registration: { icon: 'fa-users', color: 'green', title: 'Group Registration', subtitle: '${mumbaiIsOver() ? 'Passes for your team or delegation at Delhi 2027' : `${GROUP_MIN}+ passes: ${groupPctFor(GROUP_MIN)}% off each, ${GROUP_TIERS[0].min}+: ${GROUP_DISCOUNT_PCT}% off, booked online at /group`}' },
   meeting_room: { icon: 'fa-handshake', color: 'green', title: 'Private Boardroom', subtitle: 'Reserve a private boardroom by the hour at the event' },
 };
 
@@ -28204,13 +28220,15 @@ function selectType(type) {
   let extra = '';
   if (type === 'exhibition') {
     // A booth is applied for on /inquiry (12 Nov 2026); this form still takes a question.
-    extra = '<div class="rounded-xl p-4 text-sm leading-relaxed" style="background:rgba(255,107,0,0.08);border:1px solid rgba(255,107,0,0.3);"><p style="margin:0 0 10px;"><strong>To book a booth, apply for one.</strong> Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.</p><a href="/inquiry#inquiry-form-card" style="display:inline-block;padding:10px 18px;border-radius:10px;background:#C84F00;color:#fff;font-weight:700;text-decoration:none;">Apply for a booth</a><p style="margin:10px 0 0;">Only a question about exhibiting? Send it below.</p></div>';
+    extra = '<div class="rounded-xl p-4 text-sm leading-relaxed" style="background:rgba(255,107,0,0.08);border:1px solid rgba(255,107,0,0.3);"><p style="margin:0 0 10px;"><strong>To book a booth, apply for one.</strong> Tell us what you will show. We review every application so the floor stays relevant for the people who come to buy. We reply within 2 working days. If approved, our team confirms your place and the next step for booking your booth.</p><a href="${mumbaiIsOver() ? '/delhi-exhibit?from=contact' : '/inquiry#inquiry-form-card'}" style="display:inline-block;padding:10px 18px;border-radius:10px;background:#C84F00;color:#fff;font-weight:700;text-decoration:none;">Apply for a booth</a><p style="margin:10px 0 0;">Only a question about exhibiting? Send it below.</p></div>';
   } else if (type === 'speaking') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Proposed Topic</label><input type="text" id="cf-topic" autocomplete="off" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Your talk/workshop topic"></div>';
   } else if (type === 'group_registration') {
     // Group booking is online now (12 Nov 2026): the notice first, the form kept for questions.
-    extra = '<div class="rounded-xl p-4 text-sm leading-relaxed" style="background:rgba(255,107,0,0.08);border:1px solid rgba(255,107,0,0.3);margin-bottom:16px;"><p style="margin:0 0 10px;"><strong>Booking ${GROUP_MIN} or more passes? Book online with up to ${GROUP_DISCOUNT_PCT}% off.</strong> ${GROUP_RULE_TEXT}</p><a href="/group" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#C84F00;color:#fff;font-weight:700;text-decoration:none;">Book for your group</a><p style="margin:10px 0 0;">Only a question? Send it below.</p></div>' +
-      '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs text-gray-400 mb-1 block">Group Size</label><input type="number" id="cf-groupsize" autocomplete="off" min="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Number of people"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Pass Type</label><select id="cf-passtype" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select pass</option><option value="Delegate">Delegate (${rsPrice('Delegate Pass')} + GST)</option><option value="Premium Delegate">Premium Delegate (${rsPrice('Premium Delegate Pass')} + GST)</option><option value="VIP">VIP (${rsPrice('VIP Pass')} + GST)</option><option value="Academic">Academic (${rsPrice('Academic Pass')} + GST)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div></div>';
+    // After Mumbai there is no online group booking (/group is closed): the team sends a
+    // group quote, at Delhi's prices.
+    extra = ${mumbaiIsOver() ? `'<div class="rounded-xl p-4 text-sm leading-relaxed" style="background:rgba(255,107,0,0.08);border:1px solid rgba(255,107,0,0.3);margin-bottom:16px;"><p style="margin:0;"><strong>Bringing a team to Delhi 2027?</strong> Tell us how many people and which pass, and our team will send you the details for booking everyone together.</p></div>'` : `'<div class="rounded-xl p-4 text-sm leading-relaxed" style="background:rgba(255,107,0,0.08);border:1px solid rgba(255,107,0,0.3);margin-bottom:16px;"><p style="margin:0 0 10px;"><strong>Booking ${GROUP_MIN} or more passes? Book online with up to ${GROUP_DISCOUNT_PCT}% off.</strong> ${GROUP_RULE_TEXT}</p><a href="/group" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#C84F00;color:#fff;font-weight:700;text-decoration:none;">Book for your group</a><p style="margin:10px 0 0;">Only a question? Send it below.</p></div>'`} +
+      '<div class="grid grid-cols-2 gap-4"><div><label class="text-xs text-gray-400 mb-1 block">Group Size</label><input type="number" id="cf-groupsize" autocomplete="off" min="2" class="w-full px-4 py-3 rounded-xl text-sm" placeholder="Number of people"></div><div><label class="text-xs text-gray-400 mb-1 block">Preferred Pass Type</label><select id="cf-passtype" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select pass</option><option value="Delegate">Delegate (${contactPassPrice('Delegate Pass')} + GST)</option><option value="Premium Delegate">Premium Delegate (${contactPassPrice('Premium Delegate Pass')} + GST)</option><option value="VIP">VIP (${contactPassPrice('VIP Pass')} + GST)</option><option value="Academic">Academic (${contactPassPrice('Academic Pass')} + GST)</option><option value="Visitor">Visitor (Free)</option><option value="Mixed">Mixed</option></select></div></div>';
   } else if (type === 'sponsorship') {
     extra = '<div><label class="text-xs text-gray-400 mb-1 block">Budget Range</label><select id="cf-budget" class="w-full px-4 py-3 rounded-xl text-sm"><option value="">Select range</option><option value="Under ₹1 Lakh">Under ₹1 Lakh</option><option value="₹1-3 Lakhs">₹1-3 Lakhs</option><option value="₹3-5 Lakhs">₹3-5 Lakhs</option><option value="₹5-10 Lakhs">₹5-10 Lakhs</option><option value="₹10+ Lakhs">₹10+ Lakhs</option></select></div>';
   }
@@ -28243,18 +28261,27 @@ async function submitContactForm(e) {
   const gs = document.getElementById('cf-groupsize'); if (gs) metadata.group_size = gs.value;
   const pt = document.getElementById('cf-passtype'); if (pt) metadata.pass_type = pt.value;
   const bgt = document.getElementById('cf-budget'); if (bgt) metadata.budget = bgt.value;
+  // After Mumbai every enquiry here is for Delhi: marked the way the home page's are, so
+  // the desk tells them apart (subject "Delhi 2027 · ...", metadata.edition).
+  const cfType = document.getElementById('cf-type').value;
+  let cfSubject = document.getElementById('cf-subject').value.trim();
+  if (CF_EDITION) {
+    metadata.edition = CF_EDITION;
+    metadata.page = '/contact';
+    cfSubject = 'Delhi 2027 · ' + (cfSubject || (TYPE_CONFIG[cfType] || TYPE_CONFIG.general).title);
+  }
 
   try {
     const resp = await fetch('/api/inquiries', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        inquiry_type: document.getElementById('cf-type').value,
+        inquiry_type: cfType,
         name: document.getElementById('cf-name').value.trim(),
         email: document.getElementById('cf-email').value.trim(),
         phone: document.getElementById('cf-phone').value.trim(),
         organization: document.getElementById('cf-org').value.trim(),
-        subject: document.getElementById('cf-subject').value.trim(),
+        subject: cfSubject,
         message: document.getElementById('cf-message').value.trim(),
         metadata
       })
@@ -31477,8 +31504,8 @@ ${after ? `              <div class="ap-hero-img" role="img" aria-label="Bharat 
                 <i class="fas fa-download text-green-400 text-lg"></i>
               </div>
             </div>
-            <!-- Upgrade Card: Visitor Pass holders only -->
-            <div class="glass rounded-2xl p-5 border border-amber-500/25 card-hover cursor-pointer hidden" onclick="showUpgradeModal('welcome')" id="home-upgrade-card">
+            <!-- Upgrade Card: Visitor Pass holders only, and only while Mumbai sells: after it, its checkout answers 410, so the card is left out -->
+            ${after ? '' : `<div class="glass rounded-2xl p-5 border border-amber-500/25 card-hover cursor-pointer hidden" onclick="showUpgradeModal('welcome')" id="home-upgrade-card">
               <div class="flex items-center gap-4">
                 <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-amber-500/20 to-orange-500/20 flex items-center justify-center shrink-0">
                   <i class="fas fa-arrow-up-right-from-square text-2xl text-amber-400"></i>
@@ -31489,7 +31516,7 @@ ${after ? `              <div class="ap-hero-img" role="img" aria-label="Bharat 
                 </div>
                 <i class="fas fa-chevron-right text-amber-400 text-lg"></i>
               </div>
-            </div>
+            </div>`}
             <!-- Arrival Time Card -->
             <div class="glass rounded-2xl p-5 border border-amber-500/20 card-hover cursor-pointer" onclick="showArrivalTimePrompt()" id="arrival-time-card">
               <div class="flex items-center gap-4">

@@ -81,7 +81,7 @@ const mails = async () => (await fetch(BASE + '/__mail')).json();
     await page.press('[data-dr="deal_value_inr"]', 'Tab');
     check('a deal value typed with Indian commas is kept in rupees', await until(async () => (await byName('Ravi Kumar')).deal_value_inr === 180000));
     await page.selectOption('[data-f="reply-tpl"]', 'booth');
-    check('a saved reply fills the message (after asking to replace the typing)', await until(async () => /floor plan/.test(await page.inputValue('[data-f="reply-body"]'))));
+    check('a saved reply fills the message (after asking to replace the typing)', await until(async () => /Bharat Mandapam/.test(await page.inputValue('[data-f="reply-body"]'))));
     await page.click('[data-act="preview-reply"]');
     const pv = await page.locator('[data-part="reply-preview"]').innerText();
     check('Preview shows it as Ravi will read it, his company filled in', /Dear Ravi Kumar/.test(pv) && /Acme Robotics/.test(pv) && !/\{organisation\}/.test(pv), pv.slice(0, 300));

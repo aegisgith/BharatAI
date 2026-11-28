@@ -68,7 +68,7 @@ const tpl = d.settings.templates.find((t) => t.id === 'booth');
 mail.length = 0;
 const rep = await W.call(`/api/admin/inquiries/${id}/reply`, { method: 'POST', body: { subject: tpl.subject, message: tpl.body, template_id: 'booth' }, ...PRIYA });
 const replyMail = mailTo('ravi@acme.in')[0];
-check('5. the saved booth reply reaches Ravi with his company in it, and the floor plan link', rep.status === 200 && bodyOf(replyMail).includes('hold it for Acme Robotics') && bodyOf(replyMail).includes('https://bharataiinnovation.com/exhibition') && bodyOf(replyMail).includes('Dear Ravi Kumar'));
+check('5. the saved booth reply reaches Ravi with his company in it, the Delhi booths and the application link', rep.status === 200 && bodyOf(replyMail).includes('a booth for Acme Robotics') && bodyOf(replyMail).includes('https://bharataiinnovation.com/exhibition#delhi') && bodyOf(replyMail).includes('https://bharataiinnovation.com/delhi-exhibit') && bodyOf(replyMail).includes('Dear Ravi Kumar'));
 d = await deskRows();
 ravi = d.inquiries.find((r) => r.id === id);
 check('5. he is Replied, and his first reply took two days', ravi.status === 'responded' && Math.round(T.firstReplyHours(ravi)) === 48, T.firstReplyHours(ravi));
